@@ -7,6 +7,6 @@ from . import views
 
 
 urlpatterns = [
-    url(r'^$', views.starmap, name='map')
+    url(r'^(?P<game_id>[0-9]+)/$', views.starmap, name='map')
 ]
 

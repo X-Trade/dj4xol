@@ -1,11 +1,16 @@
 from django.http import HttpResponse
+
 from .models import Game
+from .decorators import player_only_view
 from .data import GameTurn
 
 
-def starmap(request):
-    """A rudimentary map viewer"""
-    game = Game.objects.first()
+@player_only_view()
+def starmap(request, game_id):
+    """
+    A rudimentary map viewer.
+    """
+    game = Game.objects.get(pk=game_id)
 
     gamemap = [['&nbsp' for _ in range(game.map_size_y + 1)] for _ in
             range(game.map_size_x + 1)]
