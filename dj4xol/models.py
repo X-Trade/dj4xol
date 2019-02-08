@@ -38,6 +38,7 @@ class AbstractMapObject(AbstractGameObject):
 
 
 class Ship(AbstractMapObject):
+    name = models.CharField(max_length=30)
     player = models.ForeignKey(Player, related_name = 'ships',
             on_delete=models.CASCADE)
 
