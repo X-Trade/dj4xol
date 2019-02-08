@@ -58,10 +58,14 @@ def starmap(request, game_id):
             color = 'blue'
         elif star.player == request.user.dj4xolplayer:
             color = 'green'
-        else:
+        elif star.player == None:
             color = 'white'
+        else:
+            color = 'red'
+
         gamemap[star.x][star.y] = '<a style="color:%s;text-decoration:none;" \
-                                  href=%s?x=%i&y=%i>+</a>' % (color, url, star.x, star.y)
+                                  title="%s" href=%s?x=%i&y=%i>+</a>' % (color, 
+                                  star.name, url, star.x, star.y)
     for ship in game.ships.all():
         if gamemap[ship.x][ship.y] == '+':
             gamemap[ship.x][ship.y] = '*'
