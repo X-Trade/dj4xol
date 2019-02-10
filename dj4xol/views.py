@@ -1,4 +1,5 @@
 from django.http import HttpResponse
+from django.contrib.staticfiles.templatetags.staticfiles import static
 from django.urls import resolve
 from itertools import chain
 
@@ -48,6 +49,7 @@ def starmap(request, game_id):
                 identifier = "%s%i" % ('ship', item.pk)
             detail += "<li><a href=\"%s?sel=%s\">%s</a></li>" % (url,
                     identifier, item.name)
+        detail += "</div>"
 
 
     gamemap = [['&nbsp' for _ in range(game.map_size_y + 1)] for _ in
@@ -73,14 +75,18 @@ def starmap(request, game_id):
             gamemap[ship.x][ship.y] = '^'
 
     html = "<html><body>"
+    html += '<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>'
+    html += '<script type="text/javascript" src="' + \
+            static('dj4xol/mapscrollpersist.js') + '"></script>'
     html += "<h1>%s</h1>" % (game.name)
     html += "<p>%s</p>" % (game.description)
-    html += '<div id=\'map\'><h2>Starmap</h2><div style="height:600px;width:600px;border:1px solid #ccc;background-color:black;color:white;font-family:monospace;overflow:auto;font-size:10px;">'
+    html += '<div><h2>Starmap</h2><div id="starmap" style="height:600px;width:600px;border:1px solid #ccc;background-color:black;color:white;font-family:monospace;overflow:auto;font-size:10px;">'
+    html += '<div id="maparea">'
     for x in gamemap:
         for y in x:
             html += y
         html += "<br />"
-    html += "</div></div>"
+    html += "</div></div></div>"
     html += detail
     html += "</body></html>"
     return HttpResponse(html)
