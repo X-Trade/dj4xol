@@ -7,7 +7,7 @@ $("document").ready( function() {
  console.log(posX);
  console.log(posY);
 
-$("a").on('click', function() {
+$(window).bind('beforeunload', function() {
  var posX = ($("#starmap").scrollLeft());
  var posY = ($("#starmap").scrollTop());
  localStorage.setItem('posX', posX);
