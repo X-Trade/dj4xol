@@ -45,15 +45,20 @@ def starmap(request, game_id):
             x = selected.x
             y = selected.y
 
-    detail = ''
     if x and y:
         x = int(x)
         y = int(y)
-        stars = game.stars.filter(x=x, y=y).all()
-        ships = game.ships.filter(x=x, y=y).all()
-        at_cursor = chain(stars, ships)
+        stars = game.stars.filter(x=x, y=y)
+        ships = game.ships.filter(x=x, y=y)
+        at_cursor = stars.union(ships)
         if not selected:
-            selected = stars[0]
+            try:
+                selected = at_cursor.first()
+            except IndexError:
+                selected = None
+
+    detail = ''
+    if selected:
         detail = "<div id='detail'><h2>%s</h2> at %i,%i " % (selected.name, x, y)
         if selected.player:
             detail += "owner: " + selected.player.django_user.username
@@ -84,10 +89,23 @@ def starmap(request, game_id):
                                   title="%s" href=%s?x=%i&y=%i>+</a>' % (color, 
                                   star.name, url, star.x, star.y)
     for ship in game.ships.all():
-        if gamemap[ship.x][ship.y] == '+':
-            gamemap[ship.x][ship.y] = '*'
+        if x == ship.x and y == ship.y:
+            color = 'blue'
+        elif ship.player == request.user.dj4xolplayer:
+            color = 'green'
+        elif ship.player == None:
+            color = 'white'
         else:
-            gamemap[ship.x][ship.y] = '^'
+            color = 'red'
+
+        if gamemap[ship.x][ship.y] != '&nbsp':
+            identifier = '*'
+        else:
+            identifier = '^'
+
+        gamemap[ship.x][ship.y] = '<a style="color:%s;text-decoration:none;" \
+                                  title="%s" href=%s?x=%i&y=%i>%s</a>' % (color,
+                                  ship.name, url, ship.x, ship.y, identifier)
 
     html = "<html><body>"
     html += '<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>'
