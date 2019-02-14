@@ -19,6 +19,10 @@ class Game(models.Model):
     description = models.TextField()
     map_size_x = models.IntegerField()
     map_size_y = models.IntegerField()
+    joinable = models.BooleanField(default = False)
+    ended = models.BooleanField(default = False)
+    year = models.IntegerField(default=2100)
+
 
 
 class AbstractGameObject(models.Model):

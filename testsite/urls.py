@@ -18,6 +18,6 @@ from django.conf.urls import url, include
 
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
-    url(r'^4x/', include('dj4xol.urls')),
+    url(r'^4x/', include('dj4xol.urls', namespace='dj4xol')),
     url(r'^accounts/', include('django.contrib.auth.urls'))
 ]

@@ -1,11 +1,26 @@
 from django.http import HttpResponse
 from django.contrib.staticfiles.templatetags.staticfiles import static
+from django.shortcuts import render
 from django.urls import resolve
 from itertools import chain
 
 from .models import Game, Ship, Star
-from .decorators import player_only_view
+from .decorators import player_only_view, registration_required
 from .data import GameTurn
+
+
+@registration_required()
+def gamelist(request):
+    """
+    index of all games the user can see
+    """
+    player = request.user.dj4xolplayer
+    my_games_count = player.games.filter(ended=False).count()
+    my_games = player.games.filter(ended=False).all()
+    hosted_games_count = Game.objects.filter(owner=player).count()
+    hosted_games = Game.objects.filter(owner=player).all()
+    open_games = Game.objects.filter(joinable=True, ended=False).all()
+    return render(request, 'dj4xol/games.html', {'player': player, 'my_games': my_games})
 
 
 @player_only_view()
