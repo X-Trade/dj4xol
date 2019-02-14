@@ -10,6 +10,9 @@ class Player(models.Model):
     alias = models.CharField(max_length=30, unique=True)
     email = models.EmailField()
 
+    def __str__(self):
+        return '%i %s' % (self.id, self.alias)
+
 
 class Game(models.Model):
     name = models.CharField(max_length=30)
@@ -23,11 +26,16 @@ class Game(models.Model):
     ended = models.BooleanField(default = False)
     year = models.IntegerField(default=2100)
 
+    def __str__(self):
+        return '%i %s' % (self.id, self.name)
 
 
 class AbstractGameObject(models.Model):
     game = models.ForeignKey(Game, related_name="%(class)ss",
             on_delete=models.CASCADE)
+
+    def __str__(self):
+        return '%i-%i' % (self.game.id, self.id)
 
     class Meta:
         abstract = True
