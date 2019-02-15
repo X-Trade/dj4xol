@@ -48,9 +48,9 @@ def starmap(request, game_id):
     if x and y:
         x = int(x)
         y = int(y)
-        stars = game.stars.filter(x=x, y=y)
-        ships = game.ships.filter(x=x, y=y)
-        at_cursor = stars.union(ships)
+        stars = game.stars.filter(x=x, y=y).all()
+        ships = game.ships.filter(x=x, y=y).all()
+        at_cursor = list(chain(stars, ships))
         if not selected:
             try:
                 selected = at_cursor.first()

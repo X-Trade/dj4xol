@@ -163,7 +163,7 @@ class StarNamer():
             'Tip', 'Top', 'Freedom', 'Lush', 'Fire', 'Wolf', 'Smith', 'Coronae',
             'Libra', 'Librae', 'Chomsky', 'Atlas', 'Apache', 'Io', 'Europa',
             'Ganymede', 'Callisto', 'Proxima', 'Makemake', 'Haumea', 'Mercury',
-            'Soil', 'Kreutz', 'Kalt', 'Hale', 'Bopp', 'Oort', 'Kuiper', 'Sedna',
+            'Solus', 'Kreutz', 'Kalt', 'Hale', 'Bopp', 'Oort', 'Kuiper', 'Sedna',
             'Vulcan', 'Vulcanoid', 'Vega', 'Apex', 'Sirius', 'Lalande', 'Cloud',
             'Wise', 'Tau', 'Luyten', 'Ross', 'Nine', 'Six', 'Four', 'Three',
             'Two', 'Titan', 'Titania', 'Rhea', 'Oberon', 'Vesta', 'Ariel',
