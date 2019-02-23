@@ -53,7 +53,7 @@ def starmap(request, game_id):
         at_cursor = list(chain(stars, ships))
         if not selected:
             try:
-                selected = at_cursor.first()
+                selected = at_cursor[0]
             except IndexError:
                 selected = None
 
