@@ -1,0 +1,6 @@
+include LICENSE
+include README.rst
+exclude manage.py
+recursive-include dj4xol/static *
+recursive-include dj4xol/templates *
+recursive-exclude testsite *
