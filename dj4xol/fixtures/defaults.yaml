@@ -1,0 +1,257 @@
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'server_name'
+    description: 'Server name'
+    value: "It's Full of Stars"
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'server_admin'
+    description: "Server admin's name"
+    value: 'admin'
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'server_contact'
+    description: "Server admin's email"
+    value: 'admin@localhost'
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'server_url'
+    description: 'Server URL'
+    value: 'http://localhost:8000'
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'server_tagline'
+    description: 'Server tagline'
+    value: 'A Django 4X OL server demo'
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'server_allow_registration'
+    description: 'Allow registration'
+    value: 'True'
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'enable_email'
+    description: 'Enable email'
+    value: 'False'
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'enable_gpt'
+    description: 'Enable GPT API usage'
+    value: 'False'
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'gpt_api_key'
+    description: 'GPT API key'
+    value: ''
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'JOAT'
+    name: 'Jack of All Trades'
+    description: 'A normal race with no special abilities.'
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'SCI'
+    name: 'Scientists'
+    description: 'A race that excels at research.'
+    starting_research_points: 3
+    research_multiplier: 1.5
+    manufacturing_multiplier: 0.6
+    scan_multiplier: 1.2
+    shield_multiplier: 1.1
+    combat_multiplier: 0.8
+    persuasion_multiplier: 0.9
+    diplomacy_multiplier: 1.1
+    luck_multiplier: 1.3
+    starting_population: 600
+    starting_economy: 3
+    chance_of_scantheft: 0.05
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'WAR'
+    name: 'Warmongers'
+    has_superweapon: True
+    has_advanced_mines: True
+    has_stealth: False
+    persuasion_multiplier: 1.1
+    warp_multiplier: 0.8
+    scan_multiplier: 0.9
+    defence_multiplier: 1.1
+    shield_multiplier: 0.75
+    diplomacy_multiplier: 0.5
+    research_multiplier: 0.7
+    combat_multiplier: 1.3
+    bombardment_multiplier: 1.3
+    ground_force_multiplier: 1.5
+    population_growth_multiplier: 0.9
+    political_stability: 0.84
+    starting_economy: 1
+    has_metalurgy: False
+    starting_research_points: 5
+    chance_of_scantheft: 0.001
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'MECH'
+    name: 'Mechanical'
+    ignores_radiation: True
+    ignores_gravity: True
+    ignores_temperature: True
+    has_terraforming: True
+    has_metalurgy: False
+    is_mechanical: True
+    starting_research_points: 5
+    population_growth_multiplier: 1.2
+    population_growth_uses_resources: True
+    diplomacy_multiplier: 0.5
+    defence_multiplier: 0.6
+    trade_multiplier: 0.5
+    scan_multiplier: 1.1
+    shield_multiplier: 1.2
+    political_stability: 1.945
+    chance_of_scantheft: 0.02
+    has_advanced_remoteminers: True
+    research_multiplier: 0.9
+    manufacturing_multiplier: 1.2
+    luck_multiplier: 0.5
+    terraforming_multiplier: 0.6
+    persuasion_multiplier: 0.5
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'TRDM'
+    name: 'Transdimensional'
+    description: 'Beings from another dimension who must occupy ships and stations in order to interact in our universe.'
+    enabled: False
+    is_energy_being: True
+    ignores_radiation: True
+    ignores_gravity: True
+    ignores_temperature: True
+    has_terraforming: False
+    requires_space_station: True
+    has_stealth: True
+    stealth_multiplier: 1.6
+    starting_population: 100
+    population_growth_multiplier: 1.2
+    has_advanced_hulls: True
+    has_bombs: False
+    ground_force_multiplier: 0.01
+    bombardment_multiplier: 1.1
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'SPRT'
+    name: 'Spiritual'
+    enabled: False
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'TERA'
+    name: 'Terraformers'
+    enabled: False
+    has_advanced_remoteminers: False
+    terraforming_multiplier: 2.0
+    has_metalurgy: True
+    has_bombs: False
+    ground_force_multiplier: 0.9
+    defence_multiplier: 0.9
+    starting_research_points: 7
+    population_growth_multiplier: 1.1
+    manufacturing_multiplier: 0.9
+    combat_multiplier: 0.8
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'EXPL'
+    name: 'Explorers'
+    ignores_radiation: True
+    warp_multiplier: 1.6
+    shield_multiplier: 1.1
+    combat_multiplier: 0.8
+    persuasion_multiplier: 1.1
+    defence_multiplier: 0.86
+    diplomacy_multiplier: 1.2
+    trade_multiplier: 1.2
+    luck_multiplier: 1.2
+    has_advanced_stargates: True
+    political_stability: 1.1
+    starting_planets: 2
+    starting_population: 500
+    starting_planet_has_stargate: True
+    manufacturing_multiplier: 0.9
+    research_multiplier: 1.1
+    ground_force_multiplier: 1.1
+    bombardment_multiplier: 0.6
+    initiative_multiplier: 1.2
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'BULD'
+    name: 'Builders'
+    description: 'Builders are good at manufacturing and research, but not so good at combat or diplomacy.'
+    warp_multiplier: 1.2
+    shield_multiplier: 1.1
+    combat_multiplier: 0.8
+    persuasion_multiplier: 1.1
+    defence_multiplier: 0.86
+    diplomacy_multiplier: 0.8
+    trade_multiplier: 1.2
+    manufacturing_multiplier: 1.6
+    research_multiplier: 1.2
+    has_advanced_hulls: True
+    has_stealth: False
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'TRAD'
+    name: 'Traders'
+    description: 'Traders are good at diplomacy and trade, but not so good at combat or research.'
+    warp_multiplier: 1.1
+    shield_multiplier: 1.1
+    combat_multiplier: 0.75
+    persuasion_multiplier: 1.2
+    trade_multiplier: 1.6
+    starting_economy: 3
+    has_stealth: False
+    cargo_multiplier: 1.6
+    diplomacy_multiplier: 1.2
+    has_bombs: False
+    luck_multiplier: 1.2
+    research_multiplier: 0.8
+    starting_planets: 2
+    starting_planet_has_massdriver: True
+    economy_offset: 1
+    ground_force_multiplier: 0.8
+    defence_multiplier: 0.8
+    initiative_multiplier: 0.9
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'PARA'
+    name: 'Parasites'
+    description: 'Parasitic races are not very good at research or manufacturing, but they are very good at stealing from and trading with other races.'
+    chance_of_scantheft: 0.3
+    starting_economy: 1
+    is_parasitic: True
+    population_growth_multiplier: 0.8
+    starting_population: 500
+    starting_research_points: 2
+    defence_multiplier: 0.9
+    trade_multiplier: 1.2
+    scan_multiplier: 1.2
+    initiative_multiplier: 1.5
+    luck_multiplier: 1.5
+    research_multiplier: 0.5
+    combat_multiplier: 0.9
+    shield_multiplier: 0.9
+    warp_multiplier: 1.1
+    stealth_multiplier: 0.9
+    has_metalurgy: False
+- model: dj4xol.ServerRaceType
+  fields:
+    code: 'BRED'
+    name: 'Breeders'
+    population_growth_multiplier: 2.0
+    starting_population: 4000
+    starting_research_points: 2
+    defence_multiplier: 0.6
+    ground_force_multiplier: 1.64
+    warp_multiplier: 0.8
+    starting_economy: 0
+    economy_offset: -1
+    scan_multiplier: 0.9
+    shield_multiplier: 0.9
+    has_metalurgy: False
+    ignores_radiation: True
+    initiative_multiplier: 0.8
