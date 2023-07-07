@@ -2,21 +2,38 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.core.urlresolvers import reverse
 from django.http import HttpResponseRedirect
+from datetime import datetime
 try:
     from django.conf.urls import url
 except ImportError:
     from django.urls import re_path as url
 
-from .models import Player, Game
-from .data import GameTurn
+from .models import Player, Game, ServerSettings, ServerRaceType
+from .turn import GameTurn
 
+@admin.register(ServerRaceType)
+class ServerRaceTypeAdmin(admin.ModelAdmin):
+    list_display = ('code', 'name', 'enabled')
 
-admin.site.register(Player)
+@admin.register(ServerSettings)
+class ServerAdmin(admin.ModelAdmin):
+    list_display = ('key', 'value', 'description', 'modified')
+    readonly_fields = ('key', 'description', 'modified', 'modified_by')
+    
+    def save_model(self, request, obj, form, change):
+        obj.modified_by = request.user
+        obj.modified = datetime.now()
+        obj.save()
+
+@admin.register(Player)
+class PlayerAdmin(admin.ModelAdmin):
+    list_display = ('pk', 'django_user', 'full_name', 'alias', 'email')
+    readonly_fields = ('pk', 'django_user')
 
 @admin.register(Game)
 class GameAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'owner', 'year', 'game_actions')
-    readonly_fields = ('id', 'name', 'owner', 'year', 'game_actions')
+    list_display = ('pk', 'name', 'owner', 'year', 'game_actions')
+    readonly_fields = ('pk', 'year', 'game_actions')
     list_select_related = ('owner',)
 
     def get_urls(self):

@@ -4,9 +4,9 @@ from django.shortcuts import render
 from django.urls import resolve
 from itertools import chain
 
-from .models import Game, Ship, Star
+from .models import Game, Ship, Star, ServerSettings
 from .decorators import player_only_view, registration_required
-from .data import GameTurn
+from .turn import GameTurn
 
 
 @registration_required()
@@ -19,9 +19,22 @@ def gamelist(request):
     my_games = player.games.filter(ended=False).all()
     hosted_games_count = Game.objects.filter(owner=player).count()
     hosted_games = Game.objects.filter(owner=player).all()
-    open_games = Game.objects.filter(joinable=True, ended=False).all()
-    return render(request, 'dj4xol/games.html', {'player': player, 'my_games': my_games})
+    open_games = Game.objects.filter(public=True, ended=False).all()
+    return render(request, 'dj4xol/games.html', 
+                  {'player': player,
+                   'my_games': my_games,
+                   'open_games': open_games,
+                   'server_settings': ServerSettings.all_to_dict()})
 
+def join_game(request, game_id):
+    """
+    join a game
+    """
+    game = Game.objects.get(pk=game_id)
+    player = request.user.dj4xolplayer
+    game.players.add(player)
+    game.save()
+    return HttpResponse('joined %s' % game.name)
 
 @player_only_view()
 def starmap(request, game_id):

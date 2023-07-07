@@ -1,0 +1,10 @@
+version: '3.4'
+
+services:
+  dj4xol:
+    image: dj4xol
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    ports:
+      - 8000:8000
