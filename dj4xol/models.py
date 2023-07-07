@@ -1,8 +1,31 @@
 from django.db import models
+from django import forms
 from django.contrib.auth import models as auth_models
 from django.core.validators import MaxValueValidator, MinValueValidator
+from .starnamer import StarNamer
 
 
+class ServerSettings(models.Model):
+    key = models.CharField(max_length=30, primary_key=True, unique=True)
+    value = models.CharField(max_length=30)
+    description = models.CharField(max_length=60)
+    modified = models.DateTimeField(auto_now=True, null=True)
+    modified_by = models.ForeignKey(auth_models.User, on_delete=models.PROTECT, null=True)
+
+    class Meta:
+        verbose_name = 'Server Setting'
+        verbose_name_plural = 'Server Settings'
+
+    def __str__(self):
+        return '%s' % (self.key)
+    
+    def to_dict(self):
+        return {self.key: self.value}
+    
+    @classmethod
+    def all_to_dict(cls):
+        return {setting.key: setting.value for setting in ServerSettings.objects.all()}
+    
 class Player(models.Model):
     django_user = models.OneToOneField(auth_models.User, primary_key=True,
             related_name="dj4xolplayer", on_delete = models.PROTECT)
@@ -11,8 +34,7 @@ class Player(models.Model):
     email = models.EmailField()
 
     def __str__(self):
-        return '%i %s' % (self.id, self.alias)
-
+        return '%i:%s' % (self.pk, self.alias)
 
 class Game(models.Model):
     name = models.CharField(max_length=30)
@@ -22,12 +44,24 @@ class Game(models.Model):
     description = models.TextField()
     map_size_x = models.IntegerField()
     map_size_y = models.IntegerField()
-    joinable = models.BooleanField(default = False)
+    joinable = models.BooleanField(default = False) # anybody who can see can join
+    public = models.BooleanField(default = False) # anybody can view
     ended = models.BooleanField(default = False)
     year = models.IntegerField(default=2100)
 
+    _star_names = []
+    _star_namer = None
+
     def __str__(self):
         return '%i %s' % (self.id, self.name)
+    
+    def get_star_names(self):
+        return [star["name"] for star in self.stars.values("name").all()]
+    
+    def get_star_namer(self):
+        if not self._star_namer:
+            self._star_namer = StarNamer(self.get_star_names())
+        return self._star_namer
 
 
 class AbstractGameObject(models.Model):
@@ -48,12 +82,79 @@ class AbstractMapObject(AbstractGameObject):
     class Meta:
         abstract = True
 
+class ServerRaceType(models.Model):
+    code = models.CharField(max_length=4, primary_key=True, unique=True)
+    name = models.CharField(max_length=16)
+    enabled = models.BooleanField(default=True)
+    description = models.TextField()
+    starting_population = models.IntegerField(default=1000)
+    starting_planets = models.IntegerField(default=1)
+    starting_planet_has_stargate = models.BooleanField(default=False)
+    starting_planet_has_massdriver = models.BooleanField(default=False)
+    population_growth_multiplier = models.FloatField(default=1.0)
+    population_growth_uses_resources = models.BooleanField(default=False)
+    starting_economy = models.IntegerField(default=2)
+    economy_offset = models.IntegerField(default=0)
+    manufacturing_multiplier = models.FloatField(default=1.0)
+    combat_multiplier = models.FloatField(default=1.0)
+    defence_multiplier = models.FloatField(default=1.0)
+    bombardment_multiplier = models.FloatField(default=1.0)
+    ground_force_multiplier = models.FloatField(default=1.0)
+    diplomacy_multiplier = models.FloatField(default=1.0)
+    trade_multiplier = models.FloatField(default=1.0)
+    scan_multiplier = models.FloatField(default=1.0)
+    shield_multiplier = models.FloatField(default=1.0)
+    warp_multiplier = models.FloatField(default=1.0)
+    stealth_multiplier = models.FloatField(default=1.0)
+    terraforming_multiplier = models.FloatField(default=1.0)
+    metalurgy_multiplier = models.FloatField(default=1.0)
+    political_stability = models.FloatField(default=1.0)
+    luck_multiplier = models.FloatField(default=1.0)
+    persuasion_multiplier = models.FloatField(default=1.0)
+    chance_of_scantheft = models.FloatField(default=0.01)
+    ignores_radiation = models.BooleanField(default=False)
+    ignores_temperature = models.BooleanField(default=False)
+    ignores_gravity = models.BooleanField(default=False)
+    requires_space_station = models.BooleanField(default=False)
+    has_terraforming = models.BooleanField(default=True)
+    has_advanced_mines = models.BooleanField(default=False)
+    has_advanced_stargates = models.BooleanField(default=False)
+    has_advanced_remoteminers = models.BooleanField(default=False)
+    has_advanced_hulls = models.BooleanField(default=False)
+    has_superweapon = models.BooleanField(default=False)
+    has_bombs = models.BooleanField(default=True)
+    has_metalurgy = models.BooleanField(default=True)
+    has_stealth = models.BooleanField(default=True)
+    is_parasitic = models.BooleanField(default=False)
+    is_cybernetic = models.BooleanField(default=False)
+    is_mechanical = models.BooleanField(default=False)
+    is_energy_being = models.BooleanField(default=False)
+    starting_research_points = models.IntegerField(default=3)
+    research_multiplier = models.FloatField(default=1.0)
+    initiative_multiplier = models.FloatField(default=1.0)
+    cargo_multiplier = models.FloatField(default=1.0)
+
+
+class PlayerRace(AbstractGameObject):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=16)
+    plural_name = models.CharField(max_length=16)
+    public = models.BooleanField(default=False)
+    owner = models.ForeignKey(Player, related_name="public_races",
+                                      null=True, default=None,
+                                      on_delete=models.SET_NULL)
+    player = models.ForeignKey(Player, related_name="races",
+                                      null=True, default=None,
+                                      on_delete=models.SET_NULL)
+    description = models.TextField(null=True, default=None)
+    race_type = models.ForeignKey(ServerRaceType)
+
 
 class Ship(AbstractMapObject):
+    #TODO: Rename to Fleet?
     name = models.CharField(max_length=30)
     player = models.ForeignKey(Player, related_name = 'ships',
             on_delete=models.CASCADE)
-
 
 class Star(AbstractMapObject):
     name = models.CharField(max_length=30)
@@ -62,6 +163,7 @@ class Star(AbstractMapObject):
 
 
 class ShipOrders(AbstractGameObject):
+    #TODO: Rename to FleetOrders?
     ship = models.ForeignKey(Ship, related_name="orders",
             on_delete=models.CASCADE)
     repeat = models.BooleanField(default = False)
