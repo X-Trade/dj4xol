@@ -1,0 +1,46 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>{{ game.name }}</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/starmap/css/map.css' %}">
+        <script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
+        <script type="text/javascript" src="{% static 'dj4xol/starmap/js/mapscrollpersist.js' %}"></script>
+    </head>
+    <body>
+        <h1>{{ game.name }}</h1>
+        <p>{{ game.description }}</p>
+        <div><h2>Starmap</h2>
+            <div class="starmap" id="starmap" style="height:600px;width:600px">
+            <div class="maparea" id="maparea">
+                {{ starmap |safe }}
+        </div></div></div>
+        <div><h2>Detail</h2>
+            <div id="detail">
+                <h2>{{ detail.name }}</h2>
+                owner: {{ detail.player }}
+                {% if detail.resources %}
+                <h3>Resources</h3>
+                <ul>{% for key, value in detail.resources.items %}
+                        <li>{{ key }}: {{ value }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+                {% if detail.environmentals %}
+                    <h3>Environmentals</h3>
+                    <ul>{% for key, value in detail.environmentals.items %}
+                            <li>{{ key }}: {{ value }}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+                {% if detail.also_here %}
+                    <h3>Also Here</h3>
+                    <ul>{% for thing in detail.also_here %}
+                            <li>{{ thing }}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+        </div></div>
+    </body>
+</html>
