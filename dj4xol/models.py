@@ -3,6 +3,12 @@ from django import forms
 from django.contrib.auth import models as auth_models
 from django.core.validators import MaxValueValidator, MinValueValidator
 from .starnamer import StarNamer
+import random
+
+def random_resource_init():
+    return random.randint(0, 100)
+def random_environmental_init():
+    return random.random() * 2.0
 
 
 class ServerSettings(models.Model):
@@ -69,7 +75,7 @@ class AbstractGameObject(models.Model):
             on_delete=models.CASCADE)
 
     def __str__(self):
-        return '%i-%i' % (self.game.id, self.id)
+        return 'Game%i:%s%i' % (self.game.id, self.__class__.__name__, self.id)
 
     class Meta:
         abstract = True
@@ -125,6 +131,7 @@ class ServerRaceType(models.Model):
     has_bombs = models.BooleanField(default=True)
     has_metalurgy = models.BooleanField(default=True)
     has_stealth = models.BooleanField(default=True)
+    has_generalised_research = models.BooleanField(default=False)
     is_parasitic = models.BooleanField(default=False)
     is_cybernetic = models.BooleanField(default=False)
     is_mechanical = models.BooleanField(default=False)
@@ -135,14 +142,23 @@ class ServerRaceType(models.Model):
     cargo_multiplier = models.FloatField(default=1.0)
 
 
-class PlayerRace(AbstractGameObject):
+class ServerRace(AbstractGameObject):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=16)
     plural_name = models.CharField(max_length=16)
+    formal_name = models.CharField(max_length=32)
     public = models.BooleanField(default=False)
     owner = models.ForeignKey(Player, related_name="public_races",
                                       null=True, default=None,
                                       on_delete=models.SET_NULL)
+    description = models.TextField(null=True, default=None)
+    race_type = models.ForeignKey(ServerRaceType)
+
+class PlayerRace(AbstractGameObject):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=16)
+    plural_name = models.CharField(max_length=16)
+    formal_name = models.CharField(max_length=32)
     player = models.ForeignKey(Player, related_name="races",
                                       null=True, default=None,
                                       on_delete=models.SET_NULL)
@@ -160,6 +176,27 @@ class Star(AbstractMapObject):
     name = models.CharField(max_length=30)
     player = models.ForeignKey(Player, null=True, default=None, related_name =
             'stars', on_delete=models.CASCADE)
+    gravity = models.FloatField(default=random_environmental_init,
+                                validators=[MinValueValidator(0.0), MaxValueValidator(2.0)])
+    temperature = models.FloatField(default=random_environmental_init,
+                                validators=[MinValueValidator(0.0), MaxValueValidator(2.0)])
+    radiation = models.FloatField(default=random_environmental_init,
+                                validators=[MinValueValidator(0.0), MaxValueValidator(2.0)])
+    gravity_adjustment = models.FloatField(default=0.0,
+                                validators=[MinValueValidator(-1.0), MaxValueValidator(1.0)])
+    temperature_adjustment = models.FloatField(default=0.0,
+                                validators=[MinValueValidator(-1.0), MaxValueValidator(1.0)])
+    radiation_adjustment = models.FloatField(default=0.0,
+                                validators=[MinValueValidator(-1.0), MaxValueValidator(1.0)])
+
+    ironium = models.IntegerField(default=random_resource_init,
+                                  validators=[MinValueValidator(0), MaxValueValidator(100)])
+    boranium = models.IntegerField(default=random_resource_init,
+                                  validators=[MinValueValidator(0), MaxValueValidator(100)])
+    germanium = models.IntegerField(default=random_resource_init,
+                                  validators=[MinValueValidator(0), MaxValueValidator(100)])
+
+    colonists = models.IntegerField(default=0)
 
 
 class ShipOrders(AbstractGameObject):
@@ -176,3 +213,13 @@ class ShipOrders(AbstractGameObject):
     target_ship = models.ForeignKey(Ship, null=True, related_name='+',
             on_delete=models.CASCADE)
 
+class GameMessage(AbstractGameObject):
+    player = models.ForeignKey(Player, related_name='messages',
+            on_delete=models.CASCADE)
+    message = models.TextField()
+    year = models.IntegerField()
+
+    def save(self, *args, **kwargs):
+        if self.year is None:
+            self.year = self.game.year
+        super(GameMessage, self).save(*args, **kwargs)
