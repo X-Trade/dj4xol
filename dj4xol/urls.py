@@ -3,6 +3,7 @@ try:
 except ImportError:
     from django.urls import re_path as url
 
+import dj4xol.legacy_starmap
 from . import views
 
 
