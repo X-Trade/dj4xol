@@ -2,6 +2,7 @@ from django.db import models
 from django import forms
 from django.contrib.auth import models as auth_models
 from django.core.validators import MaxValueValidator, MinValueValidator
+from itertools import chain
 from .starnamer import StarNamer
 import random
 
@@ -63,6 +64,12 @@ class Game(models.Model):
     
     def get_star_names(self):
         return [star["name"] for star in self.stars.values("name").all()]
+
+    def get_object_at(self, x, y):
+        return self.stars.filter(x=x, y=y).first() or self.ships.filter(x=x, y=y).first() or None
+    
+    def get_all_objects_at(self, x, y):
+        return list(chain(self.stars.filter(x=x, y=y).all(), self.ships.filter(x=x, y=y).all()))
     
     def get_star_namer(self):
         if not self._star_namer:
@@ -157,13 +164,20 @@ class ServerRace(AbstractGameObject):
 class PlayerRace(AbstractGameObject):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=16)
-    plural_name = models.CharField(max_length=16)
-    formal_name = models.CharField(max_length=32)
+    plural_name = models.CharField(max_length=16, null=True, default=None)
+    formal_name = models.CharField(max_length=32, null=True, default=None)
     player = models.ForeignKey(Player, related_name="races",
                                       null=True, default=None,
                                       on_delete=models.SET_NULL)
     description = models.TextField(null=True, default=None)
     race_type = models.ForeignKey(ServerRaceType)
+
+    def save(self, *args, **kwargs):
+        if self.plural_name is None:
+            self.plural_name = self.name + 's'
+        if self.formal_name is None:
+            self.formal_name = self.name
+        super(PlayerRace, self).save(*args, **kwargs)
 
 
 class Ship(AbstractMapObject):
