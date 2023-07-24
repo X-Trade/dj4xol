@@ -65,6 +65,7 @@
     starting_population: 600
     starting_economy: 3
     chance_of_scantheft: 0.05
+    has_generalised_research: True
 - model: dj4xol.ServerRaceType
   fields:
     code: 'WAR'
