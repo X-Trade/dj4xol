@@ -31,23 +31,33 @@ class MessageFactory():
     TEMPLATES=[]
 
     message = None
+    game = None
+    player_race = None
     intensity = 0.0
 
     def __init__(self, game, player_race, message=None, intensity=0.0):
         if not message:
             message = GameMessage()
-            message.game = game
-            message.player = player_race.player
+        self.game = game
+        self.player_race = player_race
         self.message = message
         self.intensity = intensity
 
-    def new_message(self, intensity=None):
+    def get_message(self, intensity=None):
         if intensity is not None:
             self.intensity = intensity
-        self.message.message = self.generate_message(intensity)
+        if self.message.message is None or self.message.message == "":
+            self.message.message = self.format_message()
         return self.message
 
-    def generate_adverb(self):
+    def new_message(self, intensity=None):
+        message = GameMessage()
+        message.game = self.game
+        message.player = self.player_race.player
+        self.message = message
+        return self.get_message(intensity=intensity)
+
+    def _format_adverb(self):
         """select from the adverbs using a moving window based on intensity"""
         if self.intensity > 0.1:
             adverbs = list(chain(self.DEFAULT_ADVERBS, self.POSITIVE_ADVERBS))
@@ -56,48 +66,50 @@ class MessageFactory():
         else:
             adverbs = self.DEFAULT_ADVERBS
         
-        return weighted_random_choice(adverbs, self.get_absolute_intensity(), 2)
+        return weighted_random_choice(adverbs, self._get_abs_intensity(), 2)
     
-    def generate_verb(self):
+    def _format_verb(self):
         """select from the verbs using a moving window based on intensity"""
         if self.intensity >= 0.0:
             verbs = list(self.POSITIVE_VERBS)
         elif self.intensity < 0.0:
             verbs = list(self.NEGATIVE_VERBS)
         
-        return weighted_random_choice(verbs, self.get_absolute_intensity(), 2)
+        return weighted_random_choice(verbs, self._get_abs_intensity(), 2)
     
-    def get_absolute_intensity(self):
+    def _get_abs_intensity(self):
         return min(abs(self.intensity), 1.0)
     
-    def generate_message(self):
+    def format_message(self):
         return random.choice(self.templates).format(
-            adverb=self.generate_adverb(),
-            verb=self.generate_verb()
+            adverb=self._format_adverb(),
+            verb=self._format_verb()
         )
     
     def format_outcome(self, item, quantity):
         verbs = self.TAKE_VERBS if quantity > 0 else self.GIVE_VERBS
-        verb = weighted_random_choice(verbs, self.get_absolute_intensity(), 2)
+        verb = weighted_random_choice(verbs, 1 - self.intensity * 0.5, 2)
         quantity = abs(quantity)
         return "We have {verb} {quantity} {item}. ".format(verb=verb, quantity=quantity, item=item)
     
     def append_outcome(self, item, quantity):
-        self.message.message += self.format_outcome(item, quantity)
+        self.message.message = " ".join([self.message.message, self.format_outcome(item, quantity)])
 
 
 class DiplomaticMessageFactory(MessageFactory):
-    templates = ["A representative of {race_formal} was recieved and {adverb} {verb}. ",
-                 "A representative was dispatched to {race_formal} and was {adverb} {verb}. ",
-                 "A delegation was received by {race_formal}. They were {adverb} {verb}. ",
-                 "A delegation was recieved from {race_formal}. They were {adverb} {verb}. ",
-                 "A party was sent to {race_formal}. They were {adverb} {verb}. "]
+    templates = ["A representative of {race_formal} was recieved and {adverb} {verb}.",
+                 "A representative was dispatched to {race_formal} and was {adverb} {verb}.",
+                 "A delegation was received by {race_formal}. They were {adverb} {verb}.",
+                 "A delegation was recieved from {race_formal}. They were {adverb} {verb}.",
+                 "A party was sent to {race_formal}. They were {adverb} {verb}.", 
+                 "An envoy was dispatched to {race_formal}. They were {adverb} {verb}."
+                 "An envoy was recieved from {race_formal}. They were {adverb} {verb}."]
     
     def __init__(self, game, player_race, encounter_race, message=None, intensity=0.0):
         super(DiplomaticMessageFactory, self).__init__(game, player_race, message, intensity)
         self.encounter_race = encounter_race
         
-    def generate_message(self):
+    def format_message(self):
         return random.choice(self.templates).format(race_formal = self.encounter_race.formal_name,
-                                                    adverb=self.generate_adverb(),
-                                                    verb=self.generate_verb())
+                                                    adverb=self._format_adverb(),
+                                                    verb=self._format_verb())
