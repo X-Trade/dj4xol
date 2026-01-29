@@ -15,10 +15,8 @@
 10. radar system. Ties in to #9. Players cannot see ships beyond their ships or planets sensor range
 
 =============== GUI =================
-1. display colonists resource on planets as "population"
-2. display environmental stats as a thick bar on a graph
 3. display race compatibility as a shaded region on the environment bars
 4. messages (events) list
 5. show ships as pointing in the direction they have just traveled in
 6. show a dropdown list of all objects at the selected coordinates
-7. Python in the browser?
+19. Python in the browser?
