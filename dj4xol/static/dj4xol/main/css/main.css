@@ -1,0 +1,45 @@
+/* Detail panel - matches starmap width */
+#detail {
+    width: 600px;
+    border: 1px solid #808080;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+/* Environmental bars */
+.env-row {
+    display: flex;
+    align-items: center;
+    margin: 4px 0;
+}
+
+.env-label {
+    width: 90px;
+}
+
+.env-bar {
+    flex: 1;
+    height: 12px;
+    background: linear-gradient(to right,
+        #004000 0%,
+        #00ff00 50%,
+        #004000 100%);
+    border: 1px solid #404040;
+    position: relative;
+    margin: 0 8px;
+}
+
+.env-marker {
+    position: absolute;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    background-color: #ffffff;
+    border: 1px solid #000000;
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.env-value {
+    width: 60px;
+    text-align: right;
+}
