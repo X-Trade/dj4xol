@@ -4,7 +4,32 @@
     background-color: black;
     color: white;
     padding: 5px;
-    overflow: auto;
+    overflow: scroll;
+    cursor: grab;
+}
+
+.starmap:active {
+    cursor: grabbing;
+}
+
+/* Force scrollbars always visible on WebKit (Safari, Chrome on Mac) */
+.starmap::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+    display: block;
+}
+
+.starmap::-webkit-scrollbar-track {
+    background: #222;
+}
+
+.starmap::-webkit-scrollbar-thumb {
+    background: #666;
+    border-radius: 6px;
+}
+
+.starmap::-webkit-scrollbar-thumb:hover {
+    background: #888;
 }
 
 .maparea {

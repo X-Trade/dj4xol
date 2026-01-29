@@ -16,31 +16,39 @@
             <div class="maparea" id="maparea">
                 {{ starmap |safe }}
         </div></div></div>
-        <div><h2>Detail</h2>
-            <div id="detail">
-                <h2>{{ detail.name }}</h2>
-                owner: {{ detail.player }}
-                {% if detail.resources %}
-                <h3>Resources</h3>
-                <ul>{% for key, value in detail.resources.items %}
-                        <li>{{ key }}: {{ value }}</li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
-                {% if detail.environmentals %}
-                    <h3>Environmentals</h3>
-                    <ul>{% for key, value in detail.environmentals.items %}
-                            <li>{{ key }}: {{ value }}</li>
-                        {% endfor %}
-                    </ul>
-                {% endif %}
-                {% if detail.also_here %}
-                    <h3>Also Here</h3>
-                    <ul>{% for thing in detail.also_here %}
-                            <li>{{ thing }}</li>
-                        {% endfor %}
-                    </ul>
-                {% endif %}
-        </div></div>
+        <h2>Detail</h2>
+        <div id="detail">
+            <h3>{{ detail.name }}</h3>
+            <hr>
+            <p>Owner: {{ detail.player }}{% if detail.population %} | Population: {{ detail.population }}{% endif %}</p>
+            {% if detail.environmentals %}
+            <h4>Environmentals</h4>
+            {% for key, data in detail.environmentals.items %}
+            <div class="env-row">
+                <span class="env-label">{{ key }}</span>
+                <div class="env-bar">
+                    <div class="env-marker" style="left: {{ data.percent }}%;"></div>
+                </div>
+                <span class="env-value">{{ data.display }}</span>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% if detail.resources %}
+            <h4>Resources</h4>
+            <ul>
+                {% for key, value in detail.resources.items %}
+                <li>{{ key }}: {{ value }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if detail.also_here %}
+            <h4>Also Here</h4>
+            <ul>
+                {% for thing in detail.also_here %}
+                <li>{{ thing }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
     </body>
 </html>

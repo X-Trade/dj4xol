@@ -32,6 +32,7 @@ class DetailBuilder():
         if self.selected_obj:
             detail = {'name': self.get_object_name(),
                      'player': self.get_object_player(),
+                     'population': self.get_population(),
                      'environmentals': self.build_environmental_detail(),
                      'resources': self.build_resource_detail(),
                      'also_here': {mapobject.name: str(mapobject) for mapobject in self.at_cursor if mapobject != self.selected_obj}
@@ -39,6 +40,11 @@ class DetailBuilder():
         else:
             detail = None
         return detail
+
+    def get_population(self):
+        if self.selected_obj and isinstance(self.selected_obj, Star):
+            return self.selected_obj.colonists
+        return None
 
     def get_object_name(self):
         print(self.selected_obj.name)
@@ -88,10 +94,28 @@ class DetailBuilder():
     def build_environmental_detail(self):
         environmentals = None
         if self.selected_obj and isinstance(self.selected_obj, Star):
-            environmentals = {'Temperature': self.selected_obj.temperature,
-                              'Gravity': self.selected_obj.gravity,
-                              'Radiation': self.selected_obj.radiation
-                             }
+            # Model values are 0.0-2.0, where 1.0 = 100% (average)
+            # 0.0 = 0%, 2.0 = 200%
+            grav = self.selected_obj.gravity
+            temp = self.selected_obj.temperature
+            rad = self.selected_obj.radiation
+            environmentals = {
+                'Gravity': {
+                    'value': grav,
+                    'display': '%.2fg' % grav,  # 1.0 = 1.00g (Earth normal)
+                    'percent': (grav / 2.0) * 100
+                },
+                'Temperature': {
+                    'value': temp,
+                    'display': '%+d°C' % int((temp - 1.0) * 100),  # 1.0 = 0°C
+                    'percent': (temp / 2.0) * 100
+                },
+                'Radiation': {
+                    'value': rad,
+                    'display': '%dmR' % int(rad * 50),  # 1.0 = 50mR
+                    'percent': (rad / 2.0) * 100
+                }
+            }
         return environmentals
     
     def build_resource_detail(self):
@@ -100,6 +124,5 @@ class DetailBuilder():
             resources = {'Ironium': self.selected_obj.ironium,
                          'Boranium': self.selected_obj.boranium,
                          'Germanium': self.selected_obj.germanium,
-                         'Colonists': self.selected_obj.colonists,
                         }
         return resources
