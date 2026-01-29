@@ -8,6 +8,7 @@ class GameTurn():
     def generate_turn(self):
         """Generate a turn for the game."""
         self.ship_movements()
+        self.clear_empty_planets()
         self.game.year += 1
         self.game.save()
 
@@ -61,3 +62,7 @@ class GameTurn():
             ship.x = int(new_position[0])
             ship.y = int(new_position[1])
         return ship
+
+    def clear_empty_planets(self):
+        """Remove ownership from planets with zero population."""
+        self.game.stars.filter(colonists=0).update(player=None)
