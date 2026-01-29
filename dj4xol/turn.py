@@ -5,7 +5,7 @@ class GameTurn():
     def __init__(self, game):
         self.game = game
 
-    def generate(self):
+    def generate_turn(self):
         """Generate a turn for the game."""
         self.ship_movements()
         self.game.year += 1
@@ -14,7 +14,7 @@ class GameTurn():
     def generate_turns(self, turns):
         """Generate multiple turns for the game."""
         for _ in range(turns):
-            self.generate()
+            self.generate_turn()
 
     def ship_movements(self):
         """Move ships according to their orders."""
