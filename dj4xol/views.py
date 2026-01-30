@@ -180,6 +180,28 @@ def debug_colonize(request, game_id, star_id):
     return _redirect_preserving_selection(request, game_id)
 
 
+@player_only_view()
+def debug_create_fleet(request, game_id):
+    """Debug: create a fleet at the current x/y location."""
+    from .models import Fleet
+    game = Game.objects.get(pk=game_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+
+    x = int(request.POST.get('x') or request.GET.get('x') or 0)
+    y = int(request.POST.get('y') or request.GET.get('y') or 0)
+
+    fleet = Fleet.objects.create(
+        game=game,
+        player=player,
+        name=f"Fleet {game.fleets.count() + 1}",
+        x=x,
+        y=y,
+    )
+
+    return _redirect_preserving_selection(request, game_id)
+
+
 def _redirect_preserving_selection(request, game_id):
     """Redirect to game view, preserving x, y, sel query params."""
     from django.urls import reverse

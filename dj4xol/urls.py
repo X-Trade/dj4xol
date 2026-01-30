@@ -19,5 +19,6 @@ urlpatterns = [
     url(r'^(?P<game_id>[0-9]+)/turn-in/$', views.turn_in, name='turn_in'),
     url(r'^(?P<game_id>[0-9]+)/generate/$', views.generate_turn, name='generate_turn'),
     url(r'^(?P<game_id>[0-9]+)/debug/colonize/(?P<star_id>[0-9]+)/$', views.debug_colonize, name='debug_colonize'),
+    url(r'^(?P<game_id>[0-9]+)/debug/create-fleet/$', views.debug_create_fleet, name='debug_create_fleet'),
 ]
 
