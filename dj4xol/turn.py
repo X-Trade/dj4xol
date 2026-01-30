@@ -129,7 +129,7 @@ class GameTurn():
 
     def _process_year(self):
         """Process a single year of game time."""
-        self.ship_movements()
+        self.fleet_movements()
         self.population_growth()
         self.clear_empty_planets()
         self.check_join_deadline()
@@ -157,21 +157,21 @@ class GameTurn():
         for _ in range(turns):
             self.generate_turn()
 
-    def ship_movements(self):
-        """Move ships according to their orders."""
-        for ship in self.game.ships.all():
-            self.move_ship(ship).save()
+    def fleet_movements(self):
+        """Move fleets according to their orders."""
+        for fleet in self.game.fleets.all():
+            self.move_fleet(fleet).save()
 
-    def move_ship(self, ship):
-        order = ship.orders.first()  # this is the current order
+    def move_fleet(self, fleet):
+        order = fleet.orders.first()  # this is the current order
         if not order:
-            return ship
+            return fleet
         if order.target_star:
             x = order.target_star.x
             y = order.target_star.y
-        elif order.target_ship:
-            x = order.target_ship.x
-            y = order.target_ship.y
+        elif order.target_fleet:
+            x = order.target_fleet.x
+            y = order.target_fleet.y
         elif order.x and order.y:
             x = order.x
             y = order.y
@@ -179,7 +179,7 @@ class GameTurn():
             raise Exception("invalid order %s" % (str(order.id)))
 
         target = nparray([x, y])
-        position = nparray([ship.x, ship.y])
+        position = nparray([fleet.x, fleet.y])
         vector = target - position
         distance = linalg.norm(vector)
         print("position: %s" % (str(position)))
@@ -187,8 +187,8 @@ class GameTurn():
         print("vector:   %s" % (str(vector)))
         print("distance: %s" % (str(distance)))
         if int(distance) <= order.warpfactor:
-            ship.x = x
-            ship.y = y
+            fleet.x = x
+            fleet.y = y
             if order.repeat:
                 # this may not work....
                 neworder = order
@@ -199,9 +199,9 @@ class GameTurn():
             normalised_vector = vector / distance
             print("normal:   %s" % (str(normalised_vector)))
             new_position = position + (normalised_vector * order.warpfactor)
-            ship.x = int(new_position[0])
-            ship.y = int(new_position[1])
-        return ship
+            fleet.x = int(new_position[0])
+            fleet.y = int(new_position[1])
+        return fleet
 
     def population_growth(self):
         """Apply population growth/decline to all colonized planets."""

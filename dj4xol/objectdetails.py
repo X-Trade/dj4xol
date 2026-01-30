@@ -1,4 +1,4 @@
-from dj4xol.models import Ship, Star
+from dj4xol.models import Fleet, Star
 from dj4xol.turn import calculate_growth_factor, apply_population_change, effective_capacity
 
 from itertools import chain
@@ -93,8 +93,8 @@ class DetailBuilder():
         x = int(x)
         y = int(y)
         stars = self.game.stars.filter(x=x, y=y).all()
-        ships = self.game.ships.filter(x=x, y=y).all()
-        self.at_cursor = list(chain(stars, ships))
+        fleets = self.game.fleets.filter(x=x, y=y).all()
+        self.at_cursor = list(chain(stars, fleets))
         return self.at_cursor
     
     def find_selected_from_coordinates(self, x, y):
@@ -111,8 +111,8 @@ class DetailBuilder():
             selected_type = selected_name.split(str(selected_id)[:1])[0]
             if selected_type == 'star':
                 self.selected_obj = Star.objects.get(pk=selected_id)
-            elif selected_type == 'ship':
-                self.selected_obj = Ship.objects.get(pk=selected_id)
+            elif selected_type == 'fleet':
+                self.selected_obj = Fleet.objects.get(pk=selected_id)
             self.check_selected()
         return self.selected_obj
 

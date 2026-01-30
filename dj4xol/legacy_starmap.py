@@ -1,5 +1,5 @@
 from dj4xol.decorators import player_only_view
-from dj4xol.models import Game, Ship, Star
+from dj4xol.models import Game, Fleet, Star
 
 from django.contrib.staticfiles.templatetags.staticfiles import static
 from django.http import HttpResponse
@@ -19,13 +19,13 @@ def starmap(request, game_id):
     y = request.GET.get('y', None)
     selected = request.GET.get('sel', None)
     if selected:
-        if selected.startswith('star') or selected.startswith('ship'):
-            sel_id = int(selected[4:])
-            sel_class = selected[:4]
+        if selected.startswith('star') or selected.startswith('fleet'):
+            sel_class = 'fleet' if selected.startswith('fleet') else 'star'
+            sel_id = int(selected[len(sel_class):])
             if sel_class == 'star':
                 selected = game.stars.get(pk=sel_id)
-            elif sel_class == 'ship':
-                selected = game.ships.get(pk=sel_id)
+            elif sel_class == 'fleet':
+                selected = game.fleets.get(pk=sel_id)
             x = selected.x
             y = selected.y
 
@@ -33,8 +33,8 @@ def starmap(request, game_id):
         x = int(x)
         y = int(y)
         stars = game.stars.filter(x=x, y=y).all()
-        ships = game.ships.filter(x=x, y=y).all()
-        at_cursor = list(chain(stars, ships))
+        fleets = game.fleets.filter(x=x, y=y).all()
+        at_cursor = list(chain(stars, fleets))
         if not selected:
             try:
                 selected = at_cursor[0]
@@ -49,8 +49,8 @@ def starmap(request, game_id):
         for item in at_cursor:
             if isinstance(item, Star):
                 identifier = "%s%i" % ('star', item.pk)
-            elif isinstance(item, Ship):
-                identifier = "%s%i" % ('ship', item.pk)
+            elif isinstance(item, Fleet):
+                identifier = "%s%i" % ('fleet', item.pk)
             detail += "<li><a href=\"%s?sel=%s\">%s</a></li>" % (url,
                     identifier, item.name)
         detail += "</div>"
@@ -72,24 +72,24 @@ def starmap(request, game_id):
         gamemap[star.x][star.y] = '<a style="color:%s;text-decoration:none;" \
                                   title="%s" href=%s?x=%i&y=%i>+</a>' % (color,
                                   star.name, url, star.x, star.y)
-    for ship in game.ships.all():
-        if x == ship.x and y == ship.y:
+    for fleet in game.fleets.all():
+        if x == fleet.x and y == fleet.y:
             color = 'blue'
-        elif ship.player == request.user.dj4xolplayer:
+        elif fleet.player == request.user.dj4xolplayer:
             color = 'green'
-        elif ship.player == None:
+        elif fleet.player == None:
             color = 'white'
         else:
             color = 'red'
 
-        if gamemap[ship.x][ship.y] != '&nbsp':
+        if gamemap[fleet.x][fleet.y] != '&nbsp':
             identifier = '*'
         else:
             identifier = '^'
 
-        gamemap[ship.x][ship.y] = '<a style="color:%s;text-decoration:none;" \
+        gamemap[fleet.x][fleet.y] = '<a style="color:%s;text-decoration:none;" \
                                   title="%s" href=%s?x=%i&y=%i>%s</a>' % (color,
-                                  ship.name, url, ship.x, ship.y, identifier)
+                                  fleet.name, url, fleet.x, fleet.y, identifier)
 
     html = "<html><body>"
     html += '<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>'
