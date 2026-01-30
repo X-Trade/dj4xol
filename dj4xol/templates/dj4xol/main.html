@@ -83,8 +83,8 @@
                         {% endfor %}
                     </ul>
                     {% endif %}
-                    {% if detail.is_star %}
                     <div class="debug-actions">
+                        {% if detail.is_star %}
                         <form method="post" action="{% url 'dj4xol:debug_colonize' game.id detail.star_id %}" style="display:inline">
                             {% csrf_token %}
                             {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
@@ -92,8 +92,17 @@
                             {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
                             <button type="submit">Debug: Colonize (1000)</button>
                         </form>
+                        {% endif %}
+                        {% if selection.x and selection.y %}
+                        <form method="post" action="{% url 'dj4xol:debug_create_fleet' game.id %}" style="display:inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="x" value="{{ selection.x }}">
+                            <input type="hidden" name="y" value="{{ selection.y }}">
+                            {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
+                            <button type="submit">Debug: Create Fleet</button>
+                        </form>
+                        {% endif %}
                     </div>
-                    {% endif %}
                 </div>
             </div>
             <div class="column-right">
