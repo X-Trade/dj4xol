@@ -1,7 +1,5 @@
 ============= MAIN TODO =============
 0. change to GUIDs. review universal resource string slug/identifier format
-1. player race modifiers (offset gravity, temperature, radiation, growth factor, initial population)
-2. population growth
 3. Events/Messages system
 4. Event generation in turn generator
 6. Schedule based turn generation (generate a turn by cronjob)
@@ -14,7 +12,6 @@
 =============== GUI =================
 1. Ship orders
 2. Home button (find homeworld)
-3. display race compatibility as a shaded region on the environment bars
 4. adaptive layout
 5. show ships as pointing in the direction they have just traveled in
 6. show a dropdown list of all objects at the selected coordinates

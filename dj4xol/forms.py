@@ -8,15 +8,39 @@ class ServerRaceForm(forms.ModelForm):
     """Form for creating a custom race template."""
     class Meta:
         model = ServerRace
-        fields = ['name', 'plural_name', 'formal_name', 'race_type', 'description']
+        fields = [
+            'name', 'plural_name', 'formal_name', 'homeworld_name', 'race_type', 'description',
+            'gravity_center', 'gravity_width',
+            'temperature_center', 'temperature_width',
+            'radiation_center', 'radiation_width',
+        ]
         widgets = {
             'description': forms.Textarea(attrs={'rows': 3}),
+            'gravity_center': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
+            'gravity_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
+            'temperature_center': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
+            'temperature_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
+            'radiation_center': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
+            'radiation_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['race_type'].queryset = ServerRaceType.objects.filter(enabled=True)
         self.fields['description'].required = False
+
+    def clean(self):
+        cleaned_data = super().clean()
+        # Build a temporary instance to use validation methods
+        instance = ServerRace(**{k: v for k, v in cleaned_data.items() if k in [
+            'gravity_center', 'gravity_width',
+            'temperature_center', 'temperature_width',
+            'radiation_center', 'radiation_width',
+        ]})
+        errors = instance.validate_habitability()
+        if errors:
+            raise forms.ValidationError(errors)
+        return cleaned_data
 
 
 class NewGameForm(forms.Form):

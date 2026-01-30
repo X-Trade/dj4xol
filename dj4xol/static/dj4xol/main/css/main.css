@@ -79,9 +79,9 @@
     flex: 1;
     height: 12px;
     background: linear-gradient(to right,
-        #004000 0%,
+        #400000 0%,
         #00ff00 50%,
-        #004000 100%);
+        #400000 100%);
     border: 1px solid #404040;
     position: relative;
     margin: 0 8px;
@@ -95,6 +95,16 @@
     background-color: #ffffff;
     border: 1px solid #000000;
     transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.env-marker.habitable {
+    background-color: #00ff00;
+    border-color: #006600;
+}
+
+.env-marker.uninhabitable {
+    background-color: #ff4444;
+    border-color: #660000;
 }
 
 .env-value {
@@ -140,4 +150,37 @@
 .no-messages {
     color: #888;
     font-style: italic;
+}
+
+/* Population change indicator */
+.pop-change {
+    font-size: 0.9em;
+}
+
+.pop-change.positive {
+    color: #00aa00;
+}
+
+.pop-change.negative {
+    color: #cc0000;
+}
+
+/* Debug actions */
+.debug-actions {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px dashed #999;
+}
+
+.debug-actions button {
+    background: #665;
+    color: #fff;
+    border: 1px solid #443;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 0.85em;
+}
+
+.debug-actions button:hover {
+    background: #776;
 }

@@ -137,9 +137,17 @@ class GameFactory():
         return max(available_stars, key=lambda s: min(self._distance(s, hw) for hw in existing_homeworlds))
 
     def _assign_homeworld_to_player(self, player, star):
-        """Assign a specific star as homeworld to a player with starting population."""
+        """Assign a specific star as homeworld to a player with starting population.
+        Sets star environmentals to player's habitable centers and optionally renames."""
         star.player = player
         star.colonists = player.race_type.starting_population
+        # Set environmentals to player's ideal (center) values
+        star.gravity = player.gravity_center
+        star.temperature = player.temperature_center
+        star.radiation = player.radiation_center
+        # Override star name if player has a homeworld name set
+        if player.homeworld_name:
+            star.name = player.homeworld_name
         star.save()
         player.homeworld = star
         player.save()
@@ -171,8 +179,10 @@ class GameFactory():
             name=race.name,
             plural_name=race.plural_name,
             formal_name=race.formal_name,
-            race_type=race.race_type
+            homeworld_name=race.homeworld_name,
+            race_type=race.race_type,
         )
+        player.copy_habitability_from(race)
         player.save()
         self._assign_homeworld_to_player(player, self._find_homeworld_star(available_stars))
         return player

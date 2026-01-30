@@ -105,7 +105,7 @@ def starmap(request, game_id):
     y = request.GET.get('y', None)
 
     selected = request.GET.get('sel', None)
-    detail = DetailBuilder(game, x, y, selected).build_detail()
+    detail = DetailBuilder(game, x, y, selected, player=player).build_detail()
 
     # Get messages for this player, most recent first
     messages = player.messages.order_by('-year', '-id') if player else []
@@ -117,6 +117,7 @@ def starmap(request, game_id):
         'detail': detail,
         'messages': messages,
         'is_owner': account == game.owner,
+        'selection': {'x': x, 'y': y, 'sel': selected},
     })
 
 
@@ -140,7 +141,7 @@ def turn_in(request, game_id):
     if turn.check_quorum():
         turn.generate_turn()
 
-    return redirect('dj4xol:game', game_id=game.pk)
+    return _redirect_preserving_selection(request, game_id)
 
 
 @player_only_view()
@@ -160,7 +161,35 @@ def generate_turn(request, game_id):
         })
 
     GameTurn(game).generate_turn()
-    return redirect('dj4xol:game', game_id=game.pk)
+    return _redirect_preserving_selection(request, game_id)
+
+
+@player_only_view()
+def debug_colonize(request, game_id, star_id):
+    """Debug: instantly colonize a star with 1000 colonists."""
+    from .models import Star
+    game = Game.objects.get(pk=game_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    star = Star.objects.get(pk=star_id, game=game)
+
+    star.player = player
+    star.colonists = 1000
+    star.save()
+
+    return _redirect_preserving_selection(request, game_id)
+
+
+def _redirect_preserving_selection(request, game_id):
+    """Redirect to game view, preserving x, y, sel query params."""
+    from django.urls import reverse
+    from urllib.parse import urlencode
+    url = reverse('dj4xol:game', kwargs={'game_id': game_id})
+    params = {k: request.POST.get(k) or request.GET.get(k)
+              for k in ['x', 'y', 'sel'] if request.POST.get(k) or request.GET.get(k)}
+    if params:
+        url = f"{url}?{urlencode(params)}"
+    return redirect(url)
 
 
 @registration_required()

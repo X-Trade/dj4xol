@@ -21,6 +21,9 @@
                     {% else %}
                         <form method="post" action="{% url 'dj4xol:turn_in' game.id %}" style="display:inline">
                             {% csrf_token %}
+                            {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
+                            {% if selection.y %}<input type="hidden" name="y" value="{{ selection.y }}">{% endif %}
+                            {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
                             <button type="submit">Turn In</button>
                         </form>
                     {% endif %}
@@ -28,6 +31,9 @@
                 {% elif game.turn_scheme == 'OWNER' and is_owner %}
                     <form method="post" action="{% url 'dj4xol:generate_turn' game.id %}" style="display:inline">
                         {% csrf_token %}
+                        {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
+                        {% if selection.y %}<input type="hidden" name="y" value="{{ selection.y }}">{% endif %}
+                        {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
                         <button type="submit">Generate Turn</button>
                     </form>
                 {% endif %}
@@ -48,14 +54,14 @@
                 <div id="detail">
                     <h3>{{ detail.name }}</h3>
                     <hr>
-                    <p>{% if detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: {{ detail.population }}{% endif %}</p>
+                    <p>{% if detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: {{ detail.population }}{% if detail.population_change != None %} <span class="pop-change {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}">({% if detail.population_change >= 0 %}+{% endif %}{{ detail.population_change }})</span>{% endif %}{% endif %}</p>
                     {% if detail.environmentals %}
                     <h4>Environmentals</h4>
                     {% for key, data in detail.environmentals.items %}
                     <div class="env-row">
                         <span class="env-label">{{ key }}</span>
-                        <div class="env-bar">
-                            <div class="env-marker" style="left: {{ data.percent }}%;"></div>
+                        <div class="env-bar" {% if data.hab_center_percent %}style="background: linear-gradient(to right, #400000 0%, #400000 {{ data.hab_min_percent }}%, #00ff00 {{ data.hab_center_percent }}%, #400000 {{ data.hab_max_percent }}%, #400000 100%);"{% endif %}>
+                            <div class="env-marker {% if data.is_habitable %}habitable{% else %}uninhabitable{% endif %}" style="left: {{ data.percent }}%;"></div>
                         </div>
                         <span class="env-value">{{ data.display }}</span>
                     </div>
@@ -76,6 +82,17 @@
                         <li>{{ thing }}</li>
                         {% endfor %}
                     </ul>
+                    {% endif %}
+                    {% if detail.is_star %}
+                    <div class="debug-actions">
+                        <form method="post" action="{% url 'dj4xol:debug_colonize' game.id detail.star_id %}" style="display:inline">
+                            {% csrf_token %}
+                            {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
+                            {% if selection.y %}<input type="hidden" name="y" value="{{ selection.y }}">{% endif %}
+                            {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
+                            <button type="submit">Debug: Colonize (1000)</button>
+                        </form>
+                    </div>
                     {% endif %}
                 </div>
             </div>
