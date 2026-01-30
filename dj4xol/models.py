@@ -19,20 +19,54 @@ class ServerSettings(models.Model):
     modified = models.DateTimeField(auto_now=True, null=True)
     modified_by = models.ForeignKey(auth_models.User, on_delete=models.PROTECT, null=True)
 
+    _defaults_cache = None
+
     class Meta:
         verbose_name = 'Server Setting'
         verbose_name_plural = 'Server Settings'
 
     def __str__(self):
         return '%s' % (self.key)
-    
+
     def to_dict(self):
         return {self.key: self.value}
-    
+
     @classmethod
     def all_to_dict(cls):
         return {setting.key: setting.value for setting in ServerSettings.objects.all()}
-    
+
+    @classmethod
+    def _load_defaults(cls):
+        """Load defaults from fixtures file."""
+        if cls._defaults_cache is None:
+            import yaml
+            import os
+            fixtures_path = os.path.join(os.path.dirname(__file__), 'fixtures', 'defaults.yaml')
+            with open(fixtures_path, 'r') as f:
+                data = yaml.safe_load(f)
+            cls._defaults_cache = {
+                item['fields']['key']: item['fields']
+                for item in data if item['model'] == 'dj4xol.ServerSettings'
+            }
+        return cls._defaults_cache
+
+    @classmethod
+    def get(cls, key, default=None):
+        """Get a setting by key, creating from fixtures if not found."""
+        try:
+            return cls.objects.get(pk=key).value
+        except cls.DoesNotExist:
+            defaults = cls._load_defaults()
+            if key in defaults:
+                fields = defaults[key]
+                setting = cls.objects.create(
+                    key=key,
+                    value=fields.get('value', ''),
+                    description=fields.get('description', '')
+                )
+                return setting.value
+            return default
+
 
 class Account(models.Model):
     """A dj4xol account linked to a Django user."""
@@ -54,10 +88,18 @@ class Account(models.Model):
 
 
 class Game(models.Model):
+    TURN_SCHEME_CHOICES = [
+        ('QUORUM', 'Quorum - when all players are ready'),
+        ('OWNER', 'Owner - when game owner triggers'),
+        ('HOURLY', 'Hourly'),
+        ('DAILY', 'Daily'),
+        ('WEEKLY', 'Weekly'),
+    ]
+
     name = models.CharField(max_length=30)
     owner = models.ForeignKey(Account, related_name="owned_games",
             on_delete=models.SET_NULL, null=True)
-    description = models.TextField()
+    description = models.TextField(blank=True, default='')
     map_size_x = models.IntegerField()
     map_size_y = models.IntegerField()
     joinable = models.BooleanField(default=False)  # anybody who can see can join
@@ -66,22 +108,26 @@ class Game(models.Model):
     year = models.IntegerField(default=2400)
     join_until_year = models.IntegerField(null=True, blank=True)  # auto-close joining after this year
     max_players = models.IntegerField(null=True, blank=True)  # max players allowed
+    turn_scheme = models.CharField(max_length=10, choices=TURN_SCHEME_CHOICES, default='QUORUM')
+    years_per_turn = models.IntegerField(default=1)
+    last_generated = models.DateTimeField(null=True, blank=True)
+    next_generation = models.DateTimeField(null=True, blank=True)
 
     _star_names = []
     _star_namer = None
 
     def __str__(self):
         return '%i %s' % (self.id, self.name)
-    
+
     def get_star_names(self):
         return [star["name"] for star in self.stars.values("name").all()]
 
     def get_object_at(self, x, y):
         return self.stars.filter(x=x, y=y).first() or self.ships.filter(x=x, y=y).first() or None
-    
+
     def get_all_objects_at(self, x, y):
         return list(chain(self.stars.filter(x=x, y=y).all(), self.ships.filter(x=x, y=y).all()))
-    
+
     def get_star_namer(self):
         if not self._star_namer:
             self._star_namer = StarNamer(self.get_star_names())
@@ -208,7 +254,7 @@ class ServerRace(models.Model):
     owner = models.ForeignKey(Account, related_name="custom_races",
                                       null=True, default=None,
                                       on_delete=models.SET_NULL)
-    description = models.TextField(null=True, default=None)
+    description = models.TextField(blank=True, default='')
     race_type = models.ForeignKey(ServerRaceType)
 
     def __str__(self):
@@ -227,8 +273,9 @@ class Player(AbstractGameObject):
     homeworld = models.ForeignKey(Star, null=True, default=None,
                                   related_name="homeworld_of",
                                   on_delete=models.SET_NULL)
-    description = models.TextField(null=True, default=None)
+    description = models.TextField(blank=True, default='')
     race_type = models.ForeignKey(ServerRaceType)
+    turned_in = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         if self.plural_name is None:
@@ -243,7 +290,7 @@ class ShipOrders(AbstractGameObject):
     ship = models.ForeignKey(Ship, related_name="orders",
             on_delete=models.CASCADE)
     repeat = models.BooleanField(default = False)
-    warpfactor = models.IntegerField(default = 0, 
+    warpfactor = models.IntegerField(default = 0,
                                      validators=[MinValueValidator(0), MaxValueValidator(13)])
     x = models.IntegerField(null=True)
     y = models.IntegerField(null=True)
