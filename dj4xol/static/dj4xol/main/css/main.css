@@ -40,6 +40,22 @@
     cursor: pointer;
 }
 
+/* Columnar layout */
+.columns {
+    display: flex;
+    gap: 20px;
+}
+
+.column-left {
+    flex: 0 0 auto;
+}
+
+.column-right {
+    flex: 1;
+    min-width: 300px;
+    max-width: 400px;
+}
+
 /* Detail panel - matches starmap width */
 #detail {
     width: 600px;
@@ -84,4 +100,44 @@
 .env-value {
     width: 60px;
     text-align: right;
+}
+
+/* Messages panel */
+#messages {
+    border: 1px solid #808080;
+    padding: 10px;
+    box-sizing: border-box;
+    height: 300px;
+    display: flex;
+    flex-direction: column;
+}
+
+.messages-scroll {
+    flex: 1;
+    overflow-y: scroll;
+    padding-right: 5px;
+}
+
+.message {
+    border-bottom: 1px solid #ddd;
+    padding: 8px 0;
+}
+
+.message:last-child {
+    border-bottom: none;
+}
+
+.message-year {
+    font-size: 0.85em;
+    color: #666;
+    font-weight: bold;
+}
+
+.message-text {
+    margin: 4px 0 0 0;
+}
+
+.no-messages {
+    color: #888;
+    font-style: italic;
 }

@@ -1,22 +1,21 @@
 ============= MAIN TODO =============
-0. correct relationship of objects to player race rather than player useraccount directly!
-    (we can show the useraccount name in brackets or on mouseover)
-1. Events/Messages system
-2. Event generation in turn generator
-3. Quorum based turn generation (when all players have clicked "Done",
-    generate a turn). 
-4. Schedule based turn generation (generate a turn by cronjob)
-5. Player Race setup screen
-6. New Game setup screen
-7. invite players (by useraccount) to game - player chooses when accepting, which of their (or from default server list of) races to play in this game as. 
+0. change to GUIDs. review universal resource string slug/identifier format
+1. player race modifiers (offset gravity, temperature, radiation, growth factor, initial population)
+2. population growth
+3. Events/Messages system
+4. Event generation in turn generator
+6. Schedule based turn generation (generate a turn by cronjob)
+7. production orders
 8. more comprehensive unit testing
-9. protect unnecessary/unsporting information from being delivered to the wrong owner-player
+9. radar system. Ties in to #10. Players cannot see ships beyond their ships or planets sensor range
+10. protect unnecessary/unsporting information from being delivered to the wrong owner-player
    for example, a player cannot see the orders of another player's vessel
-10. radar system. Ties in to #9. Players cannot see ships beyond their ships or planets sensor range
 
 =============== GUI =================
+1. Ship orders
+2. Home button (find homeworld)
 3. display race compatibility as a shaded region on the environment bars
-4. messages (events) list
+4. adaptive layout
 5. show ships as pointing in the direction they have just traveled in
 6. show a dropdown list of all objects at the selected coordinates
-19. Python in the browser?
+9. Python in the browser?

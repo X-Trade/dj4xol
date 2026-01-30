@@ -73,7 +73,8 @@ class StarNamer():
              'Helbt', 'Harth', 'Hoth', 'Hebrides', 'Hera', 'Hermes',
              'Hermione', 'Juno', 'Manley', 'Kerban', 'Kerbol', 'Kantor',
              'Kant', 'Koth', 'P3X-n', 'P2C-n', 'LV-n', 'NGC-n', 'M-n', 'A-n',
-             'X-n', 'G-n', 'Y-n', '???-n', 'Messier', 'Caldwell', 'Coruscant',
+             'X-n', 'G-n', 'Y-n', '???-n', '2001-n', '2010-n', '2061-n',
+             '2099-n', '1969-n', '1977-n', 'Messier', 'Caldwell', 'Coruscant',
              'Tatooine', 'Alderaan', 'Naboo', 'Endor', 'Yavin', 'Kashyyyk',
              'Dagobah', 'Bespin', 'Kamino', 'Geonosis', 'Utapau', 'Mustafar',
              'Polis', 'Massa', 'Mygeeto', 'Felucia', 'Cato', 'Neimoidia',
@@ -89,11 +90,11 @@ class StarNamer():
     _additional = ['Alpha', 'Beta', 'Delta', 'Epsilon', 'Gamma', 'Zeta', 'Eta',
                   'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi',
                   'Omicron', 'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi',
-                  'Chi', 'Psi', 'Omega', 'Roma']
+                  'Chi', 'Psi', 'Omega', 'Rama']
     _suffixes = _additional + ['Major', 'Minor', 'Star', 'Object', 'Torment',
                                'Majoris', 'Minoris', 'A', 'B', 'C', 'D', 'E',
-                               'F', 'G', 'H', 'I', 'II', 'III', 'IV', 'V',
-                               'VI', 'VII', 'VIII', 'IX', 'X']
+                               'X', 'Y', 'Z', 'I', 'II', 'III', 'IV', 'V',
+                               'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII']
     _prefixes = _additional + ['New', 'Old', 'Nova', 'Neo', 'Free', 'High',
                                'Low']
     history = []
