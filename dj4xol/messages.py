@@ -1,4 +1,4 @@
-from .models import Game, Player, PlayerRace, GameMessage
+from .models import Game, Player, GameMessage
 import random
 from itertools import chain
 
@@ -10,8 +10,8 @@ def weighted_random_choice(choices, offset, window_size=1):
 
 class GameEvent():
     game = None
-    player_race = None
-    encounter_race = None
+    player = None
+    encounter_player = None
 
 class EventFactory():
     def __init__(self, game, player, event = None):
@@ -32,14 +32,14 @@ class MessageFactory():
 
     message = None
     game = None
-    player_race = None
+    player = None
     intensity = 0.0
 
-    def __init__(self, game, player_race, message=None, intensity=0.0):
+    def __init__(self, game, player, message=None, intensity=0.0):
         if not message:
             message = GameMessage()
         self.game = game
-        self.player_race = player_race
+        self.player = player
         self.message = message
         self.intensity = intensity
 
@@ -53,7 +53,7 @@ class MessageFactory():
     def new_message(self, intensity=None):
         message = GameMessage()
         message.game = self.game
-        message.player = self.player_race.player
+        message.player = self.player
         self.message = message
         return self.get_message(intensity=intensity)
 
@@ -101,15 +101,15 @@ class DiplomaticMessageFactory(MessageFactory):
                  "A representative was dispatched to {race_formal} and was {adverb} {verb}.",
                  "A delegation was received by {race_formal}. They were {adverb} {verb}.",
                  "A delegation was recieved from {race_formal}. They were {adverb} {verb}.",
-                 "A party was sent to {race_formal}. They were {adverb} {verb}.", 
+                 "A party was sent to {race_formal}. They were {adverb} {verb}.",
                  "An envoy was dispatched to {race_formal}. They were {adverb} {verb}."
                  "An envoy was recieved from {race_formal}. They were {adverb} {verb}."]
-    
-    def __init__(self, game, player_race, encounter_race, message=None, intensity=0.0):
-        super(DiplomaticMessageFactory, self).__init__(game, player_race, message, intensity)
-        self.encounter_race = encounter_race
+
+    def __init__(self, game, player, encounter_player, message=None, intensity=0.0):
+        super(DiplomaticMessageFactory, self).__init__(game, player, message, intensity)
+        self.encounter_player = encounter_player
         
     def format_message(self):
-        return random.choice(self.templates).format(race_formal = self.encounter_race.formal_name,
+        return random.choice(self.templates).format(race_formal=self.encounter_player.formal_name,
                                                     adverb=self._format_adverb(),
                                                     verb=self._format_verb())

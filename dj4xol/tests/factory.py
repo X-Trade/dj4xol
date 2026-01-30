@@ -1,40 +1,37 @@
 from ..factory import GameFactory
 from ..starnamer import StarNamer
 from django.test import TestCase
-from ..models import Game, Player
-from django.contrib.auth import models as auth_models
+from ..models import Game, Account, ServerRaceType, ServerRace
+from django.contrib.auth.models import User
+
 
 class testGameFactory(TestCase):
     def setUp(self):
-        self.players = []
-        for n in range(2):
-            django_user = auth_models.User.objects.create_user(
-                username="test_userX"+str(n), email="X"+str(n)+"@example.com", password="1234")
-            player = Player.objects.create(
-                django_user=django_user)
-            self.players.append(player)
-        gf = GameFactory()
-        return super().setUp()
-    
-    def cleanUp(self):
-        Game.objects.all().delete()
-        for player in self.players:
-            player.user.delete()
-            player.delete()
-        return super().cleanUp()
+        self.race_type, _ = ServerRaceType.objects.get_or_create(
+            code='TEST', defaults={'name': 'Test', 'description': 'Test'}
+        )
+        self.races = [
+            ServerRace.objects.create(
+                name=n, plural_name=n+'s', formal_name='The '+n, race_type=self.race_type
+            ) for n in ['Humanoid', 'Roboticon']
+        ]
+        self.accounts = [
+            Account.objects.create(
+                django_user=User.objects.create_user(f'user{i}', f'{i}@test.com', 'pass')
+            ) for i in range(2)
+        ]
 
     def test_create_game(self):
         gf = GameFactory()
         self.assertIsInstance(gf.game, Game)
         self.assertEqual(gf.stars, [])
-        self.assertEqual(gf.ships, [])
-    
+
     def test_map_size(self):
         gf = GameFactory()
         gf.set_map_size(100, 100)
         self.assertEqual(gf.game.map_size_x, 100)
         self.assertEqual(gf.game.map_size_y, 100)
-    
+
     def test_create_stars(self):
         gf = GameFactory()
         gf.set_map_size(200, 200)
@@ -43,23 +40,48 @@ class testGameFactory(TestCase):
         for star in gf.stars:
             self.assertTrue(0 <= star.x <= 200)
             self.assertTrue(0 <= star.y <= 200)
-    
-    def test_saved_game(self):
+
+    def test_saved_game_with_players(self):
         gf = GameFactory()
         gf.set_map_size(150, 150)
+        gf.set_owner(self.accounts[0])
+        gf.game.joinable = True  # Allow others to join
         gf.create_stars(5)
-        gf.set_owner(self.players[0])
-        gf.add_player(self.players[1])
-        gf._create_random_ships(3)
         game = gf.save()
+        gf.join_player(self.accounts[0], self.races[0])
+        gf.join_player(self.accounts[1], self.races[1])
+        gf._create_random_ships(3)
+
         game.refresh_from_db()
-        self.assertIsInstance(game, Game)
         self.assertEqual(game.map_size_x, 150)
-        self.assertEqual(game.map_size_y, 150)
         self.assertEqual(game.stars.count(), 5)
         self.assertEqual(game.players.count(), 2)
-        self.assertEqual(game.ships.count(), 6)  # 3 ships per player
-        self.assertEqual(game.owner, self.players[0])
+        self.assertEqual(game.ships.count(), 6)
+        self.assertEqual(game.owner, self.accounts[0])
+
+    def test_join_player_sets_homeworld_population(self):
+        self.race_type.starting_population = 500
+        self.race_type.save()
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(5)
+        gf.save()
+        player = gf.join_player(self.accounts[0], self.races[0])
+        self.assertEqual(player.homeworld.colonists, 500)
+
+    def test_homeworlds_are_spaced_apart(self):
+        gf = GameFactory()
+        gf.set_map_size(200, 200)  # min distance = min(250, 50) = 50
+        gf.set_owner(self.accounts[0])
+        gf.game.joinable = True
+        gf.create_stars(100)
+        gf.save()
+        p1 = gf.join_player(self.accounts[0], self.races[0])
+        p2 = gf.join_player(self.accounts[1], self.races[1])
+        dist = gf._distance(p1.homeworld, p2.homeworld)
+        # Should be at least 50ly apart (25% of 200)
+        self.assertGreaterEqual(dist, 50)
 
 
 class testStarNamer(TestCase):

@@ -20,7 +20,7 @@
         <div id="detail">
             <h3>{{ detail.name }}</h3>
             <hr>
-            <p>Owner: {{ detail.player }}{% if detail.population %} | Population: {{ detail.population }}{% endif %}</p>
+            <p>{% if detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: {{ detail.population }}{% endif %}</p>
             {% if detail.environmentals %}
             <h4>Environmentals</h4>
             {% for key, data in detail.environmentals.items %}

@@ -1,8 +1,161 @@
 from django import forms
+from django.contrib.auth.models import User
+from django.contrib.auth.forms import UserCreationForm
+from .models import ServerRace, ServerRaceType, Game, Account
+
+
+class ServerRaceForm(forms.ModelForm):
+    """Form for creating a custom race template."""
+    class Meta:
+        model = ServerRace
+        fields = ['name', 'plural_name', 'formal_name', 'race_type', 'description']
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['race_type'].queryset = ServerRaceType.objects.filter(enabled=True)
 
 
 class NewGameForm(forms.Form):
-    your_name = forms.CharField(label="Your name", max_length=100)
+    """Form for creating a new game."""
+    name = forms.CharField(label="Game Name", max_length=30)
+    description = forms.CharField(
+        label="Description",
+        widget=forms.Textarea(attrs={'rows': 3}),
+        required=False
+    )
+    starting_year = forms.IntegerField(
+        label="Starting Year",
+        min_value=1,
+        initial=2400
+    )
+    map_size_x = forms.IntegerField(
+        label="Map Width",
+        min_value=128,
+        max_value=500,
+        initial=128
+    )
+    map_size_y = forms.IntegerField(
+        label="Map Height",
+        min_value=128,
+        max_value=500,
+        initial=128
+    )
+    num_stars = forms.IntegerField(
+        label="Number of Stars",
+        min_value=10,
+        max_value=200,
+        initial=50
+    )
+    public = forms.BooleanField(
+        label="Public",
+        required=False,
+        help_text="Anyone can view this game"
+    )
+    joinable = forms.BooleanField(
+        label="Open for Joining",
+        required=False,
+        help_text="Allow other players to join"
+    )
+    join_open_years = forms.IntegerField(
+        label="Years Open for Joining",
+        min_value=0,
+        required=False,
+        help_text="Auto-close joining after this many years (0 or blank = never)"
+    )
+    max_players = forms.IntegerField(
+        label="Max Players",
+        min_value=1,
+        required=False,
+        help_text="Maximum number of players (blank = unlimited)"
+    )
+    race = forms.ModelChoiceField(
+        label="Play as Race",
+        queryset=ServerRace.objects.none()
+    )
+
+    def __init__(self, account, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Show public races and races owned by this account
+        self.fields['race'].queryset = ServerRace.objects.filter(
+            models.Q(public=True) | models.Q(owner=account)
+        )
+
+
+# Import models.Q for the query
+from django.db import models
+
+
+class SignupForm(UserCreationForm):
+    """Combined form for creating Django user and dj4xol Account."""
+    alias = forms.CharField(
+        label="Player Alias",
+        max_length=30,
+        help_text="Your display name in games"
+    )
+    email = forms.EmailField(
+        label="Email",
+        required=True
+    )
+    full_name = forms.CharField(
+        label="Full Name",
+        max_length=60,
+        required=False
+    )
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password1', 'password2']
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.email = self.cleaned_data['email']
+        if commit:
+            user.save()
+            Account.objects.create(
+                django_user=user,
+                alias=self.cleaned_data['alias'],
+                email=self.cleaned_data['email'],
+                full_name=self.cleaned_data.get('full_name', '')
+            )
+        return user
+
+
+class RegistrationForm(forms.ModelForm):
+    """Form for completing dj4xol registration with existing Django user."""
+    class Meta:
+        model = Account
+        fields = ['alias', 'email', 'full_name']
+
+    def __init__(self, user, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        # Pre-fill email from Django user
+        if user.email:
+            self.fields['email'].initial = user.email
+        # Pre-fill alias from username
+        self.fields['alias'].initial = user.username
+
+    def save(self, commit=True):
+        account = super().save(commit=False)
+        account.django_user = self.user
+        if commit:
+            account.save()
+        return account
+
 
 class JoinGameForm(forms.Form):
-    your_name = forms.CharField(label="Your name", max_length=100)
+    """Form for joining a game with a selected race."""
+    race = forms.ModelChoiceField(
+        label="Play as Race",
+        queryset=ServerRace.objects.none()
+    )
+
+    def __init__(self, account, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Show public races and races owned by this account
+        self.fields['race'].queryset = ServerRace.objects.filter(
+            models.Q(public=True) | models.Q(owner=account)
+        )

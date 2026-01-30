@@ -6,9 +6,12 @@ class GameTurn():
         self.game = game
 
     def generate_turn(self):
-        """Generate a turn for the game."""
+        """Generate a turn for the game. Requires at least one player."""
+        if not self.game.players.exists():
+            raise Exception("cannot generate turn for game with no players")
         self.ship_movements()
         self.clear_empty_planets()
+        self.check_join_deadline()
         self.game.year += 1
         self.game.save()
 
@@ -66,3 +69,8 @@ class GameTurn():
     def clear_empty_planets(self):
         """Remove ownership from planets with zero population."""
         self.game.stars.filter(colonists=0).update(player=None)
+
+    def check_join_deadline(self):
+        """Close joining if past the deadline year."""
+        if self.game.join_until_year and self.game.year >= self.game.join_until_year:
+            self.game.joinable = False
