@@ -1,4 +1,4 @@
-{% load static %}
+{% load static numbers %}
 <html>
     <head>
         <meta charset="utf-8">
@@ -54,7 +54,7 @@
                 <div id="detail">
                     <h3>{{ detail.name }}</h3>
                     <hr>
-                    <p>{% if detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: {{ detail.population }}{% if detail.population_change != None %} <span class="pop-change {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}">({% if detail.population_change >= 0 %}+{% endif %}{{ detail.population_change }})</span>{% endif %}{% endif %}</p>
+                    <p>{% if detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: <span class="has-tooltip" data-tooltip="{{ detail.population|exact_pop }}">{{ detail.population|humanize_pop }}</span>{% if detail.population_change != None %} <span class="pop-change has-tooltip {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}" data-tooltip="{{ detail.population_change|exact_pop }}">({{ detail.population_change|humanize_pop_change }})</span>{% endif %}{% endif %}</p>
                     {% if detail.environmentals %}
                     <h4>Environmentals</h4>
                     {% for key, data in detail.environmentals.items %}

@@ -1,5 +1,5 @@
 from dj4xol.models import Ship, Star
-from dj4xol.turn import calculate_growth_factor, apply_population_change
+from dj4xol.turn import calculate_growth_factor, apply_population_change, effective_capacity
 
 from itertools import chain
 
@@ -37,6 +37,7 @@ class DetailBuilder():
                      'player': self.get_object_player(),
                      'population': self.get_population(),
                      'population_change': self.get_population_change(),
+                     'capacity': self.get_effective_capacity(),
                      'environmentals': self.build_environmental_detail(),
                      'resources': self.build_resource_detail(),
                      'also_here': {mapobject.name: str(mapobject) for mapobject in self.at_cursor if mapobject != self.selected_obj},
@@ -65,6 +66,14 @@ class DetailBuilder():
         current = self.selected_obj.colonists
         new_pop = apply_population_change(current, factor)
         return new_pop - current
+
+    def get_effective_capacity(self):
+        """Get effective carrying capacity for player-owned worlds."""
+        if not self.selected_obj or not isinstance(self.selected_obj, Star):
+            return None
+        if not self.player:
+            return None
+        return effective_capacity(self.player, self.selected_obj)
 
     def get_object_name(self):
         print(self.selected_obj.name)

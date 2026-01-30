@@ -108,8 +108,70 @@ class DiplomaticMessageFactory(MessageFactory):
     def __init__(self, game, player, encounter_player, message=None, intensity=0.0):
         super(DiplomaticMessageFactory, self).__init__(game, player, message, intensity)
         self.encounter_player = encounter_player
-        
+
     def format_message(self):
         return random.choice(self.templates).format(race_formal=self.encounter_player.formal_name,
                                                     adverb=self._format_adverb(),
                                                     verb=self._format_verb())
+
+
+class EnvironmentalDeathMessageFactory(MessageFactory):
+    """Messages for colonist deaths due to uninhabitable environmental conditions."""
+    templates = [
+        "{deaths:,} colonists perished on {star} due to harsh environmental conditions.",
+        "{deaths:,} colonists on {star} succumbed to the hostile environment.",
+        "Environmental hazards on {star} claimed the lives of {deaths:,} colonists.",
+        "The inhospitable conditions on {star} proved fatal for {deaths:,} colonists.",
+        "{deaths:,} settlers on {star} were lost to environmental exposure.",
+    ]
+
+    def __init__(self, game, player, star, deaths, message=None):
+        super().__init__(game, player, message, intensity=-0.5)
+        self.star = star
+        self.deaths = deaths
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=self.star.name,
+            deaths=self.deaths
+        )
+
+
+class OvercrowdingDeathMessageFactory(MessageFactory):
+    """Messages for colonist deaths due to overcrowding/exceeding capacity."""
+    templates = [
+        "{deaths:,} colonists on {star} perished due to overcrowding.",
+        "Overcrowding on {star} led to the deaths of {deaths:,} colonists.",
+        "Resource shortages from overpopulation on {star} claimed {deaths:,} lives.",
+        "{deaths:,} colonists on {star} died as the population exceeded sustainable limits.",
+        "The colony on {star} lost {deaths:,} settlers to overcrowding.",
+    ]
+
+    def __init__(self, game, player, star, deaths, message=None):
+        super().__init__(game, player, message, intensity=-0.3)
+        self.star = star
+        self.deaths = deaths
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=self.star.name,
+            deaths=self.deaths
+        )
+
+
+class ColonyAbandonedMessageFactory(MessageFactory):
+    """Messages for when a colony is completely depopulated."""
+    templates = [
+        "Your colony on {star} has been abandoned.",
+        "The last colonists have departed {star}. The colony is no more.",
+        "{star} colony has been lost. No survivors remain.",
+        "All colonists on {star} have perished. The colony is abandoned.",
+        "The colony on {star} has fallen silent. None remain.",
+    ]
+
+    def __init__(self, game, player, star, message=None):
+        super().__init__(game, player, message, intensity=-0.8)
+        self.star = star
+
+    def format_message(self):
+        return random.choice(self.templates).format(star=self.star.name)

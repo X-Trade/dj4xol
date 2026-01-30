@@ -184,3 +184,34 @@
 .debug-actions button:hover {
     background: #776;
 }
+
+/* Custom tooltips */
+.has-tooltip {
+    position: relative;
+    cursor: help;
+    border-bottom: 1px dotted #888;
+}
+
+.has-tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.1s;
+    pointer-events: none;
+    z-index: 100;
+}
+
+.has-tooltip:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
