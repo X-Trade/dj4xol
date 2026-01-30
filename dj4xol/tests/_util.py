@@ -1,40 +1,60 @@
 from ..factory import GameFactory
-from ..models import Game, Player
+from ..models import Account, ServerRaceType, ServerRace
 from django.contrib.auth.models import User
 
 
+def get_default_race_type():
+    """Get or create a default race type for testing."""
+    race_type, _ = ServerRaceType.objects.get_or_create(
+        code='TEST',
+        defaults={'name': 'Test Race', 'description': 'Test race type'}
+    )
+    return race_type
+
+
+def get_default_race():
+    """Get or create a default race for testing."""
+    race, _ = ServerRace.objects.get_or_create(
+        name='Tester',
+        defaults={
+            'plural_name': 'Testers',
+            'formal_name': 'The Testers',
+            'race_type': get_default_race_type()
+        }
+    )
+    return race
+
+
 def get_default_user():
-    """Retrieve or create a default user for testing purposes."""
-    django_user = User.objects.first()
-    if not django_user:
-        django_user = User.objects.create_user(
-            username="default_user", email="            username="default_user", email="test@xyz.com", password="1234")
-    player, _ = Player.objects.get_or_create(django_user=django_user)
-    return django_user, player
+    """Get or create a default user and account for testing."""
+    user, _ = User.objects.get_or_create(
+        username='default_user',
+        defaults={'email': 'test@example.com'}
+    )
+    user.set_password('test')
+    account, _ = Account.objects.get_or_create(django_user=user)
+    return user, account
 
 
-def empty_game():
-    """Create an empty game instance for testing purposes."""
-    user, player = get_default_user()
+def default_game(stars=50, ships=0):
+    """Create a saved game with one player for testing."""
+    _, account = get_default_user()
     factory = GameFactory()
-    factory.new()
     factory.set_map_size(100, 100)
-    factory.set_owner(player)
-    return factory.save()
-
-
-def default_game_factory(size_x=100, size_y=100, stars=50, ships=3):
-    """Create a default game instance for testing purposes."""
-    user, player = get_default_user()
-    factory = GameFactory()
-    factory.new()
-    factory.set_map_size(size_x, size_y)
-    factory.set_owner(player)
+    factory.set_owner(account)
     factory.create_stars(stars)
-    factory._create_random_ships(ships)
+    game = factory.save()
+    factory.join_player(account, get_default_race())
+    if ships:
+        factory._create_random_ships(ships)
+    return game
+
+
+def default_game_factory(stars=50):
+    """Create a factory with game ready to save (no players yet)."""
+    _, account = get_default_user()
+    factory = GameFactory()
+    factory.set_map_size(100, 100)
+    factory.set_owner(account)
+    factory.create_stars(stars)
     return factory
-
-
-def default_game():
-    """Create and save a default game instance for testing purposes."""
-    return default_game_factory().save()

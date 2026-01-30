@@ -53,11 +53,12 @@ class DetailBuilder():
         return self.selected_obj.name
 
     def get_object_player(self):
-        if self.selected_obj.player:
-            selected_obj_player = self.selected_obj.player.django_user.username
-        else:
-            selected_obj_player = None
-        return selected_obj_player
+        """Return player display string as 'username (race name)' or None."""
+        player = self.selected_obj.player
+        if player:
+            username = player.account.alias if player.account else 'Unknown'
+            return '%s (%s)' % (username, player.name)
+        return None
 
     def find_all_at_coordinates(self, x, y):
         x = int(x)

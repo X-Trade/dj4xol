@@ -34,9 +34,10 @@ class ServerSettings(models.Model):
         return {setting.key: setting.value for setting in ServerSettings.objects.all()}
     
 
-class Player(models.Model):
+class Account(models.Model):
+    """A dj4xol account linked to a Django user."""
     django_user = models.OneToOneField(auth_models.User, primary_key=True,
-            related_name="dj4xolplayer", on_delete = models.PROTECT)
+            related_name="dj4xol_account", on_delete=models.PROTECT)
     full_name = models.CharField(max_length=60)
     alias = models.CharField(max_length=30, unique=True)
     email = models.EmailField()
@@ -44,24 +45,27 @@ class Player(models.Model):
     def save(self, *args, **kwargs):
         if not self.alias:
             self.alias = self.django_user.username
-        super(Player, self).save(*args, **kwargs)
+        super(Account, self).save(*args, **kwargs)
 
     def __str__(self):
-        return '%i:%s' % (self.pk, self.alias)
+        if self.pk:
+            return '%i:%s' % (self.pk, self.alias)
+        return self.alias or '(new account)'
 
 
 class Game(models.Model):
     name = models.CharField(max_length=30)
-    players = models.ManyToManyField(Player, related_name="games")
-    owner = models.ForeignKey(Player, related_name="mygames",
+    owner = models.ForeignKey(Account, related_name="owned_games",
             on_delete=models.SET_NULL, null=True)
     description = models.TextField()
     map_size_x = models.IntegerField()
     map_size_y = models.IntegerField()
-    joinable = models.BooleanField(default = False) # anybody who can see can join
-    public = models.BooleanField(default = False) # anybody can view
-    ended = models.BooleanField(default = False)
+    joinable = models.BooleanField(default=False)  # anybody who can see can join
+    public = models.BooleanField(default=False)  # anybody can view
+    ended = models.BooleanField(default=False)
     year = models.IntegerField(default=2400)
+    join_until_year = models.IntegerField(null=True, blank=True)  # auto-close joining after this year
+    max_players = models.IntegerField(null=True, blank=True)  # max players allowed
 
     _star_names = []
     _star_namer = None
@@ -156,17 +160,21 @@ class ServerRaceType(models.Model):
     initiative_multiplier = models.FloatField(default=1.0)
     cargo_multiplier = models.FloatField(default=1.0)
 
+    def __str__(self):
+        return self.name
+
+
 class Ship(AbstractMapObject):
     #TODO: Rename to Fleet?
     name = models.CharField(max_length=30)
-    player = models.ForeignKey(Player, related_name = 'ships',
+    player = models.ForeignKey('Player', related_name='ships',
             on_delete=models.CASCADE)
 
 
 class Star(AbstractMapObject):
     name = models.CharField(max_length=30)
-    player = models.ForeignKey(Player, null=True, default=None, related_name =
-            'stars', on_delete=models.CASCADE)
+    player = models.ForeignKey('Player', null=True, default=None,
+            related_name='stars', on_delete=models.SET_NULL)
 
     gravity = models.FloatField(default=random_environmental_init,
                                 validators=[MinValueValidator(0.0), MaxValueValidator(2.0)])
@@ -197,35 +205,37 @@ class ServerRace(models.Model):
     plural_name = models.CharField(max_length=16)
     formal_name = models.CharField(max_length=32)
     public = models.BooleanField(default=False)
-    owner = models.ForeignKey(Player, related_name="public_races",
+    owner = models.ForeignKey(Account, related_name="custom_races",
                                       null=True, default=None,
                                       on_delete=models.SET_NULL)
     description = models.TextField(null=True, default=None)
     race_type = models.ForeignKey(ServerRaceType)
 
+    def __str__(self):
+        return self.name
 
-class PlayerRace(AbstractGameObject):
+
+class Player(AbstractGameObject):
+    """A player instance in a game, with their chosen race."""
     id = models.AutoField(primary_key=True)
+    account = models.ForeignKey(Account, related_name="players",
+                                null=True, default=None,
+                                on_delete=models.SET_NULL)
     name = models.CharField(max_length=16)
     plural_name = models.CharField(max_length=16, null=True, default=None)
     formal_name = models.CharField(max_length=32, null=True, default=None)
-    player = models.ForeignKey(Player, related_name="races",
-                                      null=True, default=None,
-                                      on_delete=models.SET_NULL)
     homeworld = models.ForeignKey(Star, null=True, default=None,
                                   related_name="homeworld_of",
                                   on_delete=models.SET_NULL)
     description = models.TextField(null=True, default=None)
     race_type = models.ForeignKey(ServerRaceType)
 
-    unique_together = (('game', 'player'),)
-
     def save(self, *args, **kwargs):
         if self.plural_name is None:
             self.plural_name = self.name + 's'
         if self.formal_name is None:
             self.formal_name = self.name
-        super(PlayerRace, self).save(*args, **kwargs)
+        super(Player, self).save(*args, **kwargs)
 
 
 class ShipOrders(AbstractGameObject):

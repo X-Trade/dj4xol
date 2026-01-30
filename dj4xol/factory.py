@@ -1,28 +1,22 @@
 from dj4xol.starnamer import StarNamer
-from .models import Game, Star, Ship, Player
+from .models import Game, Star, Ship, Player, Account
 import random
+import math
 
 class GameFactory():
     """A factory class to draft and initialise game instances.
     The factory can create stars and ships, assign players to the game,
     and save the game to the database."""
-    def __init__(self, game = None):
+    def __init__(self, game=None):
         self.starnamer = StarNamer()
         self.stars = []
-        self.ships = []
-        self.players = []
         self.owner = None
-        if game:
-            self.game = game
-        else:
-            self.game = Game()
+        self.game = game or Game()
 
     def new(self):
         """Create a new game instance."""
         self.game = Game()
         self.stars = []
-        self.ships = []
-        self.players = []
         return self.game
     
     def validate(self):
@@ -37,8 +31,6 @@ class GameFactory():
             raise Exception("map size too small")
         if len(self.stars) < 1:
             raise Exception("no stars created")
-        if len(self.players) < 1:
-            raise Exception("no players assigned to game")
         return True
 
     def load(self, game):
@@ -46,54 +38,29 @@ class GameFactory():
         if not isinstance(game, Game):
             raise TypeError("game is not an instance of the Game model object")
         self.game = game
-        self.stars = list(game.stars.all())
-        self.ships = list(game.ships.all())
-        self.players = list(game.players.all())
         self.owner = game.owner
         return self
 
     def save(self):
-        """Save the game and all stars to the database. 
-        Returns the saved game model instance."""
+        """Save the game and stars to the database.
+        Returns the saved game model instance. Use join_player() to add players."""
         self.validate()
-        self.game.save()
         self.game.owner = self.owner
+        self.game.save()
         for star in self.stars:
             star.game = self.game
         Star.objects.bulk_create(self.stars)
-        for player in self.players:
-            self.game.players.add(player)
-        self.game.save()
-        self._assign_homeworlds()
-        for ship in self.ships:
-            ship.game = self.game
-        Ship.objects.bulk_create(self.ships)
-        self.game.save()
         return self.game
     
     def set_year(self, year):
         self.game.year = year
         return self
 
-    def set_owner(self, owner):
-        """Set the owner of the game. The owner is the first player to join the game."""
-        if not isinstance(owner, Player):
-            raise TypeError("owner is not an instance of the Player model object")
-        self.owner = owner
-        self.players.append(owner)
-        return self
-    
-    def add_player(self, player):
-        """Add a player to the game."""
-        if not isinstance(player, Player):
-            raise TypeError("player is not an instance of the Player model object")
-        self.players.append(player)
-        return self
-    
-    def remove_player(self, player):
-        """Remove a player from the game."""
-        if player in self.players:
-            self.players.remove(player)
+    def set_owner(self, account):
+        """Set the owner of the game (the Account that created it)."""
+        if not isinstance(account, Account):
+            raise TypeError("owner is not an instance of the Account model object")
+        self.owner = account
         return self
 
     def set_map_size(self, x, y):
@@ -142,24 +109,82 @@ class GameFactory():
                 created += 1
         return self
     
-    def _assign_homeworlds(self):
-        """Assign a homeworld to each player in the game."""
-        players = self.game.players.all()
-        if len(players) > len(self.stars):
-            raise Exception("not enough stars to assign homeworlds to all players")
-        random.shuffle(self.stars)
-        for i, player in enumerate(players):
-            star = self.stars[i]
-            star.player = player
-            star.is_homeworld = True
-        return self
+    def _distance(self, star1, star2):
+        """Calculate distance between two stars."""
+        return math.sqrt((star1.x - star2.x) ** 2 + (star1.y - star2.y) ** 2)
+
+    def _min_homeworld_distance(self):
+        """Minimum distance between homeworlds: 250ly or 25% of shortest dimension."""
+        return min(250, min(self.game.map_size_x, self.game.map_size_y) * 0.25)
+
+    def _find_homeworld_star(self, available_stars):
+        """Find a suitable star for a homeworld, respecting minimum distance from others."""
+        existing_homeworlds = [p.homeworld for p in self.game.players.select_related('homeworld')
+                              if p.homeworld]
+        if not existing_homeworlds:
+            return random.choice(available_stars)
+
+        min_dist = self._min_homeworld_distance()
+
+        # Find stars far enough from all existing homeworlds
+        suitable = [s for s in available_stars
+                    if all(self._distance(s, hw) >= min_dist for hw in existing_homeworlds)]
+
+        if suitable:
+            return random.choice(suitable)
+
+        # Fallback: pick the star with maximum distance to nearest homeworld
+        return max(available_stars, key=lambda s: min(self._distance(s, hw) for hw in existing_homeworlds))
+
+    def _assign_homeworld_to_player(self, player, star):
+        """Assign a specific star as homeworld to a player with starting population."""
+        star.player = player
+        star.colonists = player.race_type.starting_population
+        star.save()
+        player.homeworld = star
+        player.save()
+        return player
+
+    def join_player(self, account, race):
+        """Add a player to an existing game with homeworld assignment.
+        Returns the created Player instance or None if joining failed.
+        Game owner can always join their own game."""
+        is_owner = (account == self.game.owner)
+
+        if not is_owner:
+            if not self.game.joinable:
+                return None
+            if self.game.max_players and self.game.players.count() >= self.game.max_players:
+                return None
+
+        if self.game.players.filter(account=account).exists():
+            return None
+
+        available_stars = list(self.game.stars.filter(player=None))
+        if not available_stars:
+            return None
+
+        player = Player(
+            game=self.game,
+            account=account,
+            name=race.name,
+            plural_name=race.plural_name,
+            formal_name=race.formal_name,
+            race_type=race.race_type
+        )
+        player.save()
+        self._assign_homeworld_to_player(player, self._find_homeworld_star(available_stars))
+        return player
     
-    def _create_random_ships(self, ships):
-        """Create ships for a player and place them randomly in the game. Used mainly for testing purposes."""
-        for player in self.players:
-            for _ in range(ships):
-                name = self.starnamer.get_unique()
-                x = random.randint(1, self.game.map_size_x)
-                y = random.randint(1, self.game.map_size_y)
-                self.ships.append(Ship(name=name, x=x, y=y, player=player))
+    def _create_random_ships(self, count_per_player):
+        """Create ships for each player. Game must be saved first. For testing."""
+        for player in self.game.players.all():
+            for _ in range(count_per_player):
+                Ship.objects.create(
+                    game=self.game,
+                    player=player,
+                    name=self.starnamer.get_unique(),
+                    x=random.randint(1, self.game.map_size_x),
+                    y=random.randint(1, self.game.map_size_y)
+                )
         return self
