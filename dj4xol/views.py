@@ -99,7 +99,7 @@ def starmap(request, game_id):
     # Get the Player instance for this account in this game
     player = Player.objects.filter(game=game, account=account).first()
     starmap = StarMap(game, player).render_map()
-    
+
     url = request.path
     x = request.GET.get('x', None)
     y = request.GET.get('y', None)
@@ -107,11 +107,15 @@ def starmap(request, game_id):
     selected = request.GET.get('sel', None)
     detail = DetailBuilder(game, x, y, selected).build_detail()
 
+    # Get messages for this player, most recent first
+    messages = player.messages.order_by('-year', '-id') if player else []
+
     return render(request, 'dj4xol/main.html', {
         'game': game,
         'player': player,
         'starmap': starmap,
         'detail': detail,
+        'messages': messages,
         'is_owner': account == game.owner,
     })
 
