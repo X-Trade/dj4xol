@@ -1,4 +1,12 @@
+from datetime import timedelta
 from numpy import array as nparray, linalg
+from django.utils import timezone
+
+TURN_INTERVALS = {
+    'HOURLY': timedelta(hours=1),
+    'DAILY': timedelta(days=1),
+    'WEEKLY': timedelta(weeks=1),
+}
 
 class GameTurn():
     """Generate a turn for a game."""
@@ -9,11 +17,36 @@ class GameTurn():
         """Generate a turn for the game. Requires at least one player."""
         if not self.game.players.exists():
             raise Exception("cannot generate turn for game with no players")
+        for _ in range(self.game.years_per_turn):
+            self._process_year()
+        self.game.last_generated = timezone.now()
+        self.game.next_generation = self._calculate_next_generation()
+        self._reset_turn_ins()
+        self.game.save()
+
+    def _process_year(self):
+        """Process a single year of game time."""
         self.ship_movements()
         self.clear_empty_planets()
         self.check_join_deadline()
         self.game.year += 1
-        self.game.save()
+
+    def _calculate_next_generation(self):
+        """Calculate next generation time based on turn scheme."""
+        interval = TURN_INTERVALS.get(self.game.turn_scheme)
+        return timezone.now() + interval if interval else None
+
+    def _reset_turn_ins(self):
+        """Reset turned_in status for all players."""
+        self.game.players.update(turned_in=False)
+
+    def check_quorum(self):
+        """Check if all players have turned in. Returns True if quorum met."""
+        if self.game.turn_scheme != 'QUORUM':
+            return False
+        total = self.game.players.count()
+        turned_in = self.game.players.filter(turned_in=True).count()
+        return total > 0 and turned_in == total
 
     def generate_turns(self, turns):
         """Generate multiple turns for the game."""

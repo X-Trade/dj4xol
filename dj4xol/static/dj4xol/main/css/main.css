@@ -1,3 +1,45 @@
+/* Title bar */
+.title-bar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 8px 12px;
+    background: #333;
+    color: #fff;
+    margin-bottom: 10px;
+}
+
+.title-bar .title {
+    font-weight: bold;
+    font-size: 1.2em;
+}
+
+.title-bar .year {
+    color: #aaa;
+}
+
+.title-bar .turn-status {
+    flex: 1;
+}
+
+.title-bar .nav {
+    margin-left: auto;
+}
+
+.title-bar .nav a {
+    color: #8cf;
+    text-decoration: none;
+}
+
+.title-bar .nav a:hover {
+    text-decoration: underline;
+}
+
+.title-bar button {
+    padding: 4px 12px;
+    cursor: pointer;
+}
+
 /* Detail panel - matches starmap width */
 #detail {
     width: 600px;

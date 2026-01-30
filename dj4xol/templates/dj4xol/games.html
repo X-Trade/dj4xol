@@ -2,19 +2,19 @@
 <html>
     <head>
         <meta charset="utf-8">
-        <title>{{ server_settings.server_name }} - Home</title>
+        <title>{{ server_name }} - Home</title>
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
         <script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
     </head>
     <body>
-		<h1>{{ server_settings.server_name }}</h1>
-		<p><i>{{ server_settings.server_tagline }}</i></p>
+		<h1>{{ server_name }}</h1>
+		<p><i>{{ server_tagline }}</i></p>
 		<div id='mygames' style="float:left;min-width:300px">
 			<h2>My Games</h2>
 			<ul>
 			{% for game in my_games %}
 				<li><a href="{% url 'dj4xol:game' game.id %}">{{ game.name }}</a>
-					(year: {{ game.year }})</li>
+					({{ game.year }}, {{ game.turn_scheme }})</li>
 			{% empty %}
 				<li>No games yet</li>
 			{% endfor %}
@@ -23,7 +23,7 @@
 			<h3>Invitations</h3>
 			<ul>
 			{% for game in invited_games %}
-				<li>{{ game.name }} (year: {{ game.year }})
+				<li>{{ game.name }} ({{ game.year }}, {{ game.turn_scheme }})
 					<a href="{% url 'dj4xol:join_game' game.id %}">join</a></li>
 			{% endfor %}
 			</ul>
@@ -34,7 +34,7 @@
 			<ul>
 			{% for game in open_games %}
 				<li>{{ game.name }}
-					(year: {{ game.year }})
+					({{ game.year }}, {{ game.turn_scheme }})
 					<a href="{% url 'dj4xol:join_game' game.id %}">join</a></li>
 			{% empty %}
 				<li>No open games</li>

@@ -9,8 +9,34 @@
         <script type="text/javascript" src="{% static 'dj4xol/starmap/js/mapscrollpersist.js' %}"></script>
     </head>
     <body>
-        <h1>{{ game.name }}</h1>
-        <p>{{ game.description }}</p>
+        <div class="title-bar">
+            <span class="title">{{ game.name }}</span>
+            <span class="year">Year {{ game.year }}</span>
+            <span class="turn-status">
+                {% if game.turn_scheme == 'HOURLY' or game.turn_scheme == 'DAILY' or game.turn_scheme == 'WEEKLY' %}
+                    Next turn: {{ game.next_generation|date:"M d, H:i"|default:"pending" }}
+                {% elif game.turn_scheme == 'QUORUM' %}
+                    {% if player.turned_in %}
+                        <span class="status-done">Turned in</span>
+                    {% else %}
+                        <form method="post" action="{% url 'dj4xol:turn_in' game.id %}" style="display:inline">
+                            {% csrf_token %}
+                            <button type="submit">Turn In</button>
+                        </form>
+                    {% endif %}
+                    ({{ game.players.all|length }} players)
+                {% elif game.turn_scheme == 'OWNER' and is_owner %}
+                    <form method="post" action="{% url 'dj4xol:generate_turn' game.id %}" style="display:inline">
+                        {% csrf_token %}
+                        <button type="submit">Generate Turn</button>
+                    </form>
+                {% endif %}
+            </span>
+            <span class="nav">
+                <a href="{% url 'dj4xol:index' %}">Home</a> |
+                <a href="{% url 'logout' %}">Logout</a>
+            </span>
+        </div>
         <div><h2>Starmap</h2>
             <div class="starmap" id="starmap" style="height:600px;width:600px">
             <div class="maparea" id="maparea">

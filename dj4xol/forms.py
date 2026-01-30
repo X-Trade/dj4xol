@@ -16,6 +16,7 @@ class ServerRaceForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['race_type'].queryset = ServerRaceType.objects.filter(enabled=True)
+        self.fields['description'].required = False
 
 
 class NewGameForm(forms.Form):
@@ -70,6 +71,17 @@ class NewGameForm(forms.Form):
         min_value=1,
         required=False,
         help_text="Maximum number of players (blank = unlimited)"
+    )
+    turn_scheme = forms.ChoiceField(
+        label="Turn Generation",
+        choices=Game.TURN_SCHEME_CHOICES,
+        initial='QUORUM'
+    )
+    years_per_turn = forms.IntegerField(
+        label="Years per Turn",
+        min_value=1,
+        max_value=100,
+        initial=1
     )
     race = forms.ModelChoiceField(
         label="Play as Race",

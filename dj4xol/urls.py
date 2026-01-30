@@ -16,5 +16,7 @@ urlpatterns = [
     url(r'^create-game/$', views.create_game, name='create_game'),
     url(r'^(?P<game_id>[0-9]+)/$', views.starmap, name='game'),
     url(r'^(?P<game_id>[0-9]+)/join/$', views.join_game, name='join_game'),
+    url(r'^(?P<game_id>[0-9]+)/turn-in/$', views.turn_in, name='turn_in'),
+    url(r'^(?P<game_id>[0-9]+)/generate/$', views.generate_turn, name='generate_turn'),
 ]
 

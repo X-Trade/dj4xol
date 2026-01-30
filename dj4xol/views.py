@@ -37,7 +37,8 @@ def gamelist(request):
         'my_games': my_games,
         'invited_games': invited_games,
         'open_games': open_games,
-        'server_settings': ServerSettings.all_to_dict()
+        'server_name': ServerSettings.get('server_name', 'dj4xol'),
+        'server_tagline': ServerSettings.get('server_tagline', ''),
     })
 
 @registration_required()
@@ -106,11 +107,56 @@ def starmap(request, game_id):
     selected = request.GET.get('sel', None)
     detail = DetailBuilder(game, x, y, selected).build_detail()
 
-    return render(request, 'dj4xol/main.html',
-                  {'game': game,
-                   'player': player,
-                   'starmap': starmap,
-                   'detail': detail})
+    return render(request, 'dj4xol/main.html', {
+        'game': game,
+        'player': player,
+        'starmap': starmap,
+        'detail': detail,
+        'is_owner': account == game.owner,
+    })
+
+
+@player_only_view()
+def turn_in(request, game_id):
+    """Mark player as turned in for quorum-based games."""
+    game = Game.objects.get(pk=game_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+
+    if game.turn_scheme != 'QUORUM':
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'This game does not use quorum-based turns.'
+        })
+
+    player.turned_in = True
+    player.save()
+
+    # Check if quorum is met and generate turn
+    turn = GameTurn(game)
+    if turn.check_quorum():
+        turn.generate_turn()
+
+    return redirect('dj4xol:game', game_id=game.pk)
+
+
+@player_only_view()
+def generate_turn(request, game_id):
+    """Generate turn for owner-controlled games."""
+    game = Game.objects.get(pk=game_id)
+    account = request.user.dj4xol_account
+
+    if game.turn_scheme != 'OWNER':
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'This game does not use owner-triggered turns.'
+        })
+
+    if account != game.owner:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Only the game owner can generate turns.'
+        })
+
+    GameTurn(game).generate_turn()
+    return redirect('dj4xol:game', game_id=game.pk)
 
 
 @registration_required()
@@ -144,6 +190,8 @@ def create_game(request):
             factory.game.public = d.get('public', False)
             factory.game.joinable = d.get('joinable', False)
             factory.game.max_players = d.get('max_players')
+            factory.game.turn_scheme = d['turn_scheme']
+            factory.game.years_per_turn = d['years_per_turn']
             if d.get('join_open_years'):
                 factory.game.join_until_year = d['starting_year'] + d['join_open_years']
             factory.set_map_size(d['map_size_x'], d['map_size_y'])
