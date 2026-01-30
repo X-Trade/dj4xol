@@ -145,13 +145,14 @@ class GameFactory():
         player.save()
         return player
 
-    def join_player(self, account, race):
+    def join_player(self, account, race, invited=False):
         """Add a player to an existing game with homeworld assignment.
         Returns the created Player instance or None if joining failed.
-        Game owner can always join their own game."""
+        Game owner and invited players can join non-joinable games."""
         is_owner = (account == self.game.owner)
+        can_bypass = is_owner or invited
 
-        if not is_owner:
+        if not can_bypass:
             if not self.game.joinable:
                 return None
             if self.game.max_players and self.game.players.count() >= self.game.max_players:

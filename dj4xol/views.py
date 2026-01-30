@@ -1,3 +1,4 @@
+from django.db import models
 from django.http import HttpResponse
 from django.shortcuts import render, redirect
 from django.urls import resolve
@@ -6,7 +7,7 @@ from django.contrib.auth.decorators import login_required
 
 from dj4xol.objectdetails import DetailBuilder
 
-from .models import Game, Player, ServerSettings, ServerRace
+from .models import Game, Player, ServerSettings, ServerRace, Account, GameInvitation
 from .decorators import registration_required, player_only_view
 from .turn import GameTurn
 from .starmap import StarMap
@@ -16,22 +17,28 @@ from .forms import ServerRaceForm, NewGameForm, SignupForm, RegistrationForm, Jo
 
 @registration_required()
 def gamelist(request):
-    """
-    index of all games the user can see
-    """
+    """Index of all games the user can see."""
     account = request.user.dj4xol_account
-    # Get games where this account has a Player instance
-    my_games = Game.objects.filter(
-        pk__in=Player.objects.filter(account=account).values('game'),
+    playing_game_ids = Player.objects.filter(account=account).values('game')
+
+    my_games = Game.objects.filter(pk__in=playing_game_ids, ended=False)
+    open_games = Game.objects.filter(public=True, joinable=True, ended=False).exclude(pk__in=playing_game_ids)
+
+    # Games I'm invited to (by account or email) that I haven't joined yet
+    invited_games = Game.objects.filter(
+        pk__in=GameInvitation.objects.filter(
+            models.Q(account=account) | models.Q(email=account.email)
+        ).values('game'),
         ended=False
-    )
-    hosted_games = Game.objects.filter(owner=account)
-    open_games = Game.objects.filter(public=True, ended=False)
-    return render(request, 'dj4xol/games.html',
-                  {'account': account,
-                   'my_games': my_games,
-                   'open_games': open_games,
-                   'server_settings': ServerSettings.all_to_dict()})
+    ).exclude(pk__in=playing_game_ids)
+
+    return render(request, 'dj4xol/games.html', {
+        'account': account,
+        'my_games': my_games,
+        'invited_games': invited_games,
+        'open_games': open_games,
+        'server_settings': ServerSettings.all_to_dict()
+    })
 
 @registration_required()
 def join_game(request, game_id):
@@ -39,19 +46,22 @@ def join_game(request, game_id):
     game = Game.objects.get(pk=game_id)
     account = request.user.dj4xol_account
 
-    # Check if already in this game
     if game.players.filter(account=account).exists():
         return render(request, 'dj4xol/forbidden.html', {
             'message': 'You are already playing in this game.'
         })
 
-    # Check if game is joinable
-    if not game.joinable:
+    # Check if invited
+    is_invited = game.invitations.filter(
+        models.Q(account=account) | models.Q(email=account.email)
+    ).exists()
+
+    # Must be joinable OR invited
+    if not game.joinable and not is_invited:
         return render(request, 'dj4xol/forbidden.html', {
             'message': 'This game is not open for joining.'
         })
 
-    # Check max players
     if game.max_players and game.players.count() >= game.max_players:
         return render(request, 'dj4xol/forbidden.html', {
             'message': 'This game is full.'
@@ -60,8 +70,12 @@ def join_game(request, game_id):
     if request.method == 'POST':
         form = JoinGameForm(account, request.POST)
         if form.is_valid():
-            player = GameFactory(game).join_player(account, form.cleaned_data['race'])
+            player = GameFactory(game).join_player(account, form.cleaned_data['race'], invited=is_invited)
             if player:
+                # Clean up invitation
+                game.invitations.filter(
+                    models.Q(account=account) | models.Q(email=account.email)
+                ).delete()
                 return redirect('dj4xol:game', game_id=game.pk)
             return render(request, 'dj4xol/forbidden.html', {
                 'message': 'Unable to join game.'
@@ -137,10 +151,30 @@ def create_game(request):
             factory.create_stars(d['num_stars'])
             game = factory.save()
             factory.join_player(account, d['race'])
+            _create_invitations(game, form.parse_invitations())
             return redirect('dj4xol:game', game_id=game.pk)
     else:
         form = NewGameForm(account)
     return render(request, 'dj4xol/create_game.html', {'form': form})
+
+
+def _create_invitations(game, invitations):
+    """Create GameInvitation records from parsed invitation list."""
+    for inv_type, value in invitations:
+        if inv_type == 'email':
+            # Check if account exists with this email
+            try:
+                acct = Account.objects.get(email=value)
+                GameInvitation.objects.get_or_create(game=game, account=acct)
+            except Account.DoesNotExist:
+                GameInvitation.objects.get_or_create(game=game, email=value)
+        else:
+            # Username lookup
+            try:
+                acct = Account.objects.get(django_user__username=value)
+                GameInvitation.objects.get_or_create(game=game, account=acct)
+            except Account.DoesNotExist:
+                pass  # Silently ignore invalid usernames
 
 
 def signup(request):
