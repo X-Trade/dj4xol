@@ -10,6 +10,9 @@ def random_resource_init():
     return random.randint(0, 100)
 def random_environmental_init():
     return random.random() * 2.0
+def random_capacity_init():
+    """Random base capacity between 5bn and 15bn (stored in millions)."""
+    return random.randint(5000, 15000)
 
 
 class HabitabilityMixin(models.Model):
@@ -310,6 +313,8 @@ class Star(AbstractMapObject):
                                   validators=[MinValueValidator(0), MaxValueValidator(100)])
 
     colonists = models.IntegerField(default=0)
+    # Base carrying capacity (in millions), effective capacity = base * habitability
+    base_capacity = models.IntegerField(default=random_capacity_init)
 
 
 class ServerRace(HabitabilityMixin):

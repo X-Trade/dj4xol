@@ -1,12 +1,62 @@
 from datetime import timedelta
+from math import tanh
 from numpy import array as nparray, linalg
 from django.utils import timezone
+
+from .messages import (
+    EnvironmentalDeathMessageFactory,
+    OvercrowdingDeathMessageFactory,
+    ColonyAbandonedMessageFactory,
+)
+
+# Population carrying capacity constants
+BILLION = 1_000_000_000
+MILLION = 1_000_000
+DEFAULT_SOFT_CAP = 10 * BILLION   # Fallback if no star capacity
+CAPACITY_SCALE_RATIO = 0.5        # Scale is this fraction of soft cap
 
 TURN_INTERVALS = {
     'HOURLY': timedelta(hours=1),
     'DAILY': timedelta(days=1),
     'WEEKLY': timedelta(weeks=1),
 }
+
+
+def capacity_modifier(population, soft_cap):
+    """Returns a modifier that reduces growth at high populations.
+
+    Uses tanh curve centered at soft_cap:
+    - At 10% of cap: ~95% of normal growth
+    - At 50% of cap: ~76% of normal growth
+    - At soft_cap: 0% growth
+    - Above soft_cap: negative growth (population decline)
+    - At 200% of cap: ~-96% (rapid decline)
+    """
+    scale = soft_cap * CAPACITY_SCALE_RATIO
+    return -tanh((population - soft_cap) / scale)
+
+
+def effective_capacity(player, star):
+    """Calculate effective carrying capacity for a star based on habitability.
+
+    Returns capacity in colonists (not millions).
+    Habitability factor ranges from 0 (uninhabitable) to 1 (perfect).
+    """
+    # Calculate habitability factor (average of 3 environmental proportions, clamped 0-1)
+    hab_factor = 0
+    for env in ['gravity', 'temperature', 'radiation']:
+        proportion = habitability_proportion(
+            player.hab_min(env),
+            player.hab_max(env),
+            getattr(player, f'{env}_center'),
+            getattr(star, env)
+        )
+        hab_factor += max(0, proportion)  # Clamp negative to 0
+    hab_factor = hab_factor / 3.0
+
+    # base_capacity is in millions, convert to actual colonists
+    base = star.base_capacity * MILLION
+    return int(base * hab_factor) if hab_factor > 0 else MILLION  # Minimum 1m capacity
 
 
 def habitability_proportion(hab_min, hab_max, centre, value):
@@ -19,13 +69,13 @@ def habitability_proportion(hab_min, hab_max, centre, value):
         return 1.0 - (centre - value) / (centre - hab_min)
 
 
-def calculate_growth_factor(player, star):
-    """Calculate population growth factor based on habitability.
+def calculate_habitability_factor(player, star):
+    """Calculate raw habitability factor without capacity modifier.
 
     Returns a factor where:
-    - Perfect habitability (all envs at center): ~0.5 (50% growth)
-    - Edge habitability (all envs at min/max): 0 (no growth)
-    - Outside range: negative (linear decline, handled by apply_population_change)
+    - Perfect habitability (all envs at center): 1.0
+    - Edge habitability (all envs at min/max): 0.0
+    - Outside range: negative
     """
     factor = 0
     for env in ['gravity', 'temperature', 'radiation']:
@@ -36,14 +86,30 @@ def calculate_growth_factor(player, star):
             getattr(star, env)
         )
     # Average the three factors (0-1 range when fully habitable)
-    factor = factor / 3.0
+    return factor / 3.0
 
-    if factor >= 0:
+
+def calculate_growth_factor(player, star):
+    """Calculate population growth factor based on habitability and carrying capacity.
+
+    Returns a factor where:
+    - Perfect habitability (all envs at center): ~0.5 (50% growth) at low pop
+    - Edge habitability (all envs at min/max): 0 (no growth)
+    - Outside range: negative (linear decline, handled by apply_population_change)
+    - High population: reduced by carrying capacity (tanh curve)
+    """
+    hab_factor = calculate_habitability_factor(player, star)
+
+    if hab_factor >= 0:
         # Dampen growth: max ~0.5 at perfect habitability
-        factor = (factor ** 2) / 2
-    # Negative factors passed through directly for linear decline
-
-    return factor
+        factor = (hab_factor ** 2) / 2
+        # Apply carrying capacity modifier (reduces growth at high populations)
+        cap = effective_capacity(player, star)
+        factor *= capacity_modifier(star.colonists, cap)
+        return factor
+    else:
+        # Negative factors passed through directly for linear decline
+        return hab_factor
 
 class GameTurn():
     """Generate a turn for a game."""
@@ -141,15 +207,62 @@ class GameTurn():
         """Apply population growth/decline to all colonized planets."""
         for star in self.game.stars.filter(colonists__gt=0, player__isnull=False):
             player = star.player
-            factor = calculate_growth_factor(player, star)
-            # Apply race multiplier
-            factor *= player.race_type.population_growth_multiplier
-            star.colonists = apply_population_change(star.colonists, factor)
+            old_pop = star.colonists
+
+            # Calculate habitability and capacity factors separately for messaging
+            hab_factor = calculate_habitability_factor(player, star)
+            cap = effective_capacity(player, star)
+            cap_mod = capacity_modifier(star.colonists, cap)
+
+            if hab_factor < 0:
+                # Environmental deaths - uninhabitable world
+                factor = hab_factor  # Pass through negative factor
+                factor *= player.race_type.population_growth_multiplier
+                star.colonists = apply_population_change(star.colonists, factor)
+                deaths = old_pop - star.colonists
+                if deaths > 0:
+                    self._create_environmental_death_message(player, star, deaths)
+            else:
+                # Habitable world - apply growth with capacity modifier
+                factor = (hab_factor ** 2) / 2  # Dampen growth
+                factor *= cap_mod
+                factor *= player.race_type.population_growth_multiplier
+                star.colonists = apply_population_change(star.colonists, factor)
+                change = star.colonists - old_pop
+                if change < 0:
+                    # Deaths due to overcrowding
+                    self._create_overcrowding_death_message(player, star, -change)
+
             star.save()
+
+    def _create_environmental_death_message(self, player, star, deaths):
+        """Create a message for colonist deaths due to environment."""
+        factory = EnvironmentalDeathMessageFactory(self.game, player, star, deaths)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+    def _create_overcrowding_death_message(self, player, star, deaths):
+        """Create a message for colonist deaths due to overcrowding."""
+        factory = OvercrowdingDeathMessageFactory(self.game, player, star, deaths)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
 
     def clear_empty_planets(self):
         """Remove ownership from planets with zero population."""
-        self.game.stars.filter(colonists=0).update(player=None)
+        # Find stars that will be abandoned and notify their owners
+        for star in self.game.stars.filter(colonists=0, player__isnull=False):
+            self._create_colony_abandoned_message(star.player, star)
+            star.player = None
+            star.save()
+
+    def _create_colony_abandoned_message(self, player, star):
+        """Create a message for a colony being abandoned."""
+        factory = ColonyAbandonedMessageFactory(self.game, player, star)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
 
     def check_join_deadline(self):
         """Close joining if past the deadline year."""
