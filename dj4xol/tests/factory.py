@@ -50,13 +50,13 @@ class testGameFactory(TestCase):
         game = gf.save()
         gf.join_player(self.accounts[0], self.races[0])
         gf.join_player(self.accounts[1], self.races[1])
-        gf._create_random_ships(3)
+        gf._create_random_fleets(3)
 
         game.refresh_from_db()
         self.assertEqual(game.map_size_x, 150)
         self.assertEqual(game.stars.count(), 5)
         self.assertEqual(game.players.count(), 2)
-        self.assertEqual(game.ships.count(), 6)
+        self.assertEqual(game.fleets.count(), 6)
         self.assertEqual(game.owner, self.accounts[0])
 
     def test_join_player_sets_homeworld_population(self):

@@ -1,5 +1,5 @@
 from dj4xol.starnamer import StarNamer
-from .models import Game, Star, Ship, Player, Account
+from .models import Game, Star, Fleet, Player, Account
 import random
 import math
 
@@ -187,11 +187,11 @@ class GameFactory():
         self._assign_homeworld_to_player(player, self._find_homeworld_star(available_stars))
         return player
     
-    def _create_random_ships(self, count_per_player):
-        """Create ships for each player. Game must be saved first. For testing."""
+    def _create_random_fleets(self, count_per_player):
+        """Create fleets for each player. Game must be saved first. For testing."""
         for player in self.game.players.all():
             for _ in range(count_per_player):
-                Ship.objects.create(
+                Fleet.objects.create(
                     game=self.game,
                     player=player,
                     name=self.starnamer.get_unique(),

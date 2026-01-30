@@ -48,7 +48,7 @@
     border-radius: 50%;
     position: absolute;
 }
-.mapship {
+.mapfleet {
     height: 5px;
     width: 5px;
     border: solid white;
@@ -66,7 +66,7 @@
     border-radius: 50%;
     position: absolute;
 }
-.mapship-owned {
+.mapfleet-owned {
     height: 5px;
     width: 5px;
     border: solid rgb(0, 255, 0);
@@ -84,7 +84,7 @@
     border-radius: 50%;
     position: absolute;
 }
-.mapship-enemy {
+.mapfleet-enemy {
     height: 5px;
     width: 5px;
     border: solid rgb(255, 0, 0);

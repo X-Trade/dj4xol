@@ -36,7 +36,7 @@ def get_default_user():
     return user, account
 
 
-def default_game(stars=50, ships=0):
+def default_game(stars=50, fleets=0):
     """Create a saved game with one player for testing."""
     _, account = get_default_user()
     factory = GameFactory()
@@ -45,8 +45,8 @@ def default_game(stars=50, ships=0):
     factory.create_stars(stars)
     game = factory.save()
     factory.join_player(account, get_default_race())
-    if ships:
-        factory._create_random_ships(ships)
+    if fleets:
+        factory._create_random_fleets(fleets)
     return game
 
 

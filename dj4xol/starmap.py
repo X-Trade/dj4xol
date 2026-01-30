@@ -1,9 +1,9 @@
-from .models import Game, Player, Ship, Star
+from .models import Game, Player, Fleet, Star
 
 class StarMap():
     MAP_SCALE = 5
     HTML_STAR_CLASS = "mapstar"
-    HTML_SHIP_CLASS = "mapship"
+    HTML_FLEET_CLASS = "mapfleet"
     CSS = """.mapstar {
                 height: 5px;
                 width: 5px;
@@ -12,7 +12,7 @@ class StarMap():
                 border-radius: 50%;
                 position: absolute;
              }
-             .mapship {
+             .mapfleet {
                 height: 5px;
                 width: 5px;
                 border: solid white;
@@ -26,33 +26,33 @@ class StarMap():
         self.game = game
         self.player = player
         self.stars = game.stars.all()
-        self.ships = game.ships.all()
+        self.fleets = game.fleets.all()
         self.map = self.render_map()
 
-    def render_map(self, stars=None, ships=None):
+    def render_map(self, stars=None, fleets=None):
         """Render a map of the stars in the game using HTML objects"""
         if stars is None:
             stars = self.stars
-        if ships is None:
-            ships = self.ships
-        
+        if fleets is None:
+            fleets = self.fleets
+
         html=""
 
         for star in self.stars:
             html+=self.render_star(star)
 
-        for ship in self.ships:
-            html+=self.render_ship(ship)
-        
+        for fleet in self.fleets:
+            html+=self.render_fleet(fleet)
+
         return html
-    
+
     def resolve_html_class(self, object):
         """Resolve the HTML class for an object"""
 
         if isinstance(object, Star):
             html_class = self.HTML_STAR_CLASS
-        elif isinstance(object, Ship):
-            html_class = self.HTML_SHIP_CLASS
+        elif isinstance(object, Fleet):
+            html_class = self.HTML_FLEET_CLASS
         else:
             html_class = ""
 
@@ -62,7 +62,7 @@ class StarMap():
             class_additional = "-enemy"
         else:
             class_additional = ""
-        
+
         return f'{html_class}{class_additional}'
 
     def render_object(self, object):
@@ -71,12 +71,13 @@ class StarMap():
         y=object.y*self.MAP_SCALE
         url="?x=%i&y=%i&sel=%s" % (object.x, object.y, str(object))
         html_class = self.resolve_html_class(object)
-        return f'<a href="{url}"><div class="{html_class}" style="left:{x}px; top:{y}px;"></div></a>'
+        name = object.name
+        return f'<a href="{url}" title="{name}"><div class="{html_class}" style="left:{x}px; top:{y}px;"></div></a>'
 
     def render_star(self, star):
         """Render a star object on map using HTML"""
         return self.render_object(star)
-    
-    def render_ship(self, ship):
-        """Render a ship object on map using HTML"""
-        return self.render_object(ship)
+
+    def render_fleet(self, fleet):
+        """Render a fleet object on map using HTML"""
+        return self.render_object(fleet)

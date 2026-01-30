@@ -193,10 +193,10 @@ class Game(models.Model):
         return [star["name"] for star in self.stars.values("name").all()]
 
     def get_object_at(self, x, y):
-        return self.stars.filter(x=x, y=y).first() or self.ships.filter(x=x, y=y).first() or None
+        return self.stars.filter(x=x, y=y).first() or self.fleets.filter(x=x, y=y).first() or None
 
     def get_all_objects_at(self, x, y):
-        return list(chain(self.stars.filter(x=x, y=y).all(), self.ships.filter(x=x, y=y).all()))
+        return list(chain(self.stars.filter(x=x, y=y).all(), self.fleets.filter(x=x, y=y).all()))
 
     def get_star_namer(self):
         if not self._star_namer:
@@ -280,10 +280,10 @@ class ServerRaceType(HabitabilityMixin):
         return self.name
 
 
-class Ship(AbstractMapObject):
-    #TODO: Rename to Fleet?
+class Fleet(AbstractMapObject):
+    """A group of ships traveling together."""
     name = models.CharField(max_length=30)
-    player = models.ForeignKey('Player', related_name='ships',
+    player = models.ForeignKey('Player', related_name='fleets',
             on_delete=models.CASCADE)
 
 
@@ -359,18 +359,18 @@ class Player(AbstractGameObject, HabitabilityMixin):
         super(Player, self).save(*args, **kwargs)
 
 
-class ShipOrders(AbstractGameObject):
-    #TODO: Rename to FleetOrders?
-    ship = models.ForeignKey(Ship, related_name="orders",
+class FleetOrders(AbstractGameObject):
+    """Movement and action orders for a fleet."""
+    fleet = models.ForeignKey(Fleet, related_name="orders",
             on_delete=models.CASCADE)
-    repeat = models.BooleanField(default = False)
-    warpfactor = models.IntegerField(default = 0,
+    repeat = models.BooleanField(default=False)
+    warpfactor = models.IntegerField(default=0,
                                      validators=[MinValueValidator(0), MaxValueValidator(13)])
     x = models.IntegerField(null=True)
     y = models.IntegerField(null=True)
     target_star = models.ForeignKey(Star, null=True, related_name='+',
             on_delete=models.CASCADE)
-    target_ship = models.ForeignKey(Ship, null=True, related_name='+',
+    target_fleet = models.ForeignKey(Fleet, null=True, related_name='+',
             on_delete=models.CASCADE)
 
 
