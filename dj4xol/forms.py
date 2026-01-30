@@ -75,13 +75,29 @@ class NewGameForm(forms.Form):
         label="Play as Race",
         queryset=ServerRace.objects.none()
     )
+    invitations = forms.CharField(
+        label="Invite Players",
+        max_length=500,
+        required=False,
+        help_text="Usernames or emails, comma-separated"
+    )
 
     def __init__(self, account, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Show public races and races owned by this account
         self.fields['race'].queryset = ServerRace.objects.filter(
             models.Q(public=True) | models.Q(owner=account)
         )
+
+    def parse_invitations(self):
+        """Parse invitations field into list of (type, value) tuples."""
+        text = self.cleaned_data.get('invitations', '')
+        result = []
+        for item in text.split(','):
+            item = item.strip()
+            if not item:
+                continue
+            result.append(('email' if '@' in item else 'username', item))
+        return result
 
 
 # Import models.Q for the query

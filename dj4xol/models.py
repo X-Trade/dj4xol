@@ -263,3 +263,19 @@ class GameMessage(AbstractGameObject):
         if self.year is None:
             self.year = self.game.year
         super(GameMessage, self).save(*args, **kwargs)
+
+
+class GameInvitation(models.Model):
+    """Invitation to join a game, by account or email."""
+    game = models.ForeignKey(Game, related_name='invitations', on_delete=models.CASCADE)
+    account = models.ForeignKey(Account, null=True, blank=True,
+                                related_name='game_invitations', on_delete=models.CASCADE)
+    email = models.EmailField(null=True, blank=True)
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [['game', 'account'], ['game', 'email']]
+
+    def __str__(self):
+        target = self.account.alias if self.account else self.email
+        return f'{self.game.name}: {target}'

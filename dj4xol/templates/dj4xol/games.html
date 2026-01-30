@@ -15,16 +15,29 @@
 			{% for game in my_games %}
 				<li><a href="{% url 'dj4xol:game' game.id %}">{{ game.name }}</a>
 					(year: {{ game.year }})</li>
+			{% empty %}
+				<li>No games yet</li>
 			{% endfor %}
 			</ul>
+			{% if invited_games %}
+			<h3>Invitations</h3>
+			<ul>
+			{% for game in invited_games %}
+				<li>{{ game.name }} (year: {{ game.year }})
+					<a href="{% url 'dj4xol:join_game' game.id %}">join</a></li>
+			{% endfor %}
+			</ul>
+			{% endif %}
 		</div>
 		<div id='publicgames' style="float:left;min-width:300px">
-			<h2>Public Games</h2>
+			<h2>Open Games</h2>
 			<ul>
 			{% for game in open_games %}
 				<li>{{ game.name }}
 					(year: {{ game.year }})
-					(<a href="{% url 'dj4xol:game' game.id %}">view</a>{% if game.joinable %} | <a href="{% url 'dj4xol:join_game' game.id %}">join</a>{% endif %})</li>
+					<a href="{% url 'dj4xol:join_game' game.id %}">join</a></li>
+			{% empty %}
+				<li>No open games</li>
 			{% endfor %}
 			</ul>
 		</div>
@@ -33,6 +46,7 @@
 			<ul>
 				<li><a href="{% url 'dj4xol:create_game' %}">Create New Game</a></li>
 				<li><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></li>
+				<li><a href="{% url 'logout' %}">Logout</a></li>
 			</ul>
 		</div>
 	</body>
