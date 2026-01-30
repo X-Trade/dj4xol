@@ -1,17 +1,20 @@
 from dj4xol.models import Ship, Star
+from dj4xol.turn import calculate_growth_factor, apply_population_change
 
 from itertools import chain
 
 
 class DetailBuilder():
     game = None
+    player = None
     selected_obj = None
     at_cursor = []
     x = None
     y = None
 
-    def __init__(self, game, x=None, y=None, selected=None):
+    def __init__(self, game, x=None, y=None, selected=None, player=None):
         self.game = game
+        self.player = player
         self.set_coordinates(x, y)
         self.find(x, y, selected)
     
@@ -33,9 +36,12 @@ class DetailBuilder():
             detail = {'name': self.get_object_name(),
                      'player': self.get_object_player(),
                      'population': self.get_population(),
+                     'population_change': self.get_population_change(),
                      'environmentals': self.build_environmental_detail(),
                      'resources': self.build_resource_detail(),
-                     'also_here': {mapobject.name: str(mapobject) for mapobject in self.at_cursor if mapobject != self.selected_obj}
+                     'also_here': {mapobject.name: str(mapobject) for mapobject in self.at_cursor if mapobject != self.selected_obj},
+                     'is_star': isinstance(self.selected_obj, Star),
+                     'star_id': self.selected_obj.id if isinstance(self.selected_obj, Star) else None,
                      }
         else:
             detail = None
@@ -45,6 +51,20 @@ class DetailBuilder():
         if self.selected_obj and isinstance(self.selected_obj, Star):
             return self.selected_obj.colonists
         return None
+
+    def get_population_change(self):
+        """Calculate expected population change for player-owned worlds."""
+        if not self.selected_obj or not isinstance(self.selected_obj, Star):
+            return None
+        if not self.player or self.selected_obj.player != self.player:
+            return None
+        if self.selected_obj.colonists == 0:
+            return None
+        factor = calculate_growth_factor(self.player, self.selected_obj)
+        factor *= self.player.race_type.population_growth_multiplier
+        current = self.selected_obj.colonists
+        new_pop = apply_population_change(current, factor)
+        return new_pop - current
 
     def get_object_name(self):
         print(self.selected_obj.name)
@@ -101,23 +121,28 @@ class DetailBuilder():
             temp = self.selected_obj.temperature
             rad = self.selected_obj.radiation
             environmentals = {
-                'Gravity': {
-                    'value': grav,
-                    'display': '%.2fg' % grav,  # 1.0 = 1.00g (Earth normal)
-                    'percent': (grav / 2.0) * 100
-                },
-                'Temperature': {
-                    'value': temp,
-                    'display': '%+d°C' % int((temp - 1.0) * 100),  # 1.0 = 0°C
-                    'percent': (temp / 2.0) * 100
-                },
-                'Radiation': {
-                    'value': rad,
-                    'display': '%dmR' % int(rad * 50),  # 1.0 = 50mR
-                    'percent': (rad / 2.0) * 100
-                }
+                'Gravity': self._build_env_data('gravity', grav, '%.2fg' % grav),
+                'Temperature': self._build_env_data('temperature', temp, '%+d°C' % int((temp - 1.0) * 100)),
+                'Radiation': self._build_env_data('radiation', rad, '%dmR' % int(rad * 50)),
             }
         return environmentals
+
+    def _build_env_data(self, env_name, value, display):
+        """Build environmental data dict with habitability range if player available."""
+        data = {
+            'value': value,
+            'display': display,
+            'percent': (value / 2.0) * 100
+        }
+        if self.player:
+            hab_min = self.player.hab_min(env_name)
+            hab_max = self.player.hab_max(env_name)
+            center = getattr(self.player, f'{env_name}_center')
+            data['hab_min_percent'] = (hab_min / 2.0) * 100
+            data['hab_max_percent'] = (hab_max / 2.0) * 100
+            data['hab_center_percent'] = (center / 2.0) * 100
+            data['is_habitable'] = hab_min <= value <= hab_max
+        return data
     
     def build_resource_detail(self):
         resources = None

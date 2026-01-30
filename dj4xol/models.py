@@ -12,6 +12,73 @@ def random_environmental_init():
     return random.random() * 2.0
 
 
+class HabitabilityMixin(models.Model):
+    """Mixin providing habitability range fields and methods."""
+    HABITABILITY_BUDGET = 6.0
+    ENVS = ['gravity', 'temperature', 'radiation']
+
+    gravity_center = models.FloatField(default=1.0)
+    gravity_width = models.FloatField(default=1.0)
+    temperature_center = models.FloatField(default=1.0)
+    temperature_width = models.FloatField(default=1.0)
+    radiation_center = models.FloatField(default=1.0)
+    radiation_width = models.FloatField(default=1.0)
+
+    class Meta:
+        abstract = True
+
+    def hab_min(self, env):
+        """Get minimum habitable value for an environmental factor."""
+        return getattr(self, f'{env}_center') - getattr(self, f'{env}_width') / 2
+
+    def hab_max(self, env):
+        """Get maximum habitable value for an environmental factor."""
+        return getattr(self, f'{env}_center') + getattr(self, f'{env}_width') / 2
+
+    def habitability_width_cost(self):
+        """Total width points spent."""
+        return sum(getattr(self, f'{env}_width') for env in self.ENVS)
+
+    def habitability_center_cost(self):
+        """Total center points spent (average centers cost more)."""
+        return sum(1.0 - abs(getattr(self, f'{env}_center') - 1.0) for env in self.ENVS)
+
+    def habitability_total_cost(self):
+        """Total habitability points spent."""
+        return self.habitability_width_cost() + self.habitability_center_cost()
+
+    def validate_habitability(self):
+        """Validate habitability configuration. Returns list of errors."""
+        errors = []
+        for env in self.ENVS:
+            center = getattr(self, f'{env}_center')
+            width = getattr(self, f'{env}_width')
+            half = width / 2
+            if center - half < 0.0:
+                errors.append(f'{env.title()} range extends below 0')
+            if center + half > 2.0:
+                errors.append(f'{env.title()} range extends above 2')
+            if width < 0:
+                errors.append(f'{env.title()} width cannot be negative')
+        if self.habitability_total_cost() > self.HABITABILITY_BUDGET:
+            errors.append(f'Habitability cost ({self.habitability_total_cost():.2f}) exceeds budget ({self.HABITABILITY_BUDGET})')
+        return errors
+
+    def is_habitable(self, star):
+        """Check if a star is within habitable range for all factors."""
+        for env in self.ENVS:
+            value = getattr(star, env)
+            if value < self.hab_min(env) or value > self.hab_max(env):
+                return False
+        return True
+
+    def copy_habitability_from(self, source):
+        """Copy habitability fields from another object."""
+        for env in self.ENVS:
+            setattr(self, f'{env}_center', getattr(source, f'{env}_center'))
+            setattr(self, f'{env}_width', getattr(source, f'{env}_width'))
+
+
 class ServerSettings(models.Model):
     key = models.CharField(max_length=30, primary_key=True, unique=True)
     value = models.CharField(max_length=30)
@@ -153,7 +220,7 @@ class AbstractMapObject(AbstractGameObject):
         abstract = True
 
 
-class ServerRaceType(models.Model):
+class ServerRaceType(HabitabilityMixin):
     code = models.CharField(max_length=4, primary_key=True, unique=True)
     name = models.CharField(max_length=16)
     enabled = models.BooleanField(default=True)
@@ -245,11 +312,12 @@ class Star(AbstractMapObject):
     colonists = models.IntegerField(default=0)
 
 
-class ServerRace(models.Model):
+class ServerRace(HabitabilityMixin):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=16)
     plural_name = models.CharField(max_length=16)
     formal_name = models.CharField(max_length=32)
+    homeworld_name = models.CharField(max_length=30, blank=True, default='')
     public = models.BooleanField(default=False)
     owner = models.ForeignKey(Account, related_name="custom_races",
                                       null=True, default=None,
@@ -261,7 +329,7 @@ class ServerRace(models.Model):
         return self.name
 
 
-class Player(AbstractGameObject):
+class Player(AbstractGameObject, HabitabilityMixin):
     """A player instance in a game, with their chosen race."""
     id = models.AutoField(primary_key=True)
     account = models.ForeignKey(Account, related_name="players",
@@ -270,6 +338,7 @@ class Player(AbstractGameObject):
     name = models.CharField(max_length=16)
     plural_name = models.CharField(max_length=16, null=True, default=None)
     formal_name = models.CharField(max_length=32, null=True, default=None)
+    homeworld_name = models.CharField(max_length=30, blank=True, default='')
     homeworld = models.ForeignKey(Star, null=True, default=None,
                                   related_name="homeworld_of",
                                   on_delete=models.SET_NULL)

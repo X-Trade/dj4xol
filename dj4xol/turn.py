@@ -8,6 +8,43 @@ TURN_INTERVALS = {
     'WEEKLY': timedelta(weeks=1),
 }
 
+
+def habitability_proportion(hab_min, hab_max, centre, value):
+    """Returns 1 at centre, 0 at min/max edges, negative outside range."""
+    if value == centre:
+        return 1.0
+    elif value > centre:
+        return 1.0 - (value - centre) / (hab_max - centre)
+    else:
+        return 1.0 - (centre - value) / (centre - hab_min)
+
+
+def calculate_growth_factor(player, star):
+    """Calculate population growth factor based on habitability.
+
+    Returns a factor where:
+    - Perfect habitability (all envs at center): ~0.5 (50% growth)
+    - Edge habitability (all envs at min/max): 0 (no growth)
+    - Outside range: negative (linear decline, handled by apply_population_change)
+    """
+    factor = 0
+    for env in ['gravity', 'temperature', 'radiation']:
+        factor += habitability_proportion(
+            player.hab_min(env),
+            player.hab_max(env),
+            getattr(player, f'{env}_center'),
+            getattr(star, env)
+        )
+    # Average the three factors (0-1 range when fully habitable)
+    factor = factor / 3.0
+
+    if factor >= 0:
+        # Dampen growth: max ~0.5 at perfect habitability
+        factor = (factor ** 2) / 2
+    # Negative factors passed through directly for linear decline
+
+    return factor
+
 class GameTurn():
     """Generate a turn for a game."""
     def __init__(self, game):
@@ -27,6 +64,7 @@ class GameTurn():
     def _process_year(self):
         """Process a single year of game time."""
         self.ship_movements()
+        self.population_growth()
         self.clear_empty_planets()
         self.check_join_deadline()
         self.game.year += 1
@@ -99,6 +137,16 @@ class GameTurn():
             ship.y = int(new_position[1])
         return ship
 
+    def population_growth(self):
+        """Apply population growth/decline to all colonized planets."""
+        for star in self.game.stars.filter(colonists__gt=0, player__isnull=False):
+            player = star.player
+            factor = calculate_growth_factor(player, star)
+            # Apply race multiplier
+            factor *= player.race_type.population_growth_multiplier
+            star.colonists = apply_population_change(star.colonists, factor)
+            star.save()
+
     def clear_empty_planets(self):
         """Remove ownership from planets with zero population."""
         self.game.stars.filter(colonists=0).update(player=None)
@@ -107,3 +155,20 @@ class GameTurn():
         """Close joining if past the deadline year."""
         if self.game.join_until_year and self.game.year >= self.game.join_until_year:
             self.game.joinable = False
+
+
+def apply_population_change(population, factor):
+    """Apply population growth or decline based on factor.
+
+    Positive factor: additive growth (pop += pop * factor)
+    Negative factor: linear decline (pop *= survival_rate), min 1 loss to prevent infinite decay
+    """
+    if factor >= 0:
+        return population + int(population * factor)
+    else:
+        # Linear decline: survival_rate = 1 - |factor|, capped at 0% survival
+        survival_rate = max(0, 1 - abs(factor))
+        new_pop = int(population * survival_rate)
+        # Ensure at least 1 colonist dies to prevent infinite decay
+        new_pop = min(new_pop, population - 1)
+        return max(0, new_pop)

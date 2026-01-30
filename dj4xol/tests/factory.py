@@ -83,6 +83,48 @@ class testGameFactory(TestCase):
         # Should be at least 50ly apart (25% of 200)
         self.assertGreaterEqual(dist, 50)
 
+    def test_homeworld_environmentals_match_player_centers(self):
+        """Homeworld should have environmentals set to player's habitable centers."""
+        self.races[0].gravity_center = 0.8
+        self.races[0].temperature_center = 1.2
+        self.races[0].radiation_center = 0.5
+        self.races[0].save()
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(5)
+        gf.save()
+        player = gf.join_player(self.accounts[0], self.races[0])
+        self.assertAlmostEqual(player.homeworld.gravity, 0.8)
+        self.assertAlmostEqual(player.homeworld.temperature, 1.2)
+        self.assertAlmostEqual(player.homeworld.radiation, 0.5)
+
+    def test_homeworld_name_override(self):
+        """Homeworld name should be overridden if race has homeworld_name set."""
+        self.races[0].homeworld_name = 'Terra Prime'
+        self.races[0].save()
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(5)
+        gf.save()
+        player = gf.join_player(self.accounts[0], self.races[0])
+        self.assertEqual(player.homeworld.name, 'Terra Prime')
+
+    def test_homeworld_name_not_overridden_if_blank(self):
+        """Homeworld name should not be overridden if race has no homeworld_name."""
+        self.races[0].homeworld_name = ''
+        self.races[0].save()
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(5)
+        gf.save()
+        original_names = [s.name for s in gf.stars]
+        player = gf.join_player(self.accounts[0], self.races[0])
+        # Name should be one of the original generated names
+        self.assertIn(player.homeworld.name, original_names)
+
 
 class testStarNamer(TestCase):
     def test_data_contains_no_duplicates(self):
