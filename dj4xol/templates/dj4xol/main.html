@@ -52,7 +52,15 @@
                 </div></div></div>
                 <h2>Detail</h2>
                 <div id="detail">
+                    {% if detail.objects_here|length > 1 %}
+                    <select class="detail-selector" onchange="window.location.href='?x={{ selection.x }}&y={{ selection.y }}&sel=' + this.value">
+                        {% for obj in detail.objects_here %}
+                        <option value="{{ obj.id }}" {% if obj.id == detail.selected_id %}selected{% endif %}>{{ obj.name }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
                     <h3>{{ detail.name }}</h3>
+                    {% endif %}
                     <hr>
                     <p>{% if detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: <span class="has-tooltip" data-tooltip="{{ detail.population|exact_pop }}">{{ detail.population|humanize_pop }}</span>{% if detail.population_change != None %} <span class="pop-change has-tooltip {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}" data-tooltip="{{ detail.population_change|exact_pop }}">({{ detail.population_change|humanize_pop_change }})</span>{% endif %}{% endif %}</p>
                     {% if detail.environmentals %}

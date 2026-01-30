@@ -34,19 +34,28 @@ class DetailBuilder():
     def build_detail(self):
         if self.selected_obj:
             detail = {'name': self.get_object_name(),
+                     'selected_id': str(self.selected_obj),
+                     'objects_here': self.get_objects_here(),
                      'player': self.get_object_player(),
                      'population': self.get_population(),
                      'population_change': self.get_population_change(),
                      'capacity': self.get_effective_capacity(),
                      'environmentals': self.build_environmental_detail(),
                      'resources': self.build_resource_detail(),
-                     'also_here': {mapobject.name: str(mapobject) for mapobject in self.at_cursor if mapobject != self.selected_obj},
                      'is_star': isinstance(self.selected_obj, Star),
                      'star_id': self.selected_obj.id if isinstance(self.selected_obj, Star) else None,
                      }
         else:
             detail = None
         return detail
+
+    def get_objects_here(self):
+        """Return list of (name, identifier) tuples for all objects at cursor."""
+        result = []
+        for obj in self.at_cursor:
+            name = obj.name or f"{obj.__class__.__name__} {obj.id}"
+            result.append({'name': name, 'id': str(obj)})
+        return result
 
     def get_population(self):
         if self.selected_obj and isinstance(self.selected_obj, Star):

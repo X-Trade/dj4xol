@@ -185,6 +185,15 @@
     background: #776;
 }
 
+/* Detail selector dropdown */
+.detail-selector {
+    font-size: 1.17em;
+    font-weight: bold;
+    padding: 4px 8px;
+    margin: 0.5em 0;
+    cursor: pointer;
+}
+
 /* Custom tooltips */
 .has-tooltip {
     position: relative;
