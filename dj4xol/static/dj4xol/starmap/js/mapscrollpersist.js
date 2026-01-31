@@ -18,12 +18,36 @@ $("document").ready(function() {
         applyZoom();
     }
 
-    // Check if we have x,y in URL params - if so, center on that location
+    // Locate toggle state (default on)
+    var locateEnabled = localStorage.getItem(storageKey + ':locate') !== 'false';
+    var $locateBtn = $('#starmap-locate');
+    if (locateEnabled) {
+        $locateBtn.addClass('active');
+    }
+
+    // Toggle locate on click
+    $locateBtn.on('click', function(e) {
+        e.preventDefault();
+        locateEnabled = !locateEnabled;
+        localStorage.setItem(storageKey + ':locate', locateEnabled);
+        $locateBtn.toggleClass('active', locateEnabled);
+
+        // When turning on, jump to current selection
+        if (locateEnabled && urlX !== null && urlY !== null) {
+            var mapScale = 6;
+            var targetX = parseInt(urlX) * mapScale * zoomLevel;
+            var targetY = parseInt(urlY) * mapScale * zoomLevel;
+            $starmap.scrollLeft(targetX - $starmap.width() / 2);
+            $starmap.scrollTop(targetY - $starmap.height() / 2);
+        }
+    });
+
+    // Check if we have x,y in URL params - center if locate is enabled
     var urlParams = new URLSearchParams(window.location.search);
     var urlX = urlParams.get('x');
     var urlY = urlParams.get('y');
 
-    if (urlX !== null && urlY !== null) {
+    if (locateEnabled && urlX !== null && urlY !== null) {
         // Center on selected coordinates (multiply by MAP_SCALE=6)
         var mapScale = 6;
         var targetX = parseInt(urlX) * mapScale * zoomLevel;

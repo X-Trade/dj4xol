@@ -1,6 +1,6 @@
 ============= MAIN TODO =============
 0. change to GUIDs. review universal resource string slug/identifier format
-1. 
+1. fleet orders
 2. Mining
 3. Random events
 4. Event generation in turn generator
@@ -12,13 +12,5 @@
    for example, a player cannot see the orders of another player's vessel
 
 =============== GUI =================
-1. Ship orders
+1. fleet orders
 9. Python in the browser?
-
-=============== DONE ================
-- Home button (find homeworld) with per-game scroll/zoom persistence
-- Map zoom (mousewheel toward cursor, +/- buttons, 0.5x-3x range)
-- Responsive viewport-height layout
-- Satellite star rendering for multi-star systems
-- Fleet heading/direction indicators
-- Ownership colors (green/red/yellow/white)
