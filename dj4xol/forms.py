@@ -74,6 +74,16 @@ class NewGameForm(forms.Form):
         max_value=200,
         initial=50
     )
+    clusters = forms.BooleanField(
+        label="Clusters",
+        required=False,
+        help_text="Group stars into clusters"
+    )
+    systems = forms.BooleanField(
+        label="Systems",
+        required=False,
+        help_text="Add companion stars to 25% of stars"
+    )
     public = forms.BooleanField(
         label="Public",
         required=False,

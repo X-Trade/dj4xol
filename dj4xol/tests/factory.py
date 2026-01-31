@@ -125,6 +125,19 @@ class testGameFactory(TestCase):
         # Name should be one of the original generated names
         self.assertIn(player.homeworld.name, original_names)
 
+    def test_systems_adds_companion_stars(self):
+        """Systems option should add companion stars at same coordinates."""
+        gf = GameFactory()
+        gf.set_map_size(200, 200)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(40, systems=True)  # 25% of 40 = 10 stars get companions
+        # Should have more than 40 stars due to companions
+        self.assertGreater(len(gf.stars), 40)
+        # Check that some stars share coordinates (indicating systems)
+        coords = [(s.x, s.y) for s in gf.stars]
+        unique_coords = set(coords)
+        self.assertLess(len(unique_coords), len(coords))
+
 
 class testStarNamer(TestCase):
     def test_data_contains_no_duplicates(self):

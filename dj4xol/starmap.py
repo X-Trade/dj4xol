@@ -2,8 +2,8 @@ from math import cos, sin, radians
 from .models import Game, Player, Fleet, Star
 
 class StarMap():
-    MAP_SCALE = 5
-    MULTI_STAR_OFFSET = 0.25  # 25% of 1ly spacing
+    MAP_SCALE = 6
+    MULTI_STAR_OFFSET = 0.7  # 70% of 1ly spacing
     HTML_STAR_CLASS = "mapstar"
     HTML_FLEET_CLASS = "mapfleet"
     CSS = """.mapstar {
@@ -38,15 +38,62 @@ class StarMap():
         if fleets is None:
             fleets = self.fleets
 
-        html=""
+        html = ""
 
-        for star in self.stars:
-            html+=self.render_star(star)
+        # Group stars by position to handle multiple at same coordinates
+        stars_by_pos = {}
+        for star in stars:
+            pos = (star.x, star.y)
+            if pos not in stars_by_pos:
+                stars_by_pos[pos] = []
+            stars_by_pos[pos].append(star)
 
-        for fleet in self.fleets:
-            html+=self.render_fleet(fleet)
+        for pos, star_group in stars_by_pos.items():
+            html += self.render_star_group(star_group)
+
+        for fleet in fleets:
+            html += self.render_fleet(fleet)
 
         return html
+
+    def render_star_group(self, stars):
+        """Render stars at the same position with offsets for multiples."""
+        html = ""
+        if len(stars) == 1:
+            html += self.render_star(stars[0])
+        else:
+            # Determine group ownership for main dot color
+            group_class = self._resolve_group_class(stars)
+            # First star at center (shows group ownership)
+            html += self.render_star(stars[0], class_override=group_class)
+            # Additional stars spaced evenly around center (smaller, show individual ownership)
+            offset_distance = self.MAP_SCALE * self.MULTI_STAR_OFFSET
+            angle_start = 45  # degrees
+            num_satellites = len(stars) - 1
+            angle_step = 360 / num_satellites if num_satellites > 1 else 0
+            # Center offset: main star is 5px, satellite is 2px
+            # To center satellite around main star's center: (5/2 - 2/2) = 1.5px
+            center_adjust = 1.5
+            for i, star in enumerate(stars[1:]):
+                angle = radians(angle_start + i * angle_step)
+                offset_x = center_adjust + offset_distance * cos(angle)
+                offset_y = center_adjust + offset_distance * sin(angle)
+                html += self.render_star(star, offset_x, offset_y, satellite=True)
+        return html
+
+    def _resolve_group_class(self, stars):
+        """Determine CSS class for a group of stars based on ownership mix."""
+        has_owned = any(s.player == self.player for s in stars)
+        has_enemy = any(s.player is not None and s.player != self.player for s in stars)
+
+        if has_owned and has_enemy:
+            return "mapstar-mixed"  # Yellow - mix of ours and enemy
+        elif has_owned:
+            return "mapstar-owned"  # Green - all ours (or ours + unowned)
+        elif has_enemy:
+            return "mapstar-enemy"  # Red - all enemy (or enemy + unowned)
+        else:
+            return "mapstar"  # White - all unowned
 
     def resolve_html_class(self, object):
         """Resolve the HTML class for an object"""
@@ -67,19 +114,35 @@ class StarMap():
 
         return f'{html_class}{class_additional}'
 
-    def render_object(self, object, extra_style=""):
+    def render_object(self, object, extra_style="", offset_x=0, offset_y=0, class_override=None):
         """Render a game object on map using HTML"""
-        x=object.x*self.MAP_SCALE
-        y=object.y*self.MAP_SCALE
-        url="?x=%i&y=%i&sel=%s" % (object.x, object.y, str(object))
-        html_class = self.resolve_html_class(object)
+        x = object.x * self.MAP_SCALE + offset_x
+        y = object.y * self.MAP_SCALE + offset_y
+        url = "?x=%i&y=%i&sel=%s" % (object.x, object.y, str(object))
+        html_class = class_override or self.resolve_html_class(object)
         name = object.name
         style = f"left:{x}px; top:{y}px;{extra_style}"
         return f'<a href="{url}" title="{name}"><div class="{html_class}" style="{style}"></div></a>'
 
-    def render_star(self, star):
+    def render_star(self, star, offset_x=0, offset_y=0, satellite=False, class_override=None):
         """Render a star object on map using HTML"""
-        return self.render_object(star)
+        if satellite:
+            # Satellite stars are half size, darker shade of ownership color, behind main star
+            base_color = self._get_satellite_color(star)
+            extra_style = f" width:2px; height:2px; background-color:{base_color}; z-index:1;"
+        else:
+            # Main star renders on top
+            extra_style = " z-index:2;"
+        return self.render_object(star, extra_style=extra_style, offset_x=offset_x, offset_y=offset_y, class_override=class_override)
+
+    def _get_satellite_color(self, star):
+        """Get darker satellite color based on ownership."""
+        if star.player == self.player:
+            return "#006600"  # Dark green - owned
+        elif star.player is not None:
+            return "#660000"  # Dark red - enemy
+        else:
+            return "#666666"  # Dark grey - unowned
 
     def render_fleet(self, fleet):
         """Render a fleet object on map using HTML with heading rotation"""
