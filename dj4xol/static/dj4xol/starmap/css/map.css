@@ -54,8 +54,6 @@
     border: solid white;
     border-width: 0 3px 3px 0;
     position: absolute;
-    transform: rotate(-45deg);
-    -webkit-transform: rotate(-45deg);
 }
 
 .mapstar-owned {
@@ -72,8 +70,6 @@
     border: solid rgb(0, 255, 0);
     border-width: 0 3px 3px 0;
     position: absolute;
-    transform: rotate(-45deg);
-    -webkit-transform: rotate(-45deg);
 }
 
 .mapstar-enemy {
@@ -90,6 +86,4 @@
     border: solid rgb(255, 0, 0);
     border-width: 0 3px 3px 0;
     position: absolute;
-    transform: rotate(-45deg);
-    -webkit-transform: rotate(-45deg);
 }

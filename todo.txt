@@ -13,6 +13,4 @@
 1. Ship orders
 2. Home button (find homeworld)
 4. adaptive layout
-5. show ships as pointing in the direction they have just traveled in
-6. show a dropdown list of all objects at the selected coordinates
 9. Python in the browser?
