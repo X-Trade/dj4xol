@@ -29,13 +29,13 @@ def player_only_view():
     """
     def decorate(func):
         @login_required()
-        def wrapper(request, game_id, *args, **kwargs):
+        def wrapper(request, game_short_id, *args, **kwargs):
             if not hasattr(request.user, 'dj4xol_account'):
                 return redirect('dj4xol:register')
             account = request.user.dj4xol_account
-            game = Game.objects.get(pk=game_id)
+            game = Game.objects.get(short_id=game_short_id)
             if Player.objects.filter(game=game, account=account).exists():
-                return func(request, game_id, *args, **kwargs)
+                return func(request, game_short_id, *args, **kwargs)
             else:
                 return render(request, 'dj4xol/forbidden.html', {
                     'message': 'You are not a member of this game'
@@ -52,13 +52,13 @@ def owner_only_view():
     """
     def decorate(func):
         @login_required()
-        def wrapper(request, game_id, *args, **kwargs):
+        def wrapper(request, game_short_id, *args, **kwargs):
             if not hasattr(request.user, 'dj4xol_account'):
                 return redirect('dj4xol:register')
             account = request.user.dj4xol_account
-            game = Game.objects.get(pk=game_id)
+            game = Game.objects.get(short_id=game_short_id)
             if account == game.owner:
-                return func(request, game_id, *args, **kwargs)
+                return func(request, game_short_id, *args, **kwargs)
             else:
                 return render(request, 'dj4xol/forbidden.html', {
                     'message': 'You are not the owner of this game'

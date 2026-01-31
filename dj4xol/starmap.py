@@ -118,7 +118,7 @@ class StarMap():
         """Render a game object on map using HTML"""
         x = object.x * self.MAP_SCALE + offset_x
         y = object.y * self.MAP_SCALE + offset_y
-        url = "?x=%i&y=%i&sel=%s" % (object.x, object.y, str(object))
+        url = "?x=%i&y=%i&sel=%s" % (object.x, object.y, object.short_id)
         html_class = class_override or self.resolve_html_class(object)
         name = object.name
         style = f"left:{x}px; top:{y}px;{extra_style}"
