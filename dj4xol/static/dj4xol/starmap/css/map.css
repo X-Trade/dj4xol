@@ -168,3 +168,8 @@
 .starmap-controls button:active {
     background: rgba(100, 100, 100, 0.9);
 }
+
+.starmap-controls button.active {
+    background: rgba(0, 100, 180, 0.9);
+    border-color: #4af;
+}
