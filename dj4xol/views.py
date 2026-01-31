@@ -42,9 +42,9 @@ def gamelist(request):
     })
 
 @registration_required()
-def join_game(request, game_id):
+def join_game(request, game_short_id):
     """Join a game with race selection."""
-    game = Game.objects.get(pk=game_id)
+    game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
 
     if game.players.filter(account=account).exists():
@@ -77,7 +77,7 @@ def join_game(request, game_id):
                 game.invitations.filter(
                     models.Q(account=account) | models.Q(email=account.email)
                 ).delete()
-                return redirect('dj4xol:game', game_id=game.pk)
+                return redirect('dj4xol:game', game_short_id=game.short_id)
             return render(request, 'dj4xol/forbidden.html', {
                 'message': 'Unable to join game.'
             })
@@ -90,11 +90,11 @@ def join_game(request, game_id):
     })
 
 @player_only_view()
-def starmap(request, game_id):
+def starmap(request, game_short_id):
     """
     A rudimentary map viewer.
     """
-    game = Game.objects.get(pk=game_id)
+    game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     # Get the Player instance for this account in this game
     player = Player.objects.filter(game=game, account=account).first()
@@ -126,9 +126,9 @@ def starmap(request, game_id):
 
 
 @player_only_view()
-def turn_in(request, game_id):
+def turn_in(request, game_short_id):
     """Mark player as turned in for quorum-based games."""
-    game = Game.objects.get(pk=game_id)
+    game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
 
@@ -145,13 +145,13 @@ def turn_in(request, game_id):
     if turn.check_quorum():
         turn.generate_turn()
 
-    return _redirect_preserving_selection(request, game_id)
+    return _redirect_preserving_selection(request, game)
 
 
 @player_only_view()
-def generate_turn(request, game_id):
+def generate_turn(request, game_short_id):
     """Generate turn for owner-controlled games."""
-    game = Game.objects.get(pk=game_id)
+    game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
 
     if game.turn_scheme != 'OWNER':
@@ -165,30 +165,30 @@ def generate_turn(request, game_id):
         })
 
     GameTurn(game).generate_turn()
-    return _redirect_preserving_selection(request, game_id)
+    return _redirect_preserving_selection(request, game)
 
 
 @player_only_view()
-def debug_colonize(request, game_id, star_id):
+def debug_colonize(request, game_short_id, star_short_id):
     """Debug: instantly colonize a star with 1000 colonists."""
     from .models import Star
-    game = Game.objects.get(pk=game_id)
+    game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
-    star = Star.objects.get(pk=star_id, game=game)
+    star = Star.objects.get(short_id=star_short_id, game=game)
 
     star.player = player
     star.colonists = 1000
     star.save()
 
-    return _redirect_preserving_selection(request, game_id)
+    return _redirect_preserving_selection(request, game)
 
 
 @player_only_view()
-def debug_create_fleet(request, game_id):
+def debug_create_fleet(request, game_short_id):
     """Debug: create a fleet at the current x/y location."""
     from .models import Fleet
-    game = Game.objects.get(pk=game_id)
+    game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
 
@@ -203,14 +203,14 @@ def debug_create_fleet(request, game_id):
         y=y,
     )
 
-    return _redirect_preserving_selection(request, game_id)
+    return _redirect_preserving_selection(request, game)
 
 
-def _redirect_preserving_selection(request, game_id):
+def _redirect_preserving_selection(request, game):
     """Redirect to game view, preserving x, y, sel query params."""
     from django.urls import reverse
     from urllib.parse import urlencode
-    url = reverse('dj4xol:game', kwargs={'game_id': game_id})
+    url = reverse('dj4xol:game', kwargs={'game_short_id': game.short_id})
     params = {k: request.POST.get(k) or request.GET.get(k)
               for k in ['x', 'y', 'sel'] if request.POST.get(k) or request.GET.get(k)}
     if params:
@@ -259,7 +259,7 @@ def create_game(request):
             game = factory.save()
             factory.join_player(account, d['race'])
             _create_invitations(game, form.parse_invitations())
-            return redirect('dj4xol:game', game_id=game.pk)
+            return redirect('dj4xol:game', game_short_id=game.short_id)
     else:
         form = NewGameForm(account)
     return render(request, 'dj4xol/create_game.html', {'form': form})

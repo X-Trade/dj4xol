@@ -1,5 +1,4 @@
 ============= MAIN TODO =============
-0. change to GUIDs. review universal resource string slug/identifier format
 1. fleet orders
 2. Mining
 3. Random events

@@ -19,7 +19,7 @@
                     {% if player.turned_in %}
                         <span class="status-done">Turned in</span>
                     {% else %}
-                        <form method="post" action="{% url 'dj4xol:turn_in' game.id %}" style="display:inline">
+                        <form method="post" action="{% url 'dj4xol:turn_in' game.short_id %}" style="display:inline">
                             {% csrf_token %}
                             {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
                             {% if selection.y %}<input type="hidden" name="y" value="{{ selection.y }}">{% endif %}
@@ -29,7 +29,7 @@
                     {% endif %}
                     ({{ game.players.all|length }} players)
                 {% elif game.turn_scheme == 'OWNER' and is_owner %}
-                    <form method="post" action="{% url 'dj4xol:generate_turn' game.id %}" style="display:inline">
+                    <form method="post" action="{% url 'dj4xol:generate_turn' game.short_id %}" style="display:inline">
                         {% csrf_token %}
                         {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
                         {% if selection.y %}<input type="hidden" name="y" value="{{ selection.y }}">{% endif %}

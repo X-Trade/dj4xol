@@ -2,3 +2,4 @@ Django>=1.11.18, < 1.12
 numpy
 ipython
 pyyaml
+uuid7

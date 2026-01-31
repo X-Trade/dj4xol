@@ -49,6 +49,8 @@ class GameFactory():
         self.game.save()
         for star in self.stars:
             star.game = self.game
+            if not star.short_id:
+                star.short_id = self.game.short_id[:4] + star.id.hex[-8:]
         Star.objects.bulk_create(self.stars)
         return self.game
     

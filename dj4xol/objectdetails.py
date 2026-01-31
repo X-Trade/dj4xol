@@ -34,7 +34,7 @@ class DetailBuilder():
     def build_detail(self):
         if self.selected_obj:
             detail = {'name': self.get_object_name(),
-                     'selected_id': str(self.selected_obj),
+                     'selected_id': self.selected_obj.short_id,
                      'objects_here': self.get_objects_here(),
                      'player': self.get_object_player(),
                      'is_owned': self.selected_obj.player == self.player if self.player else False,
@@ -44,18 +44,18 @@ class DetailBuilder():
                      'environmentals': self.build_environmental_detail(),
                      'resources': self.build_resource_detail(),
                      'is_star': isinstance(self.selected_obj, Star),
-                     'star_id': self.selected_obj.id if isinstance(self.selected_obj, Star) else None,
+                     'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                      }
         else:
             detail = None
         return detail
 
     def get_objects_here(self):
-        """Return list of (name, identifier) tuples for all objects at cursor."""
+        """Return list of (name, short_id) dicts for all objects at cursor."""
         result = []
         for obj in self.at_cursor:
             name = obj.name or f"{obj.__class__.__name__} {obj.id}"
-            result.append({'name': name, 'id': str(obj)})
+            result.append({'name': name, 'id': obj.short_id})
         return result
 
     def get_population(self):
@@ -116,14 +116,13 @@ class DetailBuilder():
 
     def process_selected(self, selected):
         if selected:
-            selected_name = selected.split(':')[1].lower()
-            selected_id = int(''.join(filter(str.isdigit, selected_name)))
-            selected_type = selected_name.split(str(selected_id)[:1])[0]
-            if selected_type == 'star':
-                self.selected_obj = Star.objects.get(pk=selected_id)
-            elif selected_type == 'fleet':
-                self.selected_obj = Fleet.objects.get(pk=selected_id)
-            self.check_selected()
+            short_id = selected.lower()
+            self.selected_obj = (
+                Star.objects.filter(game=self.game, short_id=short_id).first() or
+                Fleet.objects.filter(game=self.game, short_id=short_id).first()
+            )
+            if self.selected_obj:
+                self.check_selected()
         return self.selected_obj
 
     def check_selected(self):

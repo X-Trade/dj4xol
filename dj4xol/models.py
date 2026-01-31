@@ -5,6 +5,13 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from itertools import chain
 from .starnamer import StarNamer
 import random
+import uuid
+from uuid_extensions import uuid7 as _uuid7
+
+
+def uuid7():
+    """Wrapper for uuid7 to help Django migration serialization."""
+    return _uuid7()
 
 def random_resource_init():
     return random.randint(0, 100)
@@ -82,6 +89,20 @@ class HabitabilityMixin(models.Model):
             setattr(self, f'{env}_width', getattr(source, f'{env}_width'))
 
 
+class UUIDMixin(models.Model):
+    """Mixin providing UUID primary key and short_id for URL-friendly identification."""
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    short_id = models.CharField(max_length=12, editable=False, unique=True)
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        if not self.short_id:
+            self.short_id = self.id.hex[-8:]
+        super().save(*args, **kwargs)
+
+
 class ServerSettings(models.Model):
     key = models.CharField(max_length=30, primary_key=True, unique=True)
     value = models.CharField(max_length=30)
@@ -157,7 +178,7 @@ class Account(models.Model):
         return self.alias or '(new account)'
 
 
-class Game(models.Model):
+class Game(UUIDMixin):
     TURN_SCHEME_CHOICES = [
         ('QUORUM', 'Quorum - when all players are ready'),
         ('OWNER', 'Owner - when game owner triggers'),
@@ -187,7 +208,7 @@ class Game(models.Model):
     _star_namer = None
 
     def __str__(self):
-        return '%i %s' % (self.id, self.name)
+        return f'{self.short_id} {self.name}'
 
     def get_star_names(self):
         return [star["name"] for star in self.stars.values("name").all()]
@@ -204,12 +225,18 @@ class Game(models.Model):
         return self._star_namer
 
 
-class AbstractGameObject(models.Model):
+class AbstractGameObject(UUIDMixin):
     game = models.ForeignKey(Game, related_name="%(class)ss",
             on_delete=models.CASCADE)
 
     def __str__(self):
-        return 'Game%i:%s%i' % (self.game.id, self.__class__.__name__, self.id)
+        return self.short_id
+
+    def save(self, *args, **kwargs):
+        if not self.short_id:
+            # Combine game prefix (4 chars) + object suffix (8 chars) = 12 chars
+            self.short_id = self.game.short_id[:4] + self.id.hex[-8:]
+        super(UUIDMixin, self).save(*args, **kwargs)
 
     class Meta:
         abstract = True
@@ -319,8 +346,7 @@ class Star(AbstractMapObject):
     base_capacity = models.IntegerField(default=random_capacity_init)
 
 
-class ServerRace(HabitabilityMixin):
-    id = models.AutoField(primary_key=True)
+class ServerRace(UUIDMixin, HabitabilityMixin):
     name = models.CharField(max_length=16)
     plural_name = models.CharField(max_length=16)
     formal_name = models.CharField(max_length=32)
@@ -338,7 +364,6 @@ class ServerRace(HabitabilityMixin):
 
 class Player(AbstractGameObject, HabitabilityMixin):
     """A player instance in a game, with their chosen race."""
-    id = models.AutoField(primary_key=True)
     account = models.ForeignKey(Account, related_name="players",
                                 null=True, default=None,
                                 on_delete=models.SET_NULL)
@@ -388,7 +413,7 @@ class GameMessage(AbstractGameObject):
         super(GameMessage, self).save(*args, **kwargs)
 
 
-class GameInvitation(models.Model):
+class GameInvitation(UUIDMixin):
     """Invitation to join a game, by account or email."""
     game = models.ForeignKey(Game, related_name='invitations', on_delete=models.CASCADE)
     account = models.ForeignKey(Account, null=True, blank=True,
