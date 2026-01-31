@@ -1,6 +1,11 @@
-.starmap {
+/* Wrapper for starmap + controls overlay */
+.starmap-wrapper {
     position: relative;
-    border: 1px solid #ccc;
+    display: inline-block;
+}
+
+.starmap {
+    border: 1px solid #808080;
     background-color: black;
     color: white;
     padding: 5px;
@@ -49,10 +54,10 @@
     position: absolute;
 }
 .mapfleet {
-    height: 5px;
-    width: 5px;
+    height: 3px;
+    width: 3px;
     border: solid white;
-    border-width: 0 3px 3px 0;
+    border-width: 0 2px 2px 0;
     position: absolute;
 }
 
@@ -65,10 +70,10 @@
     position: absolute;
 }
 .mapfleet-owned {
-    height: 5px;
-    width: 5px;
+    height: 3px;
+    width: 3px;
     border: solid rgb(0, 255, 0);
-    border-width: 0 3px 3px 0;
+    border-width: 0 2px 2px 0;
     position: absolute;
 }
 
@@ -81,10 +86,10 @@
     position: absolute;
 }
 .mapfleet-enemy {
-    height: 5px;
-    width: 5px;
+    height: 3px;
+    width: 3px;
     border: solid rgb(255, 0, 0);
-    border-width: 0 3px 3px 0;
+    border-width: 0 2px 2px 0;
     position: absolute;
 }
 
@@ -95,4 +100,71 @@
     box-shadow: inset 0px 0px 3px #bbb;
     border-radius: 50%;
     position: absolute;
+}
+
+/* Satellite stars - smaller, darker versions */
+.mapstar-satellite {
+    height: 2px;
+    width: 2px;
+    background-color: #888;
+    border-radius: 50%;
+    position: absolute;
+    z-index: 1;
+}
+
+.mapstar-satellite-owned {
+    height: 2px;
+    width: 2px;
+    background-color: #009900;
+    border-radius: 50%;
+    position: absolute;
+    z-index: 1;
+}
+
+.mapstar-satellite-enemy {
+    height: 2px;
+    width: 2px;
+    background-color: #990000;
+    border-radius: 50%;
+    position: absolute;
+    z-index: 1;
+}
+
+/* Starmap controls overlay */
+.starmap-controls {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 100;
+}
+
+.starmap-controls a {
+    text-decoration: none;
+}
+
+.starmap-controls button {
+    width: 32px;
+    height: 32px;
+    background: rgba(40, 40, 40, 0.9);
+    border: 1px solid #666;
+    color: #fff;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.starmap-controls button:hover {
+    background: rgba(80, 80, 80, 0.9);
+    border-color: #888;
+}
+
+.starmap-controls button:active {
+    background: rgba(100, 100, 100, 0.9);
 }

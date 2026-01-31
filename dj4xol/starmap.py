@@ -127,22 +127,22 @@ class StarMap():
     def render_star(self, star, offset_x=0, offset_y=0, satellite=False, class_override=None):
         """Render a star object on map using HTML"""
         if satellite:
-            # Satellite stars are half size, darker shade of ownership color, behind main star
-            base_color = self._get_satellite_color(star)
-            extra_style = f" width:2px; height:2px; background-color:{base_color}; z-index:1;"
+            # Satellite stars use dedicated CSS classes
+            satellite_class = self._get_satellite_class(star)
+            return self.render_object(star, extra_style="", offset_x=offset_x, offset_y=offset_y, class_override=satellite_class)
         else:
             # Main star renders on top
             extra_style = " z-index:2;"
-        return self.render_object(star, extra_style=extra_style, offset_x=offset_x, offset_y=offset_y, class_override=class_override)
+            return self.render_object(star, extra_style=extra_style, offset_x=offset_x, offset_y=offset_y, class_override=class_override)
 
-    def _get_satellite_color(self, star):
-        """Get darker satellite color based on ownership."""
+    def _get_satellite_class(self, star):
+        """Get CSS class for satellite star based on ownership."""
         if star.player == self.player:
-            return "#006600"  # Dark green - owned
+            return "mapstar-satellite-owned"
         elif star.player is not None:
-            return "#660000"  # Dark red - enemy
+            return "mapstar-satellite-enemy"
         else:
-            return "#666666"  # Dark grey - unowned
+            return "mapstar-satellite"
 
     def render_fleet(self, fleet):
         """Render a fleet object on map using HTML with heading rotation"""

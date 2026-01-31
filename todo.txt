@@ -1,6 +1,8 @@
 ============= MAIN TODO =============
 0. change to GUIDs. review universal resource string slug/identifier format
-3. Events/Messages system
+1. 
+2. Mining
+3. Random events
 4. Event generation in turn generator
 6. Schedule based turn generation (generate a turn by cronjob)
 7. production orders
@@ -11,6 +13,12 @@
 
 =============== GUI =================
 1. Ship orders
-2. Home button (find homeworld)
-4. adaptive layout
 9. Python in the browser?
+
+=============== DONE ================
+- Home button (find homeworld) with per-game scroll/zoom persistence
+- Map zoom (mousewheel toward cursor, +/- buttons, 0.5x-3x range)
+- Responsive viewport-height layout
+- Satellite star rendering for multi-star systems
+- Fleet heading/direction indicators
+- Ownership colors (green/red/yellow/white)

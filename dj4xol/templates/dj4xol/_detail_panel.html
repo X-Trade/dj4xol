@@ -1,0 +1,55 @@
+{% load numbers %}
+<h2>Detail</h2>
+<div id="detail">
+    {% if detail.objects_here|length > 1 %}
+    <select class="detail-selector" onchange="window.location.href='?x={{ selection.x }}&y={{ selection.y }}&sel=' + this.value">
+        {% for obj in detail.objects_here %}
+        <option value="{{ obj.id }}" {% if obj.id == detail.selected_id %}selected{% endif %}>{{ obj.name }}</option>
+        {% endfor %}
+    </select>
+    {% else %}
+    <h3>{{ detail.name }}</h3>
+    {% endif %}
+    <hr>
+    <p>{% if detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: <span class="has-tooltip" data-tooltip="{{ detail.population|exact_pop }}">{{ detail.population|humanize_pop }}</span>{% if detail.population_change != None %} <span class="pop-change has-tooltip {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}" data-tooltip="{{ detail.population_change|exact_pop }}">({{ detail.population_change|humanize_pop_change }})</span>{% endif %}{% endif %}</p>
+    {% if detail.environmentals %}
+    <h4>Environmentals</h4>
+    {% for key, data in detail.environmentals.items %}
+    <div class="env-row">
+        <span class="env-label">{{ key }}</span>
+        <div class="env-bar" {% if data.hab_center_percent %}style="background: linear-gradient(to right, #400000 0%, #400000 {{ data.hab_min_percent }}%, #00ff00 {{ data.hab_center_percent }}%, #400000 {{ data.hab_max_percent }}%, #400000 100%);"{% endif %}>
+            <div class="env-marker {% if data.is_habitable %}habitable{% else %}uninhabitable{% endif %}" style="left: {{ data.percent }}%;"></div>
+        </div>
+        <span class="env-value">{{ data.display }}</span>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% if detail.resources %}
+    <h4>Resources</h4>
+    <ul>
+        {% for key, value in detail.resources.items %}
+        <li>{{ key }}: {{ value }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    <div class="debug-actions">
+        {% if detail.is_star %}
+        <form method="post" action="{% url 'dj4xol:debug_colonize' game.id detail.star_id %}" style="display:inline">
+            {% csrf_token %}
+            {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
+            {% if selection.y %}<input type="hidden" name="y" value="{{ selection.y }}">{% endif %}
+            {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
+            <button type="submit">Debug: Colonize (1000)</button>
+        </form>
+        {% endif %}
+        {% if selection.x and selection.y %}
+        <form method="post" action="{% url 'dj4xol:debug_create_fleet' game.id %}" style="display:inline">
+            {% csrf_token %}
+            <input type="hidden" name="x" value="{{ selection.x }}">
+            <input type="hidden" name="y" value="{{ selection.y }}">
+            {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
+            <button type="submit">Debug: Create Fleet</button>
+        </form>
+        {% endif %}
+    </div>
+</div>

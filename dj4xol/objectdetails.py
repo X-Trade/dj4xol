@@ -37,6 +37,7 @@ class DetailBuilder():
                      'selected_id': str(self.selected_obj),
                      'objects_here': self.get_objects_here(),
                      'player': self.get_object_player(),
+                     'is_owned': self.selected_obj.player == self.player if self.player else False,
                      'population': self.get_population(),
                      'population_change': self.get_population_change(),
                      'capacity': self.get_effective_capacity(),

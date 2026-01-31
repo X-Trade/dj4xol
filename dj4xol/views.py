@@ -110,6 +110,9 @@ def starmap(request, game_id):
     # Get messages for this player, most recent first
     messages = player.messages.order_by('-year', '-id') if player else []
 
+    # Get player's homeworld for home button
+    homeworld = player.homeworld if player else None
+
     return render(request, 'dj4xol/main.html', {
         'game': game,
         'player': player,
@@ -118,6 +121,7 @@ def starmap(request, game_id):
         'messages': messages,
         'is_owner': account == game.owner,
         'selection': {'x': x, 'y': y, 'sel': selected},
+        'homeworld': homeworld,
     })
 
 

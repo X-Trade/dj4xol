@@ -1,3 +1,16 @@
+/* Full viewport layout */
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+}
+
 /* Title bar */
 .title-bar {
     display: flex;
@@ -6,7 +19,7 @@
     padding: 8px 12px;
     background: #333;
     color: #fff;
-    margin-bottom: 10px;
+    flex-shrink: 0;
 }
 
 .title-bar .title {
@@ -40,25 +53,140 @@
     cursor: pointer;
 }
 
+/* Section headings */
+.columns h2 {
+    margin-top: 8px;
+    margin-bottom: 0;
+    padding: 8px;
+    border: 1px solid #808080;
+    border-bottom: none;
+    background-color: #e0e0e0;
+    border-top-right-radius: 6px;
+}
+
 /* Columnar layout */
 .columns {
     display: flex;
     gap: 20px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0 10px 10px 10px;
 }
 
 .column-left {
     flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .column-right {
     flex: 1;
     min-width: 300px;
-    max-width: 400px;
+    max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* Mobile responsive - stack columns */
+@media (max-width: 1000px) {
+    .columns {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .column-left {
+        flex: 0 0 auto;
+        overflow: visible;
+    }
+
+    .column-right {
+        max-width: none;
+        overflow: visible;
+    }
+
+    .messages-section {
+        min-height: 200px;
+        max-height: 300px;
+    }
+}
+
+/* Orders/Production panel */
+.orders-section {
+    flex: 0 0 auto;
+}
+
+.orders-panel {
+    border: 1px solid #808080;
+    padding: 10px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    max-height: 250px;
+}
+
+.orders-list {
+    flex: 1;
+    overflow-y: scroll;
+    margin-bottom: 10px;
+    min-height: 50px;
+    border: 1px solid #e0e0e0;
+    padding: 5px;
+}
+
+.orders-list::-webkit-scrollbar {
+    width: 12px;
+    display: block;
+}
+
+.orders-list::-webkit-scrollbar-track {
+    background: #f0f0f0;
+}
+
+.orders-list::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 6px;
+}
+
+.orders-list::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+}
+
+.orders-add {
+    display: flex;
+    gap: 5px;
+}
+
+.order-select {
+    flex: 1;
+}
+
+.order-add-btn {
+    padding: 4px 12px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.no-orders {
+    color: #888;
+    font-style: italic;
+}
+
+/* Messages section fills remaining space */
+.messages-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* Detail panel - matches starmap width */
 #detail {
-    width: 600px;
     border: 1px solid #808080;
     padding: 10px;
     box-sizing: border-box;
@@ -117,15 +245,37 @@
     border: 1px solid #808080;
     padding: 10px;
     box-sizing: border-box;
-    height: 300px;
+    flex: 1;
     display: flex;
     flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .messages-scroll {
     flex: 1;
     overflow-y: scroll;
-    padding-right: 5px;
+    padding: 5px;
+    border: 1px solid #e0e0e0;
+    min-height: 0;
+}
+
+.messages-scroll::-webkit-scrollbar {
+    width: 12px;
+    display: block;
+}
+
+.messages-scroll::-webkit-scrollbar-track {
+    background: #f0f0f0;
+}
+
+.messages-scroll::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 6px;
+}
+
+.messages-scroll::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
 }
 
 .message {
