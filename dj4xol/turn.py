@@ -130,6 +130,7 @@ class GameTurn():
     def _process_year(self):
         """Process a single year of game time."""
         self.fleet_movements()
+        self.terraforming()
         self.population_growth()
         self.clear_empty_planets()
         self.check_join_deadline()
@@ -261,6 +262,7 @@ class GameTurn():
         # Find stars that will be abandoned and notify their owners
         for star in self.game.stars.filter(colonists=0, player__isnull=False):
             self._create_colony_abandoned_message(star.player, star)
+            star.production_orders.all().delete()
             star.player = None
             star.save()
 
@@ -275,6 +277,44 @@ class GameTurn():
         """Close joining if past the deadline year."""
         if self.game.join_until_year and self.game.year >= self.game.join_until_year:
             self.game.joinable = False
+
+    def terraforming(self):
+        """Process terraforming orders for all colonized planets."""
+        from .models import Star
+        for star in Star.objects.filter(game=self.game, player__isnull=False):
+            for order in star.production_orders.all():
+                self._apply_terraform_order(star, order)
+
+    def _apply_terraform_order(self, star, order):
+        """Apply a single terraforming order.
+
+        Each turn moves 1% of the remaining distance toward the player's ideal.
+        This produces exponential decay that never quite reaches perfection.
+        Modifies the environmental value directly.
+        """
+        TERRAFORM_RATE = 0.01  # 1% of remaining distance per turn
+
+        env_map = {
+            'TERRAFORM_GRAVITY': ('gravity', star.player.gravity_center),
+            'TERRAFORM_TEMPERATURE': ('temperature', star.player.temperature_center),
+            'TERRAFORM_RADIATION': ('radiation', star.player.radiation_center),
+        }
+
+        if order.order_type not in env_map:
+            return
+
+        field, target = env_map[order.order_type]
+        current = getattr(star, field)
+
+        # Move 1% of the way from current to target
+        distance = target - current
+        new_value = current + distance * TERRAFORM_RATE
+
+        # Clamp to valid range
+        new_value = max(0.0, min(2.0, new_value))
+
+        setattr(star, field, new_value)
+        star.save()
 
 
 def apply_population_change(population, factor):

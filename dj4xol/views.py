@@ -218,6 +218,37 @@ def _redirect_preserving_selection(request, game):
     return redirect(url)
 
 
+@player_only_view()
+def add_production_order(request, game_short_id):
+    """Add a production order to a star."""
+    from .models import Star, ProductionOrder
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+
+    star_short_id = request.POST.get('star')
+    order_type = request.POST.get('order_type')
+
+    star = Star.objects.get(short_id=star_short_id, game=game, player=player)
+    ProductionOrder.objects.get_or_create(game=game, star=star, order_type=order_type)
+
+    return _redirect_preserving_selection(request, game)
+
+
+@player_only_view()
+def remove_production_order(request, game_short_id, order_short_id):
+    """Remove a production order."""
+    from .models import ProductionOrder
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+
+    order = ProductionOrder.objects.get(short_id=order_short_id, game=game, star__player=player)
+    order.delete()
+
+    return _redirect_preserving_selection(request, game)
+
+
 @registration_required()
 def create_race(request):
     """Create a new custom race template."""

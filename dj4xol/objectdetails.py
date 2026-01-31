@@ -45,6 +45,7 @@ class DetailBuilder():
                      'resources': self.build_resource_detail(),
                      'is_star': isinstance(self.selected_obj, Star),
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
+                     'production_orders': self.get_production_orders(),
                      }
         else:
             detail = None
@@ -170,3 +171,14 @@ class DetailBuilder():
                          'Germanium': self.selected_obj.germanium,
                         }
         return resources
+
+    def get_production_orders(self):
+        """Get production orders for selected star."""
+        if not self.selected_obj or not isinstance(self.selected_obj, Star):
+            return []
+        if not self.player or self.selected_obj.player != self.player:
+            return []
+        return [
+            {'short_id': o.short_id, 'type': o.order_type, 'display': o.get_order_type_display()}
+            for o in self.selected_obj.production_orders.order_by('position')
+        ]
