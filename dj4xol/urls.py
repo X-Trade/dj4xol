@@ -20,5 +20,7 @@ urlpatterns = [
     url(r'^(?P<game_short_id>[a-f0-9]{8})/generate/$', views.generate_turn, name='generate_turn'),
     url(r'^(?P<game_short_id>[a-f0-9]{8})/debug/colonize/(?P<star_short_id>[a-f0-9]{12})/$', views.debug_colonize, name='debug_colonize'),
     url(r'^(?P<game_short_id>[a-f0-9]{8})/debug/create-fleet/$', views.debug_create_fleet, name='debug_create_fleet'),
+    url(r'^(?P<game_short_id>[a-f0-9]{8})/production/add/$', views.add_production_order, name='add_production'),
+    url(r'^(?P<game_short_id>[a-f0-9]{8})/production/remove/(?P<order_short_id>[a-f0-9]{12})/$', views.remove_production_order, name='remove_production'),
 ]
 

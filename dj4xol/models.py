@@ -327,12 +327,6 @@ class Star(AbstractMapObject):
                                 validators=[MinValueValidator(0.0), MaxValueValidator(2.0)])
     radiation = models.FloatField(default=random_environmental_init,
                                 validators=[MinValueValidator(0.0), MaxValueValidator(2.0)])
-    gravity_adjustment = models.FloatField(default=0.0,
-                                validators=[MinValueValidator(-1.0), MaxValueValidator(1.0)])
-    temperature_adjustment = models.FloatField(default=0.0,
-                                validators=[MinValueValidator(-1.0), MaxValueValidator(1.0)])
-    radiation_adjustment = models.FloatField(default=0.0,
-                                validators=[MinValueValidator(-1.0), MaxValueValidator(1.0)])
 
     ironium = models.IntegerField(default=random_resource_init,
                                   validators=[MinValueValidator(0), MaxValueValidator(100)])
@@ -427,3 +421,20 @@ class GameInvitation(UUIDMixin):
     def __str__(self):
         target = self.account.alias if self.account else self.email
         return f'{self.game.name}: {target}'
+
+
+class ProductionOrder(AbstractGameObject):
+    """Production order for a star/planet."""
+    ORDER_TYPES = [
+        ('TERRAFORM_GRAVITY', 'Terraform Gravity (1%)'),
+        ('TERRAFORM_TEMPERATURE', 'Terraform Temperature (1%)'),
+        ('TERRAFORM_RADIATION', 'Terraform Radiation (1%)'),
+    ]
+
+    star = models.ForeignKey(Star, related_name='production_orders',
+            on_delete=models.CASCADE)
+    order_type = models.CharField(max_length=24, choices=ORDER_TYPES)
+    position = models.IntegerField(default=0)
+
+    class Meta:
+        unique_together = [['star', 'order_type']]

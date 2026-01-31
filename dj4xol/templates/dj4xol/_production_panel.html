@@ -2,13 +2,36 @@
     <h2>Production</h2>
     <div id="production" class="orders-panel">
         <div class="orders-list">
-            <p class="no-orders">No production orders.</p>
+            {% if detail.production_orders %}
+                {% for order in detail.production_orders %}
+                <div class="order-item">
+                    <span>{{ order.display }}</span>
+                    <form method="post" action="{% url 'dj4xol:remove_production' game.short_id order.short_id %}" style="display:inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="x" value="{{ selection.x }}">
+                        <input type="hidden" name="y" value="{{ selection.y }}">
+                        <input type="hidden" name="sel" value="{{ selection.sel }}">
+                        <button type="submit" class="order-remove-btn">×</button>
+                    </form>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="no-orders">No production orders.</p>
+            {% endif %}
         </div>
-        <div class="orders-add">
-            <select class="order-select">
+        <form method="post" action="{% url 'dj4xol:add_production' game.short_id %}" class="orders-add">
+            {% csrf_token %}
+            <input type="hidden" name="star" value="{{ detail.star_short_id }}">
+            <input type="hidden" name="x" value="{{ selection.x }}">
+            <input type="hidden" name="y" value="{{ selection.y }}">
+            <input type="hidden" name="sel" value="{{ selection.sel }}">
+            <select name="order_type" class="order-select">
                 <option value="">Select production...</option>
+                <option value="TERRAFORM_GRAVITY">Terraform Gravity (1%)</option>
+                <option value="TERRAFORM_TEMPERATURE">Terraform Temperature (1%)</option>
+                <option value="TERRAFORM_RADIATION">Terraform Radiation (1%)</option>
             </select>
-            <button type="button" class="order-add-btn">+</button>
-        </div>
+            <button type="submit" class="order-add-btn">+</button>
+        </form>
     </div>
 </div>
