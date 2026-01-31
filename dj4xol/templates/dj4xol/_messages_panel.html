@@ -1,0 +1,15 @@
+<div class="messages-section">
+    <h2>Messages</h2>
+    <div id="messages">
+        <div class="messages-scroll">
+            {% for msg in messages %}
+            <div class="message">
+                <span class="message-year">Year {{ msg.year }}</span>
+                <p class="message-text">{{ msg.message }}</p>
+            </div>
+            {% empty %}
+            <p class="no-messages">No messages yet.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>

@@ -1,16 +1,48 @@
 $("document").ready(function() {
     var $starmap = $("#starmap");
+    var $maparea = $("#maparea");
 
-    // Restore scroll position from localStorage
-    var posX = localStorage.getItem('posX');
-    var posY = localStorage.getItem('posY');
-    $starmap.scrollLeft(posX);
-    $starmap.scrollTop(posY);
+    // Storage key prefix based on game URL (path only, no query params)
+    var storageKey = 'starmap:' + window.location.pathname;
 
-    // Save scroll position before page unload
+    // Zoom state
+    var zoomLevel = 1.0;
+    var zoomMin = 0.5;
+    var zoomMax = 3.0;
+    var zoomStep = 0.25;
+
+    // Restore zoom from localStorage
+    var savedZoom = localStorage.getItem(storageKey + ':zoom');
+    if (savedZoom) {
+        zoomLevel = parseFloat(savedZoom);
+        applyZoom();
+    }
+
+    // Check if we have x,y in URL params - if so, center on that location
+    var urlParams = new URLSearchParams(window.location.search);
+    var urlX = urlParams.get('x');
+    var urlY = urlParams.get('y');
+
+    if (urlX !== null && urlY !== null) {
+        // Center on selected coordinates (multiply by MAP_SCALE=6)
+        var mapScale = 6;
+        var targetX = parseInt(urlX) * mapScale * zoomLevel;
+        var targetY = parseInt(urlY) * mapScale * zoomLevel;
+        $starmap.scrollLeft(targetX - $starmap.width() / 2);
+        $starmap.scrollTop(targetY - $starmap.height() / 2);
+    } else {
+        // Restore scroll position from localStorage
+        var posX = localStorage.getItem(storageKey + ':posX');
+        var posY = localStorage.getItem(storageKey + ':posY');
+        $starmap.scrollLeft(posX);
+        $starmap.scrollTop(posY);
+    }
+
+    // Save scroll position and zoom before page unload
     $(window).bind('beforeunload', function() {
-        localStorage.setItem('posX', $starmap.scrollLeft());
-        localStorage.setItem('posY', $starmap.scrollTop());
+        localStorage.setItem(storageKey + ':posX', $starmap.scrollLeft());
+        localStorage.setItem(storageKey + ':posY', $starmap.scrollTop());
+        localStorage.setItem(storageKey + ':zoom', zoomLevel);
     });
 
     // Click+drag scrolling
@@ -18,6 +50,8 @@ $("document").ready(function() {
     var startX, startY, scrollLeft, scrollTop;
 
     $starmap.on('mousedown', function(e) {
+        // Don't drag if clicking on a control or link
+        if ($(e.target).closest('.starmap-controls, a').length) return;
         isDragging = true;
         startX = e.pageX - $starmap.offset().left;
         startY = e.pageY - $starmap.offset().top;
@@ -38,5 +72,65 @@ $("document").ready(function() {
         var walkY = (y - startY);
         $starmap.scrollLeft(scrollLeft - walkX);
         $starmap.scrollTop(scrollTop - walkY);
+    });
+
+    // Zoom functions
+    function applyZoom() {
+        $maparea.css('transform', 'scale(' + zoomLevel + ')');
+        $maparea.css('transform-origin', '0 0');
+    }
+
+    function zoomTo(newZoom, viewportX, viewportY) {
+        // Clamp zoom level
+        newZoom = Math.max(zoomMin, Math.min(zoomMax, newZoom));
+        if (newZoom === zoomLevel) return;
+
+        // Default to viewport center if no position provided
+        if (viewportX === undefined) {
+            viewportX = $starmap.width() / 2;
+            viewportY = $starmap.height() / 2;
+        }
+
+        // Calculate point in content coordinates, then in unscaled coordinates
+        var contentX = viewportX + $starmap.scrollLeft();
+        var contentY = viewportY + $starmap.scrollTop();
+        var unscaledX = contentX / zoomLevel;
+        var unscaledY = contentY / zoomLevel;
+
+        // Apply new zoom
+        zoomLevel = newZoom;
+        applyZoom();
+
+        // Calculate new content position and adjust scroll to keep point under mouse
+        var newContentX = unscaledX * zoomLevel;
+        var newContentY = unscaledY * zoomLevel;
+        $starmap.scrollLeft(newContentX - viewportX);
+        $starmap.scrollTop(newContentY - viewportY);
+    }
+
+    // Zoom controls
+    $('#starmap-zoom-in').on('click', function(e) {
+        e.preventDefault();
+        zoomTo(zoomLevel + zoomStep);
+    });
+
+    $('#starmap-zoom-out').on('click', function(e) {
+        e.preventDefault();
+        zoomTo(zoomLevel - zoomStep);
+    });
+
+    // Home button is a regular navigation link - no JS handler needed
+
+    // Mousewheel zoom - zooms toward mouse position
+    $starmap.on('wheel', function(e) {
+        e.preventDefault();
+        var delta = e.originalEvent.deltaY > 0 ? -zoomStep : zoomStep;
+
+        // Get mouse position relative to starmap viewport
+        var offset = $starmap.offset();
+        var viewportX = (e.originalEvent.pageX || e.pageX) - offset.left;
+        var viewportY = (e.originalEvent.pageY || e.pageY) - offset.top;
+
+        zoomTo(zoomLevel + delta, viewportX, viewportY);
     });
 });
