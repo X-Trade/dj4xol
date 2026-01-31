@@ -285,6 +285,8 @@ class Fleet(AbstractMapObject):
     name = models.CharField(max_length=30)
     player = models.ForeignKey('Player', related_name='fleets',
             on_delete=models.CASCADE)
+    # Heading in degrees: 0 = north, 90 = east, 180 = south, 270 = west
+    heading = models.FloatField(default=0.0)
 
 
 class Star(AbstractMapObject):

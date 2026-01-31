@@ -1,5 +1,5 @@
 from datetime import timedelta
-from math import tanh
+from math import tanh, atan2, degrees
 from numpy import array as nparray, linalg
 from django.utils import timezone
 
@@ -186,6 +186,13 @@ class GameTurn():
         print("target:   %s" % (str(target)))
         print("vector:   %s" % (str(vector)))
         print("distance: %s" % (str(distance)))
+
+        # Calculate heading from movement direction (where they came from)
+        # 0 = north, 90 = east, 180 = south, 270 = west
+        dx, dy = vector[0], vector[1]
+        # atan2(dx, -dy) gives angle from north, add 180 to point back
+        fleet.heading = (degrees(atan2(dx, -dy)) + 180) % 360
+
         if int(distance) <= order.warpfactor:
             fleet.x = x
             fleet.y = y

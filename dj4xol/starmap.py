@@ -1,7 +1,9 @@
+from math import cos, sin, radians
 from .models import Game, Player, Fleet, Star
 
 class StarMap():
     MAP_SCALE = 5
+    MULTI_STAR_OFFSET = 0.25  # 25% of 1ly spacing
     HTML_STAR_CLASS = "mapstar"
     HTML_FLEET_CLASS = "mapfleet"
     CSS = """.mapstar {
@@ -65,19 +67,23 @@ class StarMap():
 
         return f'{html_class}{class_additional}'
 
-    def render_object(self, object):
+    def render_object(self, object, extra_style=""):
         """Render a game object on map using HTML"""
         x=object.x*self.MAP_SCALE
         y=object.y*self.MAP_SCALE
         url="?x=%i&y=%i&sel=%s" % (object.x, object.y, str(object))
         html_class = self.resolve_html_class(object)
         name = object.name
-        return f'<a href="{url}" title="{name}"><div class="{html_class}" style="left:{x}px; top:{y}px;"></div></a>'
+        style = f"left:{x}px; top:{y}px;{extra_style}"
+        return f'<a href="{url}" title="{name}"><div class="{html_class}" style="{style}"></div></a>'
 
     def render_star(self, star):
         """Render a star object on map using HTML"""
         return self.render_object(star)
 
     def render_fleet(self, fleet):
-        """Render a fleet object on map using HTML"""
-        return self.render_object(fleet)
+        """Render a fleet object on map using HTML with heading rotation"""
+        # Base rotation of -135deg makes heading 0 point north
+        rotation = -135 + fleet.heading
+        extra_style = f" transform: rotate({rotation}deg);"
+        return self.render_object(fleet, extra_style)
