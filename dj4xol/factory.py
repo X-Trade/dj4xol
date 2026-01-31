@@ -68,13 +68,16 @@ class GameFactory():
         self.game.map_size_y = y
         return self
 
-    def create_stars(self, stars, clusters=False):
+    def create_stars(self, stars, clusters=False, systems=False):
         if not (self.game.map_size_x or self.game.map_size_y):
             raise Exception("cannot add stars to game until map size is set")
         if clusters:
-            return self._create_star_clusters(stars)
+            self._create_star_clusters(stars)
         else:
-            return self._create_random_stars(stars)
+            self._create_random_stars(stars)
+        if systems:
+            self._add_systems()
+        return self
 
     def _create_random_stars(self, stars):
         """Create stars randomly in the game."""
@@ -99,7 +102,7 @@ class GameFactory():
         while created < stars:
             cluster_x = random.randint(min_x + 10, max_x - 10)
             cluster_y = random.randint(min_y + 10, max_y - 10)
-            for _ in range(1,system_size):
+            for _ in range(1, system_size):
                 name = self.starnamer.get_unique()
                 ofs_x = random.randint(-8, 8)
                 ofs_y = random.randint(-8, 8)
@@ -107,6 +110,22 @@ class GameFactory():
                 y = cluster_y + ofs_y
                 self.stars.append(Star(name=name, x=x, y=y))
                 created += 1
+        return self
+
+    def _add_systems(self):
+        """Add 1-5 companion stars to 25% of existing stars at the same coordinates.
+
+        Uses squared distribution so 1 companion is most common, 5 is rare.
+        """
+        num_systems = len(self.stars) // 4  # 25% of stars become systems
+        system_stars = random.sample(self.stars, num_systems)
+        for star in system_stars:
+            # Squared distribution: bias towards lower numbers
+            # random()**2 gives 0-1 biased towards 0, scale to 1-5
+            companions = int(1 + 4 * (random.random() ** 2))
+            for _ in range(companions):
+                name = self.starnamer.get_unique()
+                self.stars.append(Star(name=name, x=star.x, y=star.y))
         return self
     
     def _distance(self, star1, star2):

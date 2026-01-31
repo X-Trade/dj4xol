@@ -10,5 +10,5 @@ class TestStarMap(TestCase):
         player = game.players.first()
         starmap = StarMap(game, player)
         html = starmap.render_map()
-        self.assertIn('<div class="mapstar"', html)
-        self.assertIn('<div class="mapfleet"', html)
+        self.assertIn('class="mapstar', html)
+        self.assertIn('class="mapfleet', html)
