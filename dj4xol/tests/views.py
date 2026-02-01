@@ -1,6 +1,6 @@
 from django.test import TestCase, Client
 from django.urls import reverse
-from ..models import GameMessage
+from ..models import GameMessage, ProductionOrder
 from ..turn import GameTurn
 from ._util import default_game, get_default_user
 
@@ -102,3 +102,50 @@ class TestMessageFiltering(TestCase):
         # last_seen_year updated but messages_seen_year unchanged
         self.assertEqual(player.last_seen_year, 2405)
         self.assertEqual(player.messages_seen_year, 2404)
+
+
+class TestProductionOrders(TestCase):
+    def test_blank_production_order_not_created(self):
+        """Submitting blank order_type should not create a production order."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        user, account = get_default_user()
+        client = Client()
+        client.force_login(user)
+        initial_count = ProductionOrder.objects.filter(star=homeworld).count()
+        # Submit with blank order_type
+        response = client.post(
+            reverse('dj4xol:add_production', args=[game.short_id]),
+            {'star': homeworld.short_id, 'order_type': ''}
+        )
+        self.assertEqual(response.status_code, 302)  # Redirects
+        # No new order should be created
+        self.assertEqual(
+            ProductionOrder.objects.filter(star=homeworld).count(),
+            initial_count
+        )
+
+    def test_valid_production_order_created(self):
+        """Submitting valid order_type should create a production order."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        user, account = get_default_user()
+        client = Client()
+        client.force_login(user)
+        initial_count = ProductionOrder.objects.filter(star=homeworld).count()
+        # Submit with valid order_type
+        response = client.post(
+            reverse('dj4xol:add_production', args=[game.short_id]),
+            {'star': homeworld.short_id, 'order_type': 'TERRAFORM_GRAVITY'}
+        )
+        self.assertEqual(response.status_code, 302)  # Redirects
+        # New order should be created
+        self.assertEqual(
+            ProductionOrder.objects.filter(star=homeworld).count(),
+            initial_count + 1
+        )
+        # Verify the order type
+        order = ProductionOrder.objects.filter(star=homeworld).first()
+        self.assertEqual(order.order_type, 'TERRAFORM_GRAVITY')

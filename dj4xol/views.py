@@ -239,8 +239,9 @@ def add_production_order(request, game_short_id):
     star_short_id = request.POST.get('star')
     order_type = request.POST.get('order_type')
 
-    star = Star.objects.get(short_id=star_short_id, game=game, player=player)
-    ProductionOrder.objects.get_or_create(game=game, star=star, order_type=order_type)
+    if order_type:
+        star = Star.objects.get(short_id=star_short_id, game=game, player=player)
+        ProductionOrder.objects.get_or_create(game=game, star=star, order_type=order_type)
 
     return _redirect_preserving_selection(request, game)
 
@@ -329,16 +330,58 @@ def _create_invitations(game, invitations):
 @player_only_view()
 def message_history(request, game_short_id):
     """View full message history for a player."""
+    from django.core.paginator import Paginator
+    from .models import GameMessage
+
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
 
-    messages = player.messages.order_by('-year', '-id')[:1000] if player else []
+    if not player:
+        return render(request, 'dj4xol/message_history.html', {
+            'game': game,
+            'player': None,
+            'page_obj': None,
+        })
+
+    messages_qs = player.messages.order_by('-year', '-id')
+
+    # Filter by year
+    year_filter = request.GET.get('year')
+    if year_filter:
+        try:
+            messages_qs = messages_qs.filter(year=int(year_filter))
+        except ValueError:
+            pass
+
+    # Filter by category
+    category_filter = request.GET.get('category')
+    if category_filter:
+        messages_qs = messages_qs.filter(category=category_filter)
+
+    # Get available years and categories for filter dropdowns
+    all_years = player.messages.values_list('year', flat=True).distinct().order_by('-year')
+    categories = GameMessage.CATEGORY_CHOICES
+
+    # Paginate
+    from django.core.paginator import EmptyPage, PageNotAnInteger
+    paginator = Paginator(messages_qs, 50)
+    page_number = request.GET.get('page', 1)
+    try:
+        page_obj = paginator.page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
 
     return render(request, 'dj4xol/message_history.html', {
         'game': game,
         'player': player,
-        'messages': messages,
+        'page_obj': page_obj,
+        'all_years': all_years,
+        'categories': categories,
+        'current_year': year_filter,
+        'current_category': category_filter,
     })
 
 

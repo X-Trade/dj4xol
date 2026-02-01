@@ -5,8 +5,11 @@
         <title>Messages - {{ game.name }}</title>
         <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
         <style>
-            body {
+            html, body {
                 overflow: auto;
+                height: auto;
+            }
+            body {
                 padding: 20px;
             }
             .message-history {
@@ -16,9 +19,61 @@
             .back-link {
                 margin-bottom: 20px;
             }
+            .filters {
+                display: flex;
+                gap: 15px;
+                margin-bottom: 15px;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+            .filters label {
+                font-weight: bold;
+            }
+            .filters select {
+                padding: 4px 8px;
+            }
+            .filters a {
+                font-size: 0.9em;
+            }
             .message-list {
                 border: 1px solid #808080;
                 padding: 10px;
+            }
+            .message-category {
+                font-size: 0.75em;
+                padding: 2px 6px;
+                border-radius: 3px;
+                background: #e0e0e0;
+                margin-left: 10px;
+            }
+            .message-category.RANDOM { background: #ffe0b0; }
+            .message-category.ENVIRONMENTAL { background: #b0e0b0; }
+            .message-category.POPULATION { background: #b0d0ff; }
+            .message-category.DIPLOMATIC { background: #e0b0e0; }
+            .message-category.COMBAT { background: #ffb0b0; }
+            .message-category.PRODUCTION { background: #d0d0d0; }
+            .pagination {
+                display: flex;
+                gap: 10px;
+                justify-content: center;
+                margin-top: 20px;
+                flex-wrap: wrap;
+            }
+            .pagination a, .pagination span {
+                padding: 5px 10px;
+                border: 1px solid #ccc;
+                text-decoration: none;
+            }
+            .pagination a:hover {
+                background: #f0f0f0;
+            }
+            .pagination .current {
+                background: #333;
+                color: #fff;
+                border-color: #333;
+            }
+            .pagination .disabled {
+                color: #999;
             }
         </style>
     </head>
@@ -28,17 +83,81 @@
                 <a href="{% url 'dj4xol:game' game.short_id %}">&larr; Back to game</a>
             </div>
             <h1>Message History - {{ game.name }}</h1>
-            <p>Showing up to 1000 most recent messages.</p>
+
+            <div class="filters">
+                <label>Year:</label>
+                <select onchange="applyFilters();" id="year-filter">
+                    <option value="">All years</option>
+                    {% for year in all_years %}
+                    <option value="{{ year }}" {% if current_year == year|stringformat:"d" %}selected{% endif %}>{{ year }}</option>
+                    {% endfor %}
+                </select>
+
+                <label>Category:</label>
+                <select onchange="applyFilters();" id="category-filter">
+                    <option value="">All categories</option>
+                    {% for code, name in categories %}
+                    <option value="{{ code }}" {% if current_category == code %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+
+                {% if current_year or current_category %}
+                <a href="{% url 'dj4xol:message_history' game.short_id %}">Clear filters</a>
+                {% endif %}
+            </div>
+
+            <script>
+                function applyFilters() {
+                    var year = document.getElementById('year-filter').value;
+                    var category = document.getElementById('category-filter').value;
+                    var params = new URLSearchParams();
+                    if (year) params.set('year', year);
+                    if (category) params.set('category', category);
+                    window.location.search = params.toString();
+                }
+            </script>
+
+            {% if page_obj %}
+            <p>
+                Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }} messages.
+            </p>
             <div class="message-list">
-                {% for msg in messages %}
+                {% for msg in page_obj %}
                 <div class="message">
                     <span class="message-year">Year {{ msg.year }}</span>
+                    <span class="message-category {{ msg.category }}">{{ msg.get_category_display }}</span>
                     <p class="message-text">{{ msg.message|safe }}</p>
                 </div>
                 {% empty %}
-                <p class="no-messages">No messages yet.</p>
+                <p class="no-messages">No messages found.</p>
                 {% endfor %}
             </div>
+
+            {% if page_obj.has_other_pages %}
+            <div class="pagination">
+                {% if page_obj.has_previous %}
+                <a href="?page=1{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}">&laquo; First</a>
+                <a href="?page={{ page_obj.previous_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}">&lsaquo; Prev</a>
+                {% else %}
+                <span class="disabled">&laquo; First</span>
+                <span class="disabled">&lsaquo; Prev</span>
+                {% endif %}
+
+                <span class="current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+
+                {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}">Next &rsaquo;</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}">Last &raquo;</a>
+                {% else %}
+                <span class="disabled">Next &rsaquo;</span>
+                <span class="disabled">Last &raquo;</span>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% else %}
+            <p class="no-messages">No messages yet.</p>
+            {% endif %}
         </div>
     </body>
 </html>
