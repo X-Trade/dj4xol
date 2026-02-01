@@ -117,6 +117,11 @@ class NewGameForm(forms.Form):
         max_value=100,
         initial=1
     )
+    random_events = forms.BooleanField(
+        label="Random Events",
+        required=False,
+        help_text="Enable random events affecting colonies"
+    )
     race = forms.ModelChoiceField(
         label="Play as Race",
         queryset=ServerRace.objects.none()

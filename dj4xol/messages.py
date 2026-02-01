@@ -175,3 +175,129 @@ class ColonyAbandonedMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(star=self.star.name)
+
+
+class PlanetoidEventMessageFactory(MessageFactory):
+    """Messages for rogue planetoid environmental effects."""
+    templates = [
+        "A rogue planetoid passed through the {star} system and {adverb} {verb} planetary conditions.",
+        "Gravitational effects from an uncharted body {adverb} {verb} the environment on {star}.",
+        "A comet's near-miss {adverb} {verb} atmospheric conditions on {star}.",
+    ]
+    POSITIVE_ADVERBS = ['slightly', 'mildly', 'noticeably', 'considerably', 'significantly']
+    NEGATIVE_ADVERBS = ['slightly', 'mildly', 'severely', 'wildly', 'devastatingly']
+
+    def __init__(self, game, player, star, message=None, intensity=0.0):
+        super().__init__(game, player, message, intensity)
+        self.star = star
+
+    def _format_adverb(self):
+        adverbs = self.POSITIVE_ADVERBS if self.intensity >= 0 else self.NEGATIVE_ADVERBS
+        return weighted_random_choice(adverbs, self._get_abs_intensity(), 1)
+
+    def _format_verb(self):
+        if self.intensity >= 0:
+            return random.choice(['improved', 'enhanced', 'stabilized', 'benefited'])
+        else:
+            return random.choice(['disrupted', 'destabilized', 'altered', 'degraded'])
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=self.star.name,
+            adverb=self._format_adverb(),
+            verb=self._format_verb()
+        )
+
+
+class PopulationBoomMessageFactory(MessageFactory):
+    """Messages for population boom events."""
+    templates = [
+        "Unusual solar conditions on {star} coincided with a population surge of {qty:,} colonists.",
+        "An unexplained birth rate spike on {star} produced {qty:,} additional colonists.",
+        "Favourable cosmic radiation levels on {star} were linked to {qty:,} unexpected births.",
+    ]
+
+    def __init__(self, game, player, star, qty, message=None):
+        super().__init__(game, player, message, intensity=0.4)
+        self.star = star
+        self.qty = qty
+
+    def format_message(self):
+        return random.choice(self.templates).format(star=self.star.name, qty=self.qty)
+
+
+class MiningDiscoveryMessageFactory(MessageFactory):
+    """Messages for resource discoveries."""
+    templates = [
+        "A meteor impact on {star} exposed {qty} units of {resource}.",
+        "Seismic activity on {star} revealed deposits of {qty} {resource}.",
+        "Volcanic activity on {star} brought {qty} units of {resource} to the surface.",
+    ]
+
+    def __init__(self, game, player, star, qty, resource, message=None):
+        super().__init__(game, player, message, intensity=0.3)
+        self.star = star
+        self.qty = qty
+        self.resource = resource
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=self.star.name,
+            qty=self.qty,
+            resource=self.resource
+        )
+
+
+class ColonyVanishedMessageFactory(MessageFactory):
+    """Messages for mysterious colony disappearance (extreme negative)."""
+    templates = [
+        "The colony on {star} went dark without warning and survey ships found all structures intact but empty.",
+        "Contact with {star} was lost and rescue teams found the colony abandoned with no survivors or explanation.",
+        "The population of {star} vanished after an anomalous energy signature was detected.",
+    ]
+
+    def __init__(self, game, player, star, message=None):
+        super().__init__(game, player, message, intensity=-1.0)
+        self.star = star
+
+    def format_message(self):
+        return random.choice(self.templates).format(star=self.star.name)
+
+
+class MiningAccidentDeathsMessageFactory(MessageFactory):
+    """Messages for mining accidents with colonist deaths."""
+    templates = [
+        "An industrial accident on {star} claimed {qty:,} lives.",
+        "A seismic event on {star} caused a mine collapse that killed {qty:,} colonists.",
+        "An equipment failure on {star} resulted in {qty:,} deaths.",
+    ]
+
+    def __init__(self, game, player, star, qty, message=None):
+        super().__init__(game, player, message, intensity=-0.4)
+        self.star = star
+        self.qty = qty
+
+    def format_message(self):
+        return random.choice(self.templates).format(star=self.star.name, qty=self.qty)
+
+
+class MiningAccidentResourcesMessageFactory(MessageFactory):
+    """Messages for mining accidents with resource loss."""
+    templates = [
+        "A storage facility breach on {star} resulted in the loss of {qty} units of {resource}.",
+        "Volcanic activity on {star} destroyed {qty} {resource} in storage.",
+        "An equipment malfunction on {star} resulted in the loss of {qty} {resource}.",
+    ]
+
+    def __init__(self, game, player, star, qty, resource, message=None):
+        super().__init__(game, player, message, intensity=-0.3)
+        self.star = star
+        self.qty = qty
+        self.resource = resource
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=self.star.name,
+            qty=self.qty,
+            resource=self.resource
+        )

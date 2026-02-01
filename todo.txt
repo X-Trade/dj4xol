@@ -1,8 +1,8 @@
 ============= MAIN TODO =============
 1. fleet orders
-2. Mining
-3. Random events
-4. Event generation in turn generator
+3. Mining
+4. Random events
+5. Event generation in turn generator
 6. Schedule based turn generation (generate a turn by cronjob)
 7. production orders
 8. more comprehensive unit testing
