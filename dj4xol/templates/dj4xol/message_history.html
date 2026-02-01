@@ -33,7 +33,7 @@
                 {% for msg in messages %}
                 <div class="message">
                     <span class="message-year">Year {{ msg.year }}</span>
-                    <p class="message-text">{{ msg.message }}</p>
+                    <p class="message-text">{{ msg.message|safe }}</p>
                 </div>
                 {% empty %}
                 <p class="no-messages">No messages yet.</p>

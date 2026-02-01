@@ -303,8 +303,12 @@ class TestRandomEvents(TestCase):
         turn._apply_population_boom(homeworld)
         homeworld.refresh_from_db()
         self.assertGreater(homeworld.colonists, initial_pop)
-        # Check message was created
-        self.assertTrue(player.messages.filter(message__icontains='colonist').exists())
+        # Check message was created (contains 'colonist' or 'births')
+        msg = player.messages.order_by('-id').first()
+        self.assertTrue(
+            'colonist' in msg.message.lower() or 'births' in msg.message.lower(),
+            f"Expected population message, got: {msg.message}"
+        )
 
     def test_mining_discovery_increases_resources(self):
         """Mining discovery should increase a resource."""
