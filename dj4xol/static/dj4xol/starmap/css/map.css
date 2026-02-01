@@ -175,3 +175,30 @@
     background: rgba(0, 100, 180, 0.9);
     border-color: #4af;
 }
+
+/* Locate animation - shrinking ring to highlight a position */
+.locate-ring {
+    position: absolute;
+    border: 3px solid #4af;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: locate-shrink 1s ease-out forwards;
+    z-index: 50;
+}
+
+@keyframes locate-shrink {
+    0% {
+        width: 200px;
+        height: 200px;
+        margin-left: -100px;
+        margin-top: -100px;
+        opacity: 1;
+    }
+    100% {
+        width: 10px;
+        height: 10px;
+        margin-left: -5px;
+        margin-top: -5px;
+        opacity: 0;
+    }
+}
