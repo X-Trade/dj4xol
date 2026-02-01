@@ -399,10 +399,21 @@ class FleetOrders(AbstractGameObject):
 
 
 class GameMessage(AbstractGameObject):
+    CATEGORY_CHOICES = [
+        ('GENERAL', 'General'),
+        ('DIPLOMATIC', 'Diplomatic'),
+        ('ENVIRONMENTAL', 'Environmental'),
+        ('POPULATION', 'Population'),
+        ('RANDOM', 'Random Event'),
+        ('COMBAT', 'Combat'),
+        ('PRODUCTION', 'Production'),
+    ]
+
     player = models.ForeignKey(Player, related_name='messages',
             on_delete=models.CASCADE)
     message = models.TextField()
     year = models.IntegerField()
+    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default='GENERAL')
 
     def save(self, *args, **kwargs):
         if self.year is None:

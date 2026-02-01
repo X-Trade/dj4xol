@@ -6,8 +6,10 @@ from django.utils.html import escape
 
 def map_object_link(obj):
     """Format a map object (Star/Fleet) as a clickable link."""
+    from django.urls import reverse
     name = escape(obj.name)
-    return f'<a href="?x={obj.x}&y={obj.y}&sel={obj.short_id}">{name}</a>'
+    base_url = reverse('dj4xol:game', args=[obj.game.short_id])
+    return f'<a href="{base_url}?x={obj.x}&y={obj.y}&sel={obj.short_id}">{name}</a>'
 
 
 def weighted_random_choice(choices, offset, window_size=1):
@@ -42,6 +44,7 @@ class MessageFactory():
     game = None
     player = None
     intensity = 0.0
+    category = 'GENERAL'
 
     def __init__(self, game, player, message=None, intensity=0.0):
         if not message:
@@ -62,6 +65,7 @@ class MessageFactory():
         message = GameMessage()
         message.game = self.game
         message.player = self.player
+        message.category = self.category
         self.message = message
         return self.get_message(intensity=intensity)
 
@@ -105,6 +109,7 @@ class MessageFactory():
 
 
 class DiplomaticMessageFactory(MessageFactory):
+    category = 'DIPLOMATIC'
     templates = ["A representative of {race_formal} was recieved and {adverb} {verb}.",
                  "A representative was dispatched to {race_formal} and was {adverb} {verb}.",
                  "A delegation was received by {race_formal}. They were {adverb} {verb}.",
@@ -125,6 +130,7 @@ class DiplomaticMessageFactory(MessageFactory):
 
 class EnvironmentalDeathMessageFactory(MessageFactory):
     """Messages for colonist deaths due to uninhabitable environmental conditions."""
+    category = 'ENVIRONMENTAL'
     templates = [
         "{deaths:,} colonists perished on {star} due to harsh environmental conditions.",
         "{deaths:,} colonists on {star} succumbed to the hostile environment.",
@@ -147,6 +153,7 @@ class EnvironmentalDeathMessageFactory(MessageFactory):
 
 class OvercrowdingDeathMessageFactory(MessageFactory):
     """Messages for colonist deaths due to overcrowding/exceeding capacity."""
+    category = 'POPULATION'
     templates = [
         "{deaths:,} colonists on {star} perished due to overcrowding.",
         "Overcrowding on {star} led to the deaths of {deaths:,} colonists.",
@@ -169,6 +176,7 @@ class OvercrowdingDeathMessageFactory(MessageFactory):
 
 class ColonyAbandonedMessageFactory(MessageFactory):
     """Messages for when a colony is completely depopulated."""
+    category = 'POPULATION'
     templates = [
         "Your colony on {star} has been abandoned.",
         "The last colonists have departed {star}. The colony is no more.",
@@ -187,6 +195,7 @@ class ColonyAbandonedMessageFactory(MessageFactory):
 
 class PlanetoidEventMessageFactory(MessageFactory):
     """Messages for rogue planetoid environmental effects."""
+    category = 'RANDOM'
     templates = [
         "A rogue planetoid passed through the {star} system and {adverb} {verb} planetary conditions.",
         "Gravitational effects from an uncharted body {adverb} {verb} the environment on {star}.",
@@ -219,6 +228,7 @@ class PlanetoidEventMessageFactory(MessageFactory):
 
 class PopulationBoomMessageFactory(MessageFactory):
     """Messages for population boom events."""
+    category = 'RANDOM'
     templates = [
         "Unusual solar conditions on {star} coincided with a population surge of {qty:,} colonists.",
         "An unexplained birth rate spike on {star} produced {qty:,} additional colonists.",
@@ -236,6 +246,7 @@ class PopulationBoomMessageFactory(MessageFactory):
 
 class MiningDiscoveryMessageFactory(MessageFactory):
     """Messages for resource discoveries."""
+    category = 'RANDOM'
     templates = [
         "A meteor impact on {star} exposed {qty} units of {resource}.",
         "Seismic activity on {star} revealed deposits of {qty} {resource}.",
@@ -258,6 +269,7 @@ class MiningDiscoveryMessageFactory(MessageFactory):
 
 class ColonyVanishedMessageFactory(MessageFactory):
     """Messages for mysterious colony disappearance (extreme negative)."""
+    category = 'RANDOM'
     templates = [
         "The colony on {star} went dark without warning and survey ships found all structures intact but empty.",
         "Contact with {star} was lost and rescue teams found the colony abandoned with no survivors or explanation.",
@@ -274,6 +286,7 @@ class ColonyVanishedMessageFactory(MessageFactory):
 
 class MiningAccidentDeathsMessageFactory(MessageFactory):
     """Messages for mining accidents with colonist deaths."""
+    category = 'RANDOM'
     templates = [
         "An industrial accident on {star} claimed {qty:,} lives.",
         "A seismic event on {star} caused a mine collapse that killed {qty:,} colonists.",
@@ -291,6 +304,7 @@ class MiningAccidentDeathsMessageFactory(MessageFactory):
 
 class MiningAccidentResourcesMessageFactory(MessageFactory):
     """Messages for mining accidents with resource loss."""
+    category = 'RANDOM'
     templates = [
         "A storage facility breach on {star} resulted in the loss of {qty} units of {resource}.",
         "Volcanic activity on {star} destroyed {qty} {resource} in storage.",

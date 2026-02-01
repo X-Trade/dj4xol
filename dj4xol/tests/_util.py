@@ -27,11 +27,13 @@ def get_default_race():
 
 def get_default_user():
     """Get or create a default user and account for testing."""
-    user, _ = User.objects.get_or_create(
+    user, created = User.objects.get_or_create(
         username='default_user',
         defaults={'email': 'test@example.com'}
     )
-    user.set_password('test')
+    if created:
+        user.set_password('test')
+        user.save()
     account, _ = Account.objects.get_or_create(django_user=user)
     return user, account
 
