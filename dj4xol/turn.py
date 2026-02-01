@@ -13,6 +13,8 @@ from .messages import (
     ColonyVanishedMessageFactory,
     MiningAccidentDeathsMessageFactory,
     MiningAccidentResourcesMessageFactory,
+    FleetBuiltMessageFactory,
+    FleetLostMessageFactory,
 )
 import random
 
@@ -140,7 +142,9 @@ class GameTurn():
     def _process_year(self):
         """Process a single year of game time."""
         self.fleet_movements()
+        self.check_lost_fleets()
         self.terraforming()
+        self.production()
         self.population_growth()
         self.random_events()
         self.clear_empty_planets()
@@ -177,6 +181,22 @@ class GameTurn():
         for fleet in self.game.fleets.all():
             self.move_fleet(fleet).save()
 
+    def check_lost_fleets(self):
+        """Remove fleets that have moved beyond map boundaries."""
+        max_x = self.game.map_size_x
+        max_y = self.game.map_size_y
+        for fleet in self.game.fleets.all():
+            if fleet.x < 0 or fleet.x >= max_x or fleet.y < 0 or fleet.y >= max_y:
+                self._create_fleet_lost_message(fleet)
+                fleet.delete()
+
+    def _create_fleet_lost_message(self, fleet):
+        """Create a message for a fleet lost beyond map boundaries."""
+        factory = FleetLostMessageFactory(self.game, fleet.player, fleet.name)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
     def move_fleet(self, fleet):
         order = fleet.orders.first()  # this is the current order
         if not order:
@@ -202,11 +222,11 @@ class GameTurn():
         print("vector:   %s" % (str(vector)))
         print("distance: %s" % (str(distance)))
 
-        # Calculate heading from movement direction (where they came from)
+        # Calculate heading from movement direction (where it's going)
         # 0 = north, 90 = east, 180 = south, 270 = west
         dx, dy = vector[0], vector[1]
-        # atan2(dx, -dy) gives angle from north, add 180 to point back
-        fleet.heading = (degrees(atan2(dx, -dy)) + 180) % 360
+        # atan2(dx, -dy) gives angle from north toward target
+        fleet.heading = degrees(atan2(dx, -dy)) % 360
 
         if int(distance) <= order.warpfactor:
             fleet.x = x
@@ -298,6 +318,40 @@ class GameTurn():
         for star in Star.objects.filter(game=self.game, player__isnull=False):
             for order in star.production_orders.all():
                 self._apply_terraform_order(star, order)
+
+    def production(self):
+        """Process production orders for all colonized planets."""
+        from .models import Star
+        for star in Star.objects.filter(game=self.game, player__isnull=False):
+            for order in list(star.production_orders.all()):
+                if order.order_type == 'BUILD_FLEET':
+                    self._build_fleet(star, order)
+
+    def _build_fleet(self, star, order):
+        """Build a fleet at the given star and create notification."""
+        from .models import Fleet
+        player = star.player
+
+        # Auto-generate fleet name
+        fleet_count = player.fleets.count() + 1
+        fleet_name = f"{player.name} Fleet {fleet_count}"
+
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=player,
+            name=fleet_name,
+            x=star.x,
+            y=star.y,
+        )
+
+        # Create notification message
+        factory = FleetBuiltMessageFactory(self.game, player, star, fleet)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+        # Delete the production order
+        order.delete()
 
     def _apply_terraform_order(self, star, order):
         """Apply a single terraforming order.

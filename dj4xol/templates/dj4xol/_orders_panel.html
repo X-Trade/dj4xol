@@ -2,13 +2,83 @@
     <h2>Orders</h2>
     <div id="orders" class="orders-panel">
         <div class="orders-list">
-            <p class="no-orders">No orders.</p>
+            {% if detail.fleet_orders %}
+                {% for order in detail.fleet_orders %}
+                <div class="order-item">
+                    <span>Warp {{ order.warpfactor }} to {{ order.target }}</span>
+                    <form method="post" action="{% url 'dj4xol:remove_fleet_order' game.short_id order.short_id %}" style="display:inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="x" value="{{ selection.x }}">
+                        <input type="hidden" name="y" value="{{ selection.y }}">
+                        <input type="hidden" name="sel" value="{{ selection.sel }}">
+                        <button type="submit" class="order-remove-btn">&times;</button>
+                    </form>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="no-orders">No orders queued.</p>
+            {% endif %}
         </div>
-        <div class="orders-add">
-            <select class="order-select">
-                <option value="">Select order...</option>
-            </select>
-            <button type="button" class="order-add-btn">+</button>
-        </div>
+
+        <form method="post" action="{% url 'dj4xol:add_fleet_order' game.short_id %}" class="order-draft">
+            {% csrf_token %}
+            <input type="hidden" name="fleet" value="{{ detail.fleet_short_id }}">
+            <input type="hidden" name="target_star" value="{{ dest_star_id|default:'' }}">
+            <input type="hidden" name="target_x" value="{{ dest_x|default:'' }}">
+            <input type="hidden" name="target_y" value="{{ dest_y|default:'' }}">
+            <input type="hidden" name="x" value="{{ selection.x }}">
+            <input type="hidden" name="y" value="{{ selection.y }}">
+            <input type="hidden" name="sel" value="{{ selection.sel }}">
+            <input type="hidden" name="warpfactor" id="warpfactor-input" value="5">
+
+            <div class="order-type-row">
+                <select id="order-type" class="order-select">
+                    <option value="move_to" selected>Move to</option>
+                </select>
+                <button type="submit" class="order-add-btn" {% if not dest_star_id and not dest_x %}disabled{% endif %}>+</button>
+            </div>
+
+            <div class="order-params">
+                <div class="order-param-row">
+                    <label>Destination</label>
+                    <div class="dest-display-row">
+                        <span id="dest-display" class="dest-display">
+                            {% if dest_star_name %}
+                                {{ dest_star_name }}
+                            {% elif dest_x and dest_y %}
+                                Empty Space ({{ dest_x }}, {{ dest_y }})
+                            {% else %}
+                                <em>None selected</em>
+                            {% endif %}
+                        </span>
+                        <a href="?mode=select_destination&fleet={{ detail.fleet_short_id }}&x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}" class="dest-set-btn">Set</a>
+                    </div>
+                </div>
+
+                <div class="order-param-row">
+                    <label for="warp-slider">Speed</label>
+                    <div class="speed-row">
+                        <input type="range" id="warp-slider" min="0" max="13" value="5" class="warp-slider">
+                        <span id="warp-value" class="warp-value">Warp 5</span>
+                    </div>
+                </div>
+            </div>
+        </form>
     </div>
 </div>
+
+<script>
+(function() {
+    var slider = document.getElementById('warp-slider');
+    var display = document.getElementById('warp-value');
+    var hidden = document.getElementById('warpfactor-input');
+
+    if (slider && display && hidden) {
+        slider.addEventListener('input', function() {
+            var val = this.value;
+            display.textContent = val === '0' ? 'Stopped' : 'Warp ' + val;
+            hidden.value = val;
+        });
+    }
+})();
+</script>

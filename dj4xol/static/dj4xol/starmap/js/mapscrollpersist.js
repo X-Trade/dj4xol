@@ -1,3 +1,24 @@
+// Global function for destination selection mode (called from star link onclick)
+function submitDestination(starId, x, y) {
+    // Get current URL params and update with destination
+    var params = new URLSearchParams(window.location.search);
+    params.delete('mode');  // Exit destination mode
+    params.set('dest_star', starId);
+    params.delete('dest_x');
+    params.delete('dest_y');
+    window.location.search = params.toString();
+}
+
+// Submit coordinate-based destination (for empty space clicks)
+function submitCoordinateDestination(x, y) {
+    var params = new URLSearchParams(window.location.search);
+    params.delete('mode');  // Exit destination mode
+    params.delete('dest_star');
+    params.set('dest_x', x);
+    params.set('dest_y', y);
+    window.location.search = params.toString();
+}
+
 $("document").ready(function() {
     var $starmap = $("#starmap");
     var $maparea = $("#maparea");
@@ -198,6 +219,33 @@ $("document").ready(function() {
 
         zoomTo(zoomLevel + delta, viewportX, viewportY);
     });
+
+    // Destination mode: click on empty space to set coordinates
+    var destMode = $maparea.data('dest-mode') === true || $maparea.data('dest-mode') === 'true';
+    if (destMode) {
+        $maparea.on('click', function(e) {
+            // Let star links handle themselves (they call submitDestination via onclick)
+            if ($(e.target).closest('a').length) return;
+
+            // Calculate map coordinates from click position
+            // Account for zoom level and border offset
+            var offset = $maparea.offset();
+            var clickX = e.pageX - offset.left;
+            var clickY = e.pageY - offset.top;
+
+            // Divide by zoom to get unscaled pixel position
+            var unscaledX = clickX / zoomLevel;
+            var unscaledY = clickY / zoomLevel;
+
+            // Reverse the coordinate transformation: pixel -> map coordinate
+            // pixel = mapCoord * MAP_SCALE + borderOffset
+            // mapCoord = (pixel - borderOffset) / MAP_SCALE
+            var mapX = Math.round((unscaledX - borderOffset) / mapScale);
+            var mapY = Math.round((unscaledY - borderOffset) / mapScale);
+
+            submitCoordinateDestination(mapX, mapY);
+        });
+    }
 
     // Messages scroll persistence
     var $messagesScroll = $('#messages-scroll');

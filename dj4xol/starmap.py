@@ -25,9 +25,10 @@ class StarMap():
                 -webkit-transform: rotate(-45deg);
              }"""
 
-    def __init__(self, game, player):
+    def __init__(self, game, player, dest_mode=False):
         self.game = game
         self.player = player
+        self.dest_mode = dest_mode
         self.stars = game.stars.all()
         self.fleets = game.fleets.all()
         self.map = self.render_map()
@@ -35,14 +36,14 @@ class StarMap():
     @property
     def width(self):
         """Total map width in pixels including border."""
-        # Use actual content bounds + border on each side
-        return (self._max_x + 1) * self.MAP_SCALE + 2 * self.border_offset
+        # Use game map bounds + border on each side
+        return self.game.map_size_x * self.MAP_SCALE + 2 * self.border_offset
 
     @property
     def height(self):
         """Total map height in pixels including border."""
-        # Use actual content bounds + border on each side
-        return (self._max_y + 1) * self.MAP_SCALE + 2 * self.border_offset
+        # Use game map bounds + border on each side
+        return self.game.map_size_y * self.MAP_SCALE + 2 * self.border_offset
 
     @property
     def border_offset(self):
@@ -144,10 +145,16 @@ class StarMap():
         """Render a game object on map using HTML"""
         x = object.x * self.MAP_SCALE + offset_x + self.border_offset
         y = object.y * self.MAP_SCALE + offset_y + self.border_offset
-        url = "?x=%i&y=%i&sel=%s" % (object.x, object.y, object.short_id)
         html_class = class_override or self.resolve_html_class(object)
         name = object.name
         style = f"left:{x}px; top:{y}px;{extra_style}"
+
+        # In destination mode, star clicks call JavaScript instead of navigating
+        if self.dest_mode and isinstance(object, Star):
+            url = f"javascript:submitDestination('{object.short_id}', {object.x}, {object.y})"
+        else:
+            url = "?x=%i&y=%i&sel=%s" % (object.x, object.y, object.short_id)
+
         return f'<a href="{url}" title="{name}"><div class="{html_class}" style="{style}"></div></a>'
 
     def render_star(self, star, offset_x=0, offset_y=0, satellite=False, class_override=None):

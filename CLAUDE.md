@@ -34,6 +34,12 @@ A Django-based 4X space strategy game inspired by Stars!
 - **Python-first**: Do everything possible in Django without additional tools/frameworks. Pure Python.
 - **Future frontend**: Investigate Python on the frontend (Brython or PyScript) for browser-side interactivity.
 
+## Development Environment
+
+- Uses **pyenv-virtualenv** for Python version and virtual environment management
+- Run commands directly (e.g., `python manage.py migrate`) - pyenv handles the environment automatically
+- Do not try to source `.venv/bin/activate` or similar
+
 ## Game Rules
 
 - Games can exist with zero players (allows cleanup/admin scenarios)

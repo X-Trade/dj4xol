@@ -22,6 +22,8 @@ urlpatterns = [
     url(r'^(?P<game_short_id>[a-f0-9]{8})/debug/create-fleet/$', views.debug_create_fleet, name='debug_create_fleet'),
     url(r'^(?P<game_short_id>[a-f0-9]{8})/production/add/$', views.add_production_order, name='add_production'),
     url(r'^(?P<game_short_id>[a-f0-9]{8})/production/remove/(?P<order_short_id>[a-f0-9]{12})/$', views.remove_production_order, name='remove_production'),
+    url(r'^(?P<game_short_id>[a-f0-9]{8})/fleet-order/add/$', views.add_fleet_order, name='add_fleet_order'),
+    url(r'^(?P<game_short_id>[a-f0-9]{8})/fleet-order/remove/(?P<order_short_id>[a-f0-9]{12})/$', views.remove_fleet_order, name='remove_fleet_order'),
     url(r'^(?P<game_short_id>[a-f0-9]{8})/messages/$', views.message_history, name='message_history'),
 ]
 

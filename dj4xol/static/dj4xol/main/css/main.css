@@ -128,16 +128,19 @@ body {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    max-height: 250px;
 }
 
 .orders-list {
     flex: 1;
     overflow-y: scroll;
     margin-bottom: 10px;
-    min-height: 50px;
+    min-height: 145px;
     border: 1px solid #e0e0e0;
-    padding: 5px;
+    padding: 0 5px;
+}
+
+.orders-list form {
+    margin: 4px 0;
 }
 
 .orders-list::-webkit-scrollbar {
@@ -385,4 +388,171 @@ body {
 .has-tooltip:hover::after {
     opacity: 1;
     visibility: visible;
+}
+
+/* Destination mode banner */
+.dest-mode-banner {
+    background: #2a5a8a;
+    color: #fff;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.dest-mode-banner span {
+    font-weight: bold;
+}
+
+.dest-cancel {
+    color: #fff;
+    background: #555;
+    padding: 4px 12px;
+    text-decoration: none;
+    border-radius: 4px;
+}
+
+.dest-cancel:hover {
+    background: #666;
+}
+
+/* Order item styling */
+.order-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.order-item:last-child {
+    border-bottom: none;
+}
+
+.order-remove-btn {
+    background: #c44;
+    color: #fff;
+    border: none;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.order-remove-btn:hover {
+    background: #a33;
+}
+
+/* Order draft section */
+.order-draft {
+    border-top: 1px solid #ccc;
+    padding-top: 10px;
+    margin-top: 10px;
+}
+
+/* Order type row with dropdown and + button */
+.order-type-row {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 8px;
+}
+
+.order-type-row .order-select {
+    flex: 1;
+}
+
+.order-add-btn {
+    padding: 4px 12px;
+    font-weight: bold;
+    cursor: pointer;
+    background: #4a4;
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+}
+
+.order-add-btn:hover:not(:disabled) {
+    background: #5b5;
+}
+
+.order-add-btn:disabled {
+    background: #aaa;
+    cursor: not-allowed;
+}
+
+/* Order parameters box */
+.order-params {
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.order-param-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.order-param-row:last-child {
+    margin-bottom: 0;
+}
+
+.order-param-row label {
+    width: 80px;
+    font-size: 0.9em;
+    color: #555;
+}
+
+/* Destination display */
+.dest-display-row {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    gap: 8px;
+}
+
+.dest-display {
+    flex: 1;
+    padding: 4px 8px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    min-height: 1.4em;
+}
+
+.dest-set-btn {
+    padding: 4px 12px;
+    background: #2a5a8a;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+.dest-set-btn:hover {
+    background: #3a6a9a;
+}
+
+/* Speed slider */
+.speed-row {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    gap: 10px;
+}
+
+.warp-slider {
+    flex: 1;
+    height: 6px;
+    cursor: pointer;
+}
+
+.warp-value {
+    min-width: 60px;
+    text-align: right;
+    font-size: 0.9em;
 }
