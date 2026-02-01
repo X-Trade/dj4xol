@@ -32,13 +32,14 @@ $("document").ready(function() {
         localStorage.setItem(storageKey + ':locate', locateEnabled);
         $locateBtn.toggleClass('active', locateEnabled);
 
-        // When turning on, jump to current selection
+        // When turning on, jump to current selection and show animation
         if (locateEnabled && urlX !== null && urlY !== null) {
             var mapScale = 6;
             var targetX = parseInt(urlX) * mapScale * zoomLevel;
             var targetY = parseInt(urlY) * mapScale * zoomLevel;
             $starmap.scrollLeft(targetX - $starmap.width() / 2);
             $starmap.scrollTop(targetY - $starmap.height() / 2);
+            showLocateAnimation(urlX, urlY);
         }
     });
 
@@ -46,6 +47,27 @@ $("document").ready(function() {
     var urlParams = new URLSearchParams(window.location.search);
     var urlX = urlParams.get('x');
     var urlY = urlParams.get('y');
+    var urlLocate = urlParams.get('locate');
+
+    // Function to show locate animation at given map coordinates
+    function showLocateAnimation(x, y) {
+        var mapScale = 6;
+        var targetX = parseInt(x) * mapScale;
+        var targetY = parseInt(y) * mapScale;
+
+        // Create the ring element inside maparea (so it scales with zoom)
+        var $ring = $('<div class="locate-ring"></div>');
+        $ring.css({
+            left: targetX + 'px',
+            top: targetY + 'px'
+        });
+        $maparea.append($ring);
+
+        // Remove after animation completes
+        setTimeout(function() {
+            $ring.remove();
+        }, 1000);
+    }
 
     if (locateEnabled && urlX !== null && urlY !== null) {
         // Center on selected coordinates (multiply by MAP_SCALE=6)
@@ -54,6 +76,11 @@ $("document").ready(function() {
         var targetY = parseInt(urlY) * mapScale * zoomLevel;
         $starmap.scrollLeft(targetX - $starmap.width() / 2);
         $starmap.scrollTop(targetY - $starmap.height() / 2);
+
+        // Show locate animation if requested
+        if (urlLocate === '1') {
+            showLocateAnimation(urlX, urlY);
+        }
     } else {
         // Restore scroll position from localStorage
         var posX = localStorage.getItem(storageKey + ':posX');

@@ -9,7 +9,7 @@ def map_object_link(obj):
     from django.urls import reverse
     name = escape(obj.name)
     base_url = reverse('dj4xol:game', args=[obj.game.short_id])
-    return f'<a href="{base_url}?x={obj.x}&y={obj.y}&sel={obj.short_id}">{name}</a>'
+    return f'<a href="{base_url}?x={obj.x}&y={obj.y}&sel={obj.short_id}&locate=1">{name}</a>'
 
 
 def weighted_random_choice(choices, offset, window_size=1):
