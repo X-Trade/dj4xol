@@ -1,0 +1,44 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Messages - {{ game.name }}</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
+        <style>
+            body {
+                overflow: auto;
+                padding: 20px;
+            }
+            .message-history {
+                max-width: 800px;
+                margin: 0 auto;
+            }
+            .back-link {
+                margin-bottom: 20px;
+            }
+            .message-list {
+                border: 1px solid #808080;
+                padding: 10px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="message-history">
+            <div class="back-link">
+                <a href="{% url 'dj4xol:game' game.short_id %}">&larr; Back to game</a>
+            </div>
+            <h1>Message History - {{ game.name }}</h1>
+            <p>Showing up to 1000 most recent messages.</p>
+            <div class="message-list">
+                {% for msg in messages %}
+                <div class="message">
+                    <span class="message-year">Year {{ msg.year }}</span>
+                    <p class="message-text">{{ msg.message }}</p>
+                </div>
+                {% empty %}
+                <p class="no-messages">No messages yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </body>
+</html>

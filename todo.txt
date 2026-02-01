@@ -1,7 +1,7 @@
 ============= MAIN TODO =============
 1. fleet orders
-3. Mining
-4. Random events
+3. Mining & factories
+4. productivity & economy (ties to #3)
 5. Event generation in turn generator
 6. Schedule based turn generation (generate a turn by cronjob)
 7. production orders

@@ -372,6 +372,8 @@ class Player(AbstractGameObject, HabitabilityMixin):
     description = models.TextField(blank=True, default='')
     race_type = models.ForeignKey(ServerRaceType)
     turned_in = models.BooleanField(default=False)
+    last_seen_year = models.IntegerField(null=True, blank=True)
+    messages_seen_year = models.IntegerField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
         if self.plural_name is None:

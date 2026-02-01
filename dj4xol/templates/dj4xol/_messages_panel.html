@@ -11,5 +11,8 @@
             <p class="no-messages">No messages yet.</p>
             {% endfor %}
         </div>
+        <div class="messages-footer">
+            <a href="{% url 'dj4xol:message_history' game.short_id %}">View full history</a>
+        </div>
     </div>
 </div>
