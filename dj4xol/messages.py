@@ -1,6 +1,14 @@
 from .models import Game, Player, GameMessage
 import random
 from itertools import chain
+from django.utils.html import escape
+
+
+def map_object_link(obj):
+    """Format a map object (Star/Fleet) as a clickable link."""
+    name = escape(obj.name)
+    return f'<a href="?x={obj.x}&y={obj.y}&sel={obj.short_id}">{name}</a>'
+
 
 def weighted_random_choice(choices, offset, window_size=1):
         """Select a random choice from a list of choices, with a moving window based on intensity."""
@@ -132,7 +140,7 @@ class EnvironmentalDeathMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            star=self.star.name,
+            star=map_object_link(self.star),
             deaths=self.deaths
         )
 
@@ -154,7 +162,7 @@ class OvercrowdingDeathMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            star=self.star.name,
+            star=map_object_link(self.star),
             deaths=self.deaths
         )
 
@@ -174,7 +182,7 @@ class ColonyAbandonedMessageFactory(MessageFactory):
         self.star = star
 
     def format_message(self):
-        return random.choice(self.templates).format(star=self.star.name)
+        return random.choice(self.templates).format(star=map_object_link(self.star))
 
 
 class PlanetoidEventMessageFactory(MessageFactory):
@@ -203,7 +211,7 @@ class PlanetoidEventMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            star=self.star.name,
+            star=map_object_link(self.star),
             adverb=self._format_adverb(),
             verb=self._format_verb()
         )
@@ -223,7 +231,7 @@ class PopulationBoomMessageFactory(MessageFactory):
         self.qty = qty
 
     def format_message(self):
-        return random.choice(self.templates).format(star=self.star.name, qty=self.qty)
+        return random.choice(self.templates).format(star=map_object_link(self.star), qty=self.qty)
 
 
 class MiningDiscoveryMessageFactory(MessageFactory):
@@ -242,7 +250,7 @@ class MiningDiscoveryMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            star=self.star.name,
+            star=map_object_link(self.star),
             qty=self.qty,
             resource=self.resource
         )
@@ -261,7 +269,7 @@ class ColonyVanishedMessageFactory(MessageFactory):
         self.star = star
 
     def format_message(self):
-        return random.choice(self.templates).format(star=self.star.name)
+        return random.choice(self.templates).format(star=map_object_link(self.star))
 
 
 class MiningAccidentDeathsMessageFactory(MessageFactory):
@@ -278,7 +286,7 @@ class MiningAccidentDeathsMessageFactory(MessageFactory):
         self.qty = qty
 
     def format_message(self):
-        return random.choice(self.templates).format(star=self.star.name, qty=self.qty)
+        return random.choice(self.templates).format(star=map_object_link(self.star), qty=self.qty)
 
 
 class MiningAccidentResourcesMessageFactory(MessageFactory):
@@ -297,7 +305,7 @@ class MiningAccidentResourcesMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            star=self.star.name,
+            star=map_object_link(self.star),
             qty=self.qty,
             resource=self.resource
         )
