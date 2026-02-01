@@ -48,8 +48,10 @@
                 <div><h2>Starmap</h2>
                     <div class="starmap-wrapper">
                         <div class="starmap" id="starmap" style="height:600px">
-                            <div class="maparea" id="maparea">
-                                {{ starmap |safe }}
+                            <div class="maparea-sizer" id="maparea-sizer">
+                                <div class="maparea" id="maparea" data-width="{{ starmap.width }}" data-height="{{ starmap.height }}" data-border="{{ starmap.border_offset }}">
+                                    {{ starmap.map |safe }}
+                                </div>
                             </div>
                         </div>
                         <div class="starmap-controls">

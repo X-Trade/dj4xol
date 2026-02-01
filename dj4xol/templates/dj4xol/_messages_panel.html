@@ -1,7 +1,7 @@
 <div class="messages-section">
     <h2>Messages</h2>
-    <div id="messages">
-        <div class="messages-scroll">
+    <div id="messages" data-year="{{ game.year }}">
+        <div class="messages-scroll" id="messages-scroll">
             {% for msg in messages %}
             <div class="message">
                 <span class="message-year">Year {{ msg.year }}</span>

@@ -39,11 +39,14 @@
     background: #888;
 }
 
-.maparea {
+.maparea-sizer {
     position: relative;
-    width: 100%;
-    height: 100%;
-    padding: 10px;
+}
+
+.maparea {
+    position: absolute;
+    top: 0;
+    left: 0;
     background-color: #000;
 }
 

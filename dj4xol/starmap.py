@@ -3,6 +3,7 @@ from .models import Game, Player, Fleet, Star
 
 class StarMap():
     MAP_SCALE = 6
+    MAP_BORDER = 10  # Border in light-years around the map
     MULTI_STAR_OFFSET = 0.7  # 70% of 1ly spacing
     HTML_STAR_CLASS = "mapstar"
     HTML_FLEET_CLASS = "mapfleet"
@@ -31,6 +32,23 @@ class StarMap():
         self.fleets = game.fleets.all()
         self.map = self.render_map()
 
+    @property
+    def width(self):
+        """Total map width in pixels including border."""
+        # Use actual content bounds + border on each side
+        return (self._max_x + 1) * self.MAP_SCALE + 2 * self.border_offset
+
+    @property
+    def height(self):
+        """Total map height in pixels including border."""
+        # Use actual content bounds + border on each side
+        return (self._max_y + 1) * self.MAP_SCALE + 2 * self.border_offset
+
+    @property
+    def border_offset(self):
+        """Border offset in pixels."""
+        return self.MAP_BORDER * self.MAP_SCALE
+
     def render_map(self, stars=None, fleets=None):
         """Render a map of the stars in the game using HTML objects"""
         if stars is None:
@@ -40,6 +58,10 @@ class StarMap():
 
         html = ""
 
+        # Track max coordinates for sizing
+        self._max_x = 0
+        self._max_y = 0
+
         # Group stars by position to handle multiple at same coordinates
         stars_by_pos = {}
         for star in stars:
@@ -47,12 +69,16 @@ class StarMap():
             if pos not in stars_by_pos:
                 stars_by_pos[pos] = []
             stars_by_pos[pos].append(star)
+            self._max_x = max(self._max_x, star.x)
+            self._max_y = max(self._max_y, star.y)
 
         for pos, star_group in stars_by_pos.items():
             html += self.render_star_group(star_group)
 
         for fleet in fleets:
             html += self.render_fleet(fleet)
+            self._max_x = max(self._max_x, fleet.x)
+            self._max_y = max(self._max_y, fleet.y)
 
         return html
 
@@ -116,8 +142,8 @@ class StarMap():
 
     def render_object(self, object, extra_style="", offset_x=0, offset_y=0, class_override=None):
         """Render a game object on map using HTML"""
-        x = object.x * self.MAP_SCALE + offset_x
-        y = object.y * self.MAP_SCALE + offset_y
+        x = object.x * self.MAP_SCALE + offset_x + self.border_offset
+        y = object.y * self.MAP_SCALE + offset_y + self.border_offset
         url = "?x=%i&y=%i&sel=%s" % (object.x, object.y, object.short_id)
         html_class = class_override or self.resolve_html_class(object)
         name = object.name

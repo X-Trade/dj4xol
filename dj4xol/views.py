@@ -98,7 +98,7 @@ def starmap(request, game_short_id):
     account = request.user.dj4xol_account
     # Get the Player instance for this account in this game
     player = Player.objects.filter(game=game, account=account).first()
-    starmap = StarMap(game, player).render_map()
+    starmap = StarMap(game, player)
 
     url = request.path
     x = request.GET.get('x', None)

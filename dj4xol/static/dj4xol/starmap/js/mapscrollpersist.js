@@ -1,9 +1,18 @@
 $("document").ready(function() {
     var $starmap = $("#starmap");
     var $maparea = $("#maparea");
+    var $sizer = $("#maparea-sizer");
 
     // Storage key prefix based on game URL (path only, no query params)
     var storageKey = 'starmap:' + window.location.pathname;
+
+    // Get base dimensions from data attributes
+    var baseWidth = parseInt($maparea.data('width')) || 600;
+    var baseHeight = parseInt($maparea.data('height')) || 600;
+
+    // Set maparea to base dimensions
+    $maparea.css('width', baseWidth + 'px');
+    $maparea.css('height', baseHeight + 'px');
 
     // Zoom state
     var zoomLevel = 1.0;
@@ -15,8 +24,8 @@ $("document").ready(function() {
     var savedZoom = localStorage.getItem(storageKey + ':zoom');
     if (savedZoom) {
         zoomLevel = parseFloat(savedZoom);
-        applyZoom();
     }
+    applyZoom();
 
     // Locate toggle state (default on)
     var locateEnabled = localStorage.getItem(storageKey + ':locate') !== 'false';
@@ -34,9 +43,9 @@ $("document").ready(function() {
 
         // When turning on, jump to current selection and show animation
         if (locateEnabled && urlX !== null && urlY !== null) {
-            var mapScale = 6;
-            var targetX = parseInt(urlX) * mapScale * zoomLevel;
-            var targetY = parseInt(urlY) * mapScale * zoomLevel;
+            var borderOff = parseInt($maparea.data('border')) || 0;
+            var targetX = (parseInt(urlX) * mapScale + borderOff) * zoomLevel;
+            var targetY = (parseInt(urlY) * mapScale + borderOff) * zoomLevel;
             $starmap.scrollLeft(targetX - $starmap.width() / 2);
             $starmap.scrollTop(targetY - $starmap.height() / 2);
             showLocateAnimation(urlX, urlY);
@@ -49,11 +58,14 @@ $("document").ready(function() {
     var urlY = urlParams.get('y');
     var urlLocate = urlParams.get('locate');
 
+    // Get border offset from maparea data attribute (in pixels, unscaled)
+    var mapScale = 6;
+    var borderOffset = parseInt($maparea.data('border')) || 0;
+
     // Function to show locate animation at given map coordinates
     function showLocateAnimation(x, y) {
-        var mapScale = 6;
-        var targetX = parseInt(x) * mapScale;
-        var targetY = parseInt(y) * mapScale;
+        var targetX = parseInt(x) * mapScale + borderOffset;
+        var targetY = parseInt(y) * mapScale + borderOffset;
 
         // Create the ring element inside maparea (so it scales with zoom)
         var $ring = $('<div class="locate-ring"></div>');
@@ -70,10 +82,9 @@ $("document").ready(function() {
     }
 
     if (locateEnabled && urlX !== null && urlY !== null) {
-        // Center on selected coordinates (multiply by MAP_SCALE=6)
-        var mapScale = 6;
-        var targetX = parseInt(urlX) * mapScale * zoomLevel;
-        var targetY = parseInt(urlY) * mapScale * zoomLevel;
+        // Center on selected coordinates (multiply by MAP_SCALE=6, add border offset)
+        var targetX = (parseInt(urlX) * mapScale + borderOffset) * zoomLevel;
+        var targetY = (parseInt(urlY) * mapScale + borderOffset) * zoomLevel;
         $starmap.scrollLeft(targetX - $starmap.width() / 2);
         $starmap.scrollTop(targetY - $starmap.height() / 2);
 
@@ -129,6 +140,9 @@ $("document").ready(function() {
     function applyZoom() {
         $maparea.css('transform', 'scale(' + zoomLevel + ')');
         $maparea.css('transform-origin', '0 0');
+        // Resize sizer to match visual size (controls scrollable area)
+        $sizer.css('width', (baseWidth * zoomLevel) + 'px');
+        $sizer.css('height', (baseHeight * zoomLevel) + 'px');
     }
 
     function zoomTo(newZoom, viewportX, viewportY) {
@@ -184,4 +198,25 @@ $("document").ready(function() {
 
         zoomTo(zoomLevel + delta, viewportX, viewportY);
     });
+
+    // Messages scroll persistence
+    var $messagesScroll = $('#messages-scroll');
+    var $messages = $('#messages');
+    if ($messagesScroll.length && $messages.length) {
+        var messagesKey = storageKey + ':messages';
+        var currentYear = $messages.data('year');
+        var savedYear = localStorage.getItem(messagesKey + ':year');
+        var savedScroll = localStorage.getItem(messagesKey + ':scroll');
+
+        // Restore scroll position only if same year
+        if (savedYear && parseInt(savedYear) === currentYear && savedScroll) {
+            $messagesScroll.scrollTop(parseInt(savedScroll));
+        }
+
+        // Save scroll position on scroll
+        $messagesScroll.on('scroll', function() {
+            localStorage.setItem(messagesKey + ':scroll', $messagesScroll.scrollTop());
+            localStorage.setItem(messagesKey + ':year', currentYear);
+        });
+    }
 });
