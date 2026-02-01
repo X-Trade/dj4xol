@@ -13,7 +13,9 @@
             <span class="title">{{ game.name }}</span>
             <span class="year">Year {{ game.year }}</span>
             <span class="turn-status">
-                {% if game.turn_scheme == 'HOURLY' or game.turn_scheme == 'DAILY' or game.turn_scheme == 'WEEKLY' %}
+                {% if is_generating %}
+                    <span class="status-generating">Generating turn...</span>
+                {% elif game.turn_scheme == 'HOURLY' or game.turn_scheme == 'DAILY' or game.turn_scheme == 'WEEKLY' %}
                     Next turn: {{ game.next_generation|date:"M d, H:i"|default:"pending" }}
                 {% elif game.turn_scheme == 'QUORUM' %}
                     {% if player.turned_in %}

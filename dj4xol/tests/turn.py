@@ -28,6 +28,34 @@ class TestGameTurn(TestCase):
         with self.assertRaises(Exception):
             GameTurn(game).generate_turn()
 
+    def test_refuses_if_already_generating(self):
+        """Turn generation should fail if is_generating flag is set."""
+        game = default_game()
+        game.is_generating = True
+        game.save()
+        with self.assertRaises(Exception) as context:
+            GameTurn(game).generate_turn()
+        self.assertIn('already in progress', str(context.exception))
+
+    def test_clears_generating_flag_on_success(self):
+        """is_generating flag should be cleared after successful turn."""
+        game = default_game()
+        self.assertFalse(game.is_generating)
+        GameTurn(game).generate_turn()
+        game.refresh_from_db()
+        self.assertFalse(game.is_generating)
+
+    def test_keeps_generating_flag_on_error(self):
+        """is_generating flag should remain set if turn generation fails."""
+        game = default_game()
+        self.assertFalse(game.is_generating)
+        # Mock _process_year to raise an error after lock is acquired
+        with patch.object(GameTurn, '_process_year', side_effect=Exception("simulated error")):
+            with self.assertRaises(Exception):
+                GameTurn(game).generate_turn()
+        game.refresh_from_db()
+        self.assertTrue(game.is_generating)
+
 
 class TestHabitabilityProportion(TestCase):
     def test_at_centre(self):

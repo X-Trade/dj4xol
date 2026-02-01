@@ -1,11 +1,9 @@
 ============= MAIN TODO =============
-1. Lock game on generation
 2. Cronjob entrypoint
 3. Mining & factories
 4. productivity & economy (ties to #3)
 5. Event generation in turn generator
 6. Schedule based turn generation (generate a turn by cronjob)
-7. production orders
 8. more comprehensive unit testing
 9. radar system. Ties in to #10. Players cannot see ships beyond their ships or planets sensor range
 10. protect unnecessary/unsporting information from being delivered to the wrong owner-player
