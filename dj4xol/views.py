@@ -282,6 +282,7 @@ def create_game(request):
             factory.game.max_players = d.get('max_players')
             factory.game.turn_scheme = d['turn_scheme']
             factory.game.years_per_turn = d['years_per_turn']
+            factory.game.random_events = d.get('random_events', False)
             if d.get('join_open_years'):
                 factory.game.join_until_year = d['starting_year'] + d['join_open_years']
             factory.set_map_size(d['map_size_x'], d['map_size_y'])

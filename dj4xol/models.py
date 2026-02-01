@@ -201,6 +201,7 @@ class Game(UUIDMixin):
     max_players = models.IntegerField(null=True, blank=True)  # max players allowed
     turn_scheme = models.CharField(max_length=10, choices=TURN_SCHEME_CHOICES, default='QUORUM')
     years_per_turn = models.IntegerField(default=1)
+    random_events = models.BooleanField(default=False)
     last_generated = models.DateTimeField(null=True, blank=True)
     next_generation = models.DateTimeField(null=True, blank=True)
 

@@ -7,7 +7,14 @@ from .messages import (
     EnvironmentalDeathMessageFactory,
     OvercrowdingDeathMessageFactory,
     ColonyAbandonedMessageFactory,
+    PlanetoidEventMessageFactory,
+    PopulationBoomMessageFactory,
+    MiningDiscoveryMessageFactory,
+    ColonyVanishedMessageFactory,
+    MiningAccidentDeathsMessageFactory,
+    MiningAccidentResourcesMessageFactory,
 )
+import random
 
 # Population carrying capacity constants
 BILLION = 1_000_000_000
@@ -20,6 +27,9 @@ TURN_INTERVALS = {
     'DAILY': timedelta(days=1),
     'WEEKLY': timedelta(weeks=1),
 }
+
+# Random event probability per colonized star per turn
+RANDOM_EVENT_CHANCE = 0.01  # 1%
 
 
 def capacity_modifier(population, soft_cap):
@@ -132,6 +142,7 @@ class GameTurn():
         self.fleet_movements()
         self.terraforming()
         self.population_growth()
+        self.random_events()
         self.clear_empty_planets()
         self.check_join_deadline()
         self.game.year += 1
@@ -228,7 +239,7 @@ class GameTurn():
                 factor *= player.race_type.population_growth_multiplier
                 star.colonists = apply_population_change(star.colonists, factor)
                 deaths = old_pop - star.colonists
-                if deaths > 0:
+                if deaths > 0 and star.colonists > 0:
                     self._create_environmental_death_message(player, star, deaths)
             else:
                 # Habitable world - apply growth with capacity modifier
@@ -237,7 +248,7 @@ class GameTurn():
                 factor *= player.race_type.population_growth_multiplier
                 star.colonists = apply_population_change(star.colonists, factor)
                 change = star.colonists - old_pop
-                if change < 0:
+                if change < 0 and star.colonists > 0:
                     # Deaths due to overcrowding
                     self._create_overcrowding_death_message(player, star, -change)
 
@@ -314,6 +325,152 @@ class GameTurn():
         new_value = max(0.0, min(2.0, new_value))
 
         setattr(star, field, new_value)
+        star.save()
+
+    def random_events(self):
+        """Process random events for colonized planets."""
+        if not self.game.random_events:
+            return
+
+        for star in self.game.stars.filter(player__isnull=False, colonists__gt=0):
+            if random.random() < RANDOM_EVENT_CHANCE:
+                self._trigger_random_event(star)
+
+    def _trigger_random_event(self, star):
+        """Select and apply a random event to a star."""
+        player = star.player
+        luck = player.race_type.luck_multiplier
+
+        # Event pool with base weights (positive weight, negative weight)
+        # Luck multiplier increases positive weights, decreases negative
+        events = [
+            ('planetoid', 0.3, 0.3),  # Neutral - can go either way
+            ('population_boom', 0.2 * luck, 0),
+            ('mining_discovery', 0.2 * luck, 0),
+            ('mining_accident_deaths', 0, 0.15 / luck),
+            ('mining_accident_resources', 0, 0.1 / luck),
+            ('colony_vanished', 0, 0.02 / luck),  # Rare extreme
+        ]
+
+        # Calculate total weights and select
+        total = sum(e[1] + e[2] for e in events)
+        roll = random.random() * total
+        cumulative = 0
+        selected = None
+        for event_type, pos_weight, neg_weight in events:
+            cumulative += pos_weight + neg_weight
+            if roll < cumulative:
+                selected = event_type
+                break
+
+        self._apply_random_event(star, selected)
+
+    def _apply_random_event(self, star, event_type):
+        """Apply a specific random event and create message."""
+        if event_type == 'planetoid':
+            self._apply_planetoid_event(star)
+        elif event_type == 'population_boom':
+            self._apply_population_boom(star)
+        elif event_type == 'mining_discovery':
+            self._apply_mining_discovery(star)
+        elif event_type == 'mining_accident_deaths':
+            self._apply_mining_accident_deaths(star)
+        elif event_type == 'mining_accident_resources':
+            self._apply_mining_accident_resources(star)
+        elif event_type == 'colony_vanished':
+            self._apply_colony_vanished(star)
+
+    def _apply_planetoid_event(self, star):
+        """Apply environmental nudge from passing planetoid."""
+        player = star.player
+        luck = player.race_type.luck_multiplier
+        # Luck biases toward positive: range shifts from [-0.5, 0.5] toward positive
+        intensity = random.uniform(-0.5, 0.5) + (luck - 1.0) * 0.3
+        intensity = max(-1.0, min(1.0, intensity))
+
+        # Pick 1-3 environmental factors to affect
+        envs = random.sample(['gravity', 'temperature', 'radiation'],
+                             k=random.randint(1, 3))
+        for env in envs:
+            current = getattr(star, env)
+            ideal = getattr(player, f'{env}_center')
+            # Positive intensity moves toward player's ideal, negative moves away
+            direction = 1 if ideal > current else -1
+            if intensity < 0:
+                direction = -direction
+            nudge = random.uniform(0.05, 0.15) * direction
+            new_value = max(0.0, min(2.0, current + nudge))
+            setattr(star, env, new_value)
+        star.save()
+
+        factory = PlanetoidEventMessageFactory(self.game, star.player, star, intensity=intensity)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+    def _apply_population_boom(self, star):
+        """Apply population boom - 5-15% increase."""
+        increase_pct = random.uniform(0.05, 0.15)
+        increase = max(1, int(star.colonists * increase_pct))
+        star.colonists += increase
+        star.save()
+
+        factory = PopulationBoomMessageFactory(self.game, star.player, star, increase)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+    def _apply_mining_discovery(self, star):
+        """Apply resource discovery - add 10-30 units to random resource."""
+        resource = random.choice(['ironium', 'boranium', 'germanium'])
+        qty = random.randint(10, 30)
+        current = getattr(star, resource)
+        setattr(star, resource, min(100, current + qty))
+        star.save()
+
+        factory = MiningDiscoveryMessageFactory(self.game, star.player, star, qty, resource)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+    def _apply_mining_accident_deaths(self, star):
+        """Apply mining accident with colonist deaths - 2-10% loss."""
+        loss_pct = random.uniform(0.02, 0.10)
+        deaths = max(1, int(star.colonists * loss_pct))
+        star.colonists = max(0, star.colonists - deaths)
+        star.save()
+
+        if star.colonists > 0:
+            factory = MiningAccidentDeathsMessageFactory(self.game, star.player, star, deaths)
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
+    def _apply_mining_accident_resources(self, star):
+        """Apply mining accident with resource loss - 5-10% of one resource."""
+        resource = random.choice(['ironium', 'boranium', 'germanium'])
+        current = getattr(star, resource)
+        loss_pct = random.uniform(0.05, 0.10)
+        loss = max(1, int(current * loss_pct))
+        setattr(star, resource, max(0, current - loss))
+        star.save()
+
+        factory = MiningAccidentResourcesMessageFactory(self.game, star.player, star, loss, resource)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+    def _apply_colony_vanished(self, star):
+        """Apply colony vanished - complete loss (extreme rare)."""
+        factory = ColonyVanishedMessageFactory(self.game, star.player, star)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+        # Clear the colony
+        star.colonists = 0
+        star.production_orders.all().delete()
+        star.player = None
         star.save()
 
 
