@@ -1,6 +1,9 @@
 from ..turn import GameTurn, habitability_proportion, calculate_growth_factor, capacity_modifier, effective_capacity, BILLION
+from ..models import ProductionOrder
 from django.test import TestCase
 from ._util import default_game, get_default_race
+from unittest.mock import patch
+import random
 
 
 class TestGameTurn(TestCase):
@@ -212,3 +215,190 @@ class TestPopulationGrowth(TestCase):
                           'fallen silent' in m.message.lower() or
                           'no more' in m.message.lower()]
         self.assertGreater(len(abandon_msgs), 0)
+
+
+class TestTerraforming(TestCase):
+    def test_terraforming_moves_toward_ideal(self):
+        """Terraforming order should move environmental value toward player's ideal."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        # Set gravity away from player's ideal
+        homeworld.gravity = 0.5
+        homeworld.save()
+        player_ideal = player.gravity_center  # Should be 1.0 by default
+        # Add terraforming order
+        ProductionOrder.objects.create(
+            game=game,
+            star=homeworld,
+            order_type='TERRAFORM_GRAVITY'
+        )
+        initial_gravity = homeworld.gravity
+        GameTurn(game).generate_turn()
+        homeworld.refresh_from_db()
+        # Gravity should have moved toward player's ideal
+        self.assertGreater(homeworld.gravity, initial_gravity)
+        self.assertLess(homeworld.gravity, player_ideal)
+
+    def test_terraforming_multiple_factors(self):
+        """Multiple terraforming orders should all be processed."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        homeworld.gravity = 0.5
+        homeworld.temperature = 1.8
+        homeworld.save()
+        ProductionOrder.objects.create(game=game, star=homeworld, order_type='TERRAFORM_GRAVITY')
+        ProductionOrder.objects.create(game=game, star=homeworld, order_type='TERRAFORM_TEMPERATURE')
+        initial_g = homeworld.gravity
+        initial_t = homeworld.temperature
+        GameTurn(game).generate_turn()
+        homeworld.refresh_from_db()
+        # Both should have moved toward ideals
+        self.assertGreater(homeworld.gravity, initial_g)
+        self.assertLess(homeworld.temperature, initial_t)
+
+
+class TestRandomEvents(TestCase):
+    def test_random_events_disabled_by_default(self):
+        """Random events should not occur when disabled."""
+        game = default_game(stars=5)
+        self.assertFalse(game.random_events)
+        player = game.players.first()
+        initial_messages = player.messages.count()
+        # Run many turns - no random event messages should appear
+        with patch('dj4xol.turn.random.random', return_value=0.001):  # Would trigger if enabled
+            GameTurn(game).generate_turns(10)
+        # Only growth/environmental messages, no random event messages
+        for msg in player.messages.all():
+            self.assertNotIn('planetoid', msg.message.lower())
+            self.assertNotIn('meteor', msg.message.lower())
+            self.assertNotIn('population boom', msg.message.lower())
+            self.assertNotIn('vanished', msg.message.lower())
+
+    def test_random_events_can_trigger(self):
+        """Random events should occur when enabled and roll succeeds."""
+        game = default_game(stars=5)
+        game.random_events = True
+        game.save()
+        player = game.players.first()
+        homeworld = player.homeworld
+        initial_messages = player.messages.count()
+        # Force a random event to trigger
+        with patch('dj4xol.turn.random.random', return_value=0.001):  # Below 0.01 threshold
+            with patch('dj4xol.turn.random.choice', side_effect=lambda x: x[0]):
+                GameTurn(game).generate_turn()
+        # Should have at least one new message (could be growth + event)
+        self.assertGreater(player.messages.count(), initial_messages)
+
+    def test_population_boom_increases_colonists(self):
+        """Population boom event should increase colonists."""
+        game = default_game(stars=5)
+        game.random_events = True
+        game.save()
+        player = game.players.first()
+        homeworld = player.homeworld
+        initial_pop = homeworld.colonists
+        turn = GameTurn(game)
+        turn._apply_population_boom(homeworld)
+        homeworld.refresh_from_db()
+        self.assertGreater(homeworld.colonists, initial_pop)
+        # Check message was created
+        self.assertTrue(player.messages.filter(message__icontains='colonist').exists())
+
+    def test_mining_discovery_increases_resources(self):
+        """Mining discovery should increase a resource."""
+        game = default_game(stars=5)
+        game.random_events = True
+        game.save()
+        player = game.players.first()
+        homeworld = player.homeworld
+        homeworld.ironium = 10
+        homeworld.boranium = 10
+        homeworld.germanium = 10
+        homeworld.save()
+        total_before = homeworld.ironium + homeworld.boranium + homeworld.germanium
+        turn = GameTurn(game)
+        turn._apply_mining_discovery(homeworld)
+        homeworld.refresh_from_db()
+        total_after = homeworld.ironium + homeworld.boranium + homeworld.germanium
+        self.assertGreater(total_after, total_before)
+
+    def test_mining_accident_deaths_reduces_colonists(self):
+        """Mining accident should reduce colonists."""
+        game = default_game(stars=5)
+        game.random_events = True
+        game.save()
+        player = game.players.first()
+        homeworld = player.homeworld
+        homeworld.colonists = 10000
+        homeworld.save()
+        turn = GameTurn(game)
+        turn._apply_mining_accident_deaths(homeworld)
+        homeworld.refresh_from_db()
+        self.assertLess(homeworld.colonists, 10000)
+
+    def test_colony_vanished_clears_colony(self):
+        """Colony vanished event should remove all colonists and ownership."""
+        game = default_game(stars=5)
+        game.random_events = True
+        game.save()
+        player = game.players.first()
+        # Use a non-homeworld star
+        other_star = game.stars.exclude(pk=player.homeworld.pk).first()
+        other_star.player = player
+        other_star.colonists = 5000
+        other_star.save()
+        turn = GameTurn(game)
+        turn._apply_colony_vanished(other_star)
+        other_star.refresh_from_db()
+        self.assertEqual(other_star.colonists, 0)
+        self.assertIsNone(other_star.player)
+        # Check message mentions vanished/dark/abandoned/lost
+        msg = player.messages.order_by('-id').first()
+        msg_lower = msg.message.lower()
+        self.assertTrue(
+            'vanish' in msg_lower or 'dark' in msg_lower or
+            'abandoned' in msg_lower or 'contact' in msg_lower,
+            f"Expected colony vanished message, got: {msg.message}"
+        )
+
+    def test_planetoid_event_moves_toward_ideal_when_positive(self):
+        """Positive planetoid event should move environment toward player's ideal."""
+        game = default_game(stars=5)
+        game.random_events = True
+        game.save()
+        player = game.players.first()
+        homeworld = player.homeworld
+        # Set environment away from ideal
+        homeworld.gravity = 0.5  # Player ideal is 1.0
+        homeworld.save()
+        turn = GameTurn(game)
+        # Force positive intensity
+        with patch('dj4xol.turn.random.uniform', return_value=0.4):
+            with patch('dj4xol.turn.random.sample', return_value=['gravity']):
+                with patch('dj4xol.turn.random.randint', return_value=1):
+                    turn._apply_planetoid_event(homeworld)
+        homeworld.refresh_from_db()
+        # Should have moved toward ideal (1.0)
+        self.assertGreater(homeworld.gravity, 0.5)
+
+    def test_planetoid_event_moves_away_from_ideal_when_negative(self):
+        """Negative planetoid event should move environment away from player's ideal."""
+        game = default_game(stars=5)
+        game.random_events = True
+        game.save()
+        player = game.players.first()
+        homeworld = player.homeworld
+        # Set environment at ideal
+        homeworld.gravity = 1.0  # Player ideal is 1.0
+        homeworld.save()
+        turn = GameTurn(game)
+        # Force negative intensity
+        with patch('dj4xol.turn.random.uniform', side_effect=[-.4, 0.1]):
+            with patch('dj4xol.turn.random.sample', return_value=['gravity']):
+                with patch('dj4xol.turn.random.randint', return_value=1):
+                    turn._apply_planetoid_event(homeworld)
+        homeworld.refresh_from_db()
+        # Should have moved away from ideal
+        self.assertNotEqual(homeworld.gravity, 1.0)
