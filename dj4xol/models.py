@@ -443,6 +443,7 @@ class ProductionOrder(AbstractGameObject):
         ('TERRAFORM_GRAVITY', 'Terraform Gravity (1%)'),
         ('TERRAFORM_TEMPERATURE', 'Terraform Temperature (1%)'),
         ('TERRAFORM_RADIATION', 'Terraform Radiation (1%)'),
+        ('BUILD_FLEET', 'Build Fleet'),
     ]
 
     star = models.ForeignKey(Star, related_name='production_orders',
@@ -451,4 +452,4 @@ class ProductionOrder(AbstractGameObject):
     position = models.IntegerField(default=0)
 
     class Meta:
-        unique_together = [['star', 'order_type']]
+        ordering = ['position']

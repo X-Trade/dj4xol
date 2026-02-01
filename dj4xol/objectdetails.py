@@ -44,8 +44,11 @@ class DetailBuilder():
                      'environmentals': self.build_environmental_detail(),
                      'resources': self.build_resource_detail(),
                      'is_star': isinstance(self.selected_obj, Star),
+                     'is_fleet': isinstance(self.selected_obj, Fleet),
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
+                     'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
                      'production_orders': self.get_production_orders(),
+                     'fleet_orders': self.get_fleet_orders(),
                      }
         else:
             detail = None
@@ -182,3 +185,25 @@ class DetailBuilder():
             {'short_id': o.short_id, 'type': o.order_type, 'display': o.get_order_type_display()}
             for o in self.selected_obj.production_orders.order_by('position')
         ]
+
+    def get_fleet_orders(self):
+        """Get movement orders for selected fleet."""
+        if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
+            return []
+        if not self.player or self.selected_obj.player != self.player:
+            return []
+        orders = []
+        for o in self.selected_obj.orders.all():
+            target = None
+            if o.target_star:
+                target = o.target_star.name
+            elif o.target_fleet:
+                target = o.target_fleet.name
+            elif o.x is not None and o.y is not None:
+                target = f"Empty Space ({o.x}, {o.y})"
+            orders.append({
+                'short_id': o.short_id,
+                'target': target,
+                'warpfactor': o.warpfactor,
+            })
+        return orders

@@ -1,5 +1,6 @@
 ============= MAIN TODO =============
-1. fleet orders
+1. Lock game on generation
+2. Cronjob entrypoint
 3. Mining & factories
 4. productivity & economy (ties to #3)
 5. Event generation in turn generator
@@ -11,5 +12,4 @@
    for example, a player cannot see the orders of another player's vessel
 
 =============== GUI =================
-1. fleet orders
 9. Python in the browser?

@@ -7,7 +7,7 @@ from django.contrib.auth.decorators import login_required
 
 from dj4xol.objectdetails import DetailBuilder
 
-from .models import Game, Player, ServerSettings, ServerRace, Account, GameInvitation
+from .models import Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet, FleetOrders, Star
 from .decorators import registration_required, player_only_view
 from .turn import GameTurn
 from .starmap import StarMap
@@ -98,7 +98,6 @@ def starmap(request, game_short_id):
     account = request.user.dj4xol_account
     # Get the Player instance for this account in this game
     player = Player.objects.filter(game=game, account=account).first()
-    starmap = StarMap(game, player)
 
     url = request.path
     x = request.GET.get('x', None)
@@ -106,6 +105,26 @@ def starmap(request, game_short_id):
 
     selected = request.GET.get('sel', None)
     detail = DetailBuilder(game, x, y, selected, player=player).build_detail()
+
+    # Check for destination selection mode
+    dest_mode = request.GET.get('mode') == 'select_destination'
+    dest_fleet = request.GET.get('fleet', None)
+    dest_warp = request.GET.get('warp', '5')
+
+    # Check for chosen destination (returned from selection mode)
+    dest_star_id = request.GET.get('dest_star', None)
+    dest_x = request.GET.get('dest_x', None)
+    dest_y = request.GET.get('dest_y', None)
+
+    # Look up destination star name if specified
+    dest_star_name = None
+    if dest_star_id:
+        dest_star = Star.objects.filter(short_id=dest_star_id, game=game).first()
+        if dest_star:
+            dest_star_name = dest_star.name
+
+    # Pass dest_mode to StarMap for modified link rendering
+    starmap_obj = StarMap(game, player, dest_mode=dest_mode)
 
     # Get messages for this player, most recent first
     # Filter to messages since messages_seen_year (or all if never seen)
@@ -126,12 +145,19 @@ def starmap(request, game_short_id):
     return render(request, 'dj4xol/main.html', {
         'game': game,
         'player': player,
-        'starmap': starmap,
+        'starmap': starmap_obj,
         'detail': detail,
         'messages': messages,
         'is_owner': account == game.owner,
         'selection': {'x': x, 'y': y, 'sel': selected},
         'homeworld': homeworld,
+        'dest_mode': dest_mode,
+        'dest_fleet': dest_fleet,
+        'dest_warp': dest_warp,
+        'dest_star_id': dest_star_id,
+        'dest_star_name': dest_star_name,
+        'dest_x': dest_x,
+        'dest_y': dest_y,
     })
 
 
@@ -255,6 +281,49 @@ def remove_production_order(request, game_short_id, order_short_id):
     player = Player.objects.filter(game=game, account=account).first()
 
     order = ProductionOrder.objects.get(short_id=order_short_id, game=game, star__player=player)
+    order.delete()
+
+    return _redirect_preserving_selection(request, game)
+
+
+@player_only_view()
+def add_fleet_order(request, game_short_id):
+    """Add a movement order to a fleet."""
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+
+    fleet_short_id = request.POST.get('fleet')
+    target_star_id = request.POST.get('target_star')
+    target_x = request.POST.get('target_x')
+    target_y = request.POST.get('target_y')
+    warpfactor = int(request.POST.get('warpfactor', 5))
+
+    # Verify fleet belongs to player
+    fleet = Fleet.objects.get(short_id=fleet_short_id, game=game, player=player)
+
+    # Create order with either star target or coordinates
+    order = FleetOrders(game=game, fleet=fleet, warpfactor=warpfactor)
+    if target_star_id:
+        order.target_star = Star.objects.get(short_id=target_star_id, game=game)
+    elif target_x and target_y:
+        order.x = int(target_x)
+        order.y = int(target_y)
+
+    order.save()
+
+    return _redirect_preserving_selection(request, game)
+
+
+@player_only_view()
+def remove_fleet_order(request, game_short_id, order_short_id):
+    """Remove a fleet movement order."""
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+
+    # Verify order's fleet belongs to player
+    order = FleetOrders.objects.get(short_id=order_short_id, game=game, fleet__player=player)
     order.delete()
 
     return _redirect_preserving_selection(request, game)

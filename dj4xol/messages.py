@@ -323,3 +323,43 @@ class MiningAccidentResourcesMessageFactory(MessageFactory):
             qty=self.qty,
             resource=self.resource
         )
+
+
+class FleetBuiltMessageFactory(MessageFactory):
+    """Messages for fleet construction completion."""
+    category = 'PRODUCTION'
+    templates = [
+        "Construction of {fleet} completed at {star}.",
+        "{fleet} has been commissioned at {star}.",
+        "The shipyards at {star} have finished constructing {fleet}.",
+    ]
+
+    def __init__(self, game, player, star, fleet, message=None):
+        super().__init__(game, player, message, intensity=0.3)
+        self.star = star
+        self.fleet = fleet
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=map_object_link(self.star),
+            fleet=map_object_link(self.fleet)
+        )
+
+
+class FleetLostMessageFactory(MessageFactory):
+    """Messages for fleets lost beyond map boundaries."""
+    category = 'GENERAL'
+    templates = [
+        "{fleet} was lost in deep space.",
+        "{fleet} has left the galaxy.",
+        "{fleet} has moved beyond the bounds of the observable universe.",
+        "{fleet} ventured into the void and was never seen again.",
+        "Contact with {fleet} was lost as it crossed into uncharted space.",
+    ]
+
+    def __init__(self, game, player, fleet_name, message=None):
+        super().__init__(game, player, message, intensity=-0.5)
+        self.fleet_name = fleet_name
+
+    def format_message(self):
+        return random.choice(self.templates).format(fleet=self.fleet_name)
