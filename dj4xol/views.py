@@ -108,7 +108,17 @@ def starmap(request, game_short_id):
     detail = DetailBuilder(game, x, y, selected, player=player).build_detail()
 
     # Get messages for this player, most recent first
-    messages = player.messages.order_by('-year', '-id') if player else []
+    # Filter to messages since messages_seen_year (or all if never seen)
+    if player:
+        messages_qs = player.messages.order_by('-year', '-id')
+        if player.messages_seen_year is not None:
+            messages_qs = messages_qs.filter(year__gte=player.messages_seen_year)
+        messages = messages_qs[:1000]
+        # Update last_seen_year for next turn generation
+        player.last_seen_year = game.year
+        player.save(update_fields=['last_seen_year'])
+    else:
+        messages = []
 
     # Get player's homeworld for home button
     homeworld = player.homeworld if player else None
@@ -314,6 +324,22 @@ def _create_invitations(game, invitations):
                 GameInvitation.objects.get_or_create(game=game, account=acct)
             except Account.DoesNotExist:
                 pass  # Silently ignore invalid usernames
+
+
+@player_only_view()
+def message_history(request, game_short_id):
+    """View full message history for a player."""
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+
+    messages = player.messages.order_by('-year', '-id')[:1000] if player else []
+
+    return render(request, 'dj4xol/message_history.html', {
+        'game': game,
+        'player': player,
+        'messages': messages,
+    })
 
 
 def signup(request):

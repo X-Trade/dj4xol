@@ -153,8 +153,11 @@ class GameTurn():
         return timezone.now() + interval if interval else None
 
     def _reset_turn_ins(self):
-        """Reset turned_in status for all players."""
-        self.game.players.update(turned_in=False)
+        """Reset turned_in status and update message visibility for all players."""
+        for player in self.game.players.all():
+            player.turned_in = False
+            player.messages_seen_year = player.last_seen_year
+            player.save(update_fields=['turned_in', 'messages_seen_year'])
 
     def check_quorum(self):
         """Check if all players have turned in. Returns True if quorum met."""
