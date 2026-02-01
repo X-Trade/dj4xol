@@ -204,6 +204,7 @@ class Game(UUIDMixin):
     random_events = models.BooleanField(default=False)
     last_generated = models.DateTimeField(null=True, blank=True)
     next_generation = models.DateTimeField(null=True, blank=True)
+    is_generating = models.BooleanField(default=False)
 
     _star_names = []
     _star_namer = None

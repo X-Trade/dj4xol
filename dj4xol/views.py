@@ -149,6 +149,7 @@ def starmap(request, game_short_id):
         'detail': detail,
         'messages': messages,
         'is_owner': account == game.owner,
+        'is_generating': game.is_generating,
         'selection': {'x': x, 'y': y, 'sel': selected},
         'homeworld': homeworld,
         'dest_mode': dest_mode,
@@ -171,6 +172,11 @@ def turn_in(request, game_short_id):
     if game.turn_scheme != 'QUORUM':
         return render(request, 'dj4xol/forbidden.html', {
             'message': 'This game does not use quorum-based turns.'
+        })
+
+    if game.is_generating:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Turn generation is already in progress.'
         })
 
     player.turned_in = True
@@ -198,6 +204,11 @@ def generate_turn(request, game_short_id):
     if account != game.owner:
         return render(request, 'dj4xol/forbidden.html', {
             'message': 'Only the game owner can generate turns.'
+        })
+
+    if game.is_generating:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Turn generation is already in progress.'
         })
 
     GameTurn(game).generate_turn()

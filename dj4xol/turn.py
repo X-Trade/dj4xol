@@ -130,13 +130,20 @@ class GameTurn():
 
     def generate_turn(self):
         """Generate a turn for the game. Requires at least one player."""
+        if self.game.is_generating:
+            raise Exception("Turn generation already in progress")
         if not self.game.players.exists():
             raise Exception("cannot generate turn for game with no players")
+
+        self.game.is_generating = True
+        self.game.save(update_fields=['is_generating'])
+
         for _ in range(self.game.years_per_turn):
             self._process_year()
         self.game.last_generated = timezone.now()
         self.game.next_generation = self._calculate_next_generation()
         self._reset_turn_ins()
+        self.game.is_generating = False
         self.game.save()
 
     def _process_year(self):

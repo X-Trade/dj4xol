@@ -53,6 +53,15 @@ body {
     cursor: pointer;
 }
 
+.title-bar .status-done {
+    color: #8f8;
+}
+
+.title-bar .status-generating {
+    color: #ff8;
+    font-style: italic;
+}
+
 /* Section headings */
 .columns h2 {
     margin-top: 8px;
