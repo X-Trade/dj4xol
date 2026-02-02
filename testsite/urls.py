@@ -15,8 +15,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.conf.urls import url, include
+from django.views.generic import RedirectView
 
 urlpatterns = [
+    url(r'^$', RedirectView.as_view(url='/4x/', permanent=False)),
     url(r'^admin/', admin.site.urls),
     url(r'^4x/', include('dj4xol.urls', namespace='dj4xol')),
     url(r'^accounts/', include('django.contrib.auth.urls'))
