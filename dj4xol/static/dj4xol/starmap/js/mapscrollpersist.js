@@ -73,10 +73,12 @@ $("document").ready(function() {
         }
     });
 
-    // Check if we have x,y in URL params - center if locate is enabled
+    // Get coordinates for auto-locate: prefer selected object's actual position over URL params
     var urlParams = new URLSearchParams(window.location.search);
-    var urlX = urlParams.get('x');
-    var urlY = urlParams.get('y');
+    var selX = $maparea.attr('data-sel-x');
+    var selY = $maparea.attr('data-sel-y');
+    var urlX = (selX !== undefined && selX !== null && selX !== '') ? selX : urlParams.get('x');
+    var urlY = (selY !== undefined && selY !== null && selY !== '') ? selY : urlParams.get('y');
     var urlLocate = urlParams.get('locate');
 
     // Get border offset from maparea data attribute (in pixels, unscaled)
@@ -102,7 +104,10 @@ $("document").ready(function() {
         }, 1000);
     }
 
-    if (locateEnabled && urlX !== null && urlY !== null) {
+    // Check if in destination selection mode
+    var destMode = $maparea.data('dest-mode') === true || $maparea.data('dest-mode') === 'true';
+
+    if (locateEnabled && urlX !== null && urlY !== null && !destMode) {
         // Center on selected coordinates (multiply by MAP_SCALE=6, add border offset)
         var targetX = (parseInt(urlX) * mapScale + borderOffset) * zoomLevel;
         var targetY = (parseInt(urlY) * mapScale + borderOffset) * zoomLevel;
@@ -130,12 +135,14 @@ $("document").ready(function() {
 
     // Click+drag scrolling
     var isDragging = false;
+    var hasDragged = false;
     var startX, startY, scrollLeft, scrollTop;
 
     $starmap.on('mousedown', function(e) {
         // Don't drag if clicking on a control or link
         if ($(e.target).closest('.starmap-controls, a').length) return;
         isDragging = true;
+        hasDragged = false;
         startX = e.pageX - $starmap.offset().left;
         startY = e.pageY - $starmap.offset().top;
         scrollLeft = $starmap.scrollLeft();
@@ -144,11 +151,14 @@ $("document").ready(function() {
 
     $(document).on('mouseup', function() {
         isDragging = false;
+        // Reset hasDragged after a short delay so click handler can check it
+        setTimeout(function() { hasDragged = false; }, 0);
     });
 
     $(document).on('mousemove', function(e) {
         if (!isDragging) return;
         e.preventDefault();
+        hasDragged = true;
         var x = e.pageX - $starmap.offset().left;
         var y = e.pageY - $starmap.offset().top;
         var walkX = (x - startX);
@@ -221,9 +231,10 @@ $("document").ready(function() {
     });
 
     // Destination mode: click on empty space to set coordinates
-    var destMode = $maparea.data('dest-mode') === true || $maparea.data('dest-mode') === 'true';
     if (destMode) {
         $maparea.on('click', function(e) {
+            // Ignore clicks that were part of a drag-scroll
+            if (hasDragged) return;
             // Let star links handle themselves (they call submitDestination via onclick)
             if ($(e.target).closest('a').length) return;
 
