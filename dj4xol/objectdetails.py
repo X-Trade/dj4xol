@@ -23,11 +23,15 @@ class DetailBuilder():
         self.y = y
 
     def find(self, x, y, selected):
-        if x and y:
-            self.find_all_at_coordinates(x, y)
         if selected:
+            # sel parameter takes priority - find the object first
             self.process_selected(selected)
-        else:
+            # Then find all objects at the selected object's actual location
+            if self.selected_obj:
+                self.find_all_at_coordinates(self.selected_obj.x, self.selected_obj.y)
+        elif x and y:
+            # Fall back to x & y coordinates if no sel parameter
+            self.find_all_at_coordinates(x, y)
             self.find_selected_from_coordinates(x, y)
         self.check_selected()
 
@@ -49,6 +53,8 @@ class DetailBuilder():
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
                      'production_orders': self.get_production_orders(),
                      'fleet_orders': self.get_fleet_orders(),
+                     'x': self.selected_obj.x,
+                     'y': self.selected_obj.y,
                      }
         else:
             detail = None
