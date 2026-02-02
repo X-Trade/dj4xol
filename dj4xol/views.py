@@ -95,6 +95,12 @@ def starmap(request, game_short_id):
     A rudimentary map viewer.
     """
     game = Game.objects.get(short_id=game_short_id)
+
+    if game.is_generating:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Turn generation is in progress. Please check back later.'
+        })
+
     account = request.user.dj4xol_account
     # Get the Player instance for this account in this game
     player = Player.objects.filter(game=game, account=account).first()
@@ -149,7 +155,6 @@ def starmap(request, game_short_id):
         'detail': detail,
         'messages': messages,
         'is_owner': account == game.owner,
-        'is_generating': game.is_generating,
         'selection': {'x': x, 'y': y, 'sel': selected},
         'homeworld': homeworld,
         'dest_mode': dest_mode,
