@@ -79,8 +79,9 @@ body {
     gap: 20px;
     flex: 1;
     min-height: 0;
-    overflow: hidden;
+    overflow-y: auto;
     padding: 0 10px 10px 10px;
+    position: relative;
 }
 
 .column-left {
@@ -100,7 +101,6 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    overflow-y: auto;
 }
 
 /* Mobile responsive - stack columns */
@@ -401,13 +401,17 @@ body {
 
 /* Destination mode banner */
 .dest-mode-banner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     background: #2a5a8a;
     color: #fff;
     padding: 8px 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-shrink: 0;
+    z-index: 100;
 }
 
 .dest-mode-banner span {

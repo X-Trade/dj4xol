@@ -13,9 +13,7 @@
             <span class="title">{{ game.name }}</span>
             <span class="year">Year {{ game.year }}</span>
             <span class="turn-status">
-                {% if is_generating %}
-                    <span class="status-generating">Generating turn...</span>
-                {% elif game.turn_scheme == 'HOURLY' or game.turn_scheme == 'DAILY' or game.turn_scheme == 'WEEKLY' %}
+                {% if game.turn_scheme == 'HOURLY' or game.turn_scheme == 'DAILY' or game.turn_scheme == 'WEEKLY' %}
                     Next turn: {{ game.next_generation|date:"M d, H:i"|default:"pending" }}
                 {% elif game.turn_scheme == 'QUORUM' %}
                     {% if player.turned_in %}
@@ -45,13 +43,13 @@
                 <a href="{% url 'logout' %}">Logout</a>
             </span>
         </div>
-        {% if dest_mode %}
-        <div class="dest-mode-banner">
-            <span>Click a star or location to set destination</span>
-            <a href="?x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&fleet={{ dest_fleet }}&warp={{ dest_warp }}" class="dest-cancel">Cancel</a>
-        </div>
-        {% endif %}
         <div class="columns">
+            {% if dest_mode %}
+            <div class="dest-mode-banner">
+                <span>Click a star or location to set destination</span>
+                <a href="?x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&fleet={{ dest_fleet }}&warp={{ dest_warp }}" class="dest-cancel">Cancel</a>
+            </div>
+            {% endif %}
             <div class="column-left">
                 <div><h2>Starmap</h2>
                     <div class="starmap-wrapper">

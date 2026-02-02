@@ -181,5 +181,5 @@ class StarMap():
         """Render a fleet object on map using HTML with heading rotation"""
         # Base rotation of -135deg makes heading 0 point north
         rotation = -135 + fleet.heading
-        extra_style = f" transform: rotate({rotation}deg);"
+        extra_style = f" transform: translate(-20%, -20%) rotate({rotation}deg);"
         return self.render_object(fleet, extra_style)
