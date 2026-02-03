@@ -258,6 +258,9 @@ class TestTerraforming(TestCase):
         homeworld = player.homeworld
         # Set gravity away from player's ideal
         homeworld.gravity = 0.5
+        homeworld.factories = 10  # Provide buildpoints (100 bp)
+        homeworld.colonists = 10000  # Staff the factories
+        homeworld.ironium_surface = 2000  # Provide resources
         homeworld.save()
         player_ideal = player.gravity_center  # Should be 1.0 by default
         # Add terraforming order
@@ -280,6 +283,10 @@ class TestTerraforming(TestCase):
         homeworld = player.homeworld
         homeworld.gravity = 0.5
         homeworld.temperature = 1.8
+        homeworld.factories = 20  # Provide buildpoints (200 bp for 2 terraforms)
+        homeworld.colonists = 20000  # Staff the factories
+        homeworld.ironium_surface = 2000  # For gravity terraform
+        homeworld.boranium_surface = 2000  # For temperature terraform
         homeworld.save()
         ProductionOrder.objects.create(game=game, star=homeworld, order_type='TERRAFORM_GRAVITY')
         ProductionOrder.objects.create(game=game, star=homeworld, order_type='TERRAFORM_TEMPERATURE')
@@ -481,10 +488,11 @@ class TestEconomicCalculations(TestCase):
         self.assertEqual(calculate_employment_percent(star), 50)
 
     def test_available_buildpoints(self):
-        """Buildpoints equal factories * BUILDPOINTS_PER_FACTORY."""
+        """Buildpoints equal factories * BUILDPOINTS_PER_FACTORY when fully staffed."""
         game = default_game()
         star = game.stars.first()
         star.factories = 7
+        star.colonists = 7000  # Fully staff the factories
         self.assertEqual(calculate_available_buildpoints(star), 7 * BUILDPOINTS_PER_FACTORY)
 
     def test_available_buildpoints_no_factories(self):
@@ -565,6 +573,7 @@ class TestEconomicCalculations(TestCase):
         player = game.players.first()
         star = player.homeworld
         star.mines = 0
+        star.ironium_surface = 100  # Provide resources for building
         star.save()
 
         ProductionOrder.objects.create(game=game, star=star, order_type='BUILD_MINE')
@@ -579,6 +588,7 @@ class TestEconomicCalculations(TestCase):
         player = game.players.first()
         star = player.homeworld
         star.factories = 0
+        star.ironium_surface = 100  # Provide resources for building
         star.save()
 
         ProductionOrder.objects.create(game=game, star=star, order_type='BUILD_FACTORY')

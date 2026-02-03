@@ -20,6 +20,9 @@ def random_environmental_init():
 def random_capacity_init():
     """Random base capacity between 5bn and 15bn (stored in millions)."""
     return random.randint(5000, 15000)
+def random_surface_mineral_init():
+    """Random surface minerals 0-1Mkt with cubic distribution (biased toward lower values)."""
+    return int((random.random() ** 3) * 1_000_000)
 
 
 class HabitabilityMixin(models.Model):
@@ -339,9 +342,9 @@ class Star(AbstractMapObject):
                                   validators=[MinValueValidator(0), MaxValueValidator(100)])
 
     # Surface mineral inventory (kt)
-    ironium_surface = models.IntegerField(default=0)
-    boranium_surface = models.IntegerField(default=0)
-    germanium_surface = models.IntegerField(default=0)
+    ironium_surface = models.IntegerField(default=random_surface_mineral_init)
+    boranium_surface = models.IntegerField(default=random_surface_mineral_init)
+    germanium_surface = models.IntegerField(default=random_surface_mineral_init)
 
     colonists = models.IntegerField(default=0)
     # Base carrying capacity (in millions), effective capacity = base * habitability
@@ -351,6 +354,7 @@ class Star(AbstractMapObject):
     mines = models.IntegerField(default=0)
     factories = models.IntegerField(default=0)
     defenses = models.IntegerField(default=0)
+    buildpoints_consumed = models.IntegerField(default=0)  # Reset each turn
 
 
 class ServerRace(UUIDMixin, HabitabilityMixin):
@@ -449,6 +453,17 @@ class GameInvitation(UUIDMixin):
         return f'{self.game.name}: {target}'
 
 
+PRODUCTION_COSTS = {
+    'BUILD_MINE': {'bp': 0, 'ironium': 10, 'boranium': 0, 'germanium': 0, 'colonists': 1000},
+    'BUILD_FACTORY': {'bp': 0, 'ironium': 20, 'boranium': 0, 'germanium': 0, 'colonists': 1000},
+    'BUILD_DEFENSE': {'bp': 20, 'ironium': 100, 'boranium': 50, 'germanium': 50, 'colonists': 0},
+    'BUILD_FLEET': {'bp': 50, 'ironium': 100, 'boranium': 200, 'germanium': 200, 'colonists': 0},
+    'TERRAFORM_GRAVITY': {'bp': 100, 'ironium': 1000, 'boranium': 0, 'germanium': 0, 'colonists': 0},
+    'TERRAFORM_TEMPERATURE': {'bp': 100, 'ironium': 0, 'boranium': 1000, 'germanium': 0, 'colonists': 0},
+    'TERRAFORM_RADIATION': {'bp': 100, 'ironium': 0, 'boranium': 500, 'germanium': 500, 'colonists': 0},
+}
+
+
 class ProductionOrder(AbstractGameObject):
     """Production order for a star/planet."""
     ORDER_TYPES = [
@@ -465,6 +480,14 @@ class ProductionOrder(AbstractGameObject):
             on_delete=models.CASCADE)
     order_type = models.CharField(max_length=24, choices=ORDER_TYPES)
     position = models.IntegerField(default=0)
+    repeat = models.BooleanField(default=False)
+    quantity = models.IntegerField(default=1)
+    completed = models.IntegerField(default=0)
+    # Track partial progress on current item (resources must be spent before BP)
+    spent_ironium = models.IntegerField(default=0)
+    spent_boranium = models.IntegerField(default=0)
+    spent_germanium = models.IntegerField(default=0)
+    spent_bp = models.IntegerField(default=0)
 
     class Meta:
         ordering = ['position']

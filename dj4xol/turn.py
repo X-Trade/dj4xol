@@ -1,6 +1,7 @@
 from datetime import timedelta
 from math import tanh, atan2, degrees
 from numpy import array as nparray, linalg
+from django.db import models
 from django.utils import timezone
 
 from .messages import (
@@ -108,17 +109,21 @@ def calculate_available_buildpoints(star):
     """Calculate buildpoints available this turn from factories.
 
     Buildpoints represent factory labour capacity and do not accumulate.
+    Only fully staffed factories produce buildpoints - if there aren't
+    enough colonists to staff all infrastructure, output is proportionally reduced.
     """
-    return star.factories * BUILDPOINTS_PER_FACTORY
+    if star.factories == 0:
+        return 0
+    jobs = (star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
+    if jobs == 0:
+        return 0
+    staffing_ratio = min(1.0, star.colonists / jobs)
+    return int(star.factories * BUILDPOINTS_PER_FACTORY * staffing_ratio)
 
 
 def calculate_consumed_buildpoints(star):
-    """Calculate buildpoints consumed by production this turn.
-
-    Returns 0 for now (build progress not yet implemented).
-    """
-    # TODO: Sum buildpoints consumed by production orders this turn
-    return 0
+    """Calculate buildpoints consumed by production this turn."""
+    return star.buildpoints_consumed
 
 
 def calculate_productivity_percent(star):
@@ -228,7 +233,6 @@ class GameTurn():
         """Process a single year of game time."""
         self.fleet_movements()
         self.check_lost_fleets()
-        self.terraforming()
         self.mining()
         self.production()
         self.population_growth()
@@ -398,13 +402,6 @@ class GameTurn():
         if self.game.join_until_year and self.game.year >= self.game.join_until_year:
             self.game.joinable = False
 
-    def terraforming(self):
-        """Process terraforming orders for all colonized planets."""
-        from .models import Star
-        for star in Star.objects.filter(game=self.game, player__isnull=False):
-            for order in star.production_orders.all():
-                self._apply_terraform_order(star, order)
-
     def mining(self):
         """Process mining for all colonized planets with mines.
 
@@ -458,18 +455,128 @@ class GameTurn():
             star.save()
 
     def production(self):
-        """Process production orders for all colonized planets."""
-        from .models import Star
+        """Process production orders for all colonized planets.
+
+        For each star:
+        1. Reset buildpoints_consumed and colonists_busy to 0
+        2. Calculate available buildpoints from factories
+        3. Process orders in position order
+        4. For each item: consume resources FIRST, then BP
+        5. Colonists are required for mines/factories (not consumed, just busy)
+        6. Continue until blocked on resources, BP, or colonists
+        """
+        from .models import Star, ProductionOrder, PRODUCTION_COSTS
         for star in Star.objects.filter(game=self.game, player__isnull=False):
-            for order in list(star.production_orders.all()):
-                if order.order_type == 'BUILD_FLEET':
-                    self._build_fleet(star, order)
-                elif order.order_type == 'BUILD_MINE':
-                    self._build_mine(star, order)
-                elif order.order_type == 'BUILD_FACTORY':
-                    self._build_factory(star, order)
-                elif order.order_type == 'BUILD_DEFENSE':
-                    self._build_defense(star, order)
+            star.buildpoints_consumed = 0
+            colonists_busy = 0  # Track colonists busy with construction this turn
+            available_bp = calculate_available_buildpoints(star)
+            blocked = False
+
+            for order in list(star.production_orders.order_by('position')):
+                if blocked:
+                    break
+
+                cost = PRODUCTION_COSTS.get(order.order_type, {})
+
+                # Build items until we've completed the quantity or get blocked
+                while order.completed < order.quantity and not blocked:
+                    # Phase 1: Check colonist availability (for mines/factories)
+                    colonist_cost = cost.get('colonists', 0)
+                    if colonist_cost > 0:
+                        available_colonists = star.colonists - colonists_busy
+                        if available_colonists < colonist_cost:
+                            # Blocked on colonists - save and stop
+                            blocked = True
+                            order.save()
+                            break
+
+                    # Phase 2: Consume resources (must complete before BP)
+                    for resource in ['ironium', 'boranium', 'germanium']:
+                        resource_cost = cost.get(resource, 0)
+                        spent_field = f'spent_{resource}'
+                        surface_field = f'{resource}_surface'
+
+                        already_spent = getattr(order, spent_field)
+                        needed = resource_cost - already_spent
+
+                        if needed > 0:
+                            available = getattr(star, surface_field)
+                            spend = min(needed, available)
+                            setattr(order, spent_field, already_spent + spend)
+                            setattr(star, surface_field, available - spend)
+
+                    # Check if all resources satisfied
+                    resources_satisfied = all(
+                        getattr(order, f'spent_{resource}') >= cost.get(resource, 0)
+                        for resource in ['ironium', 'boranium', 'germanium']
+                    )
+
+                    if not resources_satisfied:
+                        # Blocked on resources - save and stop
+                        blocked = True
+                        order.save()
+                        break
+
+                    # Phase 3: Consume BP (only after resources satisfied)
+                    bp_cost = cost.get('bp', 0)
+                    bp_needed = bp_cost - order.spent_bp
+
+                    if bp_needed > 0:
+                        bp_spend = min(bp_needed, available_bp)
+                        order.spent_bp += bp_spend
+                        available_bp -= bp_spend
+                        star.buildpoints_consumed += bp_spend
+
+                        if order.spent_bp < bp_cost:
+                            # Blocked on BP - save and stop
+                            blocked = True
+                            order.save()
+                            break
+
+                    # Item complete! Mark colonists as busy (not consumed)
+                    if colonist_cost > 0:
+                        colonists_busy += colonist_cost
+
+                    self._apply_production_effect(star, order)
+                    order.completed += 1
+                    # Reset spent amounts for next item
+                    order.spent_ironium = 0
+                    order.spent_boranium = 0
+                    order.spent_germanium = 0
+                    order.spent_bp = 0
+
+                # After while loop, check if order is fully complete
+                if order.completed >= order.quantity:
+                    if order.repeat:
+                        # Requeue at bottom with fresh quantity
+                        max_pos = star.production_orders.aggregate(
+                            max_pos=models.Max('position'))['max_pos'] or 0
+                        ProductionOrder.objects.create(
+                            game=self.game,
+                            star=star,
+                            order_type=order.order_type,
+                            position=max_pos + 1,
+                            repeat=True,
+                            quantity=order.quantity,
+                        )
+                    order.delete()
+                elif not blocked:
+                    order.save()
+
+            star.save()
+
+    def _apply_production_effect(self, star, order):
+        """Apply the effect of a completed production order."""
+        if order.order_type == 'BUILD_FLEET':
+            self._build_fleet(star, order)
+        elif order.order_type == 'BUILD_MINE':
+            self._build_mine(star, order)
+        elif order.order_type == 'BUILD_FACTORY':
+            self._build_factory(star, order)
+        elif order.order_type == 'BUILD_DEFENSE':
+            self._build_defense(star, order)
+        elif order.order_type.startswith('TERRAFORM_'):
+            self._apply_terraform_order(star, order)
 
     def _build_fleet(self, star, order):
         """Build a fleet at the given star and create notification."""
@@ -494,15 +601,10 @@ class GameTurn():
         msg.year = self.game.year
         msg.save()
 
-        # Delete the production order
-        order.delete()
-
     def _build_mine(self, star, order):
         """Build a mine at the given star and create notification."""
         player = star.player
-
         star.mines += 1
-        star.save()
 
         # Create notification message
         factory = MineBuiltMessageFactory(self.game, player, star)
@@ -510,15 +612,10 @@ class GameTurn():
         msg.year = self.game.year
         msg.save()
 
-        # Delete the production order
-        order.delete()
-
     def _build_factory(self, star, order):
         """Build a factory at the given star and create notification."""
         player = star.player
-
         star.factories += 1
-        star.save()
 
         # Create notification message
         factory = FactoryBuiltMessageFactory(self.game, player, star)
@@ -526,24 +623,16 @@ class GameTurn():
         msg.year = self.game.year
         msg.save()
 
-        # Delete the production order
-        order.delete()
-
     def _build_defense(self, star, order):
         """Build a defense at the given star and create notification."""
         player = star.player
-
         star.defenses += 1
-        star.save()
 
         # Create notification message
         factory = DefenseBuiltMessageFactory(self.game, player, star)
         msg = factory.new_message()
         msg.year = self.game.year
         msg.save()
-
-        # Delete the production order
-        order.delete()
 
     def _apply_terraform_order(self, star, order):
         """Apply a single terraforming order.

@@ -569,3 +569,74 @@ body {
     text-align: right;
     font-size: 0.9em;
 }
+
+/* Production quantity and repeat controls */
+.quantity-input {
+    width: 50px;
+    padding: 4px;
+    text-align: center;
+}
+
+.repeat-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    cursor: pointer;
+    font-size: 1.1em;
+}
+
+.repeat-checkbox input {
+    margin: 0;
+}
+
+.order-quantity {
+    color: #666;
+    font-size: 0.9em;
+}
+
+.repeat-icon {
+    color: #2a5a8a;
+    font-weight: bold;
+}
+
+/* Production order tooltip */
+.order-tooltip {
+    display: none;
+    position: fixed;
+    background: #333;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    white-space: nowrap;
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    pointer-events: none;
+}
+
+.tooltip-header {
+    font-weight: bold;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #555;
+}
+
+.tooltip-table {
+    border-collapse: collapse;
+}
+
+.tooltip-table th,
+.tooltip-table td {
+    padding: 2px 8px;
+    text-align: right;
+}
+
+.tooltip-table th:first-child,
+.tooltip-table td:first-child {
+    text-align: left;
+}
+
+.tooltip-table .res-col td:first-child { color: #8f8; }
+.tooltip-table .res-iron td:first-child { color: #6cf; }
+.tooltip-table .res-bor td:first-child { color: #fc6; }
+.tooltip-table .res-germ td:first-child { color: #f6c; }

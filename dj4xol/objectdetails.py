@@ -207,14 +207,48 @@ class DetailBuilder():
 
     def get_production_orders(self):
         """Get production orders for selected star."""
+        from .models import PRODUCTION_COSTS
         if not self.selected_obj or not isinstance(self.selected_obj, Star):
             return []
         if not self.player or self.selected_obj.player != self.player:
             return []
-        return [
-            {'short_id': o.short_id, 'type': o.order_type, 'display': o.get_order_type_display()}
-            for o in self.selected_obj.production_orders.order_by('position')
-        ]
+        orders = []
+        for o in self.selected_obj.production_orders.order_by('position'):
+            cost = PRODUCTION_COSTS.get(o.order_type, {})
+            # Calculate total cost and total spent for progress
+            total_cost = (cost.get('bp', 0) + cost.get('ironium', 0) +
+                          cost.get('boranium', 0) + cost.get('germanium', 0))
+            total_spent = o.spent_bp + o.spent_ironium + o.spent_boranium + o.spent_germanium
+            progress_percent = (total_spent / total_cost * 100) if total_cost > 0 else 0
+            orders.append({
+                'short_id': o.short_id,
+                'type': o.order_type,
+                'display': o.get_order_type_display(),
+                'quantity': o.quantity,
+                'completed': o.completed,
+                'repeat': o.repeat,
+                'progress_percent': int(progress_percent),
+                'cost': {
+                    'bp': cost.get('bp', 0),
+                    'ironium': cost.get('ironium', 0),
+                    'boranium': cost.get('boranium', 0),
+                    'germanium': cost.get('germanium', 0),
+                    'colonists': cost.get('colonists', 0),
+                },
+                'spent': {
+                    'bp': o.spent_bp,
+                    'ironium': o.spent_ironium,
+                    'boranium': o.spent_boranium,
+                    'germanium': o.spent_germanium,
+                },
+                'remaining': {
+                    'bp': cost.get('bp', 0) - o.spent_bp,
+                    'ironium': cost.get('ironium', 0) - o.spent_ironium,
+                    'boranium': cost.get('boranium', 0) - o.spent_boranium,
+                    'germanium': cost.get('germanium', 0) - o.spent_germanium,
+                },
+            })
+        return orders
 
     def get_fleet_orders(self):
         """Get movement orders for selected fleet."""
