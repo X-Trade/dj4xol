@@ -1,4 +1,9 @@
-from ..turn import GameTurn, habitability_proportion, calculate_growth_factor, capacity_modifier, effective_capacity, BILLION
+from ..turn import (
+    GameTurn, habitability_proportion, calculate_growth_factor, capacity_modifier,
+    effective_capacity, BILLION, calculate_employment_percent, calculate_economy_percent,
+    calculate_available_buildpoints, calculate_productivity_percent, calculate_economy_factor,
+    COLONISTS_PER_JOB, BUILDPOINTS_PER_FACTORY
+)
 from ..models import ProductionOrder
 from django.test import TestCase
 from ._util import default_game, get_default_race
@@ -434,3 +439,150 @@ class TestRandomEvents(TestCase):
         homeworld.refresh_from_db()
         # Should have moved away from ideal
         self.assertNotEqual(homeworld.gravity, 1.0)
+
+
+class TestEconomicCalculations(TestCase):
+    """Tests for economic factor calculations."""
+
+    def test_employment_percent_no_colonists(self):
+        """Empty star returns 0% employment."""
+        game = default_game()
+        star = game.stars.first()
+        star.colonists = 0
+        star.mines = 5
+        star.factories = 5
+        self.assertEqual(calculate_employment_percent(star), 0)
+
+    def test_employment_percent_full_employment(self):
+        """When jobs >= colonists, employment is 100%."""
+        game = default_game()
+        star = game.stars.first()
+        star.colonists = 10000
+        star.mines = 5
+        star.factories = 5  # 10 jobs * 1000 = 10000 capacity
+        self.assertEqual(calculate_employment_percent(star), 100)
+
+    def test_employment_percent_over_employment_capped(self):
+        """More jobs than colonists still caps at 100%."""
+        game = default_game()
+        star = game.stars.first()
+        star.colonists = 5000
+        star.mines = 5
+        star.factories = 5  # 10000 job capacity, only 5000 colonists
+        self.assertEqual(calculate_employment_percent(star), 100)
+
+    def test_employment_percent_partial(self):
+        """Partial employment calculates correctly."""
+        game = default_game()
+        star = game.stars.first()
+        star.colonists = 20000
+        star.mines = 5
+        star.factories = 5  # 10000 job capacity / 20000 = 50%
+        self.assertEqual(calculate_employment_percent(star), 50)
+
+    def test_available_buildpoints(self):
+        """Buildpoints equal factories * BUILDPOINTS_PER_FACTORY."""
+        game = default_game()
+        star = game.stars.first()
+        star.factories = 7
+        self.assertEqual(calculate_available_buildpoints(star), 7 * BUILDPOINTS_PER_FACTORY)
+
+    def test_available_buildpoints_no_factories(self):
+        """No factories means no buildpoints."""
+        game = default_game()
+        star = game.stars.first()
+        star.factories = 0
+        self.assertEqual(calculate_available_buildpoints(star), 0)
+
+    def test_productivity_percent_no_factories(self):
+        """No factories returns 0% productivity (avoid division by zero)."""
+        game = default_game()
+        star = game.stars.first()
+        star.factories = 0
+        self.assertEqual(calculate_productivity_percent(star), 0)
+
+    def test_productivity_percent_no_consumption(self):
+        """With factories but no consumption, productivity is 0%."""
+        game = default_game()
+        star = game.stars.first()
+        star.factories = 10
+        # No buildpoints consumed yet (not implemented)
+        self.assertEqual(calculate_productivity_percent(star), 0)
+
+    def test_economy_percent_employment_only(self):
+        """With no productivity, economy is employment/2."""
+        game = default_game()
+        star = game.stars.first()
+        star.colonists = 10000
+        star.mines = 5
+        star.factories = 5  # 100% employment
+        # economy = 100/2 + 0/2 = 50%
+        self.assertEqual(calculate_economy_percent(star), 50)
+
+    def test_economy_percent_minimum_zero(self):
+        """Economy percent never goes below 0."""
+        game = default_game()
+        star = game.stars.first()
+        star.colonists = 100000
+        star.mines = 0
+        star.factories = 0  # 0% employment
+        self.assertEqual(calculate_economy_percent(star), 0)
+
+    def test_economy_factor_range(self):
+        """Economy factor should be in 0-1 range (coefficient form)."""
+        game = default_game()
+        star = game.stars.first()
+        star.colonists = 10000
+        star.mines = 5
+        star.factories = 5  # 100% employment -> 50% economy
+        self.assertEqual(calculate_economy_factor(star), 0.5)
+
+    def test_economy_boosts_habitability_factor(self):
+        """Economy factor should boost habitability calculation."""
+        from ..turn import calculate_habitability_factor
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        # Get baseline habitability with no economy
+        star.mines = 0
+        star.factories = 0
+        baseline = calculate_habitability_factor(player, star)
+
+        # Add full employment
+        star.colonists = 10000
+        star.mines = 5
+        star.factories = 5  # 100% employment -> 50% economy -> 0.5 factor
+        boosted = calculate_habitability_factor(player, star)
+
+        # Economy adds to environmental factors before /3 averaging
+        # So boosted should be higher than baseline
+        self.assertGreater(boosted, baseline)
+
+    def test_build_mine_order(self):
+        """BUILD_MINE order should increment mines count."""
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 0
+        star.save()
+
+        ProductionOrder.objects.create(game=game, star=star, order_type='BUILD_MINE')
+        GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        self.assertEqual(star.mines, 1)
+
+    def test_build_factory_order(self):
+        """BUILD_FACTORY order should increment factories count."""
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.factories = 0
+        star.save()
+
+        ProductionOrder.objects.create(game=game, star=star, order_type='BUILD_FACTORY')
+        GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        self.assertEqual(star.factories, 1)

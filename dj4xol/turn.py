@@ -15,6 +15,8 @@ from .messages import (
     MiningAccidentResourcesMessageFactory,
     FleetBuiltMessageFactory,
     FleetLostMessageFactory,
+    MineBuiltMessageFactory,
+    FactoryBuiltMessageFactory,
 )
 import random
 
@@ -81,6 +83,72 @@ def habitability_proportion(hab_min, hab_max, centre, value):
         return 1.0 - (centre - value) / (centre - hab_min)
 
 
+# Economic constants
+COLONISTS_PER_JOB = 1000  # Each mine/factory employs this many colonists
+BUILDPOINTS_PER_FACTORY = 10  # Each factory produces this many buildpoints per turn
+
+
+def calculate_employment_percent(star):
+    """Calculate employment percentage based on mines and factories.
+
+    Each mine and factory employs COLONISTS_PER_JOB colonists.
+    Returns 0-100, capped at 100%.
+    """
+    if star.colonists == 0:
+        return 0
+    jobs = (star.mines + star.factories) * COLONISTS_PER_JOB
+    return min(100, jobs / star.colonists * 100)
+
+
+def calculate_available_buildpoints(star):
+    """Calculate buildpoints available this turn from factories.
+
+    Buildpoints represent factory labour capacity and do not accumulate.
+    """
+    return star.factories * BUILDPOINTS_PER_FACTORY
+
+
+def calculate_consumed_buildpoints(star):
+    """Calculate buildpoints consumed by production this turn.
+
+    Returns 0 for now (build progress not yet implemented).
+    """
+    # TODO: Sum buildpoints consumed by production orders this turn
+    return 0
+
+
+def calculate_productivity_percent(star):
+    """Calculate productivity percentage based on buildpoints consumed.
+
+    Productivity is the percentage of available buildpoints that were
+    consumed this turn. Capped at 100%.
+    """
+    available = calculate_available_buildpoints(star)
+    if available == 0:
+        return 0
+    consumed = calculate_consumed_buildpoints(star)
+    return min(100, consumed / available * 100)
+
+
+def calculate_economy_percent(star):
+    """Calculate economy percentage from employment and productivity.
+
+    economy% = employment%/2 + productivity%/2
+    Returns 0-100, minimum 0%.
+    """
+    employment = calculate_employment_percent(star)
+    productivity = calculate_productivity_percent(star)
+    return max(0, employment / 2 + productivity / 2)
+
+
+def calculate_economy_factor(star):
+    """Calculate economy factor as a coefficient (0-1 range).
+
+    Converts economy percentage to the same scale as environmental factors.
+    """
+    return calculate_economy_percent(star) / 100
+
+
 def calculate_habitability_factor(player, star):
     """Calculate raw habitability factor without capacity modifier.
 
@@ -88,6 +156,10 @@ def calculate_habitability_factor(player, star):
     - Perfect habitability (all envs at center): 1.0
     - Edge habitability (all envs at min/max): 0.0
     - Outside range: negative
+
+    Economy factor is added to environmental factors before averaging,
+    but the /3 divisor is kept. This allows economic activity to
+    temporarily boost growth beyond what environment alone would allow.
     """
     factor = 0
     for env in ['gravity', 'temperature', 'radiation']:
@@ -97,7 +169,9 @@ def calculate_habitability_factor(player, star):
             getattr(player, f'{env}_center'),
             getattr(star, env)
         )
-    # Average the three factors (0-1 range when fully habitable)
+    # Add economy factor before averaging
+    factor += calculate_economy_factor(star)
+    # Average using the original /3 divisor (economy is a bonus)
     return factor / 3.0
 
 
@@ -333,6 +407,10 @@ class GameTurn():
             for order in list(star.production_orders.all()):
                 if order.order_type == 'BUILD_FLEET':
                     self._build_fleet(star, order)
+                elif order.order_type == 'BUILD_MINE':
+                    self._build_mine(star, order)
+                elif order.order_type == 'BUILD_FACTORY':
+                    self._build_factory(star, order)
 
     def _build_fleet(self, star, order):
         """Build a fleet at the given star and create notification."""
@@ -353,6 +431,38 @@ class GameTurn():
 
         # Create notification message
         factory = FleetBuiltMessageFactory(self.game, player, star, fleet)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+        # Delete the production order
+        order.delete()
+
+    def _build_mine(self, star, order):
+        """Build a mine at the given star and create notification."""
+        player = star.player
+
+        star.mines += 1
+        star.save()
+
+        # Create notification message
+        factory = MineBuiltMessageFactory(self.game, player, star)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+        # Delete the production order
+        order.delete()
+
+    def _build_factory(self, star, order):
+        """Build a factory at the given star and create notification."""
+        player = star.player
+
+        star.factories += 1
+        star.save()
+
+        # Create notification message
+        factory = FactoryBuiltMessageFactory(self.game, player, star)
         msg = factory.new_message()
         msg.year = self.game.year
         msg.save()

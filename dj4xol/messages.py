@@ -346,6 +346,44 @@ class FleetBuiltMessageFactory(MessageFactory):
         )
 
 
+class MineBuiltMessageFactory(MessageFactory):
+    """Messages for mine construction completion."""
+    category = 'PRODUCTION'
+    templates = [
+        "A new mine has been constructed at {star}.",
+        "Mining operations have expanded at {star}.",
+        "Construction of a new mine completed at {star}.",
+    ]
+
+    def __init__(self, game, player, star, message=None):
+        super().__init__(game, player, message, intensity=0.2)
+        self.star = star
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=map_object_link(self.star)
+        )
+
+
+class FactoryBuiltMessageFactory(MessageFactory):
+    """Messages for factory construction completion."""
+    category = 'PRODUCTION'
+    templates = [
+        "A new factory has been constructed at {star}.",
+        "Industrial capacity has expanded at {star}.",
+        "Construction of a new factory completed at {star}.",
+    ]
+
+    def __init__(self, game, player, star, message=None):
+        super().__init__(game, player, message, intensity=0.2)
+        self.star = star
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=map_object_link(self.star)
+        )
+
+
 class FleetLostMessageFactory(MessageFactory):
     """Messages for fleets lost beyond map boundaries."""
     category = 'GENERAL'
