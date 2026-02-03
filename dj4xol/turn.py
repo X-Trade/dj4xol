@@ -323,10 +323,18 @@ class GameTurn():
             fleet.x = x
             fleet.y = y
             if order.repeat:
-                # this may not work....
-                neworder = order
-                neworder.id = None
-                neworder.save()
+                # Requeue order at bottom of fleet's order list
+                from .models import FleetOrders
+                FleetOrders.objects.create(
+                    game=self.game,
+                    fleet=fleet,
+                    repeat=True,
+                    warpfactor=order.warpfactor,
+                    x=order.x,
+                    y=order.y,
+                    target_star=order.target_star,
+                    target_fleet=order.target_fleet,
+                )
             order.delete()
         else:
             normalised_vector = vector / distance

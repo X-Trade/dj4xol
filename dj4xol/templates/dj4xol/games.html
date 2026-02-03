@@ -14,7 +14,7 @@
 			<ul>
 			{% for game in my_games %}
 				<li><a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
-					({{ game.year }}, {{ game.turn_scheme }})</li>
+					({{ game.year }}, {% if game.is_generating %}GENERATING{% else %}{{ game.get_turn_scheme_short_display }}{% endif %})</li>
 			{% empty %}
 				<li>No games yet</li>
 			{% endfor %}
@@ -23,7 +23,7 @@
 			<h3>Invitations</h3>
 			<ul>
 			{% for game in invited_games %}
-				<li>{{ game.name }} ({{ game.year }}, {{ game.turn_scheme }})
+				<li>{{ game.name }} ({{ game.year }}, {% if game.is_generating %}GENERATING{% else %}{{ game.get_turn_scheme_short_display }}{% endif %})
 					<a href="{% url 'dj4xol:join_game' game.short_id %}">join</a></li>
 			{% endfor %}
 			</ul>
@@ -34,7 +34,7 @@
 			<ul>
 			{% for game in open_games %}
 				<li>{{ game.name }}
-					({{ game.year }}, {{ game.turn_scheme }})
+					({{ game.year }}, {% if game.is_generating %}GENERATING{% else %}{{ game.get_turn_scheme_short_display }}{% endif %})
 					<a href="{% url 'dj4xol:join_game' game.short_id %}">join</a></li>
 			{% empty %}
 				<li>No open games</li>

@@ -326,12 +326,13 @@ def add_fleet_order(request, game_short_id):
     target_x = request.POST.get('target_x')
     target_y = request.POST.get('target_y')
     warpfactor = int(request.POST.get('warpfactor', 5))
+    repeat = request.POST.get('repeat') == 'on'
 
     # Verify fleet belongs to player
     fleet = Fleet.objects.get(short_id=fleet_short_id, game=game, player=player)
 
     # Create order with either star target or coordinates
-    order = FleetOrders(game=game, fleet=fleet, warpfactor=warpfactor)
+    order = FleetOrders(game=game, fleet=fleet, warpfactor=warpfactor, repeat=repeat)
     if target_star_id:
         order.target_star = Star.objects.get(short_id=target_star_id, game=game)
     elif target_x and target_y:

@@ -5,7 +5,7 @@
             {% if detail.fleet_orders %}
                 {% for order in detail.fleet_orders %}
                 <div class="order-item">
-                    <span>Warp {{ order.warpfactor }} to {{ order.target }}</span>
+                    <span>Warp {{ order.warpfactor }} to {{ order.target }}{% if order.repeat %} <small>(repeat)</small>{% endif %}</span>
                     <form method="post" action="{% url 'dj4xol:remove_fleet_order' game.short_id order.short_id %}" style="display:inline">
                         {% csrf_token %}
                         <input type="hidden" name="x" value="{{ selection.x }}">
@@ -61,6 +61,11 @@
                         <input type="range" id="warp-slider" min="0" max="13" value="5" class="warp-slider">
                         <span id="warp-value" class="warp-value">Warp 5</span>
                     </div>
+                </div>
+                <div class="order-param-row">
+                    <label>
+                        <input type="checkbox" name="repeat" id="repeat-checkbox"> Repeat order
+                    </label>
                 </div>
             </div>
         </form>

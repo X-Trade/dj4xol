@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.utils import IntegrityError
 from django import forms
 from django.contrib.auth import models as auth_models
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -229,6 +230,12 @@ class Game(UUIDMixin):
             self._star_namer = StarNamer(self.get_star_names())
         return self._star_namer
 
+    def get_turn_scheme_short_display(self):
+        """Get short friendly name for turn scheme (without description)."""
+        full_display = self.get_turn_scheme_display()
+        # Split on ' - ' and take first part for short display
+        return full_display.split(' - ')[0] if ' - ' in full_display else full_display
+
 
 class AbstractGameObject(UUIDMixin):
     game = models.ForeignKey(Game, related_name="%(class)ss",
@@ -238,10 +245,39 @@ class AbstractGameObject(UUIDMixin):
         return self.short_id
 
     def save(self, *args, **kwargs):
+        # Only generate short_id for new objects (existing ones keep their short_id)
         if not self.short_id:
-            # Combine game prefix (4 chars) + object suffix (8 chars) = 12 chars
-            self.short_id = self.game.short_id[:4] + self.id.hex[-8:]
+            # Generate deterministic short_id using XOR approach for better entropy distribution
+            uuid_int = self.id.int
+            self.short_id = self._generate_short_id_from_uuid(uuid_int)
+        
         super(UUIDMixin, self).save(*args, **kwargs)
+    
+    def _generate_short_id_from_uuid(self, uuid_int):
+        """Generate short_id by XORing UUID chunks for better entropy distribution."""
+        # XOR the 128-bit UUID in 32-bit chunks to get 32 bits
+        chunk1 = (uuid_int >> 96) & 0xFFFFFFFF  # Top 32 bits
+        chunk2 = (uuid_int >> 64) & 0xFFFFFFFF  # Next 32 bits  
+        chunk3 = (uuid_int >> 32) & 0xFFFFFFFF  # Next 32 bits
+        chunk4 = uuid_int & 0xFFFFFFFF          # Bottom 32 bits
+        
+        # XOR all chunks together
+        xor_result = chunk1 ^ chunk2 ^ chunk3 ^ chunk4
+        
+        # Add game prefix for scoping
+        game_prefix = self.game.short_id[:4]
+        
+        # Convert to base36 (0-9, A-Z) for readability, take 8 chars to fit in 12 total
+        import string
+        base36_chars = string.digits + string.ascii_uppercase
+        
+        short_part = ''
+        temp = xor_result
+        for _ in range(8):  # Generate 8 characters
+            short_part = base36_chars[temp % 36] + short_part
+            temp //= 36
+        
+        return game_prefix + short_part
 
     class Meta:
         abstract = True
