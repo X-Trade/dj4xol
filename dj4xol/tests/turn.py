@@ -2,7 +2,7 @@ from ..turn import (
     GameTurn, habitability_proportion, calculate_growth_factor, capacity_modifier,
     effective_capacity, BILLION, calculate_employment_percent, calculate_economy_percent,
     calculate_available_buildpoints, calculate_productivity_percent, calculate_economy_factor,
-    COLONISTS_PER_JOB, BUILDPOINTS_PER_FACTORY
+    COLONISTS_PER_JOB, BUILDPOINTS_PER_FACTORY, KT_PER_MINE, HOMEWORLD_MIN_YIELD
 )
 from ..models import ProductionOrder
 from django.test import TestCase
@@ -343,22 +343,22 @@ class TestRandomEvents(TestCase):
             f"Expected population message, got: {msg.message}"
         )
 
-    def test_mining_discovery_increases_resources(self):
-        """Mining discovery should increase a resource."""
+    def test_mining_discovery_increases_surface_resources(self):
+        """Mining discovery should increase surface resources."""
         game = default_game(stars=5)
         game.random_events = True
         game.save()
         player = game.players.first()
         homeworld = player.homeworld
-        homeworld.ironium = 10
-        homeworld.boranium = 10
-        homeworld.germanium = 10
+        homeworld.ironium_surface = 0
+        homeworld.boranium_surface = 0
+        homeworld.germanium_surface = 0
         homeworld.save()
-        total_before = homeworld.ironium + homeworld.boranium + homeworld.germanium
+        total_before = homeworld.ironium_surface + homeworld.boranium_surface + homeworld.germanium_surface
         turn = GameTurn(game)
         turn._apply_mining_discovery(homeworld)
         homeworld.refresh_from_db()
-        total_after = homeworld.ironium + homeworld.boranium + homeworld.germanium
+        total_after = homeworld.ironium_surface + homeworld.boranium_surface + homeworld.germanium_surface
         self.assertGreater(total_after, total_before)
 
     def test_mining_accident_deaths_reduces_colonists(self):
@@ -586,3 +586,127 @@ class TestEconomicCalculations(TestCase):
 
         star.refresh_from_db()
         self.assertEqual(star.factories, 1)
+
+    def test_mining_extracts_minerals(self):
+        """Mines should extract minerals to surface inventory."""
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 5
+        star.ironium = 50  # 50% yield
+        star.boranium = 30  # 30% yield
+        star.germanium = 20  # 20% yield
+        star.ironium_surface = 0
+        star.boranium_surface = 0
+        star.germanium_surface = 0
+        star.save()
+
+        GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        # 5 mines * 10kt = 50kt total, distributed by yield
+        # Total yield = 100%, so: 50*50/100=25, 50*30/100=15, 50*20/100=10
+        self.assertEqual(star.ironium_surface, 25)
+        self.assertEqual(star.boranium_surface, 15)
+        self.assertEqual(star.germanium_surface, 10)
+
+    def test_mining_no_mines(self):
+        """No mines should not extract any minerals."""
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 0
+        star.ironium_surface = 0
+        star.boranium_surface = 0
+        star.germanium_surface = 0
+        star.save()
+
+        GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        self.assertEqual(star.ironium_surface, 0)
+        self.assertEqual(star.boranium_surface, 0)
+        self.assertEqual(star.germanium_surface, 0)
+
+    def test_mining_accumulates(self):
+        """Mining should accumulate surface minerals over turns."""
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 2
+        star.ironium = 100  # 100% yield (only ironium)
+        star.boranium = 0
+        star.germanium = 0
+        star.ironium_surface = 100  # Start with some
+        star.save()
+
+        GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        # 2 mines * 10kt = 20kt, all to ironium (100% of total yield)
+        self.assertEqual(star.ironium_surface, 120)
+
+    def test_mining_low_yield_has_chance(self):
+        """Low yield resources should still have a chance to produce."""
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 1
+        star.ironium = 1  # 1% yield
+        star.boranium = 99  # 99% yield
+        star.germanium = 0
+        star.ironium_surface = 0
+        star.boranium_surface = 0
+        star.save()
+
+        # Run many turns - ironium should eventually produce something
+        produced_ironium = False
+        for _ in range(100):
+            GameTurn(game).generate_turn()
+            star.refresh_from_db()
+            if star.ironium_surface > 0:
+                produced_ironium = True
+                break
+
+        self.assertTrue(produced_ironium, "Low yield should occasionally produce")
+
+    def test_mining_homeworld_yield_floor(self):
+        """Homeworld yields should not drop below minimum."""
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 100  # Many mines to force depletion
+        star.ironium = HOMEWORLD_MIN_YIELD  # At the floor
+        star.boranium = 0
+        star.germanium = 0
+        star.save()
+
+        # Run several turns
+        for _ in range(10):
+            GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        self.assertGreaterEqual(star.ironium, HOMEWORLD_MIN_YIELD)
+
+    def test_mining_non_homeworld_can_deplete(self):
+        """Non-homeworld yields can drop below 30%."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        # Get a non-homeworld star
+        other_star = game.stars.exclude(pk=player.homeworld.pk).first()
+        other_star.player = player
+        other_star.colonists = 1000
+        other_star.mines = 5000  # Many mines to force depletion
+        other_star.ironium = 31  # Just above homeworld floor
+        other_star.boranium = 0
+        other_star.germanium = 0
+        other_star.save()
+
+        # Run many turns to trigger depletion
+        # With 5000 mines * 10kt = 50000kt, depletion_chance = 50000/(31*10000) = 16% per turn
+        for _ in range(50):
+            GameTurn(game).generate_turn()
+
+        other_star.refresh_from_db()
+        # Should have depleted below 31 (with high probability)
+        self.assertLess(other_star.ironium, 31)

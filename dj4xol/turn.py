@@ -17,6 +17,7 @@ from .messages import (
     FleetLostMessageFactory,
     MineBuiltMessageFactory,
     FactoryBuiltMessageFactory,
+    DefenseBuiltMessageFactory,
 )
 import random
 
@@ -86,17 +87,20 @@ def habitability_proportion(hab_min, hab_max, centre, value):
 # Economic constants
 COLONISTS_PER_JOB = 1000  # Each mine/factory employs this many colonists
 BUILDPOINTS_PER_FACTORY = 10  # Each factory produces this many buildpoints per turn
+KT_PER_MINE = 10  # Each mine extracts this many kt of minerals per turn
+YIELD_DEPLETION_RATE = 0.00001  # Yield drops by this % per kt extracted (0.001% per kt)
+HOMEWORLD_MIN_YIELD = 30  # Homeworld yields never drop below this percentage
 
 
 def calculate_employment_percent(star):
-    """Calculate employment percentage based on mines and factories.
+    """Calculate employment percentage based on mines, factories, and defenses.
 
-    Each mine and factory employs COLONISTS_PER_JOB colonists.
+    Each mine, factory, and defense employs COLONISTS_PER_JOB colonists.
     Returns 0-100, capped at 100%.
     """
     if star.colonists == 0:
         return 0
-    jobs = (star.mines + star.factories) * COLONISTS_PER_JOB
+    jobs = (star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
     return min(100, jobs / star.colonists * 100)
 
 
@@ -225,6 +229,7 @@ class GameTurn():
         self.fleet_movements()
         self.check_lost_fleets()
         self.terraforming()
+        self.mining()
         self.production()
         self.population_growth()
         self.random_events()
@@ -400,6 +405,58 @@ class GameTurn():
             for order in star.production_orders.all():
                 self._apply_terraform_order(star, order)
 
+    def mining(self):
+        """Process mining for all colonized planets with mines.
+
+        Each mine extracts KT_PER_MINE kt of minerals per turn,
+        distributed proportionally based on yield percentages.
+        Fractional amounts (<1kt) have a random chance to produce 1kt.
+        Yields slowly deplete over time (homeworld minimum 30%).
+        """
+        from .models import Star
+        for star in Star.objects.filter(game=self.game, player__isnull=False, mines__gt=0):
+            total_yield = star.ironium + star.boranium + star.germanium
+            if total_yield == 0:
+                continue
+
+            total_extraction = star.mines * KT_PER_MINE
+
+            # Check if this is a homeworld (yields don't drop below minimum)
+            is_homeworld = star.homeworld_of.exists()
+            min_yield = HOMEWORLD_MIN_YIELD if is_homeworld else 0
+
+            # Process each resource
+            for resource in ['ironium', 'boranium', 'germanium']:
+                yield_val = getattr(star, resource)
+                if yield_val == 0:
+                    continue
+
+                # Calculate extraction for this resource
+                extraction = total_extraction * yield_val / total_yield
+
+                # Handle fractional amounts with random chance
+                whole_kt = int(extraction)
+                fractional = extraction - whole_kt
+                if fractional > 0 and random.random() < fractional:
+                    whole_kt += 1
+
+                if whole_kt > 0:
+                    # Add to surface inventory
+                    surface_field = f'{resource}_surface'
+                    setattr(star, surface_field, getattr(star, surface_field) + whole_kt)
+
+                    # Linear yield depletion proportional to extraction
+                    depletion = whole_kt * YIELD_DEPLETION_RATE
+                    whole_depletion = int(depletion)
+                    fractional = depletion - whole_depletion
+                    if fractional > 0 and random.random() < fractional:
+                        whole_depletion += 1
+                    if whole_depletion > 0:
+                        new_yield = max(min_yield, yield_val - whole_depletion)
+                        setattr(star, resource, new_yield)
+
+            star.save()
+
     def production(self):
         """Process production orders for all colonized planets."""
         from .models import Star
@@ -411,6 +468,8 @@ class GameTurn():
                     self._build_mine(star, order)
                 elif order.order_type == 'BUILD_FACTORY':
                     self._build_factory(star, order)
+                elif order.order_type == 'BUILD_DEFENSE':
+                    self._build_defense(star, order)
 
     def _build_fleet(self, star, order):
         """Build a fleet at the given star and create notification."""
@@ -463,6 +522,22 @@ class GameTurn():
 
         # Create notification message
         factory = FactoryBuiltMessageFactory(self.game, player, star)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+        # Delete the production order
+        order.delete()
+
+    def _build_defense(self, star, order):
+        """Build a defense at the given star and create notification."""
+        player = star.player
+
+        star.defenses += 1
+        star.save()
+
+        # Create notification message
+        factory = DefenseBuiltMessageFactory(self.game, player, star)
         msg = factory.new_message()
         msg.year = self.game.year
         msg.save()
@@ -595,11 +670,12 @@ class GameTurn():
         msg.save()
 
     def _apply_mining_discovery(self, star):
-        """Apply resource discovery - add 10-30 units to random resource."""
+        """Apply resource discovery - add 10-30 kt to random surface resource."""
         resource = random.choice(['ironium', 'boranium', 'germanium'])
         qty = random.randint(10, 30)
-        current = getattr(star, resource)
-        setattr(star, resource, min(100, current + qty))
+        surface_field = f'{resource}_surface'
+        current = getattr(star, surface_field)
+        setattr(star, surface_field, current + qty)
         star.save()
 
         factory = MiningDiscoveryMessageFactory(self.game, star.player, star, qty, resource)
@@ -621,12 +697,15 @@ class GameTurn():
             msg.save()
 
     def _apply_mining_accident_resources(self, star):
-        """Apply mining accident with resource loss - 5-10% of one resource."""
+        """Apply mining accident with surface resource loss - 5-10% of one resource."""
         resource = random.choice(['ironium', 'boranium', 'germanium'])
-        current = getattr(star, resource)
+        surface_field = f'{resource}_surface'
+        current = getattr(star, surface_field)
+        if current == 0:
+            return  # Nothing to lose
         loss_pct = random.uniform(0.05, 0.10)
         loss = max(1, int(current * loss_pct))
-        setattr(star, resource, max(0, current - loss))
+        setattr(star, surface_field, max(0, current - loss))
         star.save()
 
         factory = MiningAccidentResourcesMessageFactory(self.game, star.player, star, loss, resource)
