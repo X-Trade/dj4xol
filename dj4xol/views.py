@@ -280,10 +280,22 @@ def add_production_order(request, game_short_id):
 
     star_short_id = request.POST.get('star')
     order_type = request.POST.get('order_type')
+    quantity = int(request.POST.get('quantity', 1))
+    repeat = request.POST.get('repeat') == 'on'
 
     if order_type:
         star = Star.objects.get(short_id=star_short_id, game=game, player=player)
-        ProductionOrder.objects.get_or_create(game=game, star=star, order_type=order_type)
+        # Calculate next position
+        max_pos = star.production_orders.aggregate(
+            max_pos=models.Max('position'))['max_pos'] or 0
+        ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type=order_type,
+            position=max_pos + 1,
+            quantity=max(1, quantity),
+            repeat=repeat,
+        )
 
     return _redirect_preserving_selection(request, game)
 

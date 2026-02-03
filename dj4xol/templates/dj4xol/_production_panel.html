@@ -4,8 +4,23 @@
         <div class="orders-list">
             {% if detail.production_orders %}
                 {% for order in detail.production_orders %}
-                <div class="order-item">
-                    <span>{{ order.display }}</span>
+                <div class="order-item" style="background: linear-gradient(to right, #6af {{ order.progress_percent }}%, transparent {{ order.progress_percent }}%);"
+                     onmousemove="positionTooltip(event, this)"
+                     onmouseleave="hideTooltip(this)">
+                    <span class="order-info">
+                        {{ order.display }}{% if order.quantity > 1 %} <span class="order-quantity">({{ order.completed }}/{{ order.quantity }})</span>{% endif %}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}
+                    </span>
+                    <div class="order-tooltip">
+                        <div class="tooltip-header">{{ order.display }} - {{ order.progress_percent }}%</div>
+                        <table class="tooltip-table">
+                            <tr><th></th><th>Spent</th><th>Remaining</th></tr>
+                            {% if order.cost.colonists %}<tr class="res-col"><td>Colonists</td><td colspan="2">{{ order.cost.colonists }} required</td></tr>{% endif %}
+                            {% if order.cost.bp %}<tr><td>BP</td><td>{{ order.spent.bp }}</td><td>{{ order.remaining.bp }}</td></tr>{% endif %}
+                            {% if order.cost.ironium %}<tr class="res-iron"><td>Ironium</td><td>{{ order.spent.ironium }}</td><td>{{ order.remaining.ironium }}</td></tr>{% endif %}
+                            {% if order.cost.boranium %}<tr class="res-bor"><td>Boranium</td><td>{{ order.spent.boranium }}</td><td>{{ order.remaining.boranium }}</td></tr>{% endif %}
+                            {% if order.cost.germanium %}<tr class="res-germ"><td>Germanium</td><td>{{ order.spent.germanium }}</td><td>{{ order.remaining.germanium }}</td></tr>{% endif %}
+                        </table>
+                    </div>
                     <form method="post" action="{% url 'dj4xol:remove_production' game.short_id order.short_id %}" style="display:inline">
                         {% csrf_token %}
                         <input type="hidden" name="x" value="{{ selection.x }}">
@@ -35,7 +50,21 @@
                 <option value="BUILD_FACTORY">Build Factory</option>
                 <option value="BUILD_DEFENSE">Build Defense</option>
             </select>
+            <input type="number" name="quantity" value="1" min="1" class="quantity-input" title="Quantity">
+            <label class="repeat-checkbox"><input type="checkbox" name="repeat"> &#x21bb;</label>
             <button type="submit" class="order-add-btn">+</button>
         </form>
     </div>
 </div>
+<script>
+function positionTooltip(e, item) {
+    var tooltip = item.querySelector('.order-tooltip');
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX + 12) + 'px';
+    tooltip.style.top = (e.clientY - tooltip.offsetHeight - 8) + 'px';
+}
+function hideTooltip(item) {
+    var tooltip = item.querySelector('.order-tooltip');
+    tooltip.style.display = 'none';
+}
+</script>
