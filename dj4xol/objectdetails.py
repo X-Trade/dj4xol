@@ -297,6 +297,13 @@ class DetailBuilder():
                 'target': target,
                 'warpfactor': o.warpfactor,
                 'repeat': o.repeat,
+                'order_type': o.order_type,
+                'transfer_type': o.transfer_type,
+                'transfer_ironium': o.transfer_ironium,
+                'transfer_boranium': o.transfer_boranium,
+                'transfer_germanium': o.transfer_germanium,
+                'transfer_colonists': o.transfer_colonists,
+                'target_star': o.target_star,  # For template access
             })
         return orders
 

@@ -316,28 +316,46 @@ def remove_production_order(request, game_short_id, order_short_id):
 
 @player_only_view()
 def add_fleet_order(request, game_short_id):
-    """Add a movement order to a fleet."""
+    """Add a movement or transfer order to a fleet."""
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
 
     fleet_short_id = request.POST.get('fleet')
-    target_star_id = request.POST.get('target_star')
-    target_x = request.POST.get('target_x')
-    target_y = request.POST.get('target_y')
-    warpfactor = int(request.POST.get('warpfactor', 5))
+    order_type = request.POST.get('order_type', 'MOVE')
     repeat = request.POST.get('repeat') == 'on'
 
     # Verify fleet belongs to player
     fleet = Fleet.objects.get(short_id=fleet_short_id, game=game, player=player)
 
-    # Create order with either star target or coordinates
-    order = FleetOrders(game=game, fleet=fleet, warpfactor=warpfactor, repeat=repeat)
-    if target_star_id:
-        order.target_star = Star.objects.get(short_id=target_star_id, game=game)
-    elif target_x and target_y:
-        order.x = int(target_x)
-        order.y = int(target_y)
+    # Create order based on type
+    order = FleetOrders(game=game, fleet=fleet, order_type=order_type, repeat=repeat)
+    
+    if order_type == 'MOVE':
+        target_star_id = request.POST.get('target_star')
+        target_x = request.POST.get('target_x')
+        target_y = request.POST.get('target_y')
+        warpfactor = int(request.POST.get('warpfactor', 5))
+        order.warpfactor = warpfactor
+        
+        if target_star_id:
+            order.target_star = Star.objects.get(short_id=target_star_id, game=game)
+        elif target_x and target_y:
+            order.x = int(target_x)
+            order.y = int(target_y)
+    
+    elif order_type == 'TRANSFER':
+        transfer_type = request.POST.get('transfer_type', 'LOAD')
+        target_star_id = request.POST.get('target_star')
+        
+        order.transfer_type = transfer_type
+        order.transfer_ironium = int(request.POST.get('transfer_ironium', 0))
+        order.transfer_boranium = int(request.POST.get('transfer_boranium', 0))
+        order.transfer_germanium = int(request.POST.get('transfer_germanium', 0))
+        order.transfer_colonists = int(request.POST.get('transfer_colonists', 0))
+        
+        if target_star_id:
+            order.target_star = Star.objects.get(short_id=target_star_id, game=game)
 
     order.save()
 
