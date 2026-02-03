@@ -226,6 +226,11 @@ class GameFactory():
                     player=player,
                     name=self.starnamer.get_unique(),
                     x=random.randint(1, self.game.map_size_x),
-                    y=random.randint(1, self.game.map_size_y)
+                    y=random.randint(1, self.game.map_size_y),
+                    # Add some random cargo for testing
+                    ironium=random.randint(0, 10000),
+                    boranium=random.randint(0, 10000),
+                    germanium=random.randint(0, 5000),
+                    colonists=random.randint(0, 5000)
                 )
         return self

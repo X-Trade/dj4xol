@@ -254,6 +254,40 @@ body {
     text-align: right;
 }
 
+/* Fleet inventory bars */
+.inventory-bar {
+    flex: 1;
+    height: 12px;
+    background: #333;
+    border: 1px solid #404040;
+    position: relative;
+    margin: 0 8px;
+    border-radius: 2px;
+}
+
+.inventory-fill {
+    height: 100%;
+    border-radius: 1px;
+    transition: width 0.3s ease;
+}
+
+/* Resource-specific colors */
+.inventory-fill.inventory-ironium {
+    background: linear-gradient(to right, #ff6b35, #f7931e); /* Ironium - orange */
+}
+
+.inventory-fill.inventory-boranium {
+    background: linear-gradient(to right, #4ecdc4, #26a69a); /* Boranium - teal */
+}
+
+.inventory-fill.inventory-germanium {
+    background: linear-gradient(to right, #45b7d1, #2e86ab); /* Germanium - blue */
+}
+
+.inventory-fill.inventory-colonists {
+    background: linear-gradient(to right, #96ceb4, #71a085); /* Colonists - green */
+}
+
 /* Messages panel */
 #messages {
     border: 1px solid #808080;

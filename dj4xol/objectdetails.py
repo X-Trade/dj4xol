@@ -54,6 +54,8 @@ class DetailBuilder():
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
                      'production_orders': self.get_production_orders(),
                      'fleet_orders': self.get_fleet_orders(),
+                     'fleet_cargo': self.get_fleet_cargo(),
+                     'fleet_inventory': self.build_fleet_inventory(),
                      'x': self.selected_obj.x,
                      'y': self.selected_obj.y,
                      }
@@ -97,7 +99,6 @@ class DetailBuilder():
         return effective_capacity(self.player, self.selected_obj)
 
     def get_object_name(self):
-        print(self.selected_obj.name)
         if self.selected_obj.name is None or len(self.selected_obj.name) == 0:
             return "%s %i" % (self.selected_obj.__class__.__name__, self.selected_obj.id)
         return self.selected_obj.name
@@ -272,3 +273,45 @@ class DetailBuilder():
                 'repeat': o.repeat,
             })
         return orders
+
+    def get_fleet_cargo(self):
+        """Get cargo details for selected fleet."""
+        if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
+            return None
+        if not self.player or self.selected_obj.player != self.player:
+            return None
+        
+        return {
+            'capacity': self.selected_obj.cargo_capacity,
+            'used': self.selected_obj.cargo_used,
+            'remaining': self.selected_obj.cargo_remaining,
+            'ironium': self.selected_obj.ironium,
+            'boranium': self.selected_obj.boranium,
+            'germanium': self.selected_obj.germanium,
+            'colonists': self.selected_obj.colonists,
+        }
+
+    def build_fleet_inventory(self):
+        """Build fleet cargo inventory data for progress bar display."""
+        if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
+            return None
+        if not self.player or self.selected_obj.player != self.player:
+            return None
+        
+        capacity = self.selected_obj.cargo_capacity
+        inventory = {
+            'Ironium': self._build_cargo_data(self.selected_obj.ironium, capacity, 'kt'),
+            'Boranium': self._build_cargo_data(self.selected_obj.boranium, capacity, 'kt'),
+            'Germanium': self._build_cargo_data(self.selected_obj.germanium, capacity, 'kt'),
+            'Colonists': self._build_cargo_data(self.selected_obj.colonists, capacity, 'k'),
+        }
+        return inventory
+
+    def _build_cargo_data(self, amount, capacity, unit):
+        """Build cargo data dict for progress bar display."""
+        percent = (amount / capacity * 100) if capacity > 0 else 0
+        return {
+            'amount': amount,
+            'percent': percent,
+            'display': f'{amount:,}{unit}',
+        }
