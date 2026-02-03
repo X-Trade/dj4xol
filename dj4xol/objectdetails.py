@@ -17,7 +17,7 @@ class DetailBuilder():
         self.player = player
         self.set_coordinates(x, y)
         self.find(x, y, selected)
-    
+
     def set_coordinates(self, x, y):
         self.x = x
         self.y = y
@@ -103,11 +103,11 @@ class DetailBuilder():
         return self.selected_obj.name
 
     def get_object_player(self):
-        """Return player display string as 'username (race name)' or None."""
+        """Return player display string as 'race name (username)' or None."""
         player = self.selected_obj.player
         if player:
             username = player.account.alias if player.account else 'Unknown'
-            return '%s (%s)' % (username, player.name)
+            return '%s (%s)' % (player.name, username)
         return None
 
     def find_all_at_coordinates(self, x, y):
@@ -117,7 +117,7 @@ class DetailBuilder():
         fleets = self.game.fleets.filter(x=x, y=y).all()
         self.at_cursor = list(chain(stars, fleets))
         return self.at_cursor
-    
+
     def find_selected_from_coordinates(self, x, y):
         try:
            self.selected_obj = self.at_cursor[0]
@@ -140,7 +140,7 @@ class DetailBuilder():
         if self.selected_obj and self.selected_obj.game != self.game:
             self.selected_obj = None
             raise Exception("Selected object is not in this game")
-    
+
     def build_environmental_detail(self):
         environmentals = None
         if self.selected_obj and isinstance(self.selected_obj, Star):
@@ -172,7 +172,7 @@ class DetailBuilder():
             data['hab_center_percent'] = (center / 2.0) * 100
             data['is_habitable'] = hab_min <= value <= hab_max
         return data
-    
+
     def build_resource_detail(self):
         resources = None
         if self.selected_obj and isinstance(self.selected_obj, Star):
