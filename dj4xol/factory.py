@@ -94,24 +94,57 @@ class GameFactory():
             self.stars.append(Star(name=name, x=x, y=y))
         return self
 
-    def _create_star_clusters(self, stars, system_size=8):
-        """Create stars in clusters, each with a maximum number of stars."""
+    def _create_star_clusters(self, stars, system_size=6, cluster_radius=25, min_cluster_distance=40):
+        """Create stars in clusters with better spacing."""
         min_x = 1
         min_y = 1
         max_x = self.game.map_size_x - 1
         max_y = self.game.map_size_y - 1
+        
+        cluster_centers = []
         created = 0
+        
         while created < stars:
-            cluster_x = random.randint(min_x + 10, max_x - 10)
-            cluster_y = random.randint(min_y + 10, max_y - 10)
-            for _ in range(1, system_size):
+            # Find a cluster center that's far enough from existing clusters
+            attempts = 0
+            while attempts < 50:  # Prevent infinite loop
+                cluster_x = random.randint(min_x + cluster_radius, max_x - cluster_radius)
+                cluster_y = random.randint(min_y + cluster_radius, max_y - cluster_radius)
+                
+                # Check if this cluster center is far enough from existing ones
+                too_close = False
+                for cx, cy in cluster_centers:
+                    distance = ((cluster_x - cx) ** 2 + (cluster_y - cy) ** 2) ** 0.5
+                    if distance < min_cluster_distance:
+                        too_close = True
+                        break
+                
+                if not too_close:
+                    break
+                attempts += 1
+            
+            # If we couldn't find a good spot after many attempts, just use the last attempt
+            cluster_centers.append((cluster_x, cluster_y))
+            
+            # Create stars in this cluster with more spread
+            stars_in_cluster = min(system_size, stars - created)
+            for _ in range(stars_in_cluster):
                 name = self.starnamer.get_unique()
-                ofs_x = random.randint(-8, 8)
-                ofs_y = random.randint(-8, 8)
-                x = cluster_x + ofs_x
-                y = cluster_y + ofs_y
+                # Use larger, more varied offsets for better spread
+                angle = random.random() * 2 * math.pi  # Random angle
+                radius = random.random() * cluster_radius  # Random distance from center
+                ofs_x = int(radius * math.cos(angle))
+                ofs_y = int(radius * math.sin(angle))
+                
+                x = max(min_x, min(max_x, cluster_x + ofs_x))
+                y = max(min_y, min(max_y, cluster_y + ofs_y))
+                
                 self.stars.append(Star(name=name, x=x, y=y))
                 created += 1
+                
+                if created >= stars:
+                    break
+        
         return self
 
     def _add_systems(self):

@@ -4,7 +4,7 @@ from ..turn import (
     calculate_available_buildpoints, calculate_productivity_percent, calculate_economy_factor,
     COLONISTS_PER_JOB, BUILDPOINTS_PER_FACTORY, KT_PER_MINE, HOMEWORLD_MIN_YIELD
 )
-from ..models import ProductionOrder, GameMessage, Fleet
+from ..models import ProductionOrder, GameMessage, Fleet, Star
 from django.test import TestCase
 from ._util import default_game, get_default_race
 from unittest.mock import patch
@@ -1158,3 +1158,164 @@ class TestFleetCargo(TestCase):
         self.assertEqual(inventory['Colonists']['amount'], 1500)
         self.assertEqual(inventory['Colonists']['percent'], 1.5)  # 1500/100000 = 1.5%
         self.assertEqual(inventory['Colonists']['display'], '1,500k')
+
+
+class TestProductionProgress(TestCase):
+    """Test production order progress calculations."""
+    
+    def test_new_production_order_zero_progress(self):
+        """Test that newly created production orders show 0% progress."""
+        from ..objectdetails import DetailBuilder
+        from ..models import ProductionOrder, Star
+        
+        game = default_game()
+        player = game.players.first()
+        
+        star = Star.objects.create(
+            game=game,
+            player=player,
+            name="Test Star",
+            x=10,
+            y=10,
+            colonists=10000,
+        )
+        
+        # Create new production order with no spending (defaults)
+        order = ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='BUILD_DEFENSE',
+            quantity=1
+            # All spent_* fields default to 0
+        )
+        
+        detail_builder = DetailBuilder(game, x=10, y=10, selected=star.short_id.lower(), player=player)
+        details = detail_builder.build_detail()
+        
+        production_order = details['production_orders'][0]
+        
+        # Should show 0% progress for new order
+        self.assertEqual(production_order['progress_percent'], 0)
+        self.assertEqual(production_order['resource_progress'], 0)
+        self.assertEqual(production_order['labor_progress'], 0)
+    
+    def test_labor_only_progress(self):
+        """Test progress for items that only require BP (no resources)."""
+        from ..objectdetails import DetailBuilder
+        from ..models import ProductionOrder, Star
+        
+        game = default_game()
+        player = game.players.first()
+        
+        # Create a colonized star
+        star = Star.objects.create(
+            game=game,
+            player=player,
+            name="Test Star",
+            x=10,
+            y=10,
+            colonists=10000,
+        )
+        
+        # Create production order for BUILD_DEFENSE (bp: 20, resources: 300kt total)
+        # During turn generation, 10 BP has been allocated
+        order = ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='BUILD_DEFENSE',
+            quantity=1,
+            spent_bp=10,  # 50% of BP requirement (10/20)
+            spent_ironium=100,  # Full ironium (simulates turn generation)
+            spent_boranium=50,  # Full boranium  
+            spent_germanium=50  # Full germanium (total 200/200 = 100% of resources)
+        )
+        
+        detail_builder = DetailBuilder(game, x=10, y=10, selected=star.short_id.lower(), player=player)
+        details = detail_builder.build_detail()
+        
+        production_order = details['production_orders'][0]
+        
+        # Should have dual progress: resources 50% + labor 25% = 75%
+        self.assertEqual(production_order['has_labor'], True)
+        self.assertEqual(production_order['resource_progress'], 50)  # All resources complete = 50%
+        self.assertEqual(production_order['labor_progress'], 25)     # 10/20 BP = 25% of 50%
+        self.assertEqual(production_order['progress_percent'], 75)   # 50% + 25%
+    
+    def test_resource_only_progress(self):
+        """Test progress for items that require both BP and resources.""" 
+        from ..objectdetails import DetailBuilder
+        from ..models import ProductionOrder, Star
+        
+        game = default_game()
+        player = game.players.first()
+        
+        star = Star.objects.create(
+            game=game,
+            player=player,
+            name="Test Star",
+            x=10,
+            y=10,
+            colonists=10000,
+        )
+        
+        # Create TERRAFORM_GRAVITY order (bp: 100, ironium: 1000, others: 0)
+        # During turn generation, some resources have been allocated
+        order = ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='TERRAFORM_GRAVITY',
+            quantity=1,
+            spent_bp=50,     # 50% of BP requirement (50/100)
+            spent_ironium=500  # 50% of ironium requirement (500/1000)
+        )
+        
+        detail_builder = DetailBuilder(game, x=10, y=10, selected=star.short_id.lower(), player=player)
+        details = detail_builder.build_detail()
+        
+        production_order = details['production_orders'][0]
+        
+        # Should have dual progress: resources 25% + labor 25% = 50%
+        self.assertEqual(production_order['has_labor'], True)
+        self.assertEqual(production_order['resource_progress'], 25)  # 500/1000 = 25% of 50%
+        self.assertEqual(production_order['labor_progress'], 25)     # 50/100 BP = 25% of 50%
+        self.assertEqual(production_order['progress_percent'], 50)   # 25% + 25%
+    
+    def test_resources_blocked_by_labor(self):
+        """Test that resources show actual progress based on what was spent during turn generation."""
+        from ..objectdetails import DetailBuilder
+        from ..models import ProductionOrder, Star
+        
+        game = default_game()
+        player = game.players.first()
+        
+        star = Star.objects.create(
+            game=game,
+            player=player,
+            name="Test Star",
+            x=10,
+            y=10,
+            colonists=10000,
+        )
+        
+        # BUILD_DEFENSE with no BP spent and no resources allocated
+        # This simulates what would happen if turn generation hadn't allocated anything yet
+        order = ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='BUILD_DEFENSE',
+            quantity=1,
+            spent_bp=0,         # No BP allocated during turn generation
+            spent_ironium=0,    # No resources allocated during turn generation
+            spent_boranium=0,   
+            spent_germanium=0  
+        )
+        
+        detail_builder = DetailBuilder(game, x=10, y=10, selected=star.short_id.lower(), player=player)
+        details = detail_builder.build_detail()
+        
+        production_order = details['production_orders'][0]
+        
+        # Should show no progress because nothing was allocated during turn generation
+        self.assertEqual(production_order['resource_progress'], 0)   # No resources allocated
+        self.assertEqual(production_order['labor_progress'], 0)      # No BP allocated
+        self.assertEqual(production_order['progress_percent'], 0)    # No progress

@@ -4,9 +4,13 @@
         <div class="orders-list">
             {% if detail.production_orders %}
                 {% for order in detail.production_orders %}
-                <div class="order-item" style="background: linear-gradient(to right, #6af {{ order.progress_percent }}%, transparent {{ order.progress_percent }}%);"
+                <div class="order-item"
                      onmousemove="positionTooltip(event, this)"
                      onmouseleave="hideTooltip(this)">
+                    <div class="order-progress-bar">
+                        <!-- Single progress bar showing combined progress -->
+                        <div class="progress-single" style="width: {{ order.progress_percent }}%;"></div>
+                    </div>
                     <span class="order-info">
                         {{ order.display }}{% if order.quantity > 1 %} <span class="order-quantity">({{ order.completed }}/{{ order.quantity }})</span>{% endif %}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}
                     </span>
