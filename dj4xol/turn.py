@@ -292,6 +292,8 @@ class GameTurn():
         order = fleet.orders.first()  # this is the current order
         if not order:
             return fleet
+            
+        # Get destination coordinates
         if order.target_star:
             x = order.target_star.x
             y = order.target_star.y
@@ -319,30 +321,113 @@ class GameTurn():
         # atan2(dx, -dy) gives angle from north toward target
         fleet.heading = degrees(atan2(dx, -dy)) % 360
 
-        if int(distance) <= order.warpfactor:
+        # Check if fleet can reach destination this turn
+        warp_speed = order.warpfactor if order.order_type == 'MOVE' else 5  # Transfer orders use warp 5
+        if int(distance) <= warp_speed:
+            # Fleet reaches destination
             fleet.x = x
             fleet.y = y
+            
+            # Execute the order based on type
+            if order.order_type == 'TRANSFER':
+                self._execute_transfer_order(fleet, order)
+            
+            # Handle repeating orders
             if order.repeat:
-                # Requeue order at bottom of fleet's order list
                 from .models import FleetOrders
                 FleetOrders.objects.create(
                     game=self.game,
                     fleet=fleet,
+                    order_type=order.order_type,
                     repeat=True,
                     warpfactor=order.warpfactor,
                     x=order.x,
                     y=order.y,
                     target_star=order.target_star,
                     target_fleet=order.target_fleet,
+                    transfer_type=order.transfer_type,
+                    transfer_ironium=order.transfer_ironium,
+                    transfer_boranium=order.transfer_boranium,
+                    transfer_germanium=order.transfer_germanium,
+                    transfer_colonists=order.transfer_colonists,
                 )
             order.delete()
         else:
+            # Fleet moves toward destination but doesn't reach it
             normalised_vector = vector / distance
             print("normal:   %s" % (str(normalised_vector)))
-            new_position = position + (normalised_vector * order.warpfactor)
+            new_position = position + (normalised_vector * warp_speed)
             fleet.x = int(new_position[0])
             fleet.y = int(new_position[1])
         return fleet
+
+    def _execute_transfer_order(self, fleet, order):
+        """Execute a transfer order when fleet reaches destination."""
+        if not order.target_star:
+            return  # Can only transfer at stars for now
+            
+        star = order.target_star
+        fleet_max_capacity = fleet.cargo_capacity  # Use fleet's actual capacity
+        
+        if order.transfer_type == 'LOAD':
+            # Load from star to fleet
+            # Calculate total transfer amount and proportions
+            total_requested = (order.transfer_ironium + order.transfer_boranium + 
+                             order.transfer_germanium + order.transfer_colonists)
+            
+            if total_requested == 0:
+                return
+                
+            # Limit total transfer by fleet available space
+            fleet_used = fleet.cargo_used
+            fleet_available = fleet_max_capacity - fleet_used
+            total_transfer = min(fleet_available, total_requested)
+            
+            if total_transfer <= 0:
+                return
+                
+            # Calculate proportional transfers
+            transfer_factor = total_transfer / total_requested
+            
+            ironium_transfer = min(int(order.transfer_ironium * transfer_factor), star.ironium_surface)
+            boranium_transfer = min(int(order.transfer_boranium * transfer_factor), star.boranium_surface) 
+            germanium_transfer = min(int(order.transfer_germanium * transfer_factor), star.germanium_surface)
+            colonists_transfer = min(int(order.transfer_colonists * transfer_factor), star.colonists)
+            
+            # Execute the transfers
+            star.ironium_surface -= ironium_transfer
+            star.boranium_surface -= boranium_transfer
+            star.germanium_surface -= germanium_transfer
+            star.colonists -= colonists_transfer
+            
+            fleet.ironium += ironium_transfer
+            fleet.boranium += boranium_transfer
+            fleet.germanium += germanium_transfer
+            fleet.colonists += colonists_transfer
+            
+            star.save()
+            fleet.save()
+            
+        elif order.transfer_type == 'UNLOAD':
+            # Unload from fleet to star
+            ironium_transfer = min(order.transfer_ironium, fleet.ironium)
+            boranium_transfer = min(order.transfer_boranium, fleet.boranium)
+            germanium_transfer = min(order.transfer_germanium, fleet.germanium)
+            colonists_transfer = min(order.transfer_colonists, fleet.colonists)
+            
+            # Execute the transfers
+            fleet.ironium -= ironium_transfer
+            fleet.boranium -= boranium_transfer
+            fleet.germanium -= germanium_transfer
+            fleet.colonists -= colonists_transfer
+            
+            star.ironium_surface += ironium_transfer
+            star.boranium_surface += boranium_transfer
+            star.germanium_surface += germanium_transfer
+            star.colonists += colonists_transfer
+            
+            star.save()
+            fleet.save()
 
     def population_growth(self):
         """Apply population growth/decline to all colonized planets."""

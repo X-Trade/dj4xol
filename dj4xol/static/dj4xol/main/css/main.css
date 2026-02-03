@@ -657,6 +657,55 @@ body {
     font-size: 0.9em;
 }
 
+/* Transfer type radio buttons */
+.transfer-type-row {
+    display: flex;
+    gap: 15px;
+    flex: 1;
+}
+
+.transfer-type-row label {
+    width: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+
+/* Transfer sliders */
+.transfer-slider-row {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    gap: 10px;
+}
+
+.transfer-slider {
+    flex: 1;
+    height: 6px;
+    cursor: pointer;
+}
+
+.transfer-value {
+    min-width: 80px;
+    text-align: right;
+    font-size: 0.9em;
+    font-weight: bold;
+}
+
+/* Transfer slider help note */
+.transfer-slider-note {
+    text-align: center;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #eee;
+}
+
+/* Order type parameters - initially hidden for transfer */
+.order-type-params {
+    width: 100%;
+}
+
 /* Production quantity and repeat controls */
 .quantity-input {
     width: 50px;

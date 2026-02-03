@@ -357,7 +357,7 @@ class Fleet(AbstractMapObject):
     heading = models.FloatField(default=0.0)
     
     # Cargo capacity and inventory
-    cargo_capacity = models.IntegerField(default=100000)  # Total cargo capacity in kt
+    cargo_capacity = models.IntegerField(default=1000)  # Total cargo capacity in kt
     ironium = models.IntegerField(default=0)  # Current ironium cargo in kt
     boranium = models.IntegerField(default=0)  # Current boranium cargo in kt  
     germanium = models.IntegerField(default=0)  # Current germanium cargo in kt
@@ -454,9 +454,17 @@ class Player(AbstractGameObject, HabitabilityMixin):
 
 class FleetOrders(AbstractGameObject):
     """Movement and action orders for a fleet."""
+    ORDER_TYPE_CHOICES = [
+        ('MOVE', 'Move'),
+        ('TRANSFER', 'Transfer'),
+    ]
+    
     fleet = models.ForeignKey(Fleet, related_name="orders",
             on_delete=models.CASCADE)
+    order_type = models.CharField(max_length=10, choices=ORDER_TYPE_CHOICES, default='MOVE')
     repeat = models.BooleanField(default=False)
+    
+    # Movement parameters
     warpfactor = models.IntegerField(default=0,
                                      validators=[MinValueValidator(0), MaxValueValidator(13)])
     x = models.IntegerField(null=True)
@@ -465,6 +473,30 @@ class FleetOrders(AbstractGameObject):
             on_delete=models.CASCADE)
     target_fleet = models.ForeignKey(Fleet, null=True, related_name='+',
             on_delete=models.CASCADE)
+    
+    # Transfer parameters
+    TRANSFER_TYPE_CHOICES = [
+        ('LOAD', 'Load'),
+        ('UNLOAD', 'Unload'),
+    ]
+    transfer_type = models.CharField(max_length=10, choices=TRANSFER_TYPE_CHOICES, 
+                                   null=True, blank=True)
+    transfer_ironium = models.IntegerField(default=0)  # Amount to transfer
+    transfer_boranium = models.IntegerField(default=0)
+    transfer_germanium = models.IntegerField(default=0) 
+    transfer_colonists = models.IntegerField(default=0)
+    
+    @property
+    def target(self):
+        """Return a string description of the order target."""
+        if self.target_star:
+            return self.target_star.name
+        elif self.target_fleet:
+            return f"Fleet {self.target_fleet.name}"
+        elif self.x is not None and self.y is not None:
+            return f"({self.x}, {self.y})"
+        else:
+            return "Unknown destination"
 
 
 class GameMessage(AbstractGameObject):

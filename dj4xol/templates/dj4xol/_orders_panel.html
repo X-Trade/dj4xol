@@ -5,7 +5,22 @@
             {% if detail.fleet_orders %}
                 {% for order in detail.fleet_orders %}
                 <div class="order-item">
-                    <span>Warp {{ order.warpfactor }} to {{ order.target }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
+                    {% if order.order_type == 'MOVE' or not order.order_type %}
+                        <span>Warp {{ order.warpfactor }} to {{ order.target }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
+                    {% elif order.order_type == 'TRANSFER' %}
+                        <span>{{ order.transfer_type|title|default:"Transfer" }} at {{ order.target_star.name }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
+                        <div class="order-tooltip">
+                            <div class="tooltip-header">{{ order.transfer_type|title }} Resources</div>
+                            <table class="tooltip-table">
+                                {% if order.transfer_ironium %}<tr class="res-iron"><td>Ironium</td><td>{{ order.transfer_ironium }}kt</td></tr>{% endif %}
+                                {% if order.transfer_boranium %}<tr class="res-bor"><td>Boranium</td><td>{{ order.transfer_boranium }}kt</td></tr>{% endif %}
+                                {% if order.transfer_germanium %}<tr class="res-germ"><td>Germanium</td><td>{{ order.transfer_germanium }}kt</td></tr>{% endif %}
+                                {% if order.transfer_colonists %}<tr class="res-col"><td>Colonists</td><td>{{ order.transfer_colonists }}k</td></tr>{% endif %}
+                            </table>
+                        </div>
+                    {% else %}
+                        <span>Unknown order type: {{ order.order_type }}</span>
+                    {% endif %}
                     <form method="post" action="{% url 'dj4xol:remove_fleet_order' game.short_id order.short_id %}" style="display:inline">
                         {% csrf_token %}
                         <input type="hidden" name="x" value="{{ selection.x }}">
@@ -23,6 +38,7 @@
         <form method="post" action="{% url 'dj4xol:add_fleet_order' game.short_id %}" class="order-draft">
             {% csrf_token %}
             <input type="hidden" name="fleet" value="{{ detail.fleet_short_id }}">
+            <input type="hidden" name="order_type" id="order-type-input" value="{% if request.GET.order_type %}{{ request.GET.order_type }}{% else %}MOVE{% endif %}">
             <input type="hidden" name="target_star" value="{{ dest_star_id|default:'' }}">
             <input type="hidden" name="target_x" value="{{ dest_x|default:'' }}">
             <input type="hidden" name="target_y" value="{{ dest_y|default:'' }}">
@@ -30,12 +46,18 @@
             <input type="hidden" name="y" value="{{ selection.y }}">
             <input type="hidden" name="sel" value="{{ selection.sel }}">
             <input type="hidden" name="warpfactor" id="warpfactor-input" value="5">
+            <input type="hidden" name="transfer_type" id="transfer-type-input" value="LOAD">
+            <input type="hidden" name="transfer_ironium" id="transfer-ironium-input" value="0">
+            <input type="hidden" name="transfer_boranium" id="transfer-boranium-input" value="0">
+            <input type="hidden" name="transfer_germanium" id="transfer-germanium-input" value="0">
+            <input type="hidden" name="transfer_colonists" id="transfer-colonists-input" value="0">
 
             <div class="order-type-row">
                 <select id="order-type" class="order-select">
-                    <option value="move_to" selected>Move to</option>
+                    <option value="MOVE"{% if not request.GET.order_type or request.GET.order_type == 'MOVE' %} selected{% endif %}>Move to</option>
+                    <option value="TRANSFER"{% if request.GET.order_type == 'TRANSFER' %} selected{% endif %}>Transfer</option>
                 </select>
-                <button type="submit" class="order-add-btn" {% if not dest_star_id and not dest_x %}disabled{% endif %}>+</button>
+                <button type="submit" class="order-add-btn" id="add-order-btn" {% if not dest_star_id and not dest_x %}disabled{% endif %}>+</button>
             </div>
 
             <div class="order-params">
@@ -51,17 +73,68 @@
                                 <em>None selected</em>
                             {% endif %}
                         </span>
-                        <a href="?mode=select_destination&fleet={{ detail.fleet_short_id }}&x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}" class="dest-set-btn">Set</a>
+                        <a href="?mode=select_destination&fleet={{ detail.fleet_short_id }}&x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&order_type=MOVE" class="dest-set-btn" id="dest-set-link">Set</a>
                     </div>
                 </div>
 
-                <div class="order-param-row">
-                    <label for="warp-slider">Speed</label>
-                    <div class="speed-row">
-                        <input type="range" id="warp-slider" min="0" max="13" value="5" class="warp-slider">
-                        <span id="warp-value" class="warp-value">Warp 5</span>
+                <!-- Move-specific parameters -->
+                <div id="move-params" class="order-type-params">
+                    <div class="order-param-row">
+                        <label for="warp-slider">Speed</label>
+                        <div class="speed-row">
+                            <input type="range" id="warp-slider" min="0" max="13" value="5" class="warp-slider">
+                            <span id="warp-value" class="warp-value">Warp 5</span>
+                        </div>
                     </div>
                 </div>
+
+                <!-- Transfer-specific parameters -->
+                <div id="transfer-params" class="order-type-params" style="display: none;">
+                    <div class="order-param-row">
+                        <label>Action</label>
+                        <div class="transfer-type-row">
+                            <label><input type="radio" name="transfer_type_radio" value="LOAD" checked> Load</label>
+                            <label><input type="radio" name="transfer_type_radio" value="UNLOAD"> Unload</label>
+                        </div>
+                    </div>
+                    
+                    <div class="order-param-row">
+                        <label for="ironium-slider">Ironium</label>
+                        <div class="transfer-slider-row">
+                            <input type="range" id="ironium-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
+                            <span id="ironium-value" class="transfer-value">0kt</span>
+                        </div>
+                    </div>
+                    
+                    <div class="order-param-row">
+                        <label for="boranium-slider">Boranium</label>
+                        <div class="transfer-slider-row">
+                            <input type="range" id="boranium-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
+                            <span id="boranium-value" class="transfer-value">0kt</span>
+                        </div>
+                    </div>
+                    
+                    <div class="order-param-row">
+                        <label for="germanium-slider">Germanium</label>
+                        <div class="transfer-slider-row">
+                            <input type="range" id="germanium-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
+                            <span id="germanium-value" class="transfer-value">0kt</span>
+                        </div>
+                    </div>
+                    
+                    <div class="order-param-row">
+                        <label for="colonists-slider">Colonists</label>
+                        <div class="transfer-slider-row">
+                            <input type="range" id="colonists-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
+                            <span id="colonists-value" class="transfer-value">0k</span>
+                        </div>
+                    </div>
+                    
+                    <div class="transfer-slider-note">
+                        <small style="color: #666; font-style: italic;">Sliders use cubic scaling for precise small amounts (max {{ detail.fleet_cargo.capacity }}kt each)</small>
+                    </div>
+                </div>
+
                 <div class="order-param-row">
                     <label class="repeat-checkbox">
                         <input type="checkbox" name="repeat" id="repeat-checkbox"> &#x21bb;
@@ -74,16 +147,186 @@
 
 <script>
 (function() {
-    var slider = document.getElementById('warp-slider');
-    var display = document.getElementById('warp-value');
-    var hidden = document.getElementById('warpfactor-input');
-
-    if (slider && display && hidden) {
-        slider.addEventListener('input', function() {
-            var val = this.value;
-            display.textContent = val === '0' ? 'Stopped' : 'Warp ' + val;
-            hidden.value = val;
+    var orderType = document.getElementById('order-type');
+    var orderTypeInput = document.getElementById('order-type-input');
+    var moveParams = document.getElementById('move-params');
+    var transferParams = document.getElementById('transfer-params');
+    var transferTypeInput = document.getElementById('transfer-type-input');
+    var addBtn = document.getElementById('add-order-btn');
+    
+    // Warp factor slider elements
+    var warpSlider = document.getElementById('warp-slider');
+    var warpDisplay = document.getElementById('warp-value');
+    var warpInput = document.getElementById('warpfactor-input');
+    
+    // Transfer sliders - define at top level
+    var transferSliders = ['ironium', 'boranium', 'germanium', 'colonists'];
+    
+    // Define utility functions first
+    function updateAddButtonState() {
+        var destStar = document.querySelector('input[name="target_star"]').value;
+        var destX = document.querySelector('input[name="target_x"]').value;
+        var destY = document.querySelector('input[name="target_y"]').value;
+        
+        addBtn.disabled = !destStar && !destX;
+    }
+    
+    function updateAddButtonStateTransfer() {
+        var destStar = document.querySelector('input[name="target_star"]').value;
+        var hasResources = transferSliders.some(function(resource) {
+            var input = document.getElementById('transfer-' + resource + '-input');
+            return input && parseInt(input.value) > 0;
+        });
+        
+        // Transfer orders require a star target and at least one resource
+        addBtn.disabled = !destStar || !hasResources;
+        
+        // Update the set destination message for transfers
+        var destDisplay = document.getElementById('dest-display');
+        if (orderType && orderType.value === 'TRANSFER' && !destStar) {
+            destDisplay.innerHTML = '<em>Select star to transfer at</em>';
+        }
+    }
+    
+    // Update destination link with current order type
+    function updateDestinationLink(type) {
+        var destLink = document.getElementById('dest-set-link');
+        if (destLink) {
+            var href = destLink.getAttribute('href');
+            if (href.includes('order_type=')) {
+                href = href.replace(/order_type=[^&]*/, 'order_type=' + type);
+            } else {
+                href += '&order_type=' + type;
+            }
+            destLink.setAttribute('href', href);
+        }
+    }
+    
+    // Initialize form state based on URL parameter or current selection
+    function initializeOrderType() {
+        if (!orderType) return;
+        
+        var currentType = orderType.value;
+        orderTypeInput.value = currentType;
+        
+        if (currentType === 'TRANSFER') {
+            moveParams.style.display = 'none';
+            transferParams.style.display = 'block';
+            updateAddButtonStateTransfer();
+        } else {
+            moveParams.style.display = 'block';
+            transferParams.style.display = 'none';
+            updateAddButtonState();
+        }
+        
+        // Update destination link
+        updateDestinationLink(currentType);
+    }
+    
+    // Order type switching
+    if (orderType) {
+        orderType.addEventListener('change', function() {
+            var type = this.value;
+            orderTypeInput.value = type;
+            
+            updateDestinationLink(type);
+            
+            if (type === 'MOVE') {
+                moveParams.style.display = 'block';
+                transferParams.style.display = 'none';
+                updateAddButtonState();
+            } else if (type === 'TRANSFER') {
+                moveParams.style.display = 'none';
+                transferParams.style.display = 'block';
+                updateAddButtonStateTransfer();
+            }
         });
     }
+    
+    // Transfer type radio buttons
+    var transferTypeRadios = document.querySelectorAll('input[name="transfer_type_radio"]');
+    transferTypeRadios.forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            transferTypeInput.value = this.value;
+        });
+    });
+    
+    // Warp factor slider
+    if (warpSlider && warpDisplay && warpInput) {
+        warpSlider.addEventListener('input', function() {
+            var val = this.value;
+            warpDisplay.textContent = val === '0' ? 'Stopped' : 'Warp ' + val;
+            warpInput.value = val;
+        });
+    }
+    
+    // Transfer sliders
+    transferSliders.forEach(function(resource) {
+        var slider = document.getElementById(resource + '-slider');
+        var display = document.getElementById(resource + '-value');
+        var input = document.getElementById('transfer-' + resource + '-input');
+        
+        if (slider && display && input) {
+            function updateSliderDisplay() {
+                var sliderVal = parseInt(slider.value);
+                var sliderMax = parseInt(slider.max);
+                
+                // Use cubic response for finer control at low values
+                // Normalize to 0-1, cube it, then scale back to 0-max
+                var normalizedVal = sliderVal / sliderMax;
+                var cubedVal = normalizedVal * normalizedVal * normalizedVal;
+                var actualVal = Math.round(cubedVal * sliderMax);
+                
+                var unit = resource === 'colonists' ? 'k' : 'kt';
+                display.textContent = actualVal.toLocaleString() + unit;
+                input.value = actualVal;
+                if (orderType && orderType.value === 'TRANSFER') {
+                    updateAddButtonStateTransfer();
+                }
+            }
+            
+            // Initialize display on page load
+            updateSliderDisplay();
+            
+            slider.addEventListener('input', updateSliderDisplay);
+        }
+    });
+    
+    // Initialize on page load (call this last)
+    initializeOrderType();
+    
+    // Fleet order tooltip functionality (same as production orders)
+    function positionTooltip(e, item) {
+        var tooltip = item.querySelector('.order-tooltip');
+        if (tooltip) {
+            tooltip.style.display = 'block';
+            tooltip.style.left = (e.clientX + 12) + 'px';
+            tooltip.style.top = (e.clientY - tooltip.offsetHeight - 8) + 'px';
+        }
+    }
+    
+    function hideTooltip(item) {
+        var tooltip = item.querySelector('.order-tooltip');
+        if (tooltip) {
+            tooltip.style.display = 'none';
+        }
+    }
+    
+    // Add tooltip event listeners to transfer orders
+    var orderItems = document.querySelectorAll('.order-item');
+    orderItems.forEach(function(item) {
+        var tooltip = item.querySelector('.order-tooltip');
+        if (tooltip) {
+            item.addEventListener('mouseenter', function(e) {
+                positionTooltip(e, item);
+            });
+            item.addEventListener('mouseleave', function() {
+                hideTooltip(item);
+            });
+            item.addEventListener('mousemove', function(e) {
+                positionTooltip(e, item);
+            });
+        }
+    });
 })();
 </script>
