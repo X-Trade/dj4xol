@@ -1,7 +1,5 @@
 ============= MAIN TODO =============
 2. Cronjob entrypoint
-3. Mining & factories
-4. productivity & economy (ties to #3)
 5. Event generation in turn generator
 6. Schedule based turn generation (generate a turn by cronjob)
 8. more comprehensive unit testing

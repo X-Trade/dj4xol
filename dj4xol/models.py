@@ -341,6 +341,10 @@ class Star(AbstractMapObject):
     # Base carrying capacity (in millions), effective capacity = base * habitability
     base_capacity = models.IntegerField(default=random_capacity_init)
 
+    # Economic infrastructure
+    mines = models.IntegerField(default=0)
+    factories = models.IntegerField(default=0)
+
 
 class ServerRace(UUIDMixin, HabitabilityMixin):
     name = models.CharField(max_length=16)
@@ -445,6 +449,8 @@ class ProductionOrder(AbstractGameObject):
         ('TERRAFORM_TEMPERATURE', 'Terraform Temperature (1%)'),
         ('TERRAFORM_RADIATION', 'Terraform Radiation (1%)'),
         ('BUILD_FLEET', 'Build Fleet'),
+        ('BUILD_MINE', 'Build Mine'),
+        ('BUILD_FACTORY', 'Build Factory'),
     ]
 
     star = models.ForeignKey(Star, related_name='production_orders',

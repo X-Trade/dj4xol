@@ -32,6 +32,14 @@
         {% endfor %}
     </ul>
     {% endif %}
+    {% if detail.infrastructure %}
+    <h4>Infrastructure</h4>
+    <ul>
+        {% for key, value in detail.infrastructure.items %}
+        <li>{{ key }}: {{ value }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
     <div class="debug-actions">
         {% if detail.is_star %}
         <form method="post" action="{% url 'dj4xol:debug_colonize' game.short_id detail.star_short_id %}" style="display:inline">

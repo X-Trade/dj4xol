@@ -47,6 +47,7 @@ class DetailBuilder():
                      'capacity': self.get_effective_capacity(),
                      'environmentals': self.build_environmental_detail(),
                      'resources': self.build_resource_detail(),
+                     'infrastructure': self.build_infrastructure_detail(),
                      'is_star': isinstance(self.selected_obj, Star),
                      'is_fleet': isinstance(self.selected_obj, Fleet),
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
@@ -180,6 +181,14 @@ class DetailBuilder():
                          'Germanium': self.selected_obj.germanium,
                         }
         return resources
+
+    def build_infrastructure_detail(self):
+        infrastructure = None
+        if self.selected_obj and isinstance(self.selected_obj, Star):
+            infrastructure = {'Mines': self.selected_obj.mines,
+                              'Factories': self.selected_obj.factories,
+                             }
+        return infrastructure
 
     def get_production_orders(self):
         """Get production orders for selected star."""
