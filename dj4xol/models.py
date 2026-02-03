@@ -267,9 +267,9 @@ class AbstractGameObject(UUIDMixin):
         # Add game prefix for scoping
         game_prefix = self.game.short_id[:4]
         
-        # Convert to base36 (0-9, A-Z) for readability, take 8 chars to fit in 12 total
+        # Convert to base36 (0-9, a-z) for readability, take 8 chars to fit in 12 total
         import string
-        base36_chars = string.digits + string.ascii_uppercase
+        base36_chars = string.digits + string.ascii_lowercase
         
         short_part = ''
         temp = xor_result
@@ -355,6 +355,23 @@ class Fleet(AbstractMapObject):
             on_delete=models.CASCADE)
     # Heading in degrees: 0 = north, 90 = east, 180 = south, 270 = west
     heading = models.FloatField(default=0.0)
+    
+    # Cargo capacity and inventory
+    cargo_capacity = models.IntegerField(default=100000)  # Total cargo capacity in kt
+    ironium = models.IntegerField(default=0)  # Current ironium cargo in kt
+    boranium = models.IntegerField(default=0)  # Current boranium cargo in kt  
+    germanium = models.IntegerField(default=0)  # Current germanium cargo in kt
+    colonists = models.IntegerField(default=0)  # Current colonist cargo in thousands
+    
+    @property
+    def cargo_used(self):
+        """Total cargo currently loaded (in kt equivalent)."""
+        return self.ironium + self.boranium + self.germanium + self.colonists
+    
+    @property
+    def cargo_remaining(self):
+        """Remaining cargo capacity (in kt equivalent)."""
+        return self.cargo_capacity - self.cargo_used
 
 
 class Star(AbstractMapObject):

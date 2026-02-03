@@ -32,6 +32,18 @@
         {% endfor %}
     </ul>
     {% endif %}
+    {% if detail.fleet_inventory %}
+    <h4>Inventory</h4>
+    {% for key, data in detail.fleet_inventory.items %}
+    <div class="env-row">
+        <span class="env-label">{{ key }}</span>
+        <div class="inventory-bar">
+            <div class="inventory-fill inventory-{{ key|lower }}" style="width: {{ data.percent|floatformat:1 }}%;"></div>
+        </div>
+        <span class="env-value">{{ data.display }}</span>
+    </div>
+    {% endfor %}
+    {% endif %}
     {% if detail.infrastructure %}
     <h4>Infrastructure</h4>
     <ul>

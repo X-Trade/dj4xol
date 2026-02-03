@@ -4,7 +4,7 @@ from ..turn import (
     calculate_available_buildpoints, calculate_productivity_percent, calculate_economy_factor,
     COLONISTS_PER_JOB, BUILDPOINTS_PER_FACTORY, KT_PER_MINE, HOMEWORLD_MIN_YIELD
 )
-from ..models import ProductionOrder, GameMessage
+from ..models import ProductionOrder, GameMessage, Fleet
 from django.test import TestCase
 from ._util import default_game, get_default_race
 from unittest.mock import patch
@@ -1019,3 +1019,142 @@ class TestGameDisplayMethods(TestCase):
         game.turn_scheme = 'WEEKLY'
         game.save()
         self.assertEqual(game.get_turn_scheme_short_display(), 'Weekly')
+
+
+class TestFleetCargo(TestCase):
+    """Test Fleet cargo capacity and inventory."""
+    
+    def test_default_cargo_capacity(self):
+        """New fleets should have 100,000kt cargo capacity and empty inventory."""
+        game = default_game()
+        player = game.players.first()
+        
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Test Fleet",
+            x=5,
+            y=5
+        )
+        
+        self.assertEqual(fleet.cargo_capacity, 100000)
+        self.assertEqual(fleet.ironium, 0)
+        self.assertEqual(fleet.boranium, 0)
+        self.assertEqual(fleet.germanium, 0) 
+        self.assertEqual(fleet.colonists, 0)
+    
+    def test_cargo_calculations(self):
+        """Test cargo_used and cargo_remaining properties."""
+        game = default_game()
+        player = game.players.first()
+        
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Test Fleet",
+            x=5,
+            y=5,
+            ironium=1000,
+            boranium=2000,
+            germanium=3000,
+            colonists=4000
+        )
+        
+        # Total cargo used: 1000 + 2000 + 3000 + 4000 = 10,000kt
+        self.assertEqual(fleet.cargo_used, 10000)
+        # Remaining: 100,000 - 10,000 = 90,000kt
+        self.assertEqual(fleet.cargo_remaining, 90000)
+    
+    def test_full_cargo_capacity(self):
+        """Test fleet at maximum capacity."""
+        game = default_game()
+        player = game.players.first()
+        
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Full Fleet", 
+            x=5,
+            y=5,
+            colonists=100000  # Full capacity with colonists only
+        )
+        
+        self.assertEqual(fleet.cargo_used, 100000)
+        self.assertEqual(fleet.cargo_remaining, 0)
+    
+    def test_mixed_cargo(self):
+        """Test mixed cargo types respecting 1 colonist = 1kt equivalence."""
+        game = default_game()
+        player = game.players.first()
+        
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Mixed Fleet",
+            x=5,
+            y=5,
+            ironium=25000,   # 25,000kt ironium
+            boranium=25000,  # 25,000kt boranium  
+            germanium=25000, # 25,000kt germanium
+            colonists=25000  # 25,000k colonists = 25,000kt equivalent
+        )
+        
+        # Total: 100,000kt exactly at capacity
+        self.assertEqual(fleet.cargo_used, 100000)
+        self.assertEqual(fleet.cargo_remaining, 0)
+    
+    def test_object_details_includes_fleet_cargo(self):
+        """Test that fleet cargo information is included in object details."""
+        from ..objectdetails import DetailBuilder
+        
+        game = default_game()
+        player = game.players.first()
+        
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Cargo Fleet",
+            x=10,
+            y=10,
+            ironium=5000,
+            boranium=3000,
+            germanium=2000,
+            colonists=1500
+        )
+        
+        # Build details for the fleet (note: process_selected converts to lowercase)
+        detail_builder = DetailBuilder(game, x=10, y=10, selected=fleet.short_id.lower(), player=player)
+        details = detail_builder.build_detail()
+        
+        self.assertIsNotNone(details)
+        self.assertTrue(details['is_fleet'])
+        self.assertIsNotNone(details['fleet_cargo'])
+        self.assertIsNotNone(details['fleet_inventory'])
+        
+        # Test cargo info
+        cargo_info = details['fleet_cargo']
+        self.assertEqual(cargo_info['capacity'], 100000)
+        self.assertEqual(cargo_info['used'], 11500)  # 5000+3000+2000+1500
+        self.assertEqual(cargo_info['remaining'], 88500)  # 100000-11500
+        self.assertEqual(cargo_info['ironium'], 5000)
+        self.assertEqual(cargo_info['boranium'], 3000)
+        self.assertEqual(cargo_info['germanium'], 2000)
+        self.assertEqual(cargo_info['colonists'], 1500)
+        
+        # Test inventory display data
+        inventory = details['fleet_inventory']
+        self.assertEqual(inventory['Ironium']['amount'], 5000)
+        self.assertEqual(inventory['Ironium']['percent'], 5.0)  # 5000/100000 = 5%
+        self.assertEqual(inventory['Ironium']['display'], '5,000kt')
+        
+        self.assertEqual(inventory['Boranium']['amount'], 3000)
+        self.assertEqual(inventory['Boranium']['percent'], 3.0)  # 3000/100000 = 3%
+        self.assertEqual(inventory['Boranium']['display'], '3,000kt')
+        
+        self.assertEqual(inventory['Germanium']['amount'], 2000)
+        self.assertEqual(inventory['Germanium']['percent'], 2.0)  # 2000/100000 = 2%
+        self.assertEqual(inventory['Germanium']['display'], '2,000kt')
+        
+        self.assertEqual(inventory['Colonists']['amount'], 1500)
+        self.assertEqual(inventory['Colonists']['percent'], 1.5)  # 1500/100000 = 1.5%
+        self.assertEqual(inventory['Colonists']['display'], '1,500k')
