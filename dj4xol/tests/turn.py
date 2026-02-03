@@ -4,7 +4,7 @@ from ..turn import (
     calculate_available_buildpoints, calculate_productivity_percent, calculate_economy_factor,
     COLONISTS_PER_JOB, BUILDPOINTS_PER_FACTORY, KT_PER_MINE, HOMEWORLD_MIN_YIELD
 )
-from ..models import ProductionOrder
+from ..models import ProductionOrder, GameMessage
 from django.test import TestCase
 from ._util import default_game, get_default_race
 from unittest.mock import patch
@@ -720,3 +720,302 @@ class TestEconomicCalculations(TestCase):
         other_star.refresh_from_db()
         # Should have depleted below 31 (with high probability)
         self.assertLess(other_star.ironium, 31)
+
+
+class TestFleetOrdersRepeat(TestCase):
+    """Test fleet order repeat functionality."""
+    
+    def test_repeat_order_requeued_on_completion(self):
+        """When a fleet completes a repeat order, it should be requeued at bottom."""
+        game = default_game(stars=10, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        
+        # Position fleet at 0,0 and create order to move to 5,5 (distance=~7) with repeat=True
+        fleet.x = 0
+        fleet.y = 0
+        fleet.save()
+        
+        from ..models import FleetOrders
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            warpfactor=10,  # Fast enough to complete in one turn
+            x=5,
+            y=5,
+            repeat=True
+        )
+        
+        # Verify fleet has one order before turn
+        self.assertEqual(fleet.orders.count(), 1)
+        original_order_id = order.id
+        
+        # Generate turn - should complete movement and requeue order
+        GameTurn(game).generate_turn()
+        
+        # Refresh fleet and check position
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.x, 5)
+        self.assertEqual(fleet.y, 5)
+        
+        # Original order should be deleted, new order should exist
+        self.assertFalse(FleetOrders.objects.filter(id=original_order_id).exists())
+        self.assertEqual(fleet.orders.count(), 1)
+        
+        # New order should have same properties
+        new_order = fleet.orders.first()
+        self.assertEqual(new_order.warpfactor, 10)
+        self.assertEqual(new_order.x, 5)
+        self.assertEqual(new_order.y, 5)
+        self.assertTrue(new_order.repeat)
+        self.assertNotEqual(new_order.id, original_order_id)
+    
+    def test_non_repeat_order_deleted_on_completion(self):
+        """When a fleet completes a non-repeat order, it should be deleted."""
+        game = default_game(stars=10, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        
+        # Position fleet and create non-repeat order
+        fleet.x = 0
+        fleet.y = 0
+        fleet.save()
+        
+        from ..models import FleetOrders
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            warpfactor=10,
+            x=5,
+            y=5,
+            repeat=False
+        )
+        
+        # Verify fleet has one order
+        self.assertEqual(fleet.orders.count(), 1)
+        
+        # Generate turn
+        GameTurn(game).generate_turn()
+        
+        # Fleet should be at destination, order should be gone
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.x, 5)
+        self.assertEqual(fleet.y, 5)
+        self.assertEqual(fleet.orders.count(), 0)
+    
+    def test_repeat_order_with_target_star(self):
+        """Repeat orders with target_star should preserve the star reference."""
+        game = default_game(stars=10, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+        
+        # Position fleet close to target
+        fleet.x = target_star.x - 3  # 3 units away
+        fleet.y = target_star.y
+        fleet.save()
+        
+        from ..models import FleetOrders
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            warpfactor=5,
+            target_star=target_star,
+            repeat=True
+        )
+        
+        # Generate turn
+        GameTurn(game).generate_turn()
+        
+        # Fleet should be at star, order should be requeued
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.x, target_star.x)
+        self.assertEqual(fleet.y, target_star.y)
+        self.assertEqual(fleet.orders.count(), 1)
+        
+        # New order should reference same star
+        new_order = fleet.orders.first()
+        self.assertEqual(new_order.target_star, target_star)
+        self.assertTrue(new_order.repeat)
+    
+    def test_partial_movement_no_repeat(self):
+        """Orders not completed should not be repeated, even if repeat=True."""
+        game = default_game(stars=10, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        
+        # Position fleet far from target
+        fleet.x = 1
+        fleet.y = 1
+        fleet.save()
+        
+        from ..models import FleetOrders
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            warpfactor=5,  # Not fast enough to reach in one turn
+            x=20,
+            y=20,
+            repeat=True
+        )
+        original_order_id = order.id
+        
+        # Generate turn
+        GameTurn(game).generate_turn()
+        
+        # Fleet should have moved but not completed journey
+        fleet.refresh_from_db()
+        self.assertNotEqual(fleet.x, 20)  # Hasn't reached destination
+        self.assertNotEqual(fleet.x, 1)   # But has moved
+        
+        # Original order should still exist (not completed)
+        self.assertTrue(FleetOrders.objects.filter(id=original_order_id).exists())
+        self.assertEqual(fleet.orders.count(), 1)
+
+
+class TestShortIdCollisionDetection(TestCase):
+    """Test XOR-based short_id generation."""
+    
+    def test_deterministic_generation(self):
+        """XOR-based short_id generation should be deterministic and collision-resistant."""
+        game = default_game()
+        player = game.players.first()
+        
+        # Create multiple messages - should all have unique short_ids due to XOR entropy
+        messages = []
+        for i in range(10):
+            msg = GameMessage.objects.create(
+                game=game,
+                player=player,
+                message=f"Test message {i}",
+                year=2400
+            )
+            messages.append(msg)
+        
+        # All should have unique short_ids (very high probability with XOR approach)
+        short_ids = [msg.short_id for msg in messages]
+        self.assertEqual(len(short_ids), len(set(short_ids)), "All short_ids should be unique")
+        
+        # All should be exactly 12 characters (4 game + 8 XOR)
+        for short_id in short_ids:
+            self.assertEqual(len(short_id), 12, f"short_id '{short_id}' should be exactly 12 chars")
+            # Should start with game prefix
+            self.assertTrue(short_id.startswith(game.short_id[:4]))
+    
+    def test_short_id_unchanged_on_resave(self):
+        """Resaving an existing object should not change its short_id."""
+        game = default_game()
+        player = game.players.first()
+        
+        msg = GameMessage.objects.create(
+            game=game,
+            player=player,
+            message="Original message",
+            year=2400
+        )
+        original_short_id = msg.short_id
+        
+        # Modify and save
+        msg.message = "Updated message"
+        msg.save()
+        
+        # short_id should be unchanged
+        self.assertEqual(msg.short_id, original_short_id)
+    
+    def test_same_uuid_produces_same_short_id(self):
+        """Same UUID should always produce the same short_id (deterministic)."""
+        from ..models import GameMessage
+        import uuid
+        
+        game = default_game()
+        player = game.players.first()
+        
+        # Create a UUID and use it twice
+        test_uuid = uuid.UUID('01234567-89ab-cdef-0123-456789abcdef')
+        
+        # Create first message with specific UUID
+        msg1 = GameMessage(
+            id=test_uuid,
+            game=game,
+            player=player,
+            message="First message",
+            year=2400
+        )
+        msg1.save()
+        
+        # Create second message with same UUID in different instance
+        msg2 = GameMessage(
+            id=test_uuid,
+            game=game,
+            player=player,
+            message="Second message", 
+            year=2401
+        )
+        # Manually generate short_id to test determinism
+        expected_short_id = msg2._generate_short_id_from_uuid(test_uuid.int)
+        
+        # Should be identical
+        self.assertEqual(msg1.short_id, expected_short_id)
+    
+    def test_different_games_different_prefixes(self):
+        """Objects in different games should have different short_id prefixes."""
+        from ..models import GameMessage
+        
+        game1 = default_game()
+        game2 = default_game()  # Different game
+        
+        player1 = game1.players.first()
+        player2 = game2.players.first()
+        
+        msg1 = GameMessage.objects.create(
+            game=game1,
+            player=player1,
+            message="Message in game 1",
+            year=2400
+        )
+        
+        msg2 = GameMessage.objects.create(
+            game=game2,
+            player=player2,
+            message="Message in game 2",
+            year=2400
+        )
+        
+        # Should have different prefixes (first 4 characters)
+        self.assertNotEqual(msg1.short_id[:4], msg2.short_id[:4])
+        self.assertEqual(msg1.short_id[:4], game1.short_id[:4])
+        self.assertEqual(msg2.short_id[:4], game2.short_id[:4])
+
+
+class TestGameDisplayMethods(TestCase):
+    """Test Game model display methods."""
+    
+    def test_get_turn_scheme_short_display_with_description(self):
+        """Turn scheme with description should return only the short part."""
+        game = default_game()
+        
+        # Test schemes with descriptions
+        game.turn_scheme = 'QUORUM'
+        game.save()
+        self.assertEqual(game.get_turn_scheme_short_display(), 'Quorum')
+        
+        game.turn_scheme = 'OWNER'
+        game.save()
+        self.assertEqual(game.get_turn_scheme_short_display(), 'Owner')
+    
+    def test_get_turn_scheme_short_display_without_description(self):
+        """Turn scheme without description should return the full display."""
+        game = default_game()
+        
+        # Test schemes without descriptions
+        game.turn_scheme = 'HOURLY'
+        game.save()
+        self.assertEqual(game.get_turn_scheme_short_display(), 'Hourly')
+        
+        game.turn_scheme = 'DAILY'
+        game.save()
+        self.assertEqual(game.get_turn_scheme_short_display(), 'Daily')
+        
+        game.turn_scheme = 'WEEKLY'
+        game.save()
+        self.assertEqual(game.get_turn_scheme_short_display(), 'Weekly')

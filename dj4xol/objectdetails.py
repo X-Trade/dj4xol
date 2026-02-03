@@ -269,5 +269,6 @@ class DetailBuilder():
                 'short_id': o.short_id,
                 'target': target,
                 'warpfactor': o.warpfactor,
+                'repeat': o.repeat,
             })
         return orders
