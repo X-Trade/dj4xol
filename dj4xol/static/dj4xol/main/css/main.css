@@ -288,6 +288,13 @@ body {
     background: linear-gradient(to right, #96ceb4, #71a085); /* Colonists - green */
 }
 
+/* Fleet inventory capacity display */
+.capacity-display {
+    font-size: 0.9em;
+    color: #666;
+    font-weight: normal;
+}
+
 /* Messages panel */
 #messages {
     border: 1px solid #808080;
@@ -471,10 +478,54 @@ body {
     align-items: center;
     padding: 4px 0;
     border-bottom: 1px solid #e0e0e0;
+    position: relative;
 }
 
 .order-item:last-child {
     border-bottom: none;
+}
+
+/* Production progress bars */
+.order-progress-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.progress-background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    background: linear-gradient(to right, #ff8a65, #ffab91); /* Resources - orange tint */
+    opacity: 0.3;
+}
+
+.progress-foreground {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: linear-gradient(to right, #42a5f5, #64b5f6); /* Labor - blue tint */
+    opacity: 0.6;
+}
+
+.progress-single {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    background: linear-gradient(to right, #66bb6a, #81c784); /* Single progress - green tint */
+    opacity: 0.4;
+}
+
+.order-info {
+    position: relative;
+    z-index: 1;
+    flex: 1;
 }
 
 .order-remove-btn {
@@ -487,6 +538,8 @@ body {
     border-radius: 3px;
     font-size: 14px;
     line-height: 1;
+    position: relative;
+    z-index: 1;
 }
 
 .order-remove-btn:hover {
@@ -653,6 +706,12 @@ body {
     margin-bottom: 6px;
     padding-bottom: 4px;
     border-bottom: 1px solid #555;
+}
+
+.tooltip-subheader {
+    font-size: 0.9em;
+    color: #bbb;
+    margin-bottom: 6px;
 }
 
 .tooltip-table {

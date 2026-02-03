@@ -216,11 +216,34 @@ class DetailBuilder():
         orders = []
         for o in self.selected_obj.production_orders.order_by('position'):
             cost = PRODUCTION_COSTS.get(o.order_type, {})
-            # Calculate total cost and total spent for progress
-            total_cost = (cost.get('bp', 0) + cost.get('ironium', 0) +
-                          cost.get('boranium', 0) + cost.get('germanium', 0))
-            total_spent = o.spent_bp + o.spent_ironium + o.spent_boranium + o.spent_germanium
-            progress_percent = (total_spent / total_cost * 100) if total_cost > 0 else 0
+            
+            # Calculate progress based on what has actually been spent
+            labor_cost = cost.get('bp', 0)
+            resource_cost = cost.get('ironium', 0) + cost.get('boranium', 0) + cost.get('germanium', 0)
+            
+            if labor_cost > 0 and resource_cost > 0:
+                # Items with both labor and resources: each contributes 50%
+                resource_progress = min(
+                    (o.spent_ironium + o.spent_boranium + o.spent_germanium) / resource_cost * 50, 50
+                )
+                labor_progress = min(o.spent_bp / labor_cost * 50, 50)
+                total_progress = resource_progress + labor_progress
+            elif labor_cost > 0:
+                # Labor only: contributes 100%
+                resource_progress = 0
+                labor_progress = min(o.spent_bp / labor_cost * 100, 100)
+                total_progress = labor_progress
+            elif resource_cost > 0:
+                # Resources only: contribute 100%
+                resource_progress = min(
+                    (o.spent_ironium + o.spent_boranium + o.spent_germanium) / resource_cost * 100, 100
+                )
+                labor_progress = 0
+                total_progress = resource_progress
+            else:
+                # No costs (shouldn't happen)
+                resource_progress = labor_progress = total_progress = 0
+            
             orders.append({
                 'short_id': o.short_id,
                 'type': o.order_type,
@@ -228,7 +251,10 @@ class DetailBuilder():
                 'quantity': o.quantity,
                 'completed': o.completed,
                 'repeat': o.repeat,
-                'progress_percent': int(progress_percent),
+                'progress_percent': min(int(total_progress), 100),
+                'resource_progress': min(int(resource_progress), 50 if labor_cost > 0 and resource_cost > 0 else 100),
+                'labor_progress': min(int(labor_progress), 50 if resource_cost > 0 and labor_cost > 0 else 100),
+                'has_labor': labor_cost > 0,
                 'cost': {
                     'bp': cost.get('bp', 0),
                     'ironium': cost.get('ironium', 0),

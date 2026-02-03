@@ -22,8 +22,8 @@ def random_capacity_init():
     """Random base capacity between 5bn and 15bn (stored in millions)."""
     return random.randint(5000, 15000)
 def random_surface_mineral_init():
-    """Random surface minerals 0-1Mkt with cubic distribution (biased toward lower values)."""
-    return int((random.random() ** 3) * 1_000_000)
+    """Random surface minerals 0-1Mkt with exponential distribution (heavily biased toward lower values)."""
+    return int((random.random() ** 50) * 1_000_000)
 
 
 class HabitabilityMixin(models.Model):

@@ -33,7 +33,10 @@
     </ul>
     {% endif %}
     {% if detail.fleet_inventory %}
-    <h4>Inventory</h4>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h4>Inventory</h4>
+        <span class="capacity-display">max: {{ detail.fleet_cargo.capacity|floatformat:0 }}kt</span>
+    </div>
     {% for key, data in detail.fleet_inventory.items %}
     <div class="env-row">
         <span class="env-label">{{ key }}</span>
