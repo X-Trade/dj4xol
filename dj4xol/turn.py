@@ -147,7 +147,7 @@ def calculate_economy_percent(star):
     """
     employment = calculate_employment_percent(star)
     productivity = calculate_productivity_percent(star)
-    return max(0, employment / 2 + productivity / 2)
+    return (employment - 50) + (productivity - 25) / 2
 
 
 def calculate_economy_factor(star):
@@ -181,7 +181,7 @@ def calculate_habitability_factor(player, star):
     # Add economy factor before averaging
     factor += calculate_economy_factor(star)
     # Average using the original /3 divisor (economy is a bonus)
-    return factor / 3.0
+    return factor / 6.0 # changed to nerf growth
 
 
 def calculate_growth_factor(player, star):
@@ -194,6 +194,7 @@ def calculate_growth_factor(player, star):
     - High population: reduced by carrying capacity (tanh curve)
     """
     hab_factor = calculate_habitability_factor(player, star)
+    print(hab_factor)
 
     if hab_factor >= 0:
         # Dampen growth: max ~0.5 at perfect habitability
@@ -204,7 +205,7 @@ def calculate_growth_factor(player, star):
         return factor
     else:
         # Negative factors passed through directly for linear decline
-        return hab_factor
+        return hab_factor * 2
 
 class GameTurn():
     """Generate a turn for a game."""
