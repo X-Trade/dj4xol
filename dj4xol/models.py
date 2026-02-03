@@ -330,12 +330,18 @@ class Star(AbstractMapObject):
     radiation = models.FloatField(default=random_environmental_init,
                                 validators=[MinValueValidator(0.0), MaxValueValidator(2.0)])
 
+    # Mineral yields (percentage, 0-100%)
     ironium = models.IntegerField(default=random_resource_init,
                                   validators=[MinValueValidator(0), MaxValueValidator(100)])
     boranium = models.IntegerField(default=random_resource_init,
                                   validators=[MinValueValidator(0), MaxValueValidator(100)])
     germanium = models.IntegerField(default=random_resource_init,
                                   validators=[MinValueValidator(0), MaxValueValidator(100)])
+
+    # Surface mineral inventory (kt)
+    ironium_surface = models.IntegerField(default=0)
+    boranium_surface = models.IntegerField(default=0)
+    germanium_surface = models.IntegerField(default=0)
 
     colonists = models.IntegerField(default=0)
     # Base carrying capacity (in millions), effective capacity = base * habitability
@@ -344,6 +350,7 @@ class Star(AbstractMapObject):
     # Economic infrastructure
     mines = models.IntegerField(default=0)
     factories = models.IntegerField(default=0)
+    defenses = models.IntegerField(default=0)
 
 
 class ServerRace(UUIDMixin, HabitabilityMixin):
@@ -451,6 +458,7 @@ class ProductionOrder(AbstractGameObject):
         ('BUILD_FLEET', 'Build Fleet'),
         ('BUILD_MINE', 'Build Mine'),
         ('BUILD_FACTORY', 'Build Factory'),
+        ('BUILD_DEFENSE', 'Build Defense'),
     ]
 
     star = models.ForeignKey(Star, related_name='production_orders',

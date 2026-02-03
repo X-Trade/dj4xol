@@ -159,13 +159,18 @@ class GameFactory():
 
     def _assign_homeworld_to_player(self, player, star):
         """Assign a specific star as homeworld to a player with starting population.
-        Sets star environmentals to player's habitable centers and optionally renames."""
+        Sets star environmentals to player's habitable centers and optionally renames.
+        Ensures resource yields are at least 50%."""
         star.player = player
         star.colonists = player.race_type.starting_population
         # Set environmentals to player's ideal (center) values
         star.gravity = player.gravity_center
         star.temperature = player.temperature_center
         star.radiation = player.radiation_center
+        # Ensure homeworld has good resource yields (at least 50%)
+        star.ironium = max(50, star.ironium)
+        star.boranium = max(50, star.boranium)
+        star.germanium = max(50, star.germanium)
         # Override star name if player has a homeworld name set
         if player.homeworld_name:
             star.name = player.homeworld_name

@@ -1,0 +1,39 @@
+======== Ideas ========
+*** Stability ***
+* StabilityCoef = pow2(Employment - 0.5)
+* Stability = Stability * StabilityCoef
+* Megaprojects - Colony Build Items that are expensive
+  * Citadel - flatlines stability to build and costs a lot of resources but provides fixed 50% boost once completed. One per Star
+  * Senate - One per star. also provides fixed boost to stability at a cost to economy
+  * Memorial - improves stability
+  * Stargate - different sizes to support different Ship mass and distance. Expensive and 20% chance of being destroyed in any bombing run. Other races can connect to your gate. Show gate (dotted line) overlay of possible connections on starmap when available at selected location. 
+  * Micromanager - cheap to build once unlocked electronics level 10, automates basic colony operations to optimise population and production. 
+  * Superweapon - huge amount of resources, and like stargates, a high (50%) chance of being hit, but it allows devestating ranged attack directly on the starmap within a certain radius. Damaged when used
+* Garison - Not a megaproject, same build/employment stats as Factory, takes continuous resources but produces stability (diluted per capita) instead of buildpoints. Contributes to ground invasion defences
+* Low stability causes excess deaths "due to civil war", "unrest", etc. also (limited) destruction of surface infrastructure and resources. 
+* Extremely low stability has a 10% chance of ceding the star to a breakaway faction. 
+  This is a low-quality "AI player" race, a direct clone of the player's race, with name such as "Free [STAR NAME]", "[STAR NAME] Seperatists", etc. 
+  Takes ownership of the star/colony and up to 50% of fleets in orbit (but also easily 0%). 
+  It is then up to the player to attempt to take back the colony, enter diplomacy, trade, etc. 
+  The AI race will only ever maintain the colony, not a full AI (although other breakaway colonies may join rather than start their own faction), with the same level of intelligence as the Micromanager with added diplomacy etc. Breakaway factions are obviously immune to further breakaway mechanics. 
+
+*** Anomolies ***
+* tickbox on the Game setup
+* Wormholes ( connects two points on the map, if a fleet flies into it, it is taken to the other end. Ends wander around a bit )
+* Black holes ( like a wormhole but just eats ships/stars )
+* disappearing worlds (very, very rare)
+* new Stars (very, very, very rare)
+
+*** Research & Technology & Hull/Ship Design ***
+* database driven tech-tree/components system
+* admin UI allows the admin to draft & publish components, colony structures & ship hulls
+* points based system similar to race setup allows balance, but this can be bypassed for validation with a constant for development purposes. 
+* diverse range of behaviours and component types to customise
+* possible integration with AI image generation tools for thumbnail
+
+*** Game Setup ***
+* spiral galaxy mode - arranges stars into a typical spiral arm galaxy shape. 
+* admin cheats checkbox - only visible if the user is admin, allows admin to use debug tools
+
+*** AI ***
+* pluggable/extensible AI player types

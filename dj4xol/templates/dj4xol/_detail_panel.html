@@ -27,17 +27,18 @@
     {% if detail.resources %}
     <h4>Resources</h4>
     <ul>
-        {% for key, value in detail.resources.items %}
-        <li>{{ key }}: {{ value }}</li>
+        {% for key, data in detail.resources.items %}
+        <li>{{ key }}: {{ data.yield }}% / {{ data.surface }}kt</li>
         {% endfor %}
     </ul>
     {% endif %}
     {% if detail.infrastructure %}
     <h4>Infrastructure</h4>
     <ul>
-        {% for key, value in detail.infrastructure.items %}
-        <li>{{ key }}: {{ value }}</li>
-        {% endfor %}
+        <li>Mines: {{ detail.infrastructure.Mines }}</li>
+        <li>Factories: {{ detail.infrastructure.Factories }}</li>
+        <li>Defenses: {{ detail.infrastructure.Defenses }}</li>
+        <li>Jobs: <span class="has-tooltip" data-tooltip="{{ detail.infrastructure.Jobs.count|exact_pop }} ({{ detail.infrastructure.Jobs.employment|floatformat:1 }}% employment)">{{ detail.infrastructure.Jobs.count|humanize_pop }}</span></li>
     </ul>
     {% endif %}
     <div class="debug-actions">

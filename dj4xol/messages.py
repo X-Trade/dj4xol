@@ -245,12 +245,12 @@ class PopulationBoomMessageFactory(MessageFactory):
 
 
 class MiningDiscoveryMessageFactory(MessageFactory):
-    """Messages for resource discoveries."""
+    """Messages for surface resource discoveries."""
     category = 'RANDOM'
     templates = [
-        "A meteor impact on {star} exposed {qty} units of {resource}.",
-        "Seismic activity on {star} revealed deposits of {qty} {resource}.",
-        "Volcanic activity on {star} brought {qty} units of {resource} to the surface.",
+        "A meteor impact on {star} exposed {qty}kt of {resource}.",
+        "Seismic activity on {star} revealed deposits of {qty}kt {resource}.",
+        "Volcanic activity on {star} brought {qty}kt of {resource} to the surface.",
     ]
 
     def __init__(self, game, player, star, qty, resource, message=None):
@@ -303,12 +303,12 @@ class MiningAccidentDeathsMessageFactory(MessageFactory):
 
 
 class MiningAccidentResourcesMessageFactory(MessageFactory):
-    """Messages for mining accidents with resource loss."""
+    """Messages for mining accidents with surface resource loss."""
     category = 'RANDOM'
     templates = [
-        "A storage facility breach on {star} resulted in the loss of {qty} units of {resource}.",
-        "Volcanic activity on {star} destroyed {qty} {resource} in storage.",
-        "An equipment malfunction on {star} resulted in the loss of {qty} {resource}.",
+        "A storage facility breach on {star} resulted in the loss of {qty}kt of {resource}.",
+        "Volcanic activity on {star} destroyed {qty}kt of {resource} in storage.",
+        "An equipment malfunction on {star} resulted in the loss of {qty}kt of {resource}.",
     ]
 
     def __init__(self, game, player, star, qty, resource, message=None):
@@ -372,6 +372,25 @@ class FactoryBuiltMessageFactory(MessageFactory):
         "A new factory has been constructed at {star}.",
         "Industrial capacity has expanded at {star}.",
         "Construction of a new factory completed at {star}.",
+    ]
+
+    def __init__(self, game, player, star, message=None):
+        super().__init__(game, player, message, intensity=0.2)
+        self.star = star
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=map_object_link(self.star)
+        )
+
+
+class DefenseBuiltMessageFactory(MessageFactory):
+    """Messages for defense construction completion."""
+    category = 'PRODUCTION'
+    templates = [
+        "Planetary defenses have been strengthened at {star}.",
+        "A new defense installation has been completed at {star}.",
+        "Defense capabilities have expanded at {star}.",
     ]
 
     def __init__(self, game, player, star, message=None):

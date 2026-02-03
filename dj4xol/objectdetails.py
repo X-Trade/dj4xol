@@ -1,5 +1,5 @@
 from dj4xol.models import Fleet, Star
-from dj4xol.turn import calculate_growth_factor, apply_population_change, effective_capacity
+from dj4xol.turn import calculate_growth_factor, apply_population_change, effective_capacity, calculate_employment_percent, COLONISTS_PER_JOB
 
 from itertools import chain
 
@@ -176,18 +176,33 @@ class DetailBuilder():
     def build_resource_detail(self):
         resources = None
         if self.selected_obj and isinstance(self.selected_obj, Star):
-            resources = {'Ironium': self.selected_obj.ironium,
-                         'Boranium': self.selected_obj.boranium,
-                         'Germanium': self.selected_obj.germanium,
-                        }
+            resources = {
+                'Ironium': {
+                    'yield': self.selected_obj.ironium,
+                    'surface': self.selected_obj.ironium_surface,
+                },
+                'Boranium': {
+                    'yield': self.selected_obj.boranium,
+                    'surface': self.selected_obj.boranium_surface,
+                },
+                'Germanium': {
+                    'yield': self.selected_obj.germanium,
+                    'surface': self.selected_obj.germanium_surface,
+                },
+            }
         return resources
 
     def build_infrastructure_detail(self):
         infrastructure = None
         if self.selected_obj and isinstance(self.selected_obj, Star):
-            infrastructure = {'Mines': self.selected_obj.mines,
-                              'Factories': self.selected_obj.factories,
-                             }
+            jobs = (self.selected_obj.mines + self.selected_obj.factories + self.selected_obj.defenses) * COLONISTS_PER_JOB
+            employment = calculate_employment_percent(self.selected_obj)
+            infrastructure = {
+                'Mines': self.selected_obj.mines,
+                'Factories': self.selected_obj.factories,
+                'Defenses': self.selected_obj.defenses,
+                'Jobs': {'count': jobs, 'employment': employment},
+            }
         return infrastructure
 
     def get_production_orders(self):
