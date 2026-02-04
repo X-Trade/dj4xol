@@ -56,6 +56,7 @@ class DetailBuilder():
                      'fleet_orders': self.get_fleet_orders(),
                      'fleet_cargo': self.get_fleet_cargo(),
                      'fleet_inventory': self.build_fleet_inventory(),
+                     'transfer_targets': self.get_transfer_targets(),
                      'x': self.selected_obj.x,
                      'y': self.selected_obj.y,
                      }
@@ -64,11 +65,17 @@ class DetailBuilder():
         return detail
 
     def get_objects_here(self):
-        """Return list of (name, short_id) dicts for all objects at cursor."""
+        """Return list of dicts with name, short_id, and type for all objects at cursor."""
+        from .models import Star, Fleet
         result = []
         for obj in self.at_cursor:
             name = obj.name or f"{obj.__class__.__name__} {obj.id}"
-            result.append({'name': name, 'id': obj.short_id})
+            obj_type = 'star' if isinstance(obj, Star) else 'fleet' if isinstance(obj, Fleet) else 'unknown'
+            result.append({
+                'name': name, 
+                'short_id': obj.short_id,
+                'type': obj_type
+            })
         return result
 
     def get_population(self):
@@ -348,3 +355,63 @@ class DetailBuilder():
             'percent': percent,
             'display': f'{amount:,}{unit}',
         }
+
+    def get_fleet_effective_location(self):
+        """Calculate where the fleet will be after executing all current orders."""
+        if not isinstance(self.selected_obj, Fleet):
+            return self.selected_obj.x, self.selected_obj.y
+        
+        fleet = self.selected_obj
+        current_x, current_y = fleet.x, fleet.y
+        
+        # Walk through orders to find the final destination
+        orders = fleet.orders.filter(order_type__in=['MOVE', 'TRANSFER']).order_by('id')
+        
+        for order in orders:
+            if order.order_type == 'MOVE':
+                # Use the same logic as turn.py move_fleet()
+                try:
+                    current_x, current_y = order.get_destination_coordinates()
+                except ValueError:
+                    # Skip invalid orders
+                    continue
+            elif order.order_type == 'TRANSFER':
+                # Transfer orders execute at the current location but don't change it
+                # (the fleet stays where it is)
+                pass
+        
+        return current_x, current_y
+    
+    def get_transfer_targets(self):
+        """Get available transfer targets at the fleet's effective location."""
+        if not isinstance(self.selected_obj, Fleet):
+            return []
+        
+        # Get the location where the fleet will be when the transfer executes
+        effective_x, effective_y = self.get_fleet_effective_location()
+        
+        # Find objects at that location
+        from itertools import chain
+        stars = self.game.stars.filter(x=effective_x, y=effective_y).all()
+        fleets = self.game.fleets.filter(x=effective_x, y=effective_y).all()
+        
+        targets = []
+        
+        # Add stars
+        for star in stars:
+            targets.append({
+                'name': star.name,
+                'short_id': star.short_id,
+                'type': 'star'
+            })
+        
+        # Add other fleets (excluding the selected fleet)
+        for fleet in fleets:
+            if fleet.short_id != self.selected_obj.short_id:
+                targets.append({
+                    'name': fleet.name,
+                    'short_id': fleet.short_id,
+                    'type': 'fleet'
+                })
+        
+        return targets

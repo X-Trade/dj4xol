@@ -47,6 +47,7 @@
             <input type="hidden" name="sel" value="{{ selection.sel }}">
             <input type="hidden" name="warpfactor" id="warpfactor-input" value="5">
             <input type="hidden" name="transfer_type" id="transfer-type-input" value="LOAD">
+            <input type="hidden" name="transfer_target" id="transfer-target-input" value="">
             <input type="hidden" name="transfer_ironium" id="transfer-ironium-input" value="0">
             <input type="hidden" name="transfer_boranium" id="transfer-boranium-input" value="0">
             <input type="hidden" name="transfer_germanium" id="transfer-germanium-input" value="0">
@@ -61,9 +62,10 @@
             </div>
 
             <div class="order-params">
-                <div class="order-param-row">
-                    <label>Destination</label>
-                    <div class="dest-display-row">
+                <!-- Destination for MOVE orders, Target for TRANSFER orders - same visual location -->
+                <div class="order-param-row" id="destination-row">
+                    <label id="dest-target-label">Destination</label>
+                    <div class="dest-display-row" id="move-destination">
                         <span id="dest-display" class="dest-display">
                             {% if dest_star_name %}
                                 {{ dest_star_name }}
@@ -74,6 +76,18 @@
                             {% endif %}
                         </span>
                         <a href="?mode=select_destination&fleet={{ detail.fleet_short_id }}&x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&order_type=MOVE" class="dest-set-btn" id="dest-set-link">Set</a>
+                    </div>
+                    <div class="transfer-target-row" id="transfer-destination" style="display: none;">
+                        <select id="transfer-target" name="transfer_target" class="transfer-target-select">
+                            <option value="">Select target...</option>
+                            {% for obj in detail.transfer_targets %}
+                                {% if obj.type == 'star' %}
+                                    <option value="star:{{ obj.short_id }}">{{ obj.name }} (Star)</option>
+                                {% elif obj.type == 'fleet' %}
+                                    <option value="fleet:{{ obj.short_id }}">{{ obj.name }} (Fleet)</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
                     </div>
                 </div>
 
@@ -172,20 +186,14 @@
     }
     
     function updateAddButtonStateTransfer() {
-        var destStar = document.querySelector('input[name="target_star"]').value;
+        var transferTarget = document.getElementById('transfer-target').value;
         var hasResources = transferSliders.some(function(resource) {
             var input = document.getElementById('transfer-' + resource + '-input');
             return input && parseInt(input.value) > 0;
         });
         
-        // Transfer orders require a star target and at least one resource
-        addBtn.disabled = !destStar || !hasResources;
-        
-        // Update the set destination message for transfers
-        var destDisplay = document.getElementById('dest-display');
-        if (orderType && orderType.value === 'TRANSFER' && !destStar) {
-            destDisplay.innerHTML = '<em>Select star to transfer at</em>';
-        }
+        // Transfer orders require a target and at least one resource
+        addBtn.disabled = !transferTarget || !hasResources;
     }
     
     // Update destination link with current order type
@@ -209,13 +217,30 @@
         var currentType = orderType.value;
         orderTypeInput.value = currentType;
         
+        var destTargetLabel = document.getElementById('dest-target-label');
+        var moveDestination = document.getElementById('move-destination');
+        var transferDestination = document.getElementById('transfer-destination');
+        
         if (currentType === 'TRANSFER') {
             moveParams.style.display = 'none';
             transferParams.style.display = 'block';
+            
+            // Switch from destination to target
+            if (destTargetLabel) destTargetLabel.textContent = 'Target';
+            if (moveDestination) moveDestination.style.display = 'none';
+            if (transferDestination) transferDestination.style.display = 'flex';
+            
+            populateTransferTargets();
             updateAddButtonStateTransfer();
         } else {
             moveParams.style.display = 'block';
             transferParams.style.display = 'none';
+            
+            // Switch from target to destination
+            if (destTargetLabel) destTargetLabel.textContent = 'Destination';
+            if (moveDestination) moveDestination.style.display = 'flex';
+            if (transferDestination) transferDestination.style.display = 'none';
+            
             updateAddButtonState();
         }
         
@@ -231,13 +256,29 @@
             
             updateDestinationLink(type);
             
+            var destTargetLabel = document.getElementById('dest-target-label');
+            var moveDestination = document.getElementById('move-destination');
+            var transferDestination = document.getElementById('transfer-destination');
+            
             if (type === 'MOVE') {
                 moveParams.style.display = 'block';
                 transferParams.style.display = 'none';
+                
+                // Switch from target to destination
+                if (destTargetLabel) destTargetLabel.textContent = 'Destination';
+                if (moveDestination) moveDestination.style.display = 'flex';
+                if (transferDestination) transferDestination.style.display = 'none';
+                
                 updateAddButtonState();
             } else if (type === 'TRANSFER') {
                 moveParams.style.display = 'none';
                 transferParams.style.display = 'block';
+                
+                // Switch from destination to target  
+                if (destTargetLabel) destTargetLabel.textContent = 'Target';
+                if (moveDestination) moveDestination.style.display = 'none';
+                if (transferDestination) transferDestination.style.display = 'flex';
+                
                 updateAddButtonStateTransfer();
             }
         });
@@ -250,6 +291,16 @@
             transferTypeInput.value = this.value;
         });
     });
+    
+    // Transfer target dropdown
+    var transferTargetSelect = document.getElementById('transfer-target');
+    var transferTargetInput = document.getElementById('transfer-target-input');
+    if (transferTargetSelect && transferTargetInput) {
+        transferTargetSelect.addEventListener('change', function() {
+            transferTargetInput.value = this.value;
+            updateAddButtonStateTransfer();
+        });
+    }
     
     // Warp factor slider
     if (warpSlider && warpDisplay && warpInput) {

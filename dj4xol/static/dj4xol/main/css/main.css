@@ -672,6 +672,24 @@ body {
     cursor: pointer;
 }
 
+/* Transfer target dropdown */
+.transfer-target-row {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    gap: 8px;
+}
+
+.transfer-target-select {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    background: #fff;
+    font-size: 0.9em;
+    min-height: 1.4em;
+}
+
 /* Transfer sliders */
 .transfer-slider-row {
     display: flex;

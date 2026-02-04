@@ -346,7 +346,7 @@ def add_fleet_order(request, game_short_id):
     
     elif order_type == 'TRANSFER':
         transfer_type = request.POST.get('transfer_type', 'LOAD')
-        target_star_id = request.POST.get('target_star')
+        transfer_target = request.POST.get('transfer_target', '')
         
         order.transfer_type = transfer_type
         order.transfer_ironium = int(request.POST.get('transfer_ironium', 0))
@@ -354,8 +354,13 @@ def add_fleet_order(request, game_short_id):
         order.transfer_germanium = int(request.POST.get('transfer_germanium', 0))
         order.transfer_colonists = int(request.POST.get('transfer_colonists', 0))
         
-        if target_star_id:
-            order.target_star = Star.objects.get(short_id=target_star_id, game=game)
+        # Parse transfer target: "star:abc123" or "fleet:def456"
+        if transfer_target and ':' in transfer_target:
+            target_type, target_id = transfer_target.split(':', 1)
+            if target_type == 'star':
+                order.target_star = Star.objects.get(short_id=target_id, game=game)
+            elif target_type == 'fleet':
+                order.target_fleet = Fleet.objects.get(short_id=target_id, game=game, player=player)
 
     order.save()
 
@@ -530,4 +535,26 @@ def register(request):
     else:
         form = RegistrationForm(request.user)
     return render(request, 'dj4xol/register.html', {'form': form})
+
+
+@player_only_view()
+def objects_at_location(request, game_short_id, x, y):
+    """API endpoint to get objects at specific coordinates."""
+    from django.http import JsonResponse
+    
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    
+    try:
+        x, y = int(x), int(y)
+    except ValueError:
+        return JsonResponse({'error': 'Invalid coordinates'}, status=400)
+    
+    # Use DetailBuilder to get objects at location
+    builder = DetailBuilder(game, x, y, None, player=player)
+    builder.find_all_at_coordinates(x, y)
+    objects = builder.get_objects_here()
+    
+    return JsonResponse({'objects': objects})
 

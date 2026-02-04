@@ -392,18 +392,21 @@ class GameTurn():
             ironium_transfer = min(int(order.transfer_ironium * transfer_factor), star.ironium_surface)
             boranium_transfer = min(int(order.transfer_boranium * transfer_factor), star.boranium_surface) 
             germanium_transfer = min(int(order.transfer_germanium * transfer_factor), star.germanium_surface)
-            colonists_transfer = min(int(order.transfer_colonists * transfer_factor), star.colonists)
+            # Convert colonists: star.colonists is individual units, fleet.colonists is thousands
+            colonists_transfer_kt = int(order.transfer_colonists * transfer_factor)  # This is in kt
+            colonists_transfer_individuals = min(colonists_transfer_kt * 1000, star.colonists)
+            colonists_transfer_kt_actual = colonists_transfer_individuals // 1000
             
             # Execute the transfers
             star.ironium_surface -= ironium_transfer
             star.boranium_surface -= boranium_transfer
             star.germanium_surface -= germanium_transfer
-            star.colonists -= colonists_transfer
+            star.colonists -= colonists_transfer_individuals
             
             fleet.ironium += ironium_transfer
             fleet.boranium += boranium_transfer
             fleet.germanium += germanium_transfer
-            fleet.colonists += colonists_transfer
+            fleet.colonists += colonists_transfer_kt_actual
             
             star.save()
             fleet.save()
@@ -413,18 +416,20 @@ class GameTurn():
             ironium_transfer = min(order.transfer_ironium, fleet.ironium)
             boranium_transfer = min(order.transfer_boranium, fleet.boranium)
             germanium_transfer = min(order.transfer_germanium, fleet.germanium)
-            colonists_transfer = min(order.transfer_colonists, fleet.colonists)
+            # Convert colonists: fleet.colonists is thousands, star.colonists is individual units
+            colonists_transfer_kt = min(order.transfer_colonists, fleet.colonists)
+            colonists_transfer_individuals = colonists_transfer_kt * 1000
             
             # Execute the transfers
             fleet.ironium -= ironium_transfer
             fleet.boranium -= boranium_transfer
             fleet.germanium -= germanium_transfer
-            fleet.colonists -= colonists_transfer
+            fleet.colonists -= colonists_transfer_kt
             
             star.ironium_surface += ironium_transfer
             star.boranium_surface += boranium_transfer
             star.germanium_surface += germanium_transfer
-            star.colonists += colonists_transfer
+            star.colonists += colonists_transfer_individuals
             
             star.save()
             fleet.save()
