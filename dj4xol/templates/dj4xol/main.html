@@ -71,11 +71,18 @@
                 {% include 'dj4xol/_messages_panel.html' %}
             </div>
             <div class="column-right">
-                {% include 'dj4xol/_detail_panel.html' %}
-                {% if detail.is_owned and detail.is_star %}
-                    {% include 'dj4xol/_production_panel.html' %}
-                {% elif detail.is_owned and not detail.is_star %}
-                    {% include 'dj4xol/_orders_panel.html' %}
+                {% if detail %}
+                    {% include 'dj4xol/_detail_panel.html' %}
+                    {% if detail.is_owned and detail.is_star %}
+                        {% include 'dj4xol/_production_panel.html' %}
+                    {% elif detail.is_owned and not detail.is_star %}
+                        {% include 'dj4xol/_orders_panel.html' %}
+                    {% endif %}
+                {% else %}
+                    <h2>Detail</h2>
+                    <div id="detail">
+                        <p>Click on a star or fleet to view details.</p>
+                    </div>
                 {% endif %}
             </div>
         </div>

@@ -498,6 +498,21 @@ class FleetOrders(AbstractGameObject):
         else:
             return "Unknown destination"
 
+    def get_destination_coordinates(self):
+        """Get the (x, y) coordinates for this order's destination.
+        
+        Uses the same logic as turn.py move_fleet() method.
+        Returns tuple (x, y) or raises exception if no valid destination.
+        """
+        if self.target_star:
+            return self.target_star.x, self.target_star.y
+        elif self.target_fleet:
+            return self.target_fleet.x, self.target_fleet.y
+        elif self.x is not None and self.y is not None:
+            return self.x, self.y
+        else:
+            raise ValueError(f"Invalid order {self.id} - no valid destination")
+
 
 class GameMessage(AbstractGameObject):
     CATEGORY_CHOICES = [
