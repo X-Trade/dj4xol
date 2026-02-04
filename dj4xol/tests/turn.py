@@ -722,6 +722,616 @@ class TestEconomicCalculations(TestCase):
         self.assertLess(other_star.ironium, 31)
 
 
+class TestFleetTransferOrders(TestCase):
+    """Test fleet transfer order functionality."""
+    
+    def test_transfer_order_creation(self):
+        """Test creation of transfer orders with all parameters."""
+        from ..models import FleetOrders, Fleet
+        
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Transfer Fleet",
+            x=star.x,
+            y=star.y
+        )
+        
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='LOAD',
+            transfer_ironium=1000,
+            transfer_boranium=500,
+            transfer_germanium=200,
+            transfer_colonists=100,
+            repeat=True
+        )
+        
+        self.assertEqual(order.order_type, 'TRANSFER')
+        self.assertEqual(order.target_star, star)
+        self.assertEqual(order.transfer_type, 'LOAD')
+        self.assertEqual(order.transfer_ironium, 1000)
+        self.assertEqual(order.transfer_boranium, 500)
+        self.assertEqual(order.transfer_germanium, 200)
+        self.assertEqual(order.transfer_colonists, 100)
+        self.assertTrue(order.repeat)
+    
+    def test_get_destination_coordinates_from_star(self):
+        """Test order destination coordinate resolution for star targets."""
+        from ..models import FleetOrders, Fleet
+        
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        
+        fleet = Fleet.objects.create(game=game, player=player, name="Test Fleet", x=10, y=10)
+        
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star
+        )
+        
+        x, y = order.get_destination_coordinates()
+        self.assertEqual(x, star.x)
+        self.assertEqual(y, star.y)
+    
+    def test_get_destination_coordinates_from_fleet(self):
+        """Test order destination coordinate resolution for fleet targets."""
+        from ..models import FleetOrders, Fleet
+        
+        game = default_game()
+        player = game.players.first()
+        
+        fleet1 = Fleet.objects.create(game=game, player=player, name="Fleet 1", x=10, y=10)
+        fleet2 = Fleet.objects.create(game=game, player=player, name="Fleet 2", x=25, y=30)
+        
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet1,
+            order_type='TRANSFER',
+            target_fleet=fleet2
+        )
+        
+        x, y = order.get_destination_coordinates()
+        self.assertEqual(x, 25)
+        self.assertEqual(y, 30)
+    
+    def test_get_destination_coordinates_from_xy(self):
+        """Test order destination coordinate resolution for coordinate targets."""
+        from ..models import FleetOrders, Fleet
+        
+        game = default_game()
+        player = game.players.first()
+        
+        fleet = Fleet.objects.create(game=game, player=player, name="Test Fleet", x=10, y=10)
+        
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            x=50,
+            y=75
+        )
+        
+        x, y = order.get_destination_coordinates()
+        self.assertEqual(x, 50)
+        self.assertEqual(y, 75)
+    
+    def test_transfer_load_from_star_at_location(self):
+        """Test instant transfer execution when fleet is at star location."""
+        from ..models import FleetOrders, Fleet
+        
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        
+        # Set up star with resources
+        star.ironium_surface = 2000
+        star.boranium_surface = 1000
+        star.germanium_surface = 500
+        star.colonists = 50000  # 50k individuals
+        star.save()
+        
+        # Create fleet at same location
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Cargo Fleet",
+            x=star.x,
+            y=star.y,
+            cargo_capacity=1000
+        )
+        
+        # Create load order
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='LOAD',
+            transfer_ironium=500,
+            transfer_boranium=300,
+            transfer_germanium=100,
+            transfer_colonists=50  # 50kt = 50k individuals
+        )
+        
+        # Generate turn - should execute transfer instantly
+        GameTurn(game).generate_turn()
+        
+        # Refresh objects
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+        
+        # Star should have resources removed
+        self.assertEqual(star.ironium_surface, 1500)  # 2000 - 500
+        self.assertEqual(star.boranium_surface, 700)   # 1000 - 300
+        self.assertEqual(star.germanium_surface, 400)  # 500 - 100
+        self.assertEqual(star.colonists, 0)            # 50000 - 50000
+        
+        # Fleet should have resources added
+        self.assertEqual(fleet.ironium, 500)
+        self.assertEqual(fleet.boranium, 300)
+        self.assertEqual(fleet.germanium, 100)
+        self.assertEqual(fleet.colonists, 50)  # 50k individuals stored as 50kt
+        
+        # Order should be deleted
+        self.assertEqual(fleet.orders.count(), 0)
+    
+    def test_transfer_unload_to_star_at_location(self):
+        """Test instant unload transfer execution."""
+        from ..models import FleetOrders, Fleet
+        
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        
+        # Set up star with some existing resources
+        star.ironium_surface = 100
+        star.boranium_surface = 50
+        star.germanium_surface = 25
+        star.colonists = 5000  # 5k individuals
+        star.save()
+        
+        # Create fleet with cargo at same location
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Cargo Fleet",
+            x=star.x,
+            y=star.y,
+            ironium=200,
+            boranium=150,
+            germanium=75,
+            colonists=10  # 10k individuals stored as 10kt
+        )
+        
+        # Create unload order
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='UNLOAD',
+            transfer_ironium=200,
+            transfer_boranium=150,
+            transfer_germanium=75,
+            transfer_colonists=10
+        )
+        
+        # Generate turn
+        GameTurn(game).generate_turn()
+        
+        # Refresh objects
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+        
+        # Star should have resources added
+        self.assertEqual(star.ironium_surface, 300)   # 100 + 200
+        self.assertEqual(star.boranium_surface, 200)  # 50 + 150
+        self.assertEqual(star.germanium_surface, 100) # 25 + 75
+        self.assertEqual(star.colonists, 15000)       # 5000 + 10000
+        
+        # Fleet should have resources removed
+        self.assertEqual(fleet.ironium, 0)
+        self.assertEqual(fleet.boranium, 0)
+        self.assertEqual(fleet.germanium, 0)
+        self.assertEqual(fleet.colonists, 0)
+        
+        # Order should be deleted
+        self.assertEqual(fleet.orders.count(), 0)
+    
+    def test_transfer_proportional_allocation(self):
+        """Test proportional allocation when fleet capacity insufficient."""
+        from ..models import FleetOrders, Fleet
+        
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        
+        # Set up star with abundant resources
+        star.ironium_surface = 5000
+        star.boranium_surface = 5000
+        star.germanium_surface = 5000
+        star.colonists = 100000
+        star.save()
+        
+        # Create small capacity fleet
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Small Fleet",
+            x=star.x,
+            y=star.y,
+            cargo_capacity=1000  # Only 1000kt capacity
+        )
+        
+        # Try to load 4000kt total (more than capacity)
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='LOAD',
+            transfer_ironium=1000,   # 25% of request
+            transfer_boranium=1000,  # 25% of request
+            transfer_germanium=1000, # 25% of request
+            transfer_colonists=1000  # 25% of request
+        )
+        
+        # Generate turn
+        GameTurn(game).generate_turn()
+        
+        # Refresh objects
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+        
+        # Should transfer exactly 1000kt total, proportionally allocated
+        # Each resource gets 1000/4000 = 25% of what was requested
+        self.assertEqual(fleet.ironium, 250)   # 1000 * 0.25
+        self.assertEqual(fleet.boranium, 250)  # 1000 * 0.25
+        self.assertEqual(fleet.germanium, 250) # 1000 * 0.25
+        self.assertEqual(fleet.colonists, 250) # 1000 * 0.25
+        
+        # Total cargo should equal capacity
+        self.assertEqual(fleet.cargo_used, 1000)
+        
+        # Star should have corresponding amounts removed
+        self.assertEqual(star.ironium_surface, 4750)  # 5000 - 250
+        self.assertEqual(star.boranium_surface, 4750)
+        self.assertEqual(star.germanium_surface, 4750)
+        self.assertEqual(star.colonists, 50000)  # 100000 - 50000 (250kt * 1000)
+    
+    def test_transfer_move_then_execute(self):
+        """Test transfer that requires movement first."""
+        from ..models import FleetOrders, Fleet
+        
+        game = default_game(stars=5)
+        player = game.players.first()
+        source_star = player.homeworld
+        
+        # Find a distant star
+        target_star = game.stars.exclude(pk=source_star.pk).first()
+        target_star.ironium_surface = 1000
+        target_star.save()
+        
+        # Create fleet at source
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Mobile Fleet",
+            x=source_star.x,
+            y=source_star.y
+        )
+        
+        # Create transfer order for distant star
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=target_star,
+            transfer_type='LOAD',
+            transfer_ironium=500
+        )
+        
+        # First turn - should move toward target
+        GameTurn(game).generate_turn()
+        
+        fleet.refresh_from_db()
+        # Fleet should have moved but not reached destination
+        self.assertNotEqual(fleet.x, source_star.x)  # Has moved
+        self.assertNotEqual(fleet.x, target_star.x)  # But hasn't arrived
+        
+        # Order should still exist
+        self.assertEqual(fleet.orders.count(), 1)
+        
+        # Fleet cargo should be unchanged (no transfer yet)
+        self.assertEqual(fleet.ironium, 0)
+        
+        # Generate several more turns until fleet arrives
+        for _ in range(10):  # Max attempts to avoid infinite loop
+            if fleet.x == target_star.x and fleet.y == target_star.y:
+                break
+            GameTurn(game).generate_turn()
+            fleet.refresh_from_db()
+        
+        # Fleet should now be at target and transfer should have executed
+        self.assertEqual(fleet.x, target_star.x)
+        self.assertEqual(fleet.y, target_star.y)
+        self.assertEqual(fleet.orders.count(), 0)  # Order completed
+        self.assertEqual(fleet.ironium, 500)       # Transfer executed
+    
+    def test_transfer_fleet_target_waiting(self):
+        """Test transfer waiting behavior when target fleet is not at expected location."""
+        from ..models import FleetOrders, Fleet
+        
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        
+        # Create two fleets at same location
+        fleet1 = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Transfer Fleet",
+            x=star.x,
+            y=star.y,
+            ironium=1000
+        )
+        
+        fleet2 = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Target Fleet", 
+            x=star.x,
+            y=star.y
+        )
+        
+        # Create transfer order from fleet1 to fleet2
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet1,
+            order_type='TRANSFER',
+            target_fleet=fleet2,
+            transfer_type='UNLOAD',
+            transfer_ironium=500
+        )
+        
+        # Move target fleet away
+        fleet2.x = star.x + 10
+        fleet2.y = star.y + 10
+        fleet2.save()
+        
+        # Generate turn
+        GameTurn(game).generate_turn()
+        
+        fleet1.refresh_from_db()
+        
+        # Transfer should not have executed (waiting for target)
+        self.assertEqual(fleet1.ironium, 1000)  # Unchanged
+        self.assertEqual(fleet1.orders.count(), 1)  # Order still exists
+    
+    def test_transfer_repeat_functionality(self):
+        """Test repeating transfer orders."""
+        from ..models import FleetOrders, Fleet
+        
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        
+        # Set up star with lots of resources
+        star.ironium_surface = 10000
+        star.save()
+        
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Repeat Fleet",
+            x=star.x,
+            y=star.y
+        )
+        
+        # Create repeating transfer order
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='LOAD',
+            transfer_ironium=100,
+            repeat=True
+        )
+        original_order_id = order.id
+        
+        # Generate turn
+        GameTurn(game).generate_turn()
+        
+        fleet.refresh_from_db()
+        star.refresh_from_db()
+        
+        # Transfer should have executed
+        self.assertEqual(fleet.ironium, 100)
+        self.assertEqual(star.ironium_surface, 9900)
+        
+        # Original order should be deleted, new repeat order should exist
+        self.assertFalse(FleetOrders.objects.filter(id=original_order_id).exists())
+        self.assertEqual(fleet.orders.count(), 1)
+        
+        new_order = fleet.orders.first()
+        self.assertNotEqual(new_order.id, original_order_id)
+        self.assertTrue(new_order.repeat)
+        self.assertEqual(new_order.transfer_ironium, 100)
+    
+    def test_effective_location_calculation(self):
+        """Test calculation of fleet effective location with move orders."""
+        from ..models import FleetOrders, Fleet
+        from ..objectdetails import DetailBuilder
+        
+        game = default_game(stars=5)
+        player = game.players.first()
+        source_star = player.homeworld
+        
+        # Find target stars
+        target_stars = game.stars.exclude(pk=source_star.pk)[:2]
+        star_a = target_stars[0]
+        star_b = target_stars[1]
+        
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Moving Fleet",
+            x=source_star.x,
+            y=source_star.y
+        )
+        
+        # Create move orders: source -> star_a -> star_b
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            target_star=star_a,
+            warpfactor=5
+        )
+        
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE', 
+            target_star=star_b,
+            warpfactor=5
+        )
+        
+        # Build detail to get effective location
+        builder = DetailBuilder(game, fleet.x, fleet.y, fleet.short_id, player)
+        effective_x, effective_y = builder.get_fleet_effective_location()
+        
+        # Should be star_b location (final destination)
+        self.assertEqual(effective_x, star_b.x)
+        self.assertEqual(effective_y, star_b.y)
+    
+    def test_transfer_targets_include_future_positions(self):
+        """Test that transfer targets include fleets that will be at the effective location."""
+        from ..models import FleetOrders, Fleet
+        from ..objectdetails import DetailBuilder
+        
+        game = default_game(stars=5)
+        player = game.players.first()
+        
+        # Get two stars
+        stars = game.stars.all()[:2]
+        star_a = stars[0]
+        star_b = stars[1]
+        
+        # Create fleet1 at star_a with order to move to star_b
+        fleet1 = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Moving Fleet",
+            x=star_a.x,
+            y=star_a.y
+        )
+        
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet1,
+            order_type='MOVE',
+            target_star=star_b,
+            warpfactor=5
+        )
+        
+        # Create fleet2 that will also move to star_b
+        fleet2 = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Other Fleet",
+            x=star_a.x + 5,
+            y=star_a.y + 5
+        )
+        
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet2,
+            order_type='MOVE',
+            target_star=star_b,
+            warpfactor=5
+        )
+        
+        # Get transfer targets for fleet1
+        builder = DetailBuilder(game, fleet1.x, fleet1.y, fleet1.short_id, player)
+        targets = builder.get_transfer_targets()
+        
+        # Should include star_b and fleet2 (both will be at star_b)
+        target_names = [t['name'] for t in targets]
+        self.assertIn(star_b.name, target_names)
+        self.assertIn(fleet2.name, target_names)
+        
+        # Should not include fleet1 itself
+        self.assertNotIn(fleet1.name, target_names)
+    
+    def test_multiple_instant_transfers(self):
+        """Test multiple transfer orders executing in same turn."""
+        from ..models import FleetOrders, Fleet
+        
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        
+        # Set up star with resources
+        star.ironium_surface = 2000
+        star.boranium_surface = 2000
+        star.save()
+        
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Multi-Transfer Fleet",
+            x=star.x,
+            y=star.y
+        )
+        
+        # Create multiple transfer orders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='LOAD',
+            transfer_ironium=500
+        )
+        
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='LOAD',
+            transfer_boranium=300
+        )
+        
+        # Generate turn - both should execute instantly
+        GameTurn(game).generate_turn()
+        
+        fleet.refresh_from_db()
+        star.refresh_from_db()
+        
+        # Both transfers should have executed
+        self.assertEqual(fleet.ironium, 500)
+        self.assertEqual(fleet.boranium, 300)
+        self.assertEqual(star.ironium_surface, 1500)
+        self.assertEqual(star.boranium_surface, 1700)
+        
+        # No orders should remain
+        self.assertEqual(fleet.orders.count(), 0)
+
+
 class TestFleetOrdersRepeat(TestCase):
     """Test fleet order repeat functionality."""
     

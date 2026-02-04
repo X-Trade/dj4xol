@@ -8,7 +8,7 @@
                     {% if order.order_type == 'MOVE' or not order.order_type %}
                         <span>Warp {{ order.warpfactor }} to {{ order.target }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
                     {% elif order.order_type == 'TRANSFER' %}
-                        <span>{{ order.transfer_type|title|default:"Transfer" }} at {{ order.target_star.name }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
+                        <span>{{ order.transfer_type|title|default:"Transfer" }} at {{ order.target }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
                         <div class="order-tooltip">
                             <div class="tooltip-header">{{ order.transfer_type|title }} Resources</div>
                             <table class="tooltip-table">

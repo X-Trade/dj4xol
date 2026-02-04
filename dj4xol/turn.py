@@ -289,27 +289,91 @@ class GameTurn():
         msg.save()
 
     def move_fleet(self, fleet):
-        order = fleet.orders.first()  # this is the current order
-        if not order:
-            return fleet
+        """Process fleet orders, potentially executing multiple instant transfers per turn."""
+        processed_orders = 0
+        max_orders_per_turn = 10  # Prevent infinite loops
+        
+        while processed_orders < max_orders_per_turn:
+            order = fleet.orders.first()
+            if not order:
+                break
+                
+            if order.order_type == 'TRANSFER':
+                # Try to execute transfer immediately
+                transfer_result = self._try_execute_transfer(fleet, order)
+                if transfer_result == 'executed':
+                    # Transfer completed, delete order and continue
+                    self._handle_repeating_order(order)
+                    order.delete()
+                    processed_orders += 1
+                    continue
+                elif transfer_result == 'waiting':
+                    # Transfer blocked waiting for target, stop processing
+                    break
+                elif transfer_result == 'needs_movement':
+                    # Need to move to destination first
+                    if self._move_toward_destination(fleet, order):
+                        # Reached destination, will try transfer next turn
+                        break
+                    else:
+                        # Still moving, stop processing
+                        break
             
-        # Get destination coordinates
-        if order.target_star:
-            x = order.target_star.x
-            y = order.target_star.y
-        elif order.target_fleet:
-            x = order.target_fleet.x
-            y = order.target_fleet.y
-        elif order.x and order.y:
-            x = order.x
-            y = order.y
-        else:
-            raise Exception("invalid order %s" % (str(order.id)))
-
+            elif order.order_type == 'MOVE':
+                # Regular move order
+                if self._move_toward_destination(fleet, order):
+                    # Reached destination
+                    self._handle_repeating_order(order)
+                    order.delete()
+                    processed_orders += 1
+                    # Continue to next order (might be a transfer)
+                    continue
+                else:
+                    # Still moving, stop processing
+                    break
+            else:
+                # Unknown order type
+                order.delete()
+                processed_orders += 1
+                continue
+        
+        return fleet
+    
+    def _try_execute_transfer(self, fleet, order):
+        """Try to execute a transfer order.
+        
+        Returns:
+        - 'executed': Transfer completed successfully
+        - 'waiting': Transfer blocked waiting for target
+        - 'needs_movement': Fleet needs to move to destination first
+        """
+        try:
+            dest_x, dest_y = order.get_destination_coordinates()
+        except ValueError:
+            return 'executed'  # Invalid order, treat as executed to remove it
+        
+        # Check if fleet is at the transfer destination
+        if fleet.x != dest_x or fleet.y != dest_y:
+            return 'needs_movement'
+        
+        # Fleet is at destination, try to execute transfer
+        return self._execute_transfer_order(fleet, order)
+    
+    def _move_toward_destination(self, fleet, order):
+        """Move fleet toward order destination.
+        
+        Returns True if destination reached, False if still moving.
+        """
+        try:
+            x, y = order.get_destination_coordinates()
+        except ValueError:
+            return True  # Invalid order, treat as reached to remove it
+            
         target = nparray([x, y])
         position = nparray([fleet.x, fleet.y])
         vector = target - position
         distance = linalg.norm(vector)
+        
         print("position: %s" % (str(position)))
         print("target:   %s" % (str(target)))
         print("vector:   %s" % (str(vector)))
@@ -322,36 +386,12 @@ class GameTurn():
         fleet.heading = degrees(atan2(dx, -dy)) % 360
 
         # Check if fleet can reach destination this turn
-        warp_speed = order.warpfactor if order.order_type == 'MOVE' else 5  # Transfer orders use warp 5
+        warp_speed = order.warpfactor if order.order_type == 'MOVE' else 5
         if int(distance) <= warp_speed:
             # Fleet reaches destination
             fleet.x = x
             fleet.y = y
-            
-            # Execute the order based on type
-            if order.order_type == 'TRANSFER':
-                self._execute_transfer_order(fleet, order)
-            
-            # Handle repeating orders
-            if order.repeat:
-                from .models import FleetOrders
-                FleetOrders.objects.create(
-                    game=self.game,
-                    fleet=fleet,
-                    order_type=order.order_type,
-                    repeat=True,
-                    warpfactor=order.warpfactor,
-                    x=order.x,
-                    y=order.y,
-                    target_star=order.target_star,
-                    target_fleet=order.target_fleet,
-                    transfer_type=order.transfer_type,
-                    transfer_ironium=order.transfer_ironium,
-                    transfer_boranium=order.transfer_boranium,
-                    transfer_germanium=order.transfer_germanium,
-                    transfer_colonists=order.transfer_colonists,
-                )
-            order.delete()
+            return True
         else:
             # Fleet moves toward destination but doesn't reach it
             normalised_vector = vector / distance
@@ -359,14 +399,77 @@ class GameTurn():
             new_position = position + (normalised_vector * warp_speed)
             fleet.x = int(new_position[0])
             fleet.y = int(new_position[1])
-        return fleet
+            return False
+    
+    def _handle_repeating_order(self, order):
+        """Create a repeat copy of the order if needed."""
+        if order.repeat:
+            from .models import FleetOrders
+            FleetOrders.objects.create(
+                game=self.game,
+                fleet=order.fleet,
+                order_type=order.order_type,
+                repeat=True,
+                warpfactor=order.warpfactor,
+                x=order.x,
+                y=order.y,
+                target_star=order.target_star,
+                target_fleet=order.target_fleet,
+                transfer_type=order.transfer_type,
+                transfer_ironium=order.transfer_ironium,
+                transfer_boranium=order.transfer_boranium,
+                transfer_germanium=order.transfer_germanium,
+                transfer_colonists=order.transfer_colonists,
+            )
 
     def _execute_transfer_order(self, fleet, order):
-        """Execute a transfer order when fleet reaches destination."""
-        if not order.target_star:
-            return  # Can only transfer at stars for now
+        """Execute a transfer order when fleet reaches destination.
+        
+        Returns:
+        - 'executed': Transfer completed successfully  
+        - 'waiting': Transfer blocked waiting for target
+        """
+        # Get the target object based on order parameters
+        target_obj = None
+        target_x, target_y = order.get_destination_coordinates()
+        
+        if order.target_star:
+            target_obj = order.target_star
+            # Stars don't move, so always available
+            if target_obj.x != target_x or target_obj.y != target_y:
+                print(f"Warning: Star {target_obj.name} coordinates mismatch")
+                
+        elif order.target_fleet:
+            target_obj = order.target_fleet
+            # Check if target fleet is at expected location
+            if target_obj.x != target_x or target_obj.y != target_y:
+                print(f"Transfer waiting: Fleet {target_obj.name} not at expected location ({target_x}, {target_y})")
+                return 'waiting'  # Block and wait for target fleet to arrive
+                
+        else:
+            # Transfer to coordinates - look for objects there
+            possible_targets = list(self.game.stars.filter(x=target_x, y=target_y))
+            if possible_targets:
+                target_obj = possible_targets[0]  # Use first star found
+            else:
+                print(f"No transfer target found at coordinates ({target_x}, {target_y})")
+                return 'waiting'  # Wait for a target to appear
+        
+        # Verify fleet is actually at the transfer location
+        if fleet.x != target_x or fleet.y != target_y:
+            print(f"Transfer error: Fleet {fleet.name} not at transfer location")
+            return 'executed'  # Remove invalid order
             
-        star = order.target_star
+        # Execute transfer based on target type
+        if hasattr(target_obj, 'colonists'):  # Star-like object
+            self._transfer_with_star(fleet, order, target_obj)
+            return 'executed'
+        else:
+            print(f"Transfer to {type(target_obj)} not yet implemented")
+            return 'executed'  # Remove unsupported order
+            
+    def _transfer_with_star(self, fleet, order, star):
+        """Execute transfer between fleet and star."""
         fleet_max_capacity = fleet.cargo_capacity  # Use fleet's actual capacity
         
         if order.transfer_type == 'LOAD':

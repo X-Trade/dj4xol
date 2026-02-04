@@ -1,3 +1,4 @@
+from django.db import models
 from dj4xol.models import Fleet, Star
 from dj4xol.turn import calculate_growth_factor, apply_population_change, effective_capacity, calculate_employment_percent, COLONISTS_PER_JOB
 
@@ -383,31 +384,64 @@ class DetailBuilder():
         return current_x, current_y
     
     def get_transfer_targets(self):
-        """Get available transfer targets at the fleet's effective location."""
+        """Get available transfer targets at the fleet's effective location.
+        
+        Includes:
+        - Stars at the effective location
+        - Fleets currently at the effective location 
+        - Fleets that have orders targeting the effective location
+        """
         if not isinstance(self.selected_obj, Fleet):
             return []
         
         # Get the location where the fleet will be when the transfer executes
         effective_x, effective_y = self.get_fleet_effective_location()
         
-        # Find objects at that location
-        from itertools import chain
-        stars = self.game.stars.filter(x=effective_x, y=effective_y).all()
-        fleets = self.game.fleets.filter(x=effective_x, y=effective_y).all()
-        
         targets = []
         
-        # Add stars
-        for star in stars:
+        # Add stars at the effective location
+        stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
+        for star in stars_at_location:
             targets.append({
                 'name': star.name,
                 'short_id': star.short_id,
                 'type': 'star'
             })
         
-        # Add other fleets (excluding the selected fleet)
-        for fleet in fleets:
-            if fleet.short_id != self.selected_obj.short_id:
+        # Find fleets that will be at the effective location
+        # This includes fleets with orders targeting these coordinates or these stars
+        from .models import FleetOrders
+        
+        # Query for orders that will end up at the effective location:
+        # 1. Orders with direct x,y coordinates
+        # 2. Orders with target_star at those coordinates
+        target_orders = FleetOrders.objects.filter(
+            game=self.game,
+            order_type='MOVE'
+        ).filter(
+            models.Q(x=effective_x, y=effective_y) |
+            models.Q(target_star__in=stars_at_location)
+        ).select_related('fleet')
+        
+        # Get unique fleets from these orders (excluding the current fleet)
+        fleet_ids_at_location = set()
+        for order in target_orders:
+            if order.fleet.short_id != self.selected_obj.short_id:
+                fleet_ids_at_location.add(order.fleet.id)
+        
+        # Also include fleets currently at the location
+        current_fleets = self.game.fleets.filter(
+            x=effective_x, 
+            y=effective_y
+        ).exclude(id=self.selected_obj.id)
+        
+        for fleet in current_fleets:
+            fleet_ids_at_location.add(fleet.id)
+        
+        # Get fleet objects and add to targets
+        if fleet_ids_at_location:
+            fleets_at_location = self.game.fleets.filter(id__in=fleet_ids_at_location)
+            for fleet in fleets_at_location:
                 targets.append({
                     'name': fleet.name,
                     'short_id': fleet.short_id,
