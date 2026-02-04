@@ -260,7 +260,7 @@ class TestTerraforming(TestCase):
         homeworld.gravity = 0.5
         homeworld.factories = 10  # Provide buildpoints (100 bp)
         homeworld.colonists = 10000  # Staff the factories
-        homeworld.ironium_surface = 2000  # Provide resources
+        homeworld.ironium_inventory = 2000  # Provide resources
         homeworld.save()
         player_ideal = player.gravity_center  # Should be 1.0 by default
         # Add terraforming order
@@ -285,8 +285,8 @@ class TestTerraforming(TestCase):
         homeworld.temperature = 1.8
         homeworld.factories = 20  # Provide buildpoints (200 bp for 2 terraforms)
         homeworld.colonists = 20000  # Staff the factories
-        homeworld.ironium_surface = 2000  # For gravity terraform
-        homeworld.boranium_surface = 2000  # For temperature terraform
+        homeworld.ironium_inventory = 2000  # For gravity terraform
+        homeworld.boranium_inventory = 2000  # For temperature terraform
         homeworld.save()
         ProductionOrder.objects.create(game=game, star=homeworld, order_type='TERRAFORM_GRAVITY')
         ProductionOrder.objects.create(game=game, star=homeworld, order_type='TERRAFORM_TEMPERATURE')
@@ -357,15 +357,15 @@ class TestRandomEvents(TestCase):
         game.save()
         player = game.players.first()
         homeworld = player.homeworld
-        homeworld.ironium_surface = 0
-        homeworld.boranium_surface = 0
-        homeworld.germanium_surface = 0
+        homeworld.ironium_inventory = 0
+        homeworld.boranium_inventory = 0
+        homeworld.germanium_inventory = 0
         homeworld.save()
-        total_before = homeworld.ironium_surface + homeworld.boranium_surface + homeworld.germanium_surface
+        total_before = homeworld.ironium_inventory + homeworld.boranium_inventory + homeworld.germanium_inventory
         turn = GameTurn(game)
         turn._apply_mining_discovery(homeworld)
         homeworld.refresh_from_db()
-        total_after = homeworld.ironium_surface + homeworld.boranium_surface + homeworld.germanium_surface
+        total_after = homeworld.ironium_inventory + homeworld.boranium_inventory + homeworld.germanium_inventory
         self.assertGreater(total_after, total_before)
 
     def test_mining_accident_deaths_reduces_colonists(self):
@@ -573,7 +573,7 @@ class TestEconomicCalculations(TestCase):
         player = game.players.first()
         star = player.homeworld
         star.mines = 0
-        star.ironium_surface = 100  # Provide resources for building
+        star.ironium_inventory = 100  # Provide resources for building
         star.save()
 
         ProductionOrder.objects.create(game=game, star=star, order_type='BUILD_MINE')
@@ -588,7 +588,7 @@ class TestEconomicCalculations(TestCase):
         player = game.players.first()
         star = player.homeworld
         star.factories = 0
-        star.ironium_surface = 100  # Provide resources for building
+        star.ironium_inventory = 100  # Provide resources for building
         star.save()
 
         ProductionOrder.objects.create(game=game, star=star, order_type='BUILD_FACTORY')
@@ -605,10 +605,10 @@ class TestEconomicCalculations(TestCase):
         star.mines = 5
         star.ironium = 50  # 50% yield
         star.boranium = 30  # 30% yield
-        star.germanium = 20  # 20% yield
-        star.ironium_surface = 0
-        star.boranium_surface = 0
-        star.germanium_surface = 0
+        star.germanium_yield = 20  # 20% yield
+        star.ironium_inventory = 0
+        star.boranium_inventory = 0
+        star.germanium_inventory = 0
         star.save()
 
         GameTurn(game).generate_turn()
@@ -616,9 +616,9 @@ class TestEconomicCalculations(TestCase):
         star.refresh_from_db()
         # 5 mines * 10kt = 50kt total, distributed by yield
         # Total yield = 100%, so: 50*50/100=25, 50*30/100=15, 50*20/100=10
-        self.assertEqual(star.ironium_surface, 25)
-        self.assertEqual(star.boranium_surface, 15)
-        self.assertEqual(star.germanium_surface, 10)
+        self.assertEqual(star.ironium_inventory, 25)
+        self.assertEqual(star.boranium_inventory, 15)
+        self.assertEqual(star.germanium_inventory, 10)
 
     def test_mining_no_mines(self):
         """No mines should not extract any minerals."""
@@ -626,17 +626,17 @@ class TestEconomicCalculations(TestCase):
         player = game.players.first()
         star = player.homeworld
         star.mines = 0
-        star.ironium_surface = 0
-        star.boranium_surface = 0
-        star.germanium_surface = 0
+        star.ironium_inventory = 0
+        star.boranium_inventory = 0
+        star.germanium_inventory = 0
         star.save()
 
         GameTurn(game).generate_turn()
 
         star.refresh_from_db()
-        self.assertEqual(star.ironium_surface, 0)
-        self.assertEqual(star.boranium_surface, 0)
-        self.assertEqual(star.germanium_surface, 0)
+        self.assertEqual(star.ironium_inventory, 0)
+        self.assertEqual(star.boranium_inventory, 0)
+        self.assertEqual(star.germanium_inventory, 0)
 
     def test_mining_accumulates(self):
         """Mining should accumulate surface minerals over turns."""
@@ -646,15 +646,15 @@ class TestEconomicCalculations(TestCase):
         star.mines = 2
         star.ironium = 100  # 100% yield (only ironium)
         star.boranium = 0
-        star.germanium = 0
-        star.ironium_surface = 100  # Start with some
+        star.germanium_yield = 0
+        star.ironium_inventory = 100  # Start with some
         star.save()
 
         GameTurn(game).generate_turn()
 
         star.refresh_from_db()
         # 2 mines * 10kt = 20kt, all to ironium (100% of total yield)
-        self.assertEqual(star.ironium_surface, 120)
+        self.assertEqual(star.ironium_inventory, 120)
 
     def test_mining_low_yield_has_chance(self):
         """Low yield resources should still have a chance to produce."""
@@ -664,9 +664,9 @@ class TestEconomicCalculations(TestCase):
         star.mines = 1
         star.ironium = 1  # 1% yield
         star.boranium = 99  # 99% yield
-        star.germanium = 0
-        star.ironium_surface = 0
-        star.boranium_surface = 0
+        star.germanium_yield = 0
+        star.ironium_inventory = 0
+        star.boranium_inventory = 0
         star.save()
 
         # Run many turns - ironium should eventually produce something
@@ -674,7 +674,7 @@ class TestEconomicCalculations(TestCase):
         for _ in range(100):
             GameTurn(game).generate_turn()
             star.refresh_from_db()
-            if star.ironium_surface > 0:
+            if star.ironium_inventory > 0:
                 produced_ironium = True
                 break
 
@@ -688,7 +688,7 @@ class TestEconomicCalculations(TestCase):
         star.mines = 100  # Many mines to force depletion
         star.ironium = HOMEWORLD_MIN_YIELD  # At the floor
         star.boranium = 0
-        star.germanium = 0
+        star.germanium_yield = 0
         star.save()
 
         # Run several turns
@@ -709,7 +709,7 @@ class TestEconomicCalculations(TestCase):
         other_star.mines = 5000  # Many mines to force depletion
         other_star.ironium = 31  # Just above homeworld floor
         other_star.boranium = 0
-        other_star.germanium = 0
+        other_star.germanium_yield = 0
         other_star.save()
 
         # Run many turns to trigger depletion
@@ -835,9 +835,9 @@ class TestFleetTransferOrders(TestCase):
         star = player.homeworld
         
         # Set up star with resources
-        star.ironium_surface = 2000
-        star.boranium_surface = 1000
-        star.germanium_surface = 500
+        star.ironium_inventory = 2000
+        star.boranium_inventory = 1000
+        star.germanium_inventory = 500
         star.colonists = 50000  # 50k individuals
         star.save()
         
@@ -872,14 +872,14 @@ class TestFleetTransferOrders(TestCase):
         fleet.refresh_from_db()
         
         # Star should have resources removed
-        self.assertEqual(star.ironium_surface, 1500)  # 2000 - 500
-        self.assertEqual(star.boranium_surface, 700)   # 1000 - 300
-        self.assertEqual(star.germanium_surface, 400)  # 500 - 100
+        self.assertEqual(star.ironium_inventory, 1500)  # 2000 - 500
+        self.assertEqual(star.boranium_inventory, 700)   # 1000 - 300
+        self.assertEqual(star.germanium_inventory, 400)  # 500 - 100
         self.assertEqual(star.colonists, 0)            # 50000 - 50000
         
         # Fleet should have resources added
-        self.assertEqual(fleet.ironium, 500)
-        self.assertEqual(fleet.boranium, 300)
+        self.assertEqual(fleet.ironium_inventory, 500)
+        self.assertEqual(fleet.boranium_inventory, 300)
         self.assertEqual(fleet.germanium, 100)
         self.assertEqual(fleet.colonists, 50)  # 50k individuals stored as 50kt
         
@@ -895,9 +895,9 @@ class TestFleetTransferOrders(TestCase):
         star = player.homeworld
         
         # Set up star with some existing resources
-        star.ironium_surface = 100
-        star.boranium_surface = 50
-        star.germanium_surface = 25
+        star.ironium_inventory = 100
+        star.boranium_inventory = 50
+        star.germanium_inventory = 25
         star.colonists = 5000  # 5k individuals
         star.save()
         
@@ -935,14 +935,14 @@ class TestFleetTransferOrders(TestCase):
         fleet.refresh_from_db()
         
         # Star should have resources added
-        self.assertEqual(star.ironium_surface, 300)   # 100 + 200
-        self.assertEqual(star.boranium_surface, 200)  # 50 + 150
-        self.assertEqual(star.germanium_surface, 100) # 25 + 75
+        self.assertEqual(star.ironium_inventory, 300)   # 100 + 200
+        self.assertEqual(star.boranium_inventory, 200)  # 50 + 150
+        self.assertEqual(star.germanium_inventory, 100) # 25 + 75
         self.assertEqual(star.colonists, 15000)       # 5000 + 10000
         
         # Fleet should have resources removed
-        self.assertEqual(fleet.ironium, 0)
-        self.assertEqual(fleet.boranium, 0)
+        self.assertEqual(fleet.ironium_inventory, 0)
+        self.assertEqual(fleet.boranium_inventory, 0)
         self.assertEqual(fleet.germanium, 0)
         self.assertEqual(fleet.colonists, 0)
         
@@ -958,9 +958,9 @@ class TestFleetTransferOrders(TestCase):
         star = player.homeworld
         
         # Set up star with abundant resources
-        star.ironium_surface = 5000
-        star.boranium_surface = 5000
-        star.germanium_surface = 5000
+        star.ironium_inventory = 5000
+        star.boranium_inventory = 5000
+        star.germanium_inventory = 5000
         star.colonists = 100000
         star.save()
         
@@ -996,8 +996,8 @@ class TestFleetTransferOrders(TestCase):
         
         # Should transfer exactly 1000kt total, proportionally allocated
         # Each resource gets 1000/4000 = 25% of what was requested
-        self.assertEqual(fleet.ironium, 250)   # 1000 * 0.25
-        self.assertEqual(fleet.boranium, 250)  # 1000 * 0.25
+        self.assertEqual(fleet.ironium_inventory, 250)   # 1000 * 0.25
+        self.assertEqual(fleet.boranium_inventory, 250)  # 1000 * 0.25
         self.assertEqual(fleet.germanium, 250) # 1000 * 0.25
         self.assertEqual(fleet.colonists, 250) # 1000 * 0.25
         
@@ -1005,9 +1005,9 @@ class TestFleetTransferOrders(TestCase):
         self.assertEqual(fleet.cargo_used, 1000)
         
         # Star should have corresponding amounts removed
-        self.assertEqual(star.ironium_surface, 4750)  # 5000 - 250
-        self.assertEqual(star.boranium_surface, 4750)
-        self.assertEqual(star.germanium_surface, 4750)
+        self.assertEqual(star.ironium_inventory, 4750)  # 5000 - 250
+        self.assertEqual(star.boranium_inventory, 4750)
+        self.assertEqual(star.germanium_inventory, 4750)
         self.assertEqual(star.colonists, 50000)  # 100000 - 50000 (250kt * 1000)
     
     def test_transfer_move_then_execute(self):
@@ -1020,7 +1020,7 @@ class TestFleetTransferOrders(TestCase):
         
         # Find a distant star
         target_star = game.stars.exclude(pk=source_star.pk).first()
-        target_star.ironium_surface = 1000
+        target_star.ironium_inventory = 1000
         target_star.save()
         
         # Create fleet at source
@@ -1054,7 +1054,7 @@ class TestFleetTransferOrders(TestCase):
         self.assertEqual(fleet.orders.count(), 1)
         
         # Fleet cargo should be unchanged (no transfer yet)
-        self.assertEqual(fleet.ironium, 0)
+        self.assertEqual(fleet.ironium_inventory, 0)
         
         # Generate several more turns until fleet arrives
         for _ in range(10):  # Max attempts to avoid infinite loop
@@ -1067,7 +1067,7 @@ class TestFleetTransferOrders(TestCase):
         self.assertEqual(fleet.x, target_star.x)
         self.assertEqual(fleet.y, target_star.y)
         self.assertEqual(fleet.orders.count(), 0)  # Order completed
-        self.assertEqual(fleet.ironium, 500)       # Transfer executed
+        self.assertEqual(fleet.ironium_inventory, 500)       # Transfer executed
     
     def test_transfer_fleet_target_waiting(self):
         """Test transfer waiting behavior when target fleet is not at expected location."""
@@ -1116,7 +1116,7 @@ class TestFleetTransferOrders(TestCase):
         fleet1.refresh_from_db()
         
         # Transfer should not have executed (waiting for target)
-        self.assertEqual(fleet1.ironium, 1000)  # Unchanged
+        self.assertEqual(fleet1.ironium_inventory, 1000)  # Unchanged
         self.assertEqual(fleet1.orders.count(), 1)  # Order still exists
     
     def test_transfer_repeat_functionality(self):
@@ -1128,7 +1128,7 @@ class TestFleetTransferOrders(TestCase):
         star = player.homeworld
         
         # Set up star with lots of resources
-        star.ironium_surface = 10000
+        star.ironium_inventory = 10000
         star.save()
         
         fleet = Fleet.objects.create(
@@ -1158,8 +1158,8 @@ class TestFleetTransferOrders(TestCase):
         star.refresh_from_db()
         
         # Transfer should have executed
-        self.assertEqual(fleet.ironium, 100)
-        self.assertEqual(star.ironium_surface, 9900)
+        self.assertEqual(fleet.ironium_inventory, 100)
+        self.assertEqual(star.ironium_inventory, 9900)
         
         # Original order should be deleted, new repeat order should exist
         self.assertFalse(FleetOrders.objects.filter(id=original_order_id).exists())
@@ -1285,8 +1285,8 @@ class TestFleetTransferOrders(TestCase):
         star = player.homeworld
         
         # Set up star with resources
-        star.ironium_surface = 2000
-        star.boranium_surface = 2000
+        star.ironium_inventory = 2000
+        star.boranium_inventory = 2000
         star.save()
         
         fleet = Fleet.objects.create(
@@ -1323,10 +1323,10 @@ class TestFleetTransferOrders(TestCase):
         star.refresh_from_db()
         
         # Both transfers should have executed
-        self.assertEqual(fleet.ironium, 500)
-        self.assertEqual(fleet.boranium, 300)
-        self.assertEqual(star.ironium_surface, 1500)
-        self.assertEqual(star.boranium_surface, 1700)
+        self.assertEqual(fleet.ironium_inventory, 500)
+        self.assertEqual(fleet.boranium_inventory, 300)
+        self.assertEqual(star.ironium_inventory, 1500)
+        self.assertEqual(star.boranium_inventory, 1700)
         
         # No orders should remain
         self.assertEqual(fleet.orders.count(), 0)
@@ -1648,8 +1648,8 @@ class TestFleetCargo(TestCase):
         )
         
         self.assertEqual(fleet.cargo_capacity, 100000)
-        self.assertEqual(fleet.ironium, 0)
-        self.assertEqual(fleet.boranium, 0)
+        self.assertEqual(fleet.ironium_inventory, 0)
+        self.assertEqual(fleet.boranium_inventory, 0)
         self.assertEqual(fleet.germanium, 0) 
         self.assertEqual(fleet.colonists, 0)
     
@@ -1944,7 +1944,7 @@ class TestFleetTransferOrders(TestCase):
         # Position fleet far from target
         fleet.x = target_star.x - 20  # 20 units away
         fleet.y = target_star.y
-        fleet.ironium = 1000  # Fleet has cargo to unload
+        fleet.ironium_inventory = 1000  # Fleet has cargo to unload
         fleet.save()
         
         from ..models import FleetOrders
@@ -1957,7 +1957,7 @@ class TestFleetTransferOrders(TestCase):
             target_star=target_star
         )
         
-        original_star_ironium = target_star.ironium_surface
+        original_star_ironium = target_star.ironium_inventory
         
         # Generate turn - fleet should move toward target but not execute transfer
         GameTurn(game).generate_turn()
@@ -1970,8 +1970,8 @@ class TestFleetTransferOrders(TestCase):
         self.assertNotEqual(fleet.x, target_star.x - 20)  # But has moved
         
         # Transfer should not have executed
-        self.assertEqual(fleet.ironium, 1000)  # Fleet still has cargo
-        self.assertEqual(target_star.ironium_surface, original_star_ironium)  # Star unchanged
+        self.assertEqual(fleet.ironium_inventory, 1000)  # Fleet still has cargo
+        self.assertEqual(target_star.ironium_inventory, original_star_ironium)  # Star unchanged
         self.assertTrue(FleetOrders.objects.filter(id=transfer_order.id).exists())  # Order still exists
     
     def test_load_transfer_from_star(self):
@@ -1984,12 +1984,12 @@ class TestFleetTransferOrders(TestCase):
         # Position fleet at target star
         fleet.x = target_star.x
         fleet.y = target_star.y
-        fleet.ironium = 0  # Fleet starts empty
+        fleet.ironium_inventory = 0  # Fleet starts empty
         fleet.save()
         
         # Star has resources
-        target_star.ironium_surface = 5000
-        target_star.boranium_surface = 3000
+        target_star.ironium_inventory = 5000
+        target_star.boranium_inventory = 3000
         target_star.save()
         
         from ..models import FleetOrders
@@ -2010,10 +2010,10 @@ class TestFleetTransferOrders(TestCase):
         target_star.refresh_from_db()
         
         # Resources should have transferred
-        self.assertEqual(fleet.ironium, 2000)    # Fleet loaded ironium
-        self.assertEqual(fleet.boranium, 1500)   # Fleet loaded boranium
-        self.assertEqual(target_star.ironium_surface, 3000)  # Star lost ironium
-        self.assertEqual(target_star.boranium_surface, 1500)  # Star lost boranium
+        self.assertEqual(fleet.ironium_inventory, 2000)    # Fleet loaded ironium
+        self.assertEqual(fleet.boranium_inventory, 1500)   # Fleet loaded boranium
+        self.assertEqual(target_star.ironium_inventory, 3000)  # Star lost ironium
+        self.assertEqual(target_star.boranium_inventory, 1500)  # Star lost boranium
         
         # Order should be completed (deleted)
         self.assertEqual(fleet.orders.count(), 0)
@@ -2028,12 +2028,12 @@ class TestFleetTransferOrders(TestCase):
         # Position fleet at target star
         fleet.x = target_star.x
         fleet.y = target_star.y
-        fleet.ironium = 3000   # Fleet has cargo
+        fleet.ironium_inventory = 3000   # Fleet has cargo
         fleet.germanium = 2000
         fleet.save()
         
-        original_star_ironium = target_star.ironium_surface
-        original_star_germanium = target_star.germanium_surface
+        original_star_ironium = target_star.ironium_inventory
+        original_star_germanium = target_star.germanium_inventory
         
         from ..models import FleetOrders
         FleetOrders.objects.create(
@@ -2053,10 +2053,10 @@ class TestFleetTransferOrders(TestCase):
         target_star.refresh_from_db()
         
         # Resources should have transferred
-        self.assertEqual(fleet.ironium, 1500)  # Fleet lost ironium (3000-1500)
+        self.assertEqual(fleet.ironium_inventory, 1500)  # Fleet lost ironium (3000-1500)
         self.assertEqual(fleet.germanium, 1000)  # Fleet lost germanium (2000-1000)
-        self.assertEqual(target_star.ironium_surface, original_star_ironium + 1500)  # Star gained
-        self.assertEqual(target_star.germanium_surface, original_star_germanium + 1000)  # Star gained
+        self.assertEqual(target_star.ironium_inventory, original_star_ironium + 1500)  # Star gained
+        self.assertEqual(target_star.germanium_inventory, original_star_germanium + 1000)  # Star gained
         
         # Order should be completed
         self.assertEqual(fleet.orders.count(), 0)
@@ -2075,8 +2075,8 @@ class TestFleetTransferOrders(TestCase):
         fleet.save()
         
         # Star has plenty of resources
-        target_star.ironium_surface = 10000
-        target_star.boranium_surface = 10000
+        target_star.ironium_inventory = 10000
+        target_star.boranium_inventory = 10000
         target_star.save()
         
         from ..models import FleetOrders
@@ -2103,13 +2103,13 @@ class TestFleetTransferOrders(TestCase):
         expected_ironium = int(10000 * 8000/12000)  # 6666
         expected_boranium = int(10000 * 4000/12000)  # 3333
         
-        self.assertEqual(fleet.ironium, expected_ironium)
-        self.assertEqual(fleet.boranium, expected_boranium)
+        self.assertEqual(fleet.ironium_inventory, expected_ironium)
+        self.assertEqual(fleet.boranium_inventory, expected_boranium)
         self.assertEqual(fleet.cargo_colonists, 90000)  # Unchanged
         
         # Star should have lost the same amounts
-        self.assertEqual(target_star.ironium_surface, 10000 - expected_ironium)
-        self.assertEqual(target_star.boranium_surface, 10000 - expected_boranium)
+        self.assertEqual(target_star.ironium_inventory, 10000 - expected_ironium)
+        self.assertEqual(target_star.boranium_inventory, 10000 - expected_boranium)
     
     def test_limited_by_star_resources(self):
         """Test loading limited by what's available at the star."""
@@ -2124,8 +2124,8 @@ class TestFleetTransferOrders(TestCase):
         fleet.save()
         
         # Star has limited resources
-        target_star.ironium_surface = 500   # Less than requested
-        target_star.boranium_surface = 200  # Less than requested
+        target_star.ironium_inventory = 500   # Less than requested
+        target_star.boranium_inventory = 200  # Less than requested
         target_star.save()
         
         from ..models import FleetOrders
@@ -2149,12 +2149,12 @@ class TestFleetTransferOrders(TestCase):
         # Total request: 3000kt, available: 700kt
         # Proportional: ironium gets 500 * (2000/3000) = 333, boranium gets 200 * (1000/3000) = 66
         # But we're limited by actual availability, so it's 500 and 200
-        self.assertEqual(fleet.ironium, 500)  # All available ironium
-        self.assertEqual(fleet.boranium, 200)  # All available boranium
+        self.assertEqual(fleet.ironium_inventory, 500)  # All available ironium
+        self.assertEqual(fleet.boranium_inventory, 200)  # All available boranium
         
         # Star should be depleted of these resources
-        self.assertEqual(target_star.ironium_surface, 0)
-        self.assertEqual(target_star.boranium_surface, 0)
+        self.assertEqual(target_star.ironium_inventory, 0)
+        self.assertEqual(target_star.boranium_inventory, 0)
     
     def test_unload_limited_by_fleet_cargo(self):
         """Test unloading limited by what fleet actually has."""
@@ -2166,11 +2166,11 @@ class TestFleetTransferOrders(TestCase):
         # Position fleet at target with limited cargo
         fleet.x = target_star.x
         fleet.y = target_star.y
-        fleet.ironium = 300   # Less than order requests
+        fleet.ironium_inventory = 300   # Less than order requests
         fleet.colonists = 150  # Less than order requests
         fleet.save()
         
-        original_star_ironium = target_star.ironium_surface
+        original_star_ironium = target_star.ironium_inventory
         original_star_colonists = target_star.colonists
         
         from ..models import FleetOrders
@@ -2191,11 +2191,11 @@ class TestFleetTransferOrders(TestCase):
         target_star.refresh_from_db()
         
         # Fleet should unload only what it had
-        self.assertEqual(fleet.ironium, 0)      # Unloaded all 300
+        self.assertEqual(fleet.ironium_inventory, 0)      # Unloaded all 300
         self.assertEqual(fleet.colonists, 0)    # Unloaded all 150
         
         # Star should receive what was actually unloaded
-        self.assertEqual(target_star.ironium_surface, original_star_ironium + 300)
+        self.assertEqual(target_star.ironium_inventory, original_star_ironium + 300)
         self.assertEqual(target_star.colonists, original_star_colonists + 150)
     
     def test_transfer_order_repeats(self):
@@ -2208,7 +2208,7 @@ class TestFleetTransferOrders(TestCase):
         # Position fleet at target
         fleet.x = target_star.x
         fleet.y = target_star.y
-        fleet.ironium = 2000
+        fleet.ironium_inventory = 2000
         fleet.save()
         
         from ..models import FleetOrders
@@ -2229,7 +2229,7 @@ class TestFleetTransferOrders(TestCase):
         fleet.refresh_from_db()
         
         # Fleet should have unloaded
-        self.assertEqual(fleet.ironium, 1000)  # 2000 - 1000
+        self.assertEqual(fleet.ironium_inventory, 1000)  # 2000 - 1000
         
         # Original order deleted, new order created
         self.assertFalse(FleetOrders.objects.filter(id=original_order_id).exists())
@@ -2243,3 +2243,85 @@ class TestFleetTransferOrders(TestCase):
         self.assertEqual(new_order.target_star, target_star)
         self.assertTrue(new_order.repeat)
         self.assertNotEqual(new_order.id, original_order_id)
+
+
+class TestResourceFieldNaming(TestCase):
+    """Test that resource field renaming works correctly across all game systems."""
+
+    def test_star_field_access(self):
+        """Test that Star objects use the new field names correctly."""
+        game = default_game()
+        star = game.stars.first()
+        
+        # Test yield fields exist and are accessible
+        self.assertIsNotNone(star.ironium_yield)
+        self.assertIsNotNone(star.boranium_yield)
+        self.assertIsNotNone(star.germanium_yield)
+        
+        # Test inventory fields exist and are accessible  
+        self.assertIsNotNone(star.ironium_inventory)
+        self.assertIsNotNone(star.boranium_inventory)
+        self.assertIsNotNone(star.germanium_inventory)
+        
+        # Test old field names don't exist
+        self.assertFalse(hasattr(star, 'ironium'))
+        self.assertFalse(hasattr(star, 'boranium'))  
+        self.assertFalse(hasattr(star, 'germanium'))
+        self.assertFalse(hasattr(star, 'ironium_surface'))
+        self.assertFalse(hasattr(star, 'boranium_surface'))
+        self.assertFalse(hasattr(star, 'germanium_surface'))
+
+    def test_fleet_field_access(self):
+        """Test that Fleet objects use the new field names correctly."""
+        game = default_game(fleets=1)
+        fleet = game.fleets.first()
+        
+        # Test inventory fields exist and are accessible
+        self.assertIsNotNone(fleet.ironium_inventory)
+        self.assertIsNotNone(fleet.boranium_inventory)
+        self.assertIsNotNone(fleet.germanium_inventory)
+        
+        # Test old field names don't exist
+        self.assertFalse(hasattr(fleet, 'ironium'))
+        self.assertFalse(hasattr(fleet, 'boranium'))
+        self.assertFalse(hasattr(fleet, 'germanium'))
+
+    def test_cargo_used_property(self):
+        """Test that Fleet.cargo_used works with new field names."""
+        game = default_game(fleets=1)
+        fleet = game.fleets.first()
+        
+        # Set known values
+        fleet.ironium_inventory = 100
+        fleet.boranium_inventory = 200  
+        fleet.germanium_inventory = 300
+        fleet.colonists = 400
+        
+        expected_cargo = 100 + 200 + 300 + 400
+        self.assertEqual(fleet.cargo_used, expected_cargo)
+
+    def test_mining_system_field_usage(self):
+        """Test that mining system works with new field names."""
+        game = default_game()
+        star = game.stars.first()
+        
+        # Set up star with yields and verify mining can access them
+        star.ironium_yield = 50
+        star.boranium_yield = 25
+        star.germanium_yield = 75
+        star.ironium_inventory = 1000
+        star.boranium_inventory = 1000
+        star.germanium_inventory = 1000
+        star.mines = 10
+        star.colonists = 100000
+        star.save()
+        
+        initial_ironium = star.ironium_inventory
+        
+        # Run mining
+        GameTurn(game).mining()
+        
+        star.refresh_from_db()
+        
+        # Mining should have accessed yield fields and updated inventory
+        self.assertGreaterEqual(star.ironium_inventory, initial_ironium)

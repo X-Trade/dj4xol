@@ -358,15 +358,15 @@ class Fleet(AbstractMapObject):
     
     # Cargo capacity and inventory
     cargo_capacity = models.IntegerField(default=1000)  # Total cargo capacity in kt
-    ironium = models.IntegerField(default=0)  # Current ironium cargo in kt
-    boranium = models.IntegerField(default=0)  # Current boranium cargo in kt  
-    germanium = models.IntegerField(default=0)  # Current germanium cargo in kt
+    ironium_inventory = models.IntegerField(default=0)  # Current ironium cargo in kt
+    boranium_inventory = models.IntegerField(default=0)  # Current boranium cargo in kt  
+    germanium_inventory = models.IntegerField(default=0)  # Current germanium cargo in kt
     colonists = models.IntegerField(default=0)  # Current colonist cargo in thousands
     
     @property
     def cargo_used(self):
         """Total cargo currently loaded (in kt equivalent)."""
-        return self.ironium + self.boranium + self.germanium + self.colonists
+        return self.ironium_inventory + self.boranium_inventory + self.germanium_inventory + self.colonists
     
     @property
     def cargo_remaining(self):
@@ -387,17 +387,17 @@ class Star(AbstractMapObject):
                                 validators=[MinValueValidator(0.0), MaxValueValidator(2.0)])
 
     # Mineral yields (percentage, 0-100%)
-    ironium = models.IntegerField(default=random_resource_init,
-                                  validators=[MinValueValidator(0), MaxValueValidator(100)])
-    boranium = models.IntegerField(default=random_resource_init,
-                                  validators=[MinValueValidator(0), MaxValueValidator(100)])
-    germanium = models.IntegerField(default=random_resource_init,
-                                  validators=[MinValueValidator(0), MaxValueValidator(100)])
+    ironium_yield = models.IntegerField(default=random_resource_init,
+                                        validators=[MinValueValidator(0), MaxValueValidator(100)])
+    boranium_yield = models.IntegerField(default=random_resource_init,
+                                         validators=[MinValueValidator(0), MaxValueValidator(100)])
+    germanium_yield = models.IntegerField(default=random_resource_init,
+                                          validators=[MinValueValidator(0), MaxValueValidator(100)])
 
     # Surface mineral inventory (kt)
-    ironium_surface = models.IntegerField(default=random_surface_mineral_init)
-    boranium_surface = models.IntegerField(default=random_surface_mineral_init)
-    germanium_surface = models.IntegerField(default=random_surface_mineral_init)
+    ironium_inventory = models.IntegerField(default=random_surface_mineral_init)
+    boranium_inventory = models.IntegerField(default=random_surface_mineral_init)
+    germanium_inventory = models.IntegerField(default=random_surface_mineral_init)
 
     colonists = models.IntegerField(default=0)
     # Base carrying capacity (in millions), effective capacity = base * habitability

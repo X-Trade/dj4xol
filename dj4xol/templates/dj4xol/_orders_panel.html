@@ -77,17 +77,27 @@
                         </span>
                         <a href="?mode=select_destination&fleet={{ detail.fleet_short_id }}&x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&order_type=MOVE" class="dest-set-btn" id="dest-set-link">Set</a>
                     </div>
-                    <div class="transfer-target-row" id="transfer-destination" style="display: none;">
-                        <select id="transfer-target" name="transfer_target" class="transfer-target-select">
-                            <option value="">Select target...</option>
-                            {% for obj in detail.transfer_targets %}
-                                {% if obj.type == 'star' %}
-                                    <option value="star:{{ obj.short_id }}">{{ obj.name }} (Star)</option>
-                                {% elif obj.type == 'fleet' %}
-                                    <option value="fleet:{{ obj.short_id }}">{{ obj.name }} (Fleet)</option>
-                                {% endif %}
-                            {% endfor %}
-                        </select>
+                    <div class="dest-display-row" id="transfer-destination" style="display: none;">
+                        {% if detail.transfer_targets.display_mode == 'single' %}
+                            <!-- Single target - show as readonly text matching dest-display style -->
+                            <span class="dest-display">{{ detail.transfer_targets.default_target }}</span>
+                            <input type="hidden" id="single-target-value" data-target="{% if detail.transfer_targets.targets.0.type == 'star' %}star:{{ detail.transfer_targets.targets.0.short_id }}{% elif detail.transfer_targets.targets.0.type == 'fleet' %}fleet:{{ detail.transfer_targets.targets.0.short_id }}{% endif %}">
+                        {% elif detail.transfer_targets.display_mode == 'empty' %}
+                            <!-- Empty space - show coordinates as readonly text matching dest-display style -->
+                            <span class="dest-display"><em>{{ detail.transfer_targets.default_target }}</em></span>
+                            <input type="hidden" id="empty-target-value" data-target="">
+                        {% else %}
+                            <!-- Multiple targets - show as dropdown -->
+                            <select id="transfer-target" name="transfer_target" class="transfer-target-select">
+                                {% for obj in detail.transfer_targets.targets %}
+                                    {% if obj.type == 'star' %}
+                                        <option value="star:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Star)</option>
+                                    {% elif obj.type == 'fleet' %}
+                                        <option value="fleet:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -186,14 +196,57 @@
     }
     
     function updateAddButtonStateTransfer() {
-        var transferTarget = document.getElementById('transfer-target').value;
+        // Get transfer target value from either select dropdown or hidden input
+        var transferTargetSelect = document.getElementById('transfer-target');
+        var transferTargetValue = '';
+        
+        if (transferTargetSelect) {
+            // Multiple targets case - get from select
+            transferTargetValue = transferTargetSelect.value;
+        } else {
+            // Single target or empty space case - get from hidden input
+            var hiddenInputs = document.querySelectorAll('input[name="transfer_target"]');
+            if (hiddenInputs.length > 0) {
+                transferTargetValue = hiddenInputs[0].value;
+            }
+        }
+        
         var hasResources = transferSliders.some(function(resource) {
             var input = document.getElementById('transfer-' + resource + '-input');
             return input && parseInt(input.value) > 0;
         });
         
-        // Transfer orders require a target and at least one resource
-        addBtn.disabled = !transferTarget || !hasResources;
+        // Transfer orders require a target (or empty space is allowed) and at least one resource
+        // Empty space has transferTargetValue = '' which is still valid
+        var hasValidTarget = transferTargetValue !== undefined;
+        addBtn.disabled = !hasValidTarget || !hasResources;
+    }
+    
+    // Initialize transfer target input based on display mode
+    function initializeTransferTarget() {
+        var transferTargetInput = document.getElementById('transfer-target-input');
+        if (!transferTargetInput) return;
+        
+        // Check for dropdown (multiple targets)
+        var transferTargetSelect = document.getElementById('transfer-target');
+        if (transferTargetSelect) {
+            transferTargetInput.value = transferTargetSelect.value;
+            return;
+        }
+        
+        // Check for single target
+        var singleTargetValue = document.getElementById('single-target-value');
+        if (singleTargetValue) {
+            transferTargetInput.value = singleTargetValue.getAttribute('data-target');
+            return;
+        }
+        
+        // Check for empty space
+        var emptyTargetValue = document.getElementById('empty-target-value');
+        if (emptyTargetValue) {
+            transferTargetInput.value = emptyTargetValue.getAttribute('data-target');
+            return;
+        }
     }
     
     // Update destination link with current order type
@@ -230,7 +283,8 @@
             if (moveDestination) moveDestination.style.display = 'none';
             if (transferDestination) transferDestination.style.display = 'flex';
             
-            populateTransferTargets();
+            // Initialize transfer target input with appropriate value
+            initializeTransferTarget();
             updateAddButtonStateTransfer();
         } else {
             moveParams.style.display = 'block';
@@ -279,6 +333,8 @@
                 if (moveDestination) moveDestination.style.display = 'none';
                 if (transferDestination) transferDestination.style.display = 'flex';
                 
+                // Initialize transfer target input with appropriate value
+                initializeTransferTarget();
                 updateAddButtonStateTransfer();
             }
         });
@@ -292,7 +348,7 @@
         });
     });
     
-    // Transfer target dropdown
+    // Transfer target dropdown (only exists in multiple targets mode)
     var transferTargetSelect = document.getElementById('transfer-target');
     var transferTargetInput = document.getElementById('transfer-target-input');
     if (transferTargetSelect && transferTargetInput) {
