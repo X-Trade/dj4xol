@@ -308,16 +308,8 @@ class GameTurn():
                     processed_orders += 1
                     continue
                 elif transfer_result == 'waiting':
-                    # Transfer blocked waiting for target, stop processing
+                    # Transfer blocked waiting for conditions, stop processing
                     break
-                elif transfer_result == 'needs_movement':
-                    # Need to move to destination first
-                    if self._move_toward_destination(fleet, order):
-                        # Reached destination, will try transfer next turn
-                        break
-                    else:
-                        # Still moving, stop processing
-                        break
             
             elif order.order_type == 'MOVE':
                 # Regular move order
@@ -342,10 +334,12 @@ class GameTurn():
     def _try_execute_transfer(self, fleet, order):
         """Try to execute a transfer order.
         
+        Transfer orders never move fleets - they only execute when both
+        source and target are already at the same location.
+        
         Returns:
         - 'executed': Transfer completed successfully
-        - 'waiting': Transfer blocked waiting for target
-        - 'needs_movement': Fleet needs to move to destination first
+        - 'waiting': Transfer blocked waiting for target or location
         """
         try:
             dest_x, dest_y = order.get_destination_coordinates()
@@ -354,7 +348,8 @@ class GameTurn():
         
         # Check if fleet is at the transfer destination
         if fleet.x != dest_x or fleet.y != dest_y:
-            return 'needs_movement'
+            # Transfer orders don't move fleets - they wait for manual movement
+            return 'waiting'
         
         # Fleet is at destination, try to execute transfer
         return self._execute_transfer_order(fleet, order)
@@ -461,8 +456,12 @@ class GameTurn():
             return 'executed'  # Remove invalid order
             
         # Execute transfer based on target type
-        if hasattr(target_obj, 'colonists'):  # Star-like object
+        from .models import Star, Fleet
+        if isinstance(target_obj, Star):
             self._transfer_with_star(fleet, order, target_obj)
+            return 'executed'
+        elif isinstance(target_obj, Fleet):
+            self._transfer_with_fleet(fleet, order, target_obj)
             return 'executed'
         else:
             print(f"Transfer to {type(target_obj)} not yet implemented")
@@ -536,6 +535,87 @@ class GameTurn():
             
             star.save()
             fleet.save()
+
+    def _transfer_with_fleet(self, source_fleet, order, target_fleet):
+        """Execute transfer between two fleets.
+        
+        Both fleets store colonists in thousands (1 unit = 1000 colonists),
+        so no unit conversion is needed for fleet-to-fleet transfers.
+        """
+        if order.transfer_type == 'LOAD':
+            # Load from target fleet to source fleet
+            # Calculate total transfer amount and proportions
+            total_requested = (order.transfer_ironium + order.transfer_boranium + 
+                             order.transfer_germanium + order.transfer_colonists)
+            
+            if total_requested == 0:
+                return
+                
+            # Limit total transfer by source fleet available space
+            source_used = source_fleet.cargo_used
+            source_available = source_fleet.cargo_capacity - source_used
+            total_transfer = min(source_available, total_requested)
+            
+            if total_transfer <= 0:
+                return
+                
+            # Calculate proportional transfers
+            transfer_factor = total_transfer / total_requested
+            
+            ironium_transfer = min(int(order.transfer_ironium * transfer_factor), target_fleet.ironium)
+            boranium_transfer = min(int(order.transfer_boranium * transfer_factor), target_fleet.boranium)
+            germanium_transfer = min(int(order.transfer_germanium * transfer_factor), target_fleet.germanium)
+            colonists_transfer = min(int(order.transfer_colonists * transfer_factor), target_fleet.colonists)
+            
+            # Execute the transfers (both fleets store colonists as thousands)
+            target_fleet.ironium -= ironium_transfer
+            target_fleet.boranium -= boranium_transfer
+            target_fleet.germanium -= germanium_transfer
+            target_fleet.colonists -= colonists_transfer
+            
+            source_fleet.ironium += ironium_transfer
+            source_fleet.boranium += boranium_transfer
+            source_fleet.germanium += germanium_transfer
+            source_fleet.colonists += colonists_transfer
+            
+            target_fleet.save()
+            source_fleet.save()
+            
+        else:  # UNLOAD
+            # Unload from source fleet to target fleet
+            ironium_transfer = min(order.transfer_ironium, source_fleet.ironium)
+            boranium_transfer = min(order.transfer_boranium, source_fleet.boranium)
+            germanium_transfer = min(order.transfer_germanium, source_fleet.germanium)
+            colonists_transfer = min(order.transfer_colonists, source_fleet.colonists)
+            
+            # Check if target fleet has capacity
+            target_used = target_fleet.cargo_used
+            target_available = target_fleet.cargo_capacity - target_used
+            total_transfer = ironium_transfer + boranium_transfer + germanium_transfer + colonists_transfer
+            
+            if total_transfer > target_available:
+                # Scale down transfers proportionally
+                if target_available <= 0:
+                    return
+                scale_factor = target_available / total_transfer
+                ironium_transfer = int(ironium_transfer * scale_factor)
+                boranium_transfer = int(boranium_transfer * scale_factor)
+                germanium_transfer = int(germanium_transfer * scale_factor)
+                colonists_transfer = int(colonists_transfer * scale_factor)
+            
+            # Execute the transfers
+            source_fleet.ironium -= ironium_transfer
+            source_fleet.boranium -= boranium_transfer
+            source_fleet.germanium -= germanium_transfer
+            source_fleet.colonists -= colonists_transfer
+            
+            target_fleet.ironium += ironium_transfer
+            target_fleet.boranium += boranium_transfer
+            target_fleet.germanium += germanium_transfer
+            target_fleet.colonists += colonists_transfer
+            
+            source_fleet.save()
+            target_fleet.save()
 
     def population_growth(self):
         """Apply population growth/decline to all colonized planets."""
