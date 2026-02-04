@@ -13,6 +13,11 @@ class DetailBuilder():
     x = None
     y = None
 
+    @staticmethod
+    def format_empty_space(x, y):
+        """Format empty space coordinates consistently across the UI."""
+        return f"Empty Space ({x}, {y})"
+
     def __init__(self, game, x=None, y=None, selected=None, player=None):
         self.game = game
         self.player = player
@@ -187,16 +192,16 @@ class DetailBuilder():
         if self.selected_obj and isinstance(self.selected_obj, Star):
             resources = {
                 'Ironium': {
-                    'yield': self.selected_obj.ironium,
-                    'surface': self.selected_obj.ironium_surface,
+                    'yield': self.selected_obj.ironium_yield,
+                    'surface': self.selected_obj.ironium_inventory,
                 },
                 'Boranium': {
-                    'yield': self.selected_obj.boranium,
-                    'surface': self.selected_obj.boranium_surface,
+                    'yield': self.selected_obj.boranium_yield,
+                    'surface': self.selected_obj.boranium_inventory,
                 },
                 'Germanium': {
-                    'yield': self.selected_obj.germanium,
-                    'surface': self.selected_obj.germanium_surface,
+                    'yield': self.selected_obj.germanium_yield,
+                    'surface': self.selected_obj.germanium_inventory,
                 },
             }
         return resources
@@ -299,7 +304,7 @@ class DetailBuilder():
             elif o.target_fleet:
                 target = o.target_fleet.name
             elif o.x is not None and o.y is not None:
-                target = f"Empty Space ({o.x}, {o.y})"
+                target = DetailBuilder.format_empty_space(o.x, o.y)
             orders.append({
                 'short_id': o.short_id,
                 'target': target,
@@ -326,9 +331,9 @@ class DetailBuilder():
             'capacity': self.selected_obj.cargo_capacity,
             'used': self.selected_obj.cargo_used,
             'remaining': self.selected_obj.cargo_remaining,
-            'ironium': self.selected_obj.ironium,
-            'boranium': self.selected_obj.boranium,
-            'germanium': self.selected_obj.germanium,
+            'ironium': self.selected_obj.ironium_inventory,
+            'boranium': self.selected_obj.boranium_inventory,
+            'germanium': self.selected_obj.germanium_inventory,
             'colonists': self.selected_obj.colonists,
         }
 
@@ -341,9 +346,9 @@ class DetailBuilder():
         
         capacity = self.selected_obj.cargo_capacity
         inventory = {
-            'Ironium': self._build_cargo_data(self.selected_obj.ironium, capacity, 'kt'),
-            'Boranium': self._build_cargo_data(self.selected_obj.boranium, capacity, 'kt'),
-            'Germanium': self._build_cargo_data(self.selected_obj.germanium, capacity, 'kt'),
+            'Ironium': self._build_cargo_data(self.selected_obj.ironium_inventory, capacity, 'kt'),
+            'Boranium': self._build_cargo_data(self.selected_obj.boranium_inventory, capacity, 'kt'),
+            'Germanium': self._build_cargo_data(self.selected_obj.germanium_inventory, capacity, 'kt'),
             'Colonists': self._build_cargo_data(self.selected_obj.colonists, capacity, 'k'),
         }
         return inventory
@@ -386,13 +391,19 @@ class DetailBuilder():
     def get_transfer_targets(self):
         """Get available transfer targets at the fleet's effective location.
         
+        Returns a dict with:
+        - targets: list of available targets
+        - location: (x, y) coordinates
+        - display_mode: 'single', 'multiple', or 'empty'
+        - default_target: the target to select by default
+        
         Includes:
         - Stars at the effective location
         - Fleets currently at the effective location 
         - Fleets that have orders targeting the effective location
         """
         if not isinstance(self.selected_obj, Fleet):
-            return []
+            return {'targets': [], 'location': (0, 0), 'display_mode': 'empty', 'default_target': None}
         
         # Get the location where the fleet will be when the transfer executes
         effective_x, effective_y = self.get_fleet_effective_location()
@@ -448,4 +459,31 @@ class DetailBuilder():
                     'type': 'fleet'
                 })
         
-        return targets
+        # Determine display mode and default target
+        if not targets:
+            # Empty space
+            empty_space_name = DetailBuilder.format_empty_space(effective_x, effective_y)
+            return {
+                'targets': [{'name': empty_space_name, 'short_id': '', 'type': 'space'}],
+                'location': (effective_x, effective_y),
+                'display_mode': 'empty',
+                'default_target': empty_space_name
+            }
+        elif len(targets) == 1:
+            # Single target
+            target = targets[0]
+            display_name = f"{target['name']} ({target['type'].title()})"
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'single',
+                'default_target': display_name
+            }
+        else:
+            # Multiple targets
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'multiple',
+                'default_target': targets[0]  # First target as default
+            }

@@ -201,13 +201,13 @@ class GameFactory():
         star.temperature = player.temperature_center
         star.radiation = player.radiation_center
         # Ensure homeworld has good resource yields (at least 50%)
-        star.ironium = max(50, star.ironium)
-        star.boranium = max(50, star.boranium)
-        star.germanium = max(50, star.germanium)
+        star.ironium_yield = max(50, star.ironium_yield)
+        star.boranium_yield = max(50, star.boranium_yield)
+        star.germanium_yield = max(50, star.germanium_yield)
         # Ensure homeworld has minimum surface minerals (1000kt each)
-        star.ironium_surface = max(1000, star.ironium_surface)
-        star.boranium_surface = max(1000, star.boranium_surface)
-        star.germanium_surface = max(1000, star.germanium_surface)
+        star.ironium_inventory = max(1000, star.ironium_inventory)
+        star.boranium_inventory = max(1000, star.boranium_inventory)
+        star.germanium_inventory = max(1000, star.germanium_inventory)
         # Override star name if player has a homeworld name set
         if player.homeworld_name:
             star.name = player.homeworld_name
@@ -261,9 +261,9 @@ class GameFactory():
                     x=random.randint(1, self.game.map_size_x),
                     y=random.randint(1, self.game.map_size_y),
                     # Add some random cargo for testing
-                    ironium=random.randint(0, 10000),
-                    boranium=random.randint(0, 10000),
-                    germanium=random.randint(0, 5000),
+                    ironium_inventory=random.randint(0, 10000),
+                    boranium_inventory=random.randint(0, 10000),
+                    germanium_inventory=random.randint(0, 5000),
                     colonists=random.randint(0, 5000)
                 )
         return self

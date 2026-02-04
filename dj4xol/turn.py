@@ -491,23 +491,23 @@ class GameTurn():
             # Calculate proportional transfers
             transfer_factor = total_transfer / total_requested
             
-            ironium_transfer = min(int(order.transfer_ironium * transfer_factor), star.ironium_surface)
-            boranium_transfer = min(int(order.transfer_boranium * transfer_factor), star.boranium_surface) 
-            germanium_transfer = min(int(order.transfer_germanium * transfer_factor), star.germanium_surface)
+            ironium_transfer = min(int(order.transfer_ironium * transfer_factor), star.ironium_inventory)
+            boranium_transfer = min(int(order.transfer_boranium * transfer_factor), star.boranium_inventory) 
+            germanium_transfer = min(int(order.transfer_germanium * transfer_factor), star.germanium_inventory)
             # Convert colonists: star.colonists is individual units, fleet.colonists is thousands
             colonists_transfer_kt = int(order.transfer_colonists * transfer_factor)  # This is in kt
             colonists_transfer_individuals = min(colonists_transfer_kt * 1000, star.colonists)
             colonists_transfer_kt_actual = colonists_transfer_individuals // 1000
             
             # Execute the transfers
-            star.ironium_surface -= ironium_transfer
-            star.boranium_surface -= boranium_transfer
-            star.germanium_surface -= germanium_transfer
+            star.ironium_inventory -= ironium_transfer
+            star.boranium_inventory -= boranium_transfer
+            star.germanium_inventory -= germanium_transfer
             star.colonists -= colonists_transfer_individuals
             
-            fleet.ironium += ironium_transfer
-            fleet.boranium += boranium_transfer
-            fleet.germanium += germanium_transfer
+            fleet.ironium_inventory += ironium_transfer
+            fleet.boranium_inventory += boranium_transfer
+            fleet.germanium_inventory += germanium_transfer
             fleet.colonists += colonists_transfer_kt_actual
             
             star.save()
@@ -515,22 +515,22 @@ class GameTurn():
             
         elif order.transfer_type == 'UNLOAD':
             # Unload from fleet to star
-            ironium_transfer = min(order.transfer_ironium, fleet.ironium)
-            boranium_transfer = min(order.transfer_boranium, fleet.boranium)
-            germanium_transfer = min(order.transfer_germanium, fleet.germanium)
+            ironium_transfer = min(order.transfer_ironium, fleet.ironium_inventory)
+            boranium_transfer = min(order.transfer_boranium, fleet.boranium_inventory)
+            germanium_transfer = min(order.transfer_germanium, fleet.germanium_inventory)
             # Convert colonists: fleet.colonists is thousands, star.colonists is individual units
             colonists_transfer_kt = min(order.transfer_colonists, fleet.colonists)
             colonists_transfer_individuals = colonists_transfer_kt * 1000
             
             # Execute the transfers
-            fleet.ironium -= ironium_transfer
-            fleet.boranium -= boranium_transfer
-            fleet.germanium -= germanium_transfer
+            fleet.ironium_inventory -= ironium_transfer
+            fleet.boranium_inventory -= boranium_transfer
+            fleet.germanium_inventory -= germanium_transfer
             fleet.colonists -= colonists_transfer_kt
             
-            star.ironium_surface += ironium_transfer
-            star.boranium_surface += boranium_transfer
-            star.germanium_surface += germanium_transfer
+            star.ironium_inventory += ironium_transfer
+            star.boranium_inventory += boranium_transfer
+            star.germanium_inventory += germanium_transfer
             star.colonists += colonists_transfer_individuals
             
             star.save()
@@ -562,20 +562,20 @@ class GameTurn():
             # Calculate proportional transfers
             transfer_factor = total_transfer / total_requested
             
-            ironium_transfer = min(int(order.transfer_ironium * transfer_factor), target_fleet.ironium)
-            boranium_transfer = min(int(order.transfer_boranium * transfer_factor), target_fleet.boranium)
-            germanium_transfer = min(int(order.transfer_germanium * transfer_factor), target_fleet.germanium)
+            ironium_transfer = min(int(order.transfer_ironium * transfer_factor), target_fleet.ironium_inventory)
+            boranium_transfer = min(int(order.transfer_boranium * transfer_factor), target_fleet.boranium_inventory)
+            germanium_transfer = min(int(order.transfer_germanium * transfer_factor), target_fleet.germanium_inventory)
             colonists_transfer = min(int(order.transfer_colonists * transfer_factor), target_fleet.colonists)
             
             # Execute the transfers (both fleets store colonists as thousands)
-            target_fleet.ironium -= ironium_transfer
-            target_fleet.boranium -= boranium_transfer
-            target_fleet.germanium -= germanium_transfer
+            target_fleet.ironium_inventory -= ironium_transfer
+            target_fleet.boranium_inventory -= boranium_transfer
+            target_fleet.germanium_inventory -= germanium_transfer
             target_fleet.colonists -= colonists_transfer
             
-            source_fleet.ironium += ironium_transfer
-            source_fleet.boranium += boranium_transfer
-            source_fleet.germanium += germanium_transfer
+            source_fleet.ironium_inventory += ironium_transfer
+            source_fleet.boranium_inventory += boranium_transfer
+            source_fleet.germanium_inventory += germanium_transfer
             source_fleet.colonists += colonists_transfer
             
             target_fleet.save()
@@ -583,9 +583,9 @@ class GameTurn():
             
         else:  # UNLOAD
             # Unload from source fleet to target fleet
-            ironium_transfer = min(order.transfer_ironium, source_fleet.ironium)
-            boranium_transfer = min(order.transfer_boranium, source_fleet.boranium)
-            germanium_transfer = min(order.transfer_germanium, source_fleet.germanium)
+            ironium_transfer = min(order.transfer_ironium, source_fleet.ironium_inventory)
+            boranium_transfer = min(order.transfer_boranium, source_fleet.boranium_inventory)
+            germanium_transfer = min(order.transfer_germanium, source_fleet.germanium_inventory)
             colonists_transfer = min(order.transfer_colonists, source_fleet.colonists)
             
             # Check if target fleet has capacity
@@ -604,14 +604,14 @@ class GameTurn():
                 colonists_transfer = int(colonists_transfer * scale_factor)
             
             # Execute the transfers
-            source_fleet.ironium -= ironium_transfer
-            source_fleet.boranium -= boranium_transfer
-            source_fleet.germanium -= germanium_transfer
+            source_fleet.ironium_inventory -= ironium_transfer
+            source_fleet.boranium_inventory -= boranium_transfer
+            source_fleet.germanium_inventory -= germanium_transfer
             source_fleet.colonists -= colonists_transfer
             
-            target_fleet.ironium += ironium_transfer
-            target_fleet.boranium += boranium_transfer
-            target_fleet.germanium += germanium_transfer
+            target_fleet.ironium_inventory += ironium_transfer
+            target_fleet.boranium_inventory += boranium_transfer
+            target_fleet.germanium_inventory += germanium_transfer
             target_fleet.colonists += colonists_transfer
             
             source_fleet.save()
@@ -694,7 +694,7 @@ class GameTurn():
         """
         from .models import Star
         for star in Star.objects.filter(game=self.game, player__isnull=False, mines__gt=0):
-            total_yield = star.ironium + star.boranium + star.germanium
+            total_yield = star.ironium_yield + star.boranium_yield + star.germanium_yield
             if total_yield == 0:
                 continue
 
@@ -705,7 +705,7 @@ class GameTurn():
             min_yield = HOMEWORLD_MIN_YIELD if is_homeworld else 0
 
             # Process each resource
-            for resource in ['ironium', 'boranium', 'germanium']:
+            for resource in ['ironium_yield', 'boranium_yield', 'germanium_yield']:
                 yield_val = getattr(star, resource)
                 if yield_val == 0:
                     continue
@@ -720,9 +720,9 @@ class GameTurn():
                     whole_kt += 1
 
                 if whole_kt > 0:
-                    # Add to surface inventory
-                    surface_field = f'{resource}_surface'
-                    setattr(star, surface_field, getattr(star, surface_field) + whole_kt)
+                    # Add to surface inventory - map yield field to inventory field
+                    inventory_field = resource.replace('_yield', '_inventory')
+                    setattr(star, inventory_field, getattr(star, inventory_field) + whole_kt)
 
                     # Linear yield depletion proportional to extraction
                     depletion = whole_kt * YIELD_DEPLETION_RATE
@@ -776,16 +776,16 @@ class GameTurn():
                     for resource in ['ironium', 'boranium', 'germanium']:
                         resource_cost = cost.get(resource, 0)
                         spent_field = f'spent_{resource}'
-                        surface_field = f'{resource}_surface'
+                        inventory_field = f'{resource}_inventory'
 
                         already_spent = getattr(order, spent_field)
                         needed = resource_cost - already_spent
 
                         if needed > 0:
-                            available = getattr(star, surface_field)
+                            available = getattr(star, inventory_field)
                             spend = min(needed, available)
                             setattr(order, spent_field, already_spent + spend)
-                            setattr(star, surface_field, available - spend)
+                            setattr(star, inventory_field, available - spend)
 
                     # Check if all resources satisfied
                     resources_satisfied = all(
@@ -1044,9 +1044,9 @@ class GameTurn():
         """Apply resource discovery - add 10-30 kt to random surface resource."""
         resource = random.choice(['ironium', 'boranium', 'germanium'])
         qty = random.randint(10, 30)
-        surface_field = f'{resource}_surface'
-        current = getattr(star, surface_field)
-        setattr(star, surface_field, current + qty)
+        inventory_field = f'{resource}_inventory'
+        current = getattr(star, inventory_field)
+        setattr(star, inventory_field, current + qty)
         star.save()
 
         factory = MiningDiscoveryMessageFactory(self.game, star.player, star, qty, resource)
@@ -1070,13 +1070,13 @@ class GameTurn():
     def _apply_mining_accident_resources(self, star):
         """Apply mining accident with surface resource loss - 5-10% of one resource."""
         resource = random.choice(['ironium', 'boranium', 'germanium'])
-        surface_field = f'{resource}_surface'
-        current = getattr(star, surface_field)
+        inventory_field = f'{resource}_inventory'
+        current = getattr(star, inventory_field)
         if current == 0:
             return  # Nothing to lose
         loss_pct = random.uniform(0.05, 0.10)
         loss = max(1, int(current * loss_pct))
-        setattr(star, surface_field, max(0, current - loss))
+        setattr(star, inventory_field, max(0, current - loss))
         star.save()
 
         factory = MiningAccidentResourcesMessageFactory(self.game, star.player, star, loss, resource)
