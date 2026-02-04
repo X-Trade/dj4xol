@@ -1981,15 +1981,18 @@ class TestFleetTransferOrders(TestCase):
         fleet = game.fleets.first()
         target_star = game.stars.exclude(pk=player.homeworld.pk).first()
         
-        # Position fleet at target star
+        # Position fleet at target star and clear cargo
         fleet.x = target_star.x
         fleet.y = target_star.y
-        fleet.ironium_inventory = 0  # Fleet starts empty
+        fleet.ironium_inventory = 0  
+        fleet.boranium_inventory = 0
+        fleet.germanium_inventory = 0
+        fleet.colonists = 0
         fleet.save()
         
         # Star has resources
-        target_star.ironium_inventory = 5000
-        target_star.boranium_inventory = 3000
+        target_star.ironium_inventory = 500
+        target_star.boranium_inventory = 300
         target_star.save()
         
         from ..models import FleetOrders
@@ -1998,8 +2001,8 @@ class TestFleetTransferOrders(TestCase):
             fleet=fleet,
             order_type='TRANSFER',
             transfer_type='LOAD',
-            transfer_ironium=2000,
-            transfer_boranium=1500,
+            transfer_ironium=200,
+            transfer_boranium=150,
             target_star=target_star
         )
         
@@ -2010,10 +2013,10 @@ class TestFleetTransferOrders(TestCase):
         target_star.refresh_from_db()
         
         # Resources should have transferred
-        self.assertEqual(fleet.ironium_inventory, 2000)    # Fleet loaded ironium
-        self.assertEqual(fleet.boranium_inventory, 1500)   # Fleet loaded boranium
-        self.assertEqual(target_star.ironium_inventory, 3000)  # Star lost ironium
-        self.assertEqual(target_star.boranium_inventory, 1500)  # Star lost boranium
+        self.assertEqual(fleet.ironium_inventory, 200)    # Fleet loaded ironium
+        self.assertEqual(fleet.boranium_inventory, 150)   # Fleet loaded boranium
+        self.assertEqual(target_star.ironium_inventory, 300)  # Star lost ironium
+        self.assertEqual(target_star.boranium_inventory, 150)  # Star lost boranium
         
         # Order should be completed (deleted)
         self.assertEqual(fleet.orders.count(), 0)
@@ -2025,11 +2028,13 @@ class TestFleetTransferOrders(TestCase):
         fleet = game.fleets.first()
         target_star = game.stars.exclude(pk=player.homeworld.pk).first()
         
-        # Position fleet at target star
+        # Position fleet at target star and give it cargo
         fleet.x = target_star.x
         fleet.y = target_star.y
-        fleet.ironium_inventory = 3000   # Fleet has cargo
-        fleet.germanium = 2000
+        fleet.ironium_inventory = 300   # Fleet has cargo  
+        fleet.boranium_inventory = 0
+        fleet.germanium_inventory = 200
+        fleet.colonists = 0
         fleet.save()
         
         original_star_ironium = target_star.ironium_inventory
@@ -2041,8 +2046,8 @@ class TestFleetTransferOrders(TestCase):
             fleet=fleet,
             order_type='TRANSFER',
             transfer_type='UNLOAD',
-            transfer_ironium=1500,
-            transfer_germanium=1000,
+            transfer_ironium=150,
+            transfer_germanium=100,
             target_star=target_star
         )
         
@@ -2053,10 +2058,10 @@ class TestFleetTransferOrders(TestCase):
         target_star.refresh_from_db()
         
         # Resources should have transferred
-        self.assertEqual(fleet.ironium_inventory, 1500)  # Fleet lost ironium (3000-1500)
-        self.assertEqual(fleet.germanium, 1000)  # Fleet lost germanium (2000-1000)
-        self.assertEqual(target_star.ironium_inventory, original_star_ironium + 1500)  # Star gained
-        self.assertEqual(target_star.germanium_inventory, original_star_germanium + 1000)  # Star gained
+        self.assertEqual(fleet.ironium_inventory, 150)  # Fleet lost ironium (300-150)
+        self.assertEqual(fleet.germanium_inventory, 100)  # Fleet lost germanium (200-100)
+        self.assertEqual(target_star.ironium_inventory, original_star_ironium + 150)  # Star gained
+        self.assertEqual(target_star.germanium_inventory, original_star_germanium + 100)  # Star gained
         
         # Order should be completed
         self.assertEqual(fleet.orders.count(), 0)
@@ -2068,15 +2073,18 @@ class TestFleetTransferOrders(TestCase):
         fleet = game.fleets.first()
         target_star = game.stars.exclude(pk=player.homeworld.pk).first()
         
-        # Position fleet at target with existing cargo
+        # Position fleet at target with existing cargo (almost full)
         fleet.x = target_star.x
         fleet.y = target_star.y
-        fleet.cargo_colonists = 90000  # Fleet almost full (90/100k capacity used)
+        fleet.ironium_inventory = 0
+        fleet.boranium_inventory = 0
+        fleet.germanium_inventory = 0
+        fleet.colonists = 900000  # Fleet almost full (900 units of 1000 capacity used)
         fleet.save()
         
         # Star has plenty of resources
-        target_star.ironium_inventory = 10000
-        target_star.boranium_inventory = 10000
+        target_star.ironium_inventory = 1000
+        target_star.boranium_inventory = 1000
         target_star.save()
         
         from ..models import FleetOrders
@@ -2085,8 +2093,8 @@ class TestFleetTransferOrders(TestCase):
             fleet=fleet,
             order_type='TRANSFER',
             transfer_type='LOAD',
-            transfer_ironium=8000,   # Want 8000kt
-            transfer_boranium=4000,  # Want 4000kt (total 12000kt requested)
+            transfer_ironium=80,   # Want 80kt
+            transfer_boranium=40,  # Want 40kt (total 120kt requested)
             target_star=target_star
         )
         
@@ -2096,20 +2104,19 @@ class TestFleetTransferOrders(TestCase):
         fleet.refresh_from_db()
         target_star.refresh_from_db()
         
-        # Fleet can only take 10000kt more (100000 - 90000)
-        # Proportions: ironium = 8000/12000 = 2/3, boranium = 4000/12000 = 1/3
-        # Actual transfer: ironium = 10000 * 2/3 = 6666kt, boranium = 10000 * 1/3 = 3333kt
-        # (with integer rounding)
-        expected_ironium = int(10000 * 8000/12000)  # 6666
-        expected_boranium = int(10000 * 4000/12000)  # 3333
+        # Fleet can only take 100 units more (1000 - 900)
+        # Proportions: ironium = 80/120 = 2/3, boranium = 40/120 = 1/3
+        # Actual transfer: ironium = 100 * 2/3 = 66kt, boranium = 100 * 1/3 = 33kt
+        expected_ironium = int(100 * 80/120)  # 66
+        expected_boranium = int(100 * 40/120)  # 33
         
         self.assertEqual(fleet.ironium_inventory, expected_ironium)
         self.assertEqual(fleet.boranium_inventory, expected_boranium)
-        self.assertEqual(fleet.cargo_colonists, 90000)  # Unchanged
+        self.assertEqual(fleet.colonists, 900000)  # Unchanged
         
         # Star should have lost the same amounts
-        self.assertEqual(target_star.ironium_inventory, 10000 - expected_ironium)
-        self.assertEqual(target_star.boranium_inventory, 10000 - expected_boranium)
+        self.assertEqual(target_star.ironium_inventory, 1000 - expected_ironium)
+        self.assertEqual(target_star.boranium_inventory, 1000 - expected_boranium)
     
     def test_limited_by_star_resources(self):
         """Test loading limited by what's available at the star."""
@@ -2118,14 +2125,18 @@ class TestFleetTransferOrders(TestCase):
         fleet = game.fleets.first()
         target_star = game.stars.exclude(pk=player.homeworld.pk).first()
         
-        # Position fleet at target
+        # Position fleet at target and clear cargo
         fleet.x = target_star.x
         fleet.y = target_star.y
+        fleet.ironium_inventory = 0
+        fleet.boranium_inventory = 0
+        fleet.germanium_inventory = 0
+        fleet.colonists = 0
         fleet.save()
         
         # Star has limited resources
-        target_star.ironium_inventory = 500   # Less than requested
-        target_star.boranium_inventory = 200  # Less than requested
+        target_star.ironium_inventory = 50   # Less than requested
+        target_star.boranium_inventory = 20  # Less than requested
         target_star.save()
         
         from ..models import FleetOrders
@@ -2134,8 +2145,8 @@ class TestFleetTransferOrders(TestCase):
             fleet=fleet,
             order_type='TRANSFER',
             transfer_type='LOAD',
-            transfer_ironium=2000,  # Want more than star has
-            transfer_boranium=1000, # Want more than star has
+            transfer_ironium=200,  # Want more than star has
+            transfer_boranium=100, # Want more than star has
             target_star=target_star
         )
         
@@ -2146,11 +2157,8 @@ class TestFleetTransferOrders(TestCase):
         target_star.refresh_from_db()
         
         # Fleet should get only what was available
-        # Total request: 3000kt, available: 700kt
-        # Proportional: ironium gets 500 * (2000/3000) = 333, boranium gets 200 * (1000/3000) = 66
-        # But we're limited by actual availability, so it's 500 and 200
-        self.assertEqual(fleet.ironium_inventory, 500)  # All available ironium
-        self.assertEqual(fleet.boranium_inventory, 200)  # All available boranium
+        self.assertEqual(fleet.ironium_inventory, 50)  # All available ironium
+        self.assertEqual(fleet.boranium_inventory, 20)  # All available boranium
         
         # Star should be depleted of these resources
         self.assertEqual(target_star.ironium_inventory, 0)
@@ -2166,8 +2174,10 @@ class TestFleetTransferOrders(TestCase):
         # Position fleet at target with limited cargo
         fleet.x = target_star.x
         fleet.y = target_star.y
-        fleet.ironium_inventory = 300   # Less than order requests
-        fleet.colonists = 150  # Less than order requests
+        fleet.ironium_inventory = 30   # Less than order requests
+        fleet.boranium_inventory = 0
+        fleet.germanium_inventory = 0
+        fleet.colonists = 15000  # Less than order requests (= 15 cargo units)
         fleet.save()
         
         original_star_ironium = target_star.ironium_inventory
@@ -2179,8 +2189,8 @@ class TestFleetTransferOrders(TestCase):
             fleet=fleet,
             order_type='TRANSFER',
             transfer_type='UNLOAD',
-            transfer_ironium=1000,   # Want to unload more than fleet has
-            transfer_colonists=500,  # Want to unload more than fleet has
+            transfer_ironium=100,   # Want to unload more than fleet has
+            transfer_colonists=50,  # Want to unload more than fleet has (50k colonists)
             target_star=target_star
         )
         
@@ -2191,12 +2201,12 @@ class TestFleetTransferOrders(TestCase):
         target_star.refresh_from_db()
         
         # Fleet should unload only what it had
-        self.assertEqual(fleet.ironium_inventory, 0)      # Unloaded all 300
-        self.assertEqual(fleet.colonists, 0)    # Unloaded all 150
+        self.assertEqual(fleet.ironium_inventory, 0)      # Unloaded all 30
+        self.assertEqual(fleet.colonists, 0)    # Unloaded all 15000
         
         # Star should receive what was actually unloaded
-        self.assertEqual(target_star.ironium_inventory, original_star_ironium + 300)
-        self.assertEqual(target_star.colonists, original_star_colonists + 150)
+        self.assertEqual(target_star.ironium_inventory, original_star_ironium + 30)
+        self.assertEqual(target_star.colonists, original_star_colonists + 15000)
     
     def test_transfer_order_repeats(self):
         """Test repeating transfer orders."""
@@ -2325,3 +2335,200 @@ class TestResourceFieldNaming(TestCase):
         
         # Mining should have accessed yield fields and updated inventory
         self.assertGreaterEqual(star.ironium_inventory, initial_ironium)
+
+
+class TestFleetOrderExecution(TestCase):
+    """Test fleet order execution behavior fixes."""
+
+    def test_transfer_orders_execute_once_per_turn(self):
+        """Test that repeating transfer orders only execute once per turn."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+        
+        # Position fleet at target star and clear its cargo
+        fleet.x = target_star.x
+        fleet.y = target_star.y
+        fleet.ironium_inventory = 0
+        fleet.boranium_inventory = 0  
+        fleet.germanium_inventory = 0
+        fleet.colonists = 0
+        fleet.save()
+        
+        # Star has plenty of resources  
+        target_star.ironium_inventory = 1000
+        target_star.save()
+        
+        # Create REPEATING transfer order for 10 ironium (small amount)
+        from dj4xol.models import FleetOrders
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            transfer_ironium=10,
+            target_star=target_star,
+            repeat=True
+        )
+        
+        initial_fleet_ironium = fleet.ironium_inventory
+        initial_star_ironium = target_star.ironium_inventory
+        
+        # Generate one turn 
+        GameTurn(game).generate_turn()
+        
+        fleet.refresh_from_db()
+        target_star.refresh_from_db()
+        
+        # Should have transferred exactly 10 ironium (once), not multiple times
+        self.assertEqual(fleet.ironium_inventory, initial_fleet_ironium + 10)
+        self.assertEqual(target_star.ironium_inventory, initial_star_ironium - 10)
+        
+        # Order should still exist because it's set to repeat
+        self.assertTrue(fleet.orders.filter(repeat=True).exists())
+        
+        # Generate another turn - should transfer another 10 (once again)
+        fleet_before_second_turn = fleet.ironium_inventory
+        star_before_second_turn = target_star.ironium_inventory
+        
+        GameTurn(game).generate_turn()
+        
+        fleet.refresh_from_db() 
+        target_star.refresh_from_db()
+        
+    def test_multiple_transfer_orders_execute_in_one_turn(self):
+        """Test that multiple different transfer orders can execute in one turn."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+        
+        # Position fleet at target star and clear its cargo
+        fleet.x = target_star.x
+        fleet.y = target_star.y
+        fleet.ironium_inventory = 0
+        fleet.boranium_inventory = 0  
+        fleet.germanium_inventory = 0
+        fleet.colonists = 0
+        fleet.save()
+        
+        # Star has plenty of resources  
+        target_star.ironium_inventory = 1000
+        target_star.boranium_inventory = 1000
+        target_star.germanium_inventory = 1000
+        target_star.save()
+        
+        from dj4xol.models import FleetOrders
+        # Create multiple transfer orders for different resources
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            transfer_ironium=10,
+            target_star=target_star
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            transfer_boranium=15,
+            target_star=target_star
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            transfer_germanium=20,
+            target_star=target_star
+        )
+        
+        # Should have 3 orders initially
+        self.assertEqual(fleet.orders.count(), 3)
+        
+        # Generate one turn - all transfers should execute
+        GameTurn(game).generate_turn()
+        
+        fleet.refresh_from_db()
+        target_star.refresh_from_db()
+        
+        # All transfers should have completed in one turn (passthrough behavior)
+        self.assertEqual(fleet.ironium_inventory, 10)
+        self.assertEqual(fleet.boranium_inventory, 15)
+        self.assertEqual(fleet.germanium_inventory, 20)
+        
+        # All orders should be completed
+        self.assertEqual(fleet.orders.count(), 0)
+
+    def test_fleets_stop_at_move_destinations(self):
+        """Test that fleets stop at each move destination for one turn."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        
+        # Get two different stars as waypoints  
+        stars = list(game.stars.exclude(pk=player.homeworld.pk))
+        star_a = stars[0]
+        star_b = stars[1]
+        
+        # Position star_a and star_b close to fleet starting position for easier testing
+        start_x, start_y = 50, 50
+        fleet.x = start_x
+        fleet.y = start_y
+        fleet.save()
+        
+        # Position stars at manageable distances
+        star_a.x = start_x + 10  # Close enough to reach in one turn
+        star_a.y = start_y
+        star_a.save()
+        
+        star_b.x = start_x + 20  
+        star_b.y = start_y
+        star_b.save()
+        
+        # Create two move orders: go to Star A, then Star B
+        from dj4xol.models import FleetOrders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet, 
+            order_type='MOVE',
+            target_star=star_a,
+            warpfactor=10  # High speed to ensure arrival
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            target_star=star_b,
+            warpfactor=10
+        )
+        
+        # Initially should have 2 orders
+        self.assertEqual(fleet.orders.count(), 2)
+        
+        # Generate turn 1
+        GameTurn(game).generate_turn()
+        fleet.refresh_from_db()
+        
+        # Fleet should have reached Star A and stopped there
+        self.assertEqual(fleet.x, star_a.x)
+        self.assertEqual(fleet.y, star_a.y)
+        
+        # First order should be completed, second should remain
+        self.assertEqual(fleet.orders.count(), 1)
+        remaining_order = fleet.orders.first()
+        self.assertEqual(remaining_order.target_star, star_b)
+        
+        # Generate turn 2
+        GameTurn(game).generate_turn()
+        fleet.refresh_from_db()
+        
+        # Now fleet should have reached Star B
+        self.assertEqual(fleet.x, star_b.x)
+        self.assertEqual(fleet.y, star_b.y)
+        
+        # All orders should be completed
+        self.assertEqual(fleet.orders.count(), 0)

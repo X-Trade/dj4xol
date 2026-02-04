@@ -28,6 +28,9 @@ MILLION = 1_000_000
 DEFAULT_SOFT_CAP = 10 * BILLION   # Fallback if no star capacity
 CAPACITY_SCALE_RATIO = 0.5        # Scale is this fraction of soft cap
 
+# Fleet movement behavior constants
+ALLOW_MULTIPLE_ORDERS_PER_TURN = False  # Set to True to allow processing multiple orders per turn
+
 TURN_INTERVALS = {
     'HOURLY': timedelta(hours=1),
     'DAILY': timedelta(days=1),
@@ -289,15 +292,66 @@ class GameTurn():
         msg.save()
 
     def move_fleet(self, fleet):
-        """Process fleet orders, potentially executing multiple instant transfers per turn."""
+        """Process fleet orders, with configurable behavior for multiple orders per turn."""
+
+        if ALLOW_MULTIPLE_ORDERS_PER_TURN:
+            # Legacy behavior: process multiple orders per turn (old system)
+            return self._move_fleet_legacy(fleet)
+        else:
+            # New behavior: process only one order per turn (more realistic)
+            return self._move_fleet_single_order(fleet)
+
+    def _move_fleet_single_order(self, fleet):
+        """Process fleet orders: no order executes twice per turn, transfers passthrough, moves block."""
+        # Snapshot orders at start of turn to avoid processing newly created repeat orders
+        # Transfer orders: execute once and continue to next order (passthrough)
+        # Move orders: execute once and stop processing (blocking)
+        
+        # Snapshot all current orders to prevent processing repeat orders created this turn
+        orders_to_process = list(fleet.orders.all())
+        
+        for order in orders_to_process:
+            # Check if order still exists (might have been deleted by previous processing)
+            if not fleet.orders.filter(id=order.id).exists():
+                continue
+                
+            if order.order_type == 'TRANSFER':
+                # Try to execute transfer immediately
+                transfer_result = self._try_execute_transfer(fleet, order)
+                if transfer_result == 'executed':
+                    # Transfer completed - handle repeat and continue to next order
+                    self._handle_repeating_order(order)
+                    order.delete()
+                    continue  # PASSTHROUGH: Continue to next order
+                elif transfer_result == 'waiting':
+                    # Transfer blocked - stop processing
+                    break
+            
+            elif order.order_type == 'MOVE':
+                # Try to execute move order
+                if self._move_toward_destination(fleet, order):
+                    # Reached destination - handle repeat and STOP
+                    self._handle_repeating_order(order)
+                    order.delete()
+                # BLOCKING: Whether reached or still moving, STOP processing
+                break
+            else:
+                # Unknown order type, just remove it
+                order.delete()
+                continue
+        
+        return fleet
+
+    def _move_fleet_legacy(self, fleet):
+        """Legacy fleet processing: multiple orders per turn (potentially problematic)."""
         processed_orders = 0
         max_orders_per_turn = 10  # Prevent infinite loops
-        
+
         while processed_orders < max_orders_per_turn:
             order = fleet.orders.first()
             if not order:
                 break
-                
+
             if order.order_type == 'TRANSFER':
                 # Try to execute transfer immediately
                 transfer_result = self._try_execute_transfer(fleet, order)
@@ -310,7 +364,7 @@ class GameTurn():
                 elif transfer_result == 'waiting':
                     # Transfer blocked waiting for conditions, stop processing
                     break
-            
+
             elif order.order_type == 'MOVE':
                 # Regular move order
                 if self._move_toward_destination(fleet, order):
@@ -328,15 +382,15 @@ class GameTurn():
                 order.delete()
                 processed_orders += 1
                 continue
-        
+
         return fleet
-    
+
     def _try_execute_transfer(self, fleet, order):
         """Try to execute a transfer order.
-        
+
         Transfer orders never move fleets - they only execute when both
         source and target are already at the same location.
-        
+
         Returns:
         - 'executed': Transfer completed successfully
         - 'waiting': Transfer blocked waiting for target or location
@@ -345,30 +399,30 @@ class GameTurn():
             dest_x, dest_y = order.get_destination_coordinates()
         except ValueError:
             return 'executed'  # Invalid order, treat as executed to remove it
-        
+
         # Check if fleet is at the transfer destination
         if fleet.x != dest_x or fleet.y != dest_y:
             # Transfer orders don't move fleets - they wait for manual movement
             return 'waiting'
-        
+
         # Fleet is at destination, try to execute transfer
         return self._execute_transfer_order(fleet, order)
-    
+
     def _move_toward_destination(self, fleet, order):
         """Move fleet toward order destination.
-        
+
         Returns True if destination reached, False if still moving.
         """
         try:
             x, y = order.get_destination_coordinates()
         except ValueError:
             return True  # Invalid order, treat as reached to remove it
-            
+
         target = nparray([x, y])
         position = nparray([fleet.x, fleet.y])
         vector = target - position
         distance = linalg.norm(vector)
-        
+
         print("position: %s" % (str(position)))
         print("target:   %s" % (str(target)))
         print("vector:   %s" % (str(vector)))
@@ -395,7 +449,7 @@ class GameTurn():
             fleet.x = int(new_position[0])
             fleet.y = int(new_position[1])
             return False
-    
+
     def _handle_repeating_order(self, order):
         """Create a repeat copy of the order if needed."""
         if order.repeat:
@@ -419,28 +473,28 @@ class GameTurn():
 
     def _execute_transfer_order(self, fleet, order):
         """Execute a transfer order when fleet reaches destination.
-        
+
         Returns:
-        - 'executed': Transfer completed successfully  
+        - 'executed': Transfer completed successfully
         - 'waiting': Transfer blocked waiting for target
         """
         # Get the target object based on order parameters
         target_obj = None
         target_x, target_y = order.get_destination_coordinates()
-        
+
         if order.target_star:
             target_obj = order.target_star
             # Stars don't move, so always available
             if target_obj.x != target_x or target_obj.y != target_y:
                 print(f"Warning: Star {target_obj.name} coordinates mismatch")
-                
+
         elif order.target_fleet:
             target_obj = order.target_fleet
             # Check if target fleet is at expected location
             if target_obj.x != target_x or target_obj.y != target_y:
                 print(f"Transfer waiting: Fleet {target_obj.name} not at expected location ({target_x}, {target_y})")
                 return 'waiting'  # Block and wait for target fleet to arrive
-                
+
         else:
             # Transfer to coordinates - look for objects there
             possible_targets = list(self.game.stars.filter(x=target_x, y=target_y))
@@ -449,12 +503,12 @@ class GameTurn():
             else:
                 print(f"No transfer target found at coordinates ({target_x}, {target_y})")
                 return 'waiting'  # Wait for a target to appear
-        
+
         # Verify fleet is actually at the transfer location
         if fleet.x != target_x or fleet.y != target_y:
             print(f"Transfer error: Fleet {fleet.name} not at transfer location")
             return 'executed'  # Remove invalid order
-            
+
         # Execute transfer based on target type
         from .models import Star, Fleet
         if isinstance(target_obj, Star):
@@ -466,53 +520,53 @@ class GameTurn():
         else:
             print(f"Transfer to {type(target_obj)} not yet implemented")
             return 'executed'  # Remove unsupported order
-            
+
     def _transfer_with_star(self, fleet, order, star):
         """Execute transfer between fleet and star."""
         fleet_max_capacity = fleet.cargo_capacity  # Use fleet's actual capacity
-        
+
         if order.transfer_type == 'LOAD':
             # Load from star to fleet
             # Calculate total transfer amount and proportions
-            total_requested = (order.transfer_ironium + order.transfer_boranium + 
+            total_requested = (order.transfer_ironium + order.transfer_boranium +
                              order.transfer_germanium + order.transfer_colonists)
-            
+
             if total_requested == 0:
                 return
-                
+
             # Limit total transfer by fleet available space
             fleet_used = fleet.cargo_used
             fleet_available = fleet_max_capacity - fleet_used
             total_transfer = min(fleet_available, total_requested)
-            
+
             if total_transfer <= 0:
                 return
-                
+
             # Calculate proportional transfers
             transfer_factor = total_transfer / total_requested
-            
+
             ironium_transfer = min(int(order.transfer_ironium * transfer_factor), star.ironium_inventory)
-            boranium_transfer = min(int(order.transfer_boranium * transfer_factor), star.boranium_inventory) 
+            boranium_transfer = min(int(order.transfer_boranium * transfer_factor), star.boranium_inventory)
             germanium_transfer = min(int(order.transfer_germanium * transfer_factor), star.germanium_inventory)
             # Convert colonists: star.colonists is individual units, fleet.colonists is thousands
             colonists_transfer_kt = int(order.transfer_colonists * transfer_factor)  # This is in kt
             colonists_transfer_individuals = min(colonists_transfer_kt * 1000, star.colonists)
             colonists_transfer_kt_actual = colonists_transfer_individuals // 1000
-            
+
             # Execute the transfers
             star.ironium_inventory -= ironium_transfer
             star.boranium_inventory -= boranium_transfer
             star.germanium_inventory -= germanium_transfer
             star.colonists -= colonists_transfer_individuals
-            
+
             fleet.ironium_inventory += ironium_transfer
             fleet.boranium_inventory += boranium_transfer
             fleet.germanium_inventory += germanium_transfer
             fleet.colonists += colonists_transfer_kt_actual
-            
+
             star.save()
             fleet.save()
-            
+
         elif order.transfer_type == 'UNLOAD':
             # Unload from fleet to star
             ironium_transfer = min(order.transfer_ironium, fleet.ironium_inventory)
@@ -521,78 +575,78 @@ class GameTurn():
             # Convert colonists: fleet.colonists is thousands, star.colonists is individual units
             colonists_transfer_kt = min(order.transfer_colonists, fleet.colonists)
             colonists_transfer_individuals = colonists_transfer_kt * 1000
-            
+
             # Execute the transfers
             fleet.ironium_inventory -= ironium_transfer
             fleet.boranium_inventory -= boranium_transfer
             fleet.germanium_inventory -= germanium_transfer
             fleet.colonists -= colonists_transfer_kt
-            
+
             star.ironium_inventory += ironium_transfer
             star.boranium_inventory += boranium_transfer
             star.germanium_inventory += germanium_transfer
             star.colonists += colonists_transfer_individuals
-            
+
             star.save()
             fleet.save()
 
     def _transfer_with_fleet(self, source_fleet, order, target_fleet):
         """Execute transfer between two fleets.
-        
+
         Both fleets store colonists in thousands (1 unit = 1000 colonists),
         so no unit conversion is needed for fleet-to-fleet transfers.
         """
         if order.transfer_type == 'LOAD':
             # Load from target fleet to source fleet
             # Calculate total transfer amount and proportions
-            total_requested = (order.transfer_ironium + order.transfer_boranium + 
+            total_requested = (order.transfer_ironium + order.transfer_boranium +
                              order.transfer_germanium + order.transfer_colonists)
-            
+
             if total_requested == 0:
                 return
-                
+
             # Limit total transfer by source fleet available space
             source_used = source_fleet.cargo_used
             source_available = source_fleet.cargo_capacity - source_used
             total_transfer = min(source_available, total_requested)
-            
+
             if total_transfer <= 0:
                 return
-                
+
             # Calculate proportional transfers
             transfer_factor = total_transfer / total_requested
-            
+
             ironium_transfer = min(int(order.transfer_ironium * transfer_factor), target_fleet.ironium_inventory)
             boranium_transfer = min(int(order.transfer_boranium * transfer_factor), target_fleet.boranium_inventory)
             germanium_transfer = min(int(order.transfer_germanium * transfer_factor), target_fleet.germanium_inventory)
             colonists_transfer = min(int(order.transfer_colonists * transfer_factor), target_fleet.colonists)
-            
+
             # Execute the transfers (both fleets store colonists as thousands)
             target_fleet.ironium_inventory -= ironium_transfer
             target_fleet.boranium_inventory -= boranium_transfer
             target_fleet.germanium_inventory -= germanium_transfer
             target_fleet.colonists -= colonists_transfer
-            
+
             source_fleet.ironium_inventory += ironium_transfer
             source_fleet.boranium_inventory += boranium_transfer
             source_fleet.germanium_inventory += germanium_transfer
             source_fleet.colonists += colonists_transfer
-            
+
             target_fleet.save()
             source_fleet.save()
-            
+
         else:  # UNLOAD
             # Unload from source fleet to target fleet
             ironium_transfer = min(order.transfer_ironium, source_fleet.ironium_inventory)
             boranium_transfer = min(order.transfer_boranium, source_fleet.boranium_inventory)
             germanium_transfer = min(order.transfer_germanium, source_fleet.germanium_inventory)
             colonists_transfer = min(order.transfer_colonists, source_fleet.colonists)
-            
+
             # Check if target fleet has capacity
             target_used = target_fleet.cargo_used
             target_available = target_fleet.cargo_capacity - target_used
             total_transfer = ironium_transfer + boranium_transfer + germanium_transfer + colonists_transfer
-            
+
             if total_transfer > target_available:
                 # Scale down transfers proportionally
                 if target_available <= 0:
@@ -602,18 +656,18 @@ class GameTurn():
                 boranium_transfer = int(boranium_transfer * scale_factor)
                 germanium_transfer = int(germanium_transfer * scale_factor)
                 colonists_transfer = int(colonists_transfer * scale_factor)
-            
+
             # Execute the transfers
             source_fleet.ironium_inventory -= ironium_transfer
             source_fleet.boranium_inventory -= boranium_transfer
             source_fleet.germanium_inventory -= germanium_transfer
             source_fleet.colonists -= colonists_transfer
-            
+
             target_fleet.ironium_inventory += ironium_transfer
             target_fleet.boranium_inventory += boranium_transfer
             target_fleet.germanium_inventory += germanium_transfer
             target_fleet.colonists += colonists_transfer
-            
+
             source_fleet.save()
             target_fleet.save()
 
