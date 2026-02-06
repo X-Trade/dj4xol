@@ -525,6 +525,7 @@ class GameMessage(AbstractGameObject):
         ('RANDOM', 'Random Event'),
         ('COMBAT', 'Combat'),
         ('PRODUCTION', 'Production'),
+        ('EXCEPTION', 'Exception'),
     ]
 
     player = models.ForeignKey(Player, related_name='messages',
@@ -532,6 +533,7 @@ class GameMessage(AbstractGameObject):
     message = models.TextField()
     year = models.IntegerField()
     category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default='GENERAL')
+    priority = models.BooleanField(default=False)  # Important events: failed orders, attacks, etc.
 
     def save(self, *args, **kwargs):
         if self.year is None:

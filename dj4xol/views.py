@@ -132,10 +132,10 @@ def starmap(request, game_short_id):
     # Pass dest_mode to StarMap for modified link rendering
     starmap_obj = StarMap(game, player, dest_mode=dest_mode)
 
-    # Get messages for this player, most recent first
+    # Get messages for this player, priority first then most recent
     # Filter to messages since messages_seen_year (or all if never seen)
     if player:
-        messages_qs = player.messages.order_by('-year', '-id')
+        messages_qs = player.messages.order_by('-priority', '-year', '-id')
         if player.messages_seen_year is not None:
             messages_qs = messages_qs.filter(year__gte=player.messages_seen_year)
         messages = messages_qs[:1000]

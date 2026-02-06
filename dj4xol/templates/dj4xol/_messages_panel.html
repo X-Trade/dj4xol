@@ -3,8 +3,8 @@
     <div id="messages" data-year="{{ game.year }}">
         <div class="messages-scroll" id="messages-scroll">
             {% for msg in messages %}
-            <div class="message">
-                <span class="message-year">Year {{ msg.year }}</span>
+            <div class="message{% if msg.priority %} priority{% endif %}">
+                <span class="message-year">Year {{ msg.year }}{% if msg.priority %} <span class="priority-flag">!</span>{% endif %}</span>
                 <p class="message-text">{{ msg.message|safe }}</p>
             </div>
             {% empty %}

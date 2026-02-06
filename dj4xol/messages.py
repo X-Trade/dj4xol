@@ -45,6 +45,7 @@ class MessageFactory():
     player = None
     intensity = 0.0
     category = 'GENERAL'
+    priority = False  # Set True for significant events: failed orders, attacks, etc.
 
     def __init__(self, game, player, message=None, intensity=0.0):
         if not message:
@@ -66,6 +67,7 @@ class MessageFactory():
         message.game = self.game
         message.player = self.player
         message.category = self.category
+        message.priority = self.priority
         self.message = message
         return self.get_message(intensity=intensity)
 
@@ -177,6 +179,7 @@ class OvercrowdingDeathMessageFactory(MessageFactory):
 class ColonyAbandonedMessageFactory(MessageFactory):
     """Messages for when a colony is completely depopulated."""
     category = 'POPULATION'
+    priority = True
     templates = [
         "Your colony on {star} has been abandoned.",
         "The last colonists have departed {star}. The colony is no more.",
@@ -270,6 +273,7 @@ class MiningDiscoveryMessageFactory(MessageFactory):
 class ColonyVanishedMessageFactory(MessageFactory):
     """Messages for mysterious colony disappearance (extreme negative)."""
     category = 'RANDOM'
+    priority = True
     templates = [
         "The colony on {star} went dark without warning and survey ships found all structures intact but empty.",
         "Contact with {star} was lost and rescue teams found the colony abandoned with no survivors or explanation.",
@@ -395,6 +399,7 @@ class ProductionSummaryMessageFactory(MessageFactory):
 class FleetLostMessageFactory(MessageFactory):
     """Messages for fleets lost beyond map boundaries."""
     category = 'GENERAL'
+    priority = True
     templates = [
         "{fleet} was lost in deep space.",
         "{fleet} has left the galaxy.",
@@ -438,7 +443,8 @@ class FleetColonisedMessageFactory(MessageFactory):
 
 class ColoniseFailedNoStarMessageFactory(MessageFactory):
     """Messages for failed colonisation attempts (no star at location)."""
-    category = 'GENERAL'
+    category = 'EXCEPTION'
+    priority = True
     templates_with_star = [
         "{fleet} failed to colonise {star} - it was not found at ({x}, {y}).",
         "Colonisation of {star} by {fleet} aborted - no planet at ({x}, {y}).",
@@ -475,7 +481,8 @@ class ColoniseFailedNoStarMessageFactory(MessageFactory):
 
 class ColoniseFailedNoColonistsMessageFactory(MessageFactory):
     """Messages for failed colonisation attempts (no colonists aboard)."""
-    category = 'GENERAL'
+    category = 'EXCEPTION'
+    priority = True
     templates = [
         "{fleet} cannot colonise {star} - no colonists aboard.",
         "Colonisation of {star} by {fleet} aborted - the fleet carries no colonists.",

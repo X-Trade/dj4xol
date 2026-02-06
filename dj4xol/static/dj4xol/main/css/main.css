@@ -359,6 +359,15 @@ body {
     font-style: italic;
 }
 
+.priority-flag {
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.messages-scroll .message.priority {
+    background: #ffe0e0;
+}
+
 .messages-footer {
     margin-top: 8px;
     padding-top: 8px;
