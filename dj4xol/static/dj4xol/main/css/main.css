@@ -101,34 +101,87 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    overflow: hidden;
 }
 
 /* Mobile responsive - stack columns */
 @media (max-width: 1000px) {
+    html, body {
+        height: auto;
+        overflow-y: auto;
+    }
+
     .columns {
         flex-direction: column;
-        overflow-y: auto;
+        overflow-y: visible;
+        flex: 0 0 auto;
     }
 
     .column-left {
         flex: 0 0 auto;
+        max-width: none;
+        width: 100%;
         overflow: visible;
     }
 
     .column-right {
+        flex: 0 0 auto;
         max-width: none;
+        width: 100%;
         overflow: visible;
+    }
+
+    .detail-section,
+    .orders-section {
+        flex: 0 0 auto;
+        overflow: visible;
+    }
+
+    #detail,
+    .orders-panel {
+        overflow: visible;
+        max-height: none;
     }
 
     .messages-section {
         min-height: 200px;
         max-height: 300px;
     }
+
+    .starmap {
+        height: min(500px, 50vh);
+    }
+}
+
+/* Short viewport - give up and scroll */
+@media (max-height: 500px) {
+    body {
+        overflow-y: auto;
+        height: auto;
+    }
+
+    .columns {
+        overflow-y: visible;
+        flex: 0 0 auto;
+    }
+}
+
+/* Detail section */
+.detail-section {
+    flex: 1 1 50%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 /* Orders/Production panel */
 .orders-section {
-    flex: 0 0 auto;
+    flex: 1 1 50%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .orders-panel {
@@ -137,13 +190,16 @@ body {
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .orders-list {
     flex: 1;
-    overflow-y: scroll;
+    overflow-y: auto;
     margin-bottom: 10px;
-    min-height: 145px;
+    min-height: 0;
     border: 1px solid #e0e0e0;
     padding: 0 5px;
 }
@@ -195,7 +251,7 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
-    min-height: 0;
+    min-height: 45px;
     overflow: hidden;
 }
 
@@ -204,6 +260,39 @@ body {
     border: 1px solid #808080;
     padding: 10px;
     box-sizing: border-box;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+/* Collapsible sections */
+.collapsible-section {
+    margin-bottom: 8px;
+}
+
+.collapsible-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.collapsible-header h4 {
+    display: inline;
+}
+
+.collapse-toggle {
+    display: inline-block;
+    width: 1em;
+    text-align: center;
+    color: #666;
+    font-weight: bold;
+}
+
+.collapsible-section.collapsed .collapsible-content {
+    display: none;
+}
+
+.collapsible-section.collapsed .collapse-toggle {
+    content: '+';
 }
 
 /* Environmental bars */
@@ -312,7 +401,7 @@ body {
     overflow-y: scroll;
     padding: 5px;
     border: 1px solid #e0e0e0;
-    min-height: 0;
+    min-height: 40px;
 }
 
 .messages-scroll::-webkit-scrollbar {
