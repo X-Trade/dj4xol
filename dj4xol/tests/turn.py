@@ -2529,6 +2529,432 @@ class TestFleetOrderExecution(TestCase):
         # Now fleet should have reached Star B
         self.assertEqual(fleet.x, star_b.x)
         self.assertEqual(fleet.y, star_b.y)
-        
+
         # All orders should be completed
         self.assertEqual(fleet.orders.count(), 0)
+
+
+class TestFleetColoniseOrders(TestCase):
+    """Test fleet colonise order functionality."""
+
+    def test_colonise_deposits_all_cargo(self):
+        """Colonise order should deposit all fleet cargo to the star."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+
+        # Make star unowned, empty, and habitable for player's race
+        target_star.player = None
+        target_star.colonists = 0
+        target_star.ironium_inventory = 0
+        target_star.boranium_inventory = 0
+        target_star.germanium_inventory = 0
+        # Set environment to player's ideal to avoid population decline
+        target_star.gravity = player.gravity_center
+        target_star.temperature = player.temperature_center
+        target_star.radiation = player.radiation_center
+        target_star.save()
+
+        # Position fleet at target star with cargo
+        fleet.x = target_star.x
+        fleet.y = target_star.y
+        fleet.ironium_inventory = 100
+        fleet.boranium_inventory = 200
+        fleet.germanium_inventory = 150
+        fleet.colonists = 50  # 50k colonists
+        fleet.dry_mass = 0  # Zero dry mass for simpler test
+        fleet.save()
+
+        from ..models import FleetOrders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=target_star
+        )
+
+        GameTurn(game).generate_turn()
+
+        target_star.refresh_from_db()
+
+        # All cargo should have transferred to star (minerals exact, colonists may have growth)
+        self.assertEqual(target_star.ironium_inventory, 100)
+        self.assertEqual(target_star.boranium_inventory, 200)
+        self.assertEqual(target_star.germanium_inventory, 150)
+        # Colonists: 50k from fleet = 50000 individuals, plus possible growth
+        self.assertGreaterEqual(target_star.colonists, 50000)
+        # Star should now be owned by player
+        self.assertEqual(target_star.player, player)
+
+    def test_colonise_adds_bonus_materials(self):
+        """Colonise order should add random bonus materials from dry_mass."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+
+        # Clear star resources for clean test, make habitable
+        target_star.player = None
+        target_star.colonists = 0
+        target_star.ironium_inventory = 0
+        target_star.boranium_inventory = 0
+        target_star.germanium_inventory = 0
+        target_star.gravity = player.gravity_center
+        target_star.temperature = player.temperature_center
+        target_star.radiation = player.radiation_center
+        target_star.save()
+
+        # Position fleet at target star with colonists (required) but no minerals
+        fleet.x = target_star.x
+        fleet.y = target_star.y
+        fleet.ironium_inventory = 0
+        fleet.boranium_inventory = 0
+        fleet.germanium_inventory = 0
+        fleet.colonists = 1  # Minimum colonists required
+        fleet.dry_mass = 100  # 100kt dry mass
+        fleet.save()
+
+        from ..models import FleetOrders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=target_star
+        )
+
+        GameTurn(game).generate_turn()
+
+        target_star.refresh_from_db()
+
+        # Total minerals should equal dry_mass (100kt) since fleet had none
+        new_total = (target_star.ironium_inventory +
+                    target_star.boranium_inventory +
+                    target_star.germanium_inventory)
+        self.assertEqual(new_total, 100)
+
+    def test_colonise_destroys_fleet(self):
+        """Colonise order should delete the fleet after execution."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        fleet_id = fleet.id
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+
+        # Position fleet at target star
+        fleet.x = target_star.x
+        fleet.y = target_star.y
+        fleet.save()
+
+        from ..models import FleetOrders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=target_star
+        )
+
+        # Fleet should exist before turn
+        self.assertTrue(Fleet.objects.filter(id=fleet_id).exists())
+
+        GameTurn(game).generate_turn()
+
+        # Fleet should be deleted after colonise
+        self.assertFalse(Fleet.objects.filter(id=fleet_id).exists())
+
+    def test_colonise_waits_for_arrival(self):
+        """Colonise order should wait until fleet arrives at target."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        fleet_id = fleet.id
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+
+        # Position fleet a short distance from target (within map, no move order to get there)
+        # Use small offset to stay within map bounds
+        fleet.x = max(0, min(target_star.x + 10, game.map_size_x - 1))
+        fleet.y = target_star.y
+        fleet.colonists = 10  # Has colonists
+        fleet.save()
+
+        from ..models import FleetOrders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=target_star
+        )
+
+        GameTurn(game).generate_turn()
+
+        # Fleet should still exist (waiting, not executed)
+        self.assertTrue(Fleet.objects.filter(id=fleet_id).exists())
+
+        # Order should still exist
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.orders.count(), 1)
+        self.assertEqual(fleet.orders.first().order_type, 'COLONISE')
+
+    def test_colonise_converts_colonists(self):
+        """Colonise should convert fleet colonists (thousands) to star colonists (individuals)."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+
+        # Start with empty unowned star, make it habitable
+        target_star.player = None
+        target_star.colonists = 0
+        # Set environment to player's ideal to avoid population decline
+        target_star.gravity = player.gravity_center
+        target_star.temperature = player.temperature_center
+        target_star.radiation = player.radiation_center
+        target_star.save()
+
+        # Position fleet at target star with colonists
+        fleet.x = target_star.x
+        fleet.y = target_star.y
+        fleet.colonists = 10  # 10k (10,000) colonists
+        fleet.dry_mass = 0
+        fleet.save()
+
+        from ..models import FleetOrders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=target_star
+        )
+
+        GameTurn(game).generate_turn()
+
+        target_star.refresh_from_db()
+
+        # Star should have at least 10*1000 = 10000 colonists (may have growth)
+        self.assertGreaterEqual(target_star.colonists, 10000)
+        # Star should now be owned by player
+        self.assertEqual(target_star.player, player)
+
+    def test_colonise_with_move_orders(self):
+        """Move then colonise sequence should work correctly."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        fleet_id = fleet.id
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+
+        # Position fleet close to target (will reach in one turn)
+        fleet.x = target_star.x - 5
+        fleet.y = target_star.y
+        fleet.ironium_inventory = 50
+        fleet.dry_mass = 0
+        fleet.save()
+
+        original_star_ironium = target_star.ironium_inventory
+
+        from ..models import FleetOrders
+        # First move to star
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            target_star=target_star,
+            warpfactor=10
+        )
+        # Then colonise
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=target_star
+        )
+
+        # Turn 1: Fleet should move to star but not colonise (move is blocking)
+        GameTurn(game).generate_turn()
+
+        # Fleet should still exist after move
+        self.assertTrue(Fleet.objects.filter(id=fleet_id).exists())
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.x, target_star.x)
+        self.assertEqual(fleet.y, target_star.y)
+
+        # Colonise order should still be pending
+        self.assertEqual(fleet.orders.count(), 1)
+        self.assertEqual(fleet.orders.first().order_type, 'COLONISE')
+
+        # Turn 2: Colonise should execute
+        GameTurn(game).generate_turn()
+
+        # Fleet should be deleted
+        self.assertFalse(Fleet.objects.filter(id=fleet_id).exists())
+
+        # Cargo should have transferred
+        target_star.refresh_from_db()
+        self.assertEqual(target_star.ironium_inventory, original_star_ironium + 50)
+
+    def test_colonise_ignores_repeat(self):
+        """Colonise orders should ignore repeat flag (fleet is destroyed)."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        fleet_id = fleet.id
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+
+        # Position fleet at target
+        fleet.x = target_star.x
+        fleet.y = target_star.y
+        fleet.save()
+
+        from ..models import FleetOrders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=target_star,
+            repeat=True  # Should be ignored
+        )
+
+        GameTurn(game).generate_turn()
+
+        # Fleet should be deleted (not repeated)
+        self.assertFalse(Fleet.objects.filter(id=fleet_id).exists())
+
+        # No new orders should exist (fleet is gone)
+        self.assertEqual(FleetOrders.objects.filter(fleet_id=fleet_id).count(), 0)
+
+    def test_colonise_creates_message(self):
+        """Colonise order should create a message for the player."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+
+        # Position fleet at target with cargo
+        fleet.x = target_star.x
+        fleet.y = target_star.y
+        fleet.ironium_inventory = 100
+        fleet.dry_mass = 50
+        fleet.save()
+
+        initial_messages = player.messages.count()
+
+        from ..models import FleetOrders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=target_star
+        )
+
+        GameTurn(game).generate_turn()
+
+        # Should have at least one new message about colonisation
+        self.assertGreater(player.messages.count(), initial_messages)
+
+        # Find the colonise message
+        colonise_msg = None
+        for msg in player.messages.all():
+            msg_lower = msg.message.lower()
+            if 'colon' in msg_lower or 'established' in msg_lower:
+                colonise_msg = msg
+                break
+
+        self.assertIsNotNone(colonise_msg, "Expected colonise message not found")
+
+    def test_colonise_without_star_at_location(self):
+        """Colonise order at empty space should be removed and message created."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        fleet_id = fleet.id
+
+        # Find coordinates within map bounds that have no star
+        empty_x, empty_y = 50, 50
+        # Make sure no star is at this location (move any that are)
+        for star in game.stars.filter(x=empty_x, y=empty_y):
+            star.x = empty_x + 10
+            star.save()
+
+        # Position fleet at empty coordinates with colonists
+        fleet.x = empty_x
+        fleet.y = empty_y
+        fleet.colonists = 10  # Has colonists
+        fleet.save()
+
+        self.assertFalse(game.stars.filter(x=empty_x, y=empty_y).exists())
+
+        initial_messages = player.messages.count()
+
+        from ..models import FleetOrders
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            x=empty_x,
+            y=empty_y
+        )
+
+        GameTurn(game).generate_turn()
+
+        # Fleet should still exist (colonise had no target)
+        self.assertTrue(Fleet.objects.filter(id=fleet_id).exists())
+
+        # Order should be removed (invalid)
+        self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
+
+        # Should have a message about failed colonisation
+        self.assertGreater(player.messages.count(), initial_messages)
+        failed_msg = None
+        for msg in player.messages.all():
+            msg_lower = msg.message.lower()
+            if 'abort' in msg_lower or 'cancel' in msg_lower or 'no' in msg_lower:
+                failed_msg = msg
+                break
+        self.assertIsNotNone(failed_msg, "Expected colonise failed message not found")
+
+    def test_colonise_fails_without_colonists(self):
+        """Colonise order should fail if fleet has no colonists."""
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        fleet_id = fleet.id
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+
+        # Position fleet at target star but with NO colonists
+        fleet.x = target_star.x
+        fleet.y = target_star.y
+        fleet.colonists = 0  # No colonists!
+        fleet.ironium_inventory = 100
+        fleet.save()
+
+        initial_messages = player.messages.count()
+
+        from ..models import FleetOrders
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=target_star
+        )
+
+        GameTurn(game).generate_turn()
+
+        # Fleet should still exist (colonise failed)
+        self.assertTrue(Fleet.objects.filter(id=fleet_id).exists())
+
+        # Order should be removed
+        self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
+
+        # Fleet should still have its cargo (nothing transferred)
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.ironium_inventory, 100)
+
+        # Should have a message about failed colonisation (no colonists)
+        self.assertGreater(player.messages.count(), initial_messages)
+        failed_msg = None
+        for msg in player.messages.all():
+            msg_lower = msg.message.lower()
+            if 'colonist' in msg_lower and ('no' in msg_lower or 'cannot' in msg_lower):
+                failed_msg = msg
+                break
+        self.assertIsNotNone(failed_msg, "Expected 'no colonists' message not found")

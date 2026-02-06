@@ -347,13 +347,13 @@ def add_fleet_order(request, game_short_id):
     elif order_type == 'TRANSFER':
         transfer_type = request.POST.get('transfer_type', 'LOAD')
         transfer_target = request.POST.get('transfer_target', '')
-        
+
         order.transfer_type = transfer_type
         order.transfer_ironium = int(request.POST.get('transfer_ironium', 0))
         order.transfer_boranium = int(request.POST.get('transfer_boranium', 0))
         order.transfer_germanium = int(request.POST.get('transfer_germanium', 0))
         order.transfer_colonists = int(request.POST.get('transfer_colonists', 0))
-        
+
         # Parse transfer target: "star:abc123" or "fleet:def456"
         if transfer_target and ':' in transfer_target:
             target_type, target_id = transfer_target.split(':', 1)
@@ -361,6 +361,15 @@ def add_fleet_order(request, game_short_id):
                 order.target_star = Star.objects.get(short_id=target_id, game=game)
             elif target_type == 'fleet':
                 order.target_fleet = Fleet.objects.get(short_id=target_id, game=game, player=player)
+
+    elif order_type == 'COLONISE':
+        # Colonise orders always have repeat=False (fleet is destroyed)
+        order.repeat = False
+        colonise_target = request.POST.get('colonise_target', '')
+
+        # Colonise target must be a star
+        if colonise_target:
+            order.target_star = Star.objects.get(short_id=colonise_target, game=game)
 
     order.save()
 
