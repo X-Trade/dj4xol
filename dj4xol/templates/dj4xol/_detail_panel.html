@@ -1,4 +1,5 @@
 {% load numbers %}
+<div class="detail-section">
 <h2>Detail</h2>
 <div id="detail">
     {% if detail.objects_here|length > 1 %}
@@ -13,49 +14,66 @@
     <hr>
     <p>{% if detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: <span class="has-tooltip" data-tooltip="{{ detail.population|exact_pop }}">{{ detail.population|humanize_pop }}</span>{% if detail.population_change != None %} <span class="pop-change has-tooltip {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}" data-tooltip="{{ detail.population_change|exact_pop }}">({{ detail.population_change|humanize_pop_change }})</span>{% endif %}{% endif %}</p>
     {% if detail.environmentals %}
-    <h4>Environmentals</h4>
-    {% for key, data in detail.environmentals.items %}
-    <div class="env-row">
-        <span class="env-label">{{ key }}</span>
-        <div class="env-bar" {% if data.hab_center_percent %}style="background: linear-gradient(to right, #400000 0%, #400000 {{ data.hab_min_percent }}%, #00ff00 {{ data.hab_center_percent }}%, #400000 {{ data.hab_max_percent }}%, #400000 100%);"{% endif %}>
-            <div class="env-marker {% if data.is_habitable %}habitable{% else %}uninhabitable{% endif %}" style="left: {{ data.percent }}%;"></div>
+    <div class="collapsible-section" data-section="environmentals">
+        <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Environmentals</h4>
+        <div class="collapsible-content">
+            {% for key, data in detail.environmentals.items %}
+            <div class="env-row">
+                <span class="env-label">{{ key }}</span>
+                <div class="env-bar" {% if data.hab_center_percent %}style="background: linear-gradient(to right, #400000 0%, #400000 {{ data.hab_min_percent }}%, #00ff00 {{ data.hab_center_percent }}%, #400000 {{ data.hab_max_percent }}%, #400000 100%);"{% endif %}>
+                    <div class="env-marker {% if data.is_habitable %}habitable{% else %}uninhabitable{% endif %}" style="left: {{ data.percent }}%;"></div>
+                </div>
+                <span class="env-value">{{ data.display }}</span>
+            </div>
+            {% endfor %}
         </div>
-        <span class="env-value">{{ data.display }}</span>
     </div>
-    {% endfor %}
     {% endif %}
     {% if detail.resources %}
-    <h4>Resources</h4>
-    <ul>
-        {% for key, data in detail.resources.items %}
-        <li>{{ key }}: {{ data.yield }}% / {{ data.surface }}kt</li>
-        {% endfor %}
-    </ul>
+    <div class="collapsible-section" data-section="resources">
+        <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Resources</h4>
+        <div class="collapsible-content">
+            <ul>
+                {% for key, data in detail.resources.items %}
+                <li>{{ key }}: {{ data.yield }}% / {{ data.surface }}kt</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
     {% endif %}
     {% if detail.fleet_inventory %}
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h4>Inventory</h4>
-        <span class="capacity-display">max: {{ detail.fleet_cargo.capacity|floatformat:0 }}kt</span>
-    </div>
-    {% for key, data in detail.fleet_inventory.items %}
-    <div class="env-row">
-        <span class="env-label">{{ key }}</span>
-        <div class="inventory-bar">
-            <div class="inventory-fill inventory-{{ key|lower }}" style="width: {{ data.percent|floatformat:1 }}%;"></div>
+    <div class="collapsible-section" data-section="inventory">
+        <div class="collapsible-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 style="margin: 0;"><span class="collapse-toggle">−</span> Inventory</h4>
+            <span class="capacity-display">max: {{ detail.fleet_cargo.capacity|floatformat:0 }}kt</span>
         </div>
-        <span class="env-value">{{ data.display }}</span>
+        <div class="collapsible-content">
+            {% for key, data in detail.fleet_inventory.items %}
+            <div class="env-row">
+                <span class="env-label">{{ key }}</span>
+                <div class="inventory-bar">
+                    <div class="inventory-fill inventory-{{ key|lower }}" style="width: {{ data.percent|floatformat:1 }}%;"></div>
+                </div>
+                <span class="env-value">{{ data.display }}</span>
+            </div>
+            {% endfor %}
+        </div>
     </div>
-    {% endfor %}
     {% endif %}
     {% if detail.infrastructure %}
-    <h4>Infrastructure</h4>
-    <ul>
-        <li>Mines: {{ detail.infrastructure.Mines }}</li>
-        <li>Factories: {{ detail.infrastructure.Factories }}</li>
-        <li>Defenses: {{ detail.infrastructure.Defenses }}</li>
-        <li>Jobs: <span class="has-tooltip" data-tooltip="{{ detail.infrastructure.Jobs.count|exact_pop }} ({{ detail.infrastructure.Jobs.employment|floatformat:1 }}% employment)">{{ detail.infrastructure.Jobs.count|humanize_pop }}</span></li>
-    </ul>
+    <div class="collapsible-section" data-section="infrastructure">
+        <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Infrastructure</h4>
+        <div class="collapsible-content">
+            <ul>
+                <li>Mines: {{ detail.infrastructure.Mines }}</li>
+                <li>Factories: {{ detail.infrastructure.Factories }}</li>
+                <li>Defenses: {{ detail.infrastructure.Defenses }}</li>
+                <li>Jobs: <span class="has-tooltip" data-tooltip="{{ detail.infrastructure.Jobs.count|exact_pop }} ({{ detail.infrastructure.Jobs.employment|floatformat:1 }}% employment)">{{ detail.infrastructure.Jobs.count|humanize_pop }}</span></li>
+            </ul>
+        </div>
+    </div>
     {% endif %}
+    {% if player.account.django_user.is_superuser %}
     <div class="debug-actions">
         {% if detail.is_star %}
         <form method="post" action="{% url 'dj4xol:debug_colonize' game.short_id detail.star_short_id %}" style="display:inline">
@@ -76,4 +94,6 @@
         </form>
         {% endif %}
     </div>
+    {% endif %}
+</div>
 </div>

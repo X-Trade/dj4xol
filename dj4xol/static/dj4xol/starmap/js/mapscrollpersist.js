@@ -278,4 +278,30 @@ $("document").ready(function() {
             localStorage.setItem(messagesKey + ':year', currentYear);
         });
     }
+
+    // Collapsible sections
+    var collapseKey = storageKey + ':collapse';
+
+    // Restore collapsed state
+    $('.collapsible-section').each(function() {
+        var $section = $(this);
+        var sectionName = $section.data('section');
+        var isCollapsed = localStorage.getItem(collapseKey + ':' + sectionName) === 'true';
+        if (isCollapsed) {
+            $section.addClass('collapsed');
+            $section.find('.collapse-toggle').text('+');
+        }
+    });
+
+    // Toggle on header click
+    $('.collapsible-header').on('click', function() {
+        var $section = $(this).closest('.collapsible-section');
+        var sectionName = $section.data('section');
+        var $toggle = $section.find('.collapse-toggle');
+
+        $section.toggleClass('collapsed');
+        var isCollapsed = $section.hasClass('collapsed');
+        $toggle.text(isCollapsed ? '+' : '−');
+        localStorage.setItem(collapseKey + ':' + sectionName, isCollapsed);
+    });
 });

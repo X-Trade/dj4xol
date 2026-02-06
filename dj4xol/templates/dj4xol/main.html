@@ -53,7 +53,7 @@
             <div class="column-left">
                 <div><h2>Starmap</h2>
                     <div class="starmap-wrapper">
-                        <div class="starmap" id="starmap" style="height:600px">
+                        <div class="starmap" id="starmap">
                             <div class="maparea-sizer" id="maparea-sizer">
                                 <div class="maparea" id="maparea" data-width="{{ starmap.width }}" data-height="{{ starmap.height }}" data-border="{{ starmap.border_offset }}" data-dest-mode="{{ dest_mode|yesno:'true,false' }}"{% if detail %} data-sel-x="{{ detail.x }}" data-sel-y="{{ detail.y }}"{% endif %}>
                                     {{ starmap.map |safe }}
