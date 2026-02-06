@@ -1,6 +1,6 @@
-<div class="orders-section">
-    <h2>Orders</h2>
-    <div id="orders" class="orders-panel">
+<div class="orders-section panel no-transition open" data-panel="orders">
+    <h2><span>Orders</span><span class="panel-toggle"></span></h2>
+    <div class="panel-content"><div id="orders" class="orders-panel">
         <div class="orders-list">
             {% if detail.fleet_orders %}
                 {% for order in detail.fleet_orders %}
@@ -190,7 +190,7 @@
                 </div>
             </div>
         </form>
-    </div>
+    </div></div>
 </div>
 
 <script>

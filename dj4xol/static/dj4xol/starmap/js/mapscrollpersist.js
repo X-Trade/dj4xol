@@ -279,7 +279,7 @@ $("document").ready(function() {
         });
     }
 
-    // Collapsible sections
+    // Collapsible sections (detail subsections)
     var collapseKey = storageKey + ':collapse';
 
     // Restore collapsed state
@@ -303,5 +303,34 @@ $("document").ready(function() {
         var isCollapsed = $section.hasClass('collapsed');
         $toggle.text(isCollapsed ? '+' : '−');
         localStorage.setItem(collapseKey + ':' + sectionName, isCollapsed);
+    });
+
+    // Panel collapse (main panels like Starmap, Messages, Detail, Orders)
+    var panelKey = storageKey + ':panel';
+
+    // Restore panel state (without animation)
+    $('.panel').each(function() {
+        var $panel = $(this);
+        var panelName = $panel.data('panel');
+        var isOpen = localStorage.getItem(panelKey + ':' + panelName);
+        // Default to open if not set
+        if (isOpen === 'false') {
+            $panel.removeClass('open');
+        }
+    });
+
+    // Remove no-transition class after a short delay to enable animations
+    setTimeout(function() {
+        $('.panel').removeClass('no-transition');
+    }, 50);
+
+    // Toggle panel on h2 click
+    $('.panel > h2').on('click', function() {
+        var $panel = $(this).closest('.panel');
+        var panelName = $panel.data('panel');
+
+        $panel.toggleClass('open');
+        var isOpen = $panel.hasClass('open');
+        localStorage.setItem(panelKey + ':' + panelName, isOpen);
     });
 });
