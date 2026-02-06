@@ -2958,3 +2958,5 @@ class TestFleetColoniseOrders(TestCase):
                 failed_msg = msg
                 break
         self.assertIsNotNone(failed_msg, "Expected 'no colonists' message not found")
+        # Failed colonise messages should be priority
+        self.assertTrue(failed_msg.priority, "Failed colonise message should have priority flag")

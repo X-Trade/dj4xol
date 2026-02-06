@@ -52,6 +52,14 @@
             .message-category.DIPLOMATIC { background: #e0b0e0; }
             .message-category.COMBAT { background: #ffb0b0; }
             .message-category.PRODUCTION { background: #d0d0d0; }
+            .message-category.EXCEPTION { background: #ffb0b0; }
+            .priority-flag {
+                font-weight: bold;
+                font-size: 1.1em;
+            }
+            .message.priority {
+                background: #ffe0e0;
+            }
             .pagination {
                 display: flex;
                 gap: 10px;
@@ -123,8 +131,8 @@
             </p>
             <div class="message-list">
                 {% for msg in page_obj %}
-                <div class="message">
-                    <span class="message-year">Year {{ msg.year }}</span>
+                <div class="message{% if msg.priority %} priority{% endif %}">
+                    <span class="message-year">Year {{ msg.year }}{% if msg.priority %} <span class="priority-flag">!</span>{% endif %}</span>
                     <span class="message-category {{ msg.category }}">{{ msg.get_category_display }}</span>
                     <p class="message-text">{{ msg.message|safe }}</p>
                 </div>
