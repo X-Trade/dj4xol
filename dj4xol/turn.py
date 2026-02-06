@@ -16,6 +16,9 @@ from .messages import (
     MiningAccidentResourcesMessageFactory,
     FleetBuiltMessageFactory,
     FleetLostMessageFactory,
+    FleetColonisedMessageFactory,
+    ColoniseFailedNoStarMessageFactory,
+    ColoniseFailedNoColonistsMessageFactory,
     MineBuiltMessageFactory,
     FactoryBuiltMessageFactory,
     DefenseBuiltMessageFactory,
@@ -273,7 +276,9 @@ class GameTurn():
     def fleet_movements(self):
         """Move fleets according to their orders."""
         for fleet in self.game.fleets.all():
-            self.move_fleet(fleet).save()
+            result = self.move_fleet(fleet)
+            if result is not None:
+                result.save()
 
     def check_lost_fleets(self):
         """Remove fleets that have moved beyond map boundaries."""
@@ -335,6 +340,14 @@ class GameTurn():
                     order.delete()
                 # BLOCKING: Whether reached or still moving, STOP processing
                 break
+
+            elif order.order_type == 'COLONISE':
+                colonise_result = self._try_execute_colonise(fleet, order)
+                if colonise_result == 'executed':
+                    # Fleet is deleted, return None so caller doesn't try to save it
+                    return None
+                elif colonise_result == 'waiting':
+                    break  # Wait for fleet to reach destination
             else:
                 # Unknown order type, just remove it
                 order.delete()
@@ -670,6 +683,123 @@ class GameTurn():
 
             source_fleet.save()
             target_fleet.save()
+
+    def _try_execute_colonise(self, fleet, order):
+        """Try to execute a colonise order.
+
+        Colonise orders execute when the fleet is at the target star location.
+        The fleet is destroyed and all cargo + bonus materials are deposited.
+
+        Returns:
+        - 'executed': Colonise completed, fleet destroyed
+        - 'waiting': Waiting for fleet to reach destination
+        """
+        try:
+            dest_x, dest_y = order.get_destination_coordinates()
+        except ValueError:
+            return 'executed'  # Invalid order, treat as executed to remove it
+
+        # Check if fleet is at the colonise destination
+        if fleet.x != dest_x or fleet.y != dest_y:
+            return 'waiting'
+
+        # Fleet is at destination, execute colonise
+        return self._execute_colonise_order(fleet, order)
+
+    def _execute_colonise_order(self, fleet, order):
+        """Execute a colonise order: transfer cargo, add bonus materials, delete fleet.
+
+        This operation is atomic - either all changes succeed or none do.
+        Returns 'executed' on success.
+        """
+        from .models import Star
+        from django.db import transaction
+
+        # Get the target star
+        star = None
+        if order.target_star:
+            star = order.target_star
+        else:
+            # Look for star at the fleet's location
+            dest_x, dest_y = order.get_destination_coordinates()
+            star = Star.objects.filter(game=self.game, x=dest_x, y=dest_y).first()
+
+        if not star:
+            # No star at location, cannot colonise - create message and delete order
+            dest_x, dest_y = order.get_destination_coordinates()
+            factory = ColoniseFailedNoStarMessageFactory(
+                self.game, fleet.player, fleet.name, dest_x, dest_y
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+            order.delete()
+            return 'executed'
+
+        # Check if fleet has colonists - can't colonise without them
+        if fleet.colonists <= 0:
+            factory = ColoniseFailedNoColonistsMessageFactory(
+                self.game, fleet.player, fleet.name, star
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+            order.delete()
+            return 'executed'
+
+        # Store values before fleet is deleted
+        fleet_name = fleet.name
+        player = fleet.player
+        ironium = fleet.ironium_inventory
+        boranium = fleet.boranium_inventory
+        germanium = fleet.germanium_inventory
+        colonists_kt = fleet.colonists
+        dry_mass = fleet.dry_mass
+
+        # Calculate bonus materials upfront
+        bonus_ironium = random.randint(0, dry_mass)
+        remaining = dry_mass - bonus_ironium
+        bonus_boranium = random.randint(0, remaining)
+        bonus_germanium = remaining - bonus_boranium
+        total_bonus = bonus_ironium + bonus_boranium + bonus_germanium
+
+        # Build cargo summary for message (before transaction)
+        cargo_parts = []
+        if ironium > 0:
+            cargo_parts.append(f"{ironium}kt ironium")
+        if boranium > 0:
+            cargo_parts.append(f"{boranium}kt boranium")
+        if germanium > 0:
+            cargo_parts.append(f"{germanium}kt germanium")
+        if colonists_kt > 0:
+            cargo_parts.append(f"{colonists_kt}k colonists")
+        cargo_summary = ", ".join(cargo_parts) if cargo_parts else "no cargo"
+
+        # Execute all database changes atomically
+        with transaction.atomic():
+            # Delete the fleet first (this removes the source of materials)
+            order.delete()
+            fleet.delete()
+
+            # Now add materials to star (fleet is gone, no duplication possible)
+            star.ironium_inventory += ironium + bonus_ironium
+            star.boranium_inventory += boranium + bonus_boranium
+            star.germanium_inventory += germanium + bonus_germanium
+            star.colonists += colonists_kt * 1000  # Convert thousands to individuals
+
+            # Set ownership of the star
+            star.player = player
+            star.save()
+
+            # Create message for player
+            factory = FleetColonisedMessageFactory(
+                self.game, player, fleet_name, star, cargo_summary, total_bonus
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
+        return 'executed'
 
     def population_growth(self):
         """Apply population growth/decline to all colonized planets."""

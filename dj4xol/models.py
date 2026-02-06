@@ -362,7 +362,8 @@ class Fleet(AbstractMapObject):
     boranium_inventory = models.IntegerField(default=0)  # Current boranium cargo in kt  
     germanium_inventory = models.IntegerField(default=0)  # Current germanium cargo in kt
     colonists = models.IntegerField(default=0)  # Current colonist cargo in thousands
-    
+    dry_mass = models.IntegerField(default=100)  # Dry mass in kt for colonise bonus
+
     @property
     def cargo_used(self):
         """Total cargo currently loaded (in kt equivalent)."""
@@ -457,6 +458,7 @@ class FleetOrders(AbstractGameObject):
     ORDER_TYPE_CHOICES = [
         ('MOVE', 'Move'),
         ('TRANSFER', 'Transfer'),
+        ('COLONISE', 'Colonise'),
     ]
     
     fleet = models.ForeignKey(Fleet, related_name="orders",

@@ -420,3 +420,72 @@ class FleetLostMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(fleet=self.fleet_name)
+
+
+class FleetColonisedMessageFactory(MessageFactory):
+    """Messages for successful fleet colonisation."""
+    category = 'GENERAL'
+    templates = [
+        "{fleet} has established a colony at {star}. Deposited {cargo} and {bonus}kt salvaged materials.",
+        "Colony established at {star} by {fleet}. {cargo} unloaded, {bonus}kt bonus materials recovered.",
+        "{fleet} completed colonisation of {star}. Cargo transferred: {cargo}. Salvage: {bonus}kt.",
+    ]
+
+    def __init__(self, game, player, fleet_name, star, cargo_summary, bonus_materials, message=None):
+        super().__init__(game, player, message, intensity=0.5)
+        self.fleet_name = fleet_name
+        self.star = star
+        self.cargo_summary = cargo_summary
+        self.bonus_materials = bonus_materials
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=self.fleet_name,
+            star=map_object_link(self.star),
+            cargo=self.cargo_summary,
+            bonus=self.bonus_materials
+        )
+
+
+class ColoniseFailedNoStarMessageFactory(MessageFactory):
+    """Messages for failed colonisation attempts (no star at location)."""
+    category = 'GENERAL'
+    templates = [
+        "{fleet} aborted colonisation at ({x}, {y}) - no habitable world found.",
+        "Colonisation order for {fleet} cancelled - no planet at ({x}, {y}).",
+        "{fleet} reached ({x}, {y}) but found no world to colonise.",
+    ]
+
+    def __init__(self, game, player, fleet_name, x, y, message=None):
+        super().__init__(game, player, message, intensity=-0.2)
+        self.fleet_name = fleet_name
+        self.x = x
+        self.y = y
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=self.fleet_name,
+            x=self.x,
+            y=self.y
+        )
+
+
+class ColoniseFailedNoColonistsMessageFactory(MessageFactory):
+    """Messages for failed colonisation attempts (no colonists aboard)."""
+    category = 'GENERAL'
+    templates = [
+        "{fleet} cannot colonise {star} - no colonists aboard.",
+        "Colonisation of {star} by {fleet} aborted - the fleet carries no colonists.",
+        "{fleet} arrived at {star} but has no colonists to establish a colony.",
+    ]
+
+    def __init__(self, game, player, fleet_name, star, message=None):
+        super().__init__(game, player, message, intensity=-0.2)
+        self.fleet_name = fleet_name
+        self.star = star
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=self.fleet_name,
+            star=map_object_link(self.star)
+        )

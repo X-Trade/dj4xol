@@ -63,6 +63,7 @@ class DetailBuilder():
                      'fleet_cargo': self.get_fleet_cargo(),
                      'fleet_inventory': self.build_fleet_inventory(),
                      'transfer_targets': self.get_transfer_targets(),
+                     'colonise_targets': self.get_colonise_targets(),
                      'x': self.selected_obj.x,
                      'y': self.selected_obj.y,
                      }
@@ -486,4 +487,59 @@ class DetailBuilder():
                 'location': (effective_x, effective_y),
                 'display_mode': 'multiple',
                 'default_target': targets[0]  # First target as default
+            }
+
+    def get_colonise_targets(self):
+        """Get available colonise targets at the fleet's effective location.
+
+        Returns a dict with:
+        - targets: list of available star targets
+        - location: (x, y) coordinates
+        - display_mode: 'single', 'multiple', or 'empty'
+        - default_target: the target to select by default
+
+        Only Stars are valid colonise targets (unlike Transfer which includes fleets).
+        """
+        if not isinstance(self.selected_obj, Fleet):
+            return {'targets': [], 'location': (0, 0), 'display_mode': 'empty', 'default_target': None}
+
+        # Get the location where the fleet will be when the colonise executes
+        effective_x, effective_y = self.get_fleet_effective_location()
+
+        targets = []
+
+        # Add stars at the effective location (only stars, no fleets)
+        stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
+        for star in stars_at_location:
+            targets.append({
+                'name': star.name,
+                'short_id': star.short_id,
+                'type': 'star'
+            })
+
+        # Determine display mode and default target
+        if not targets:
+            # No star at location - cannot colonise
+            return {
+                'targets': [],
+                'location': (effective_x, effective_y),
+                'display_mode': 'empty',
+                'default_target': None
+            }
+        elif len(targets) == 1:
+            # Single target
+            target = targets[0]
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'single',
+                'default_target': target
+            }
+        else:
+            # Multiple stars (rare but possible)
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'multiple',
+                'default_target': targets[0]
             }
