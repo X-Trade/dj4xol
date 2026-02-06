@@ -51,8 +51,9 @@
             </div>
             {% endif %}
             <div class="column-left">
-                <div><h2>Starmap</h2>
-                    <div class="starmap-wrapper">
+                <div class="panel no-transition open" data-panel="starmap">
+                    <h2><span>Starmap</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div class="starmap-wrapper">
                         <div class="starmap" id="starmap">
                             <div class="maparea-sizer" id="maparea-sizer">
                                 <div class="maparea" id="maparea" data-width="{{ starmap.width }}" data-height="{{ starmap.height }}" data-border="{{ starmap.border_offset }}" data-dest-mode="{{ dest_mode|yesno:'true,false' }}"{% if detail %} data-sel-x="{{ detail.x }}" data-sel-y="{{ detail.y }}"{% endif %}>
@@ -64,25 +65,31 @@
                             <button id="starmap-zoom-in" title="Zoom in">+</button>
                             <button id="starmap-zoom-out" title="Zoom out">-</button>
                             <button id="starmap-locate" title="Auto-center on selection">&#8982;</button>
-                            {% if homeworld %}<a href="?x={{ homeworld.x }}&y={{ homeworld.y }}&sel={{ homeworld }}"><button id="starmap-home" title="Go to homeworld">&#8962;</button></a>{% endif %}
+                            {% if homeworld %}<a href="?x={{ homeworld.x }}&y={{ homeworld.y }}&sel={{ homeworld.short_id }}&locate=1"><button id="starmap-home" title="Go to homeworld">&#8962;</button></a>{% endif %}
                         </div>
-                    </div>
+                    </div></div>
                 </div>
                 {% include 'dj4xol/_messages_panel.html' %}
             </div>
-            <div class="column-right">
+            <div class="column-detail">
                 {% if detail %}
                     {% include 'dj4xol/_detail_panel.html' %}
+                {% else %}
+                    <div class="detail-section panel no-transition open" data-panel="detail">
+                        <h2><span>Detail</span><span class="panel-toggle"></span></h2>
+                        <div class="panel-content"><div id="detail">
+                            <p>Click on a star or fleet to view details.</p>
+                        </div></div>
+                    </div>
+                {% endif %}
+            </div>
+            <div class="column-orders">
+                {% if detail %}
                     {% if detail.is_owned and detail.is_star %}
                         {% include 'dj4xol/_production_panel.html' %}
                     {% elif detail.is_owned and not detail.is_star %}
                         {% include 'dj4xol/_orders_panel.html' %}
                     {% endif %}
-                {% else %}
-                    <h2>Detail</h2>
-                    <div id="detail">
-                        <p>Click on a star or fleet to view details.</p>
-                    </div>
                 {% endif %}
             </div>
         </div>

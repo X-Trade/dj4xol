@@ -1,6 +1,6 @@
-<div class="orders-section">
-    <h2>Production</h2>
-    <div id="production" class="orders-panel">
+<div class="orders-section panel no-transition open" data-panel="production">
+    <h2><span>Production</span><span class="panel-toggle"></span></h2>
+    <div class="panel-content"><div id="production" class="orders-panel">
         <div class="orders-list">
             {% if detail.production_orders %}
                 {% for order in detail.production_orders %}
@@ -58,7 +58,7 @@
             <label class="repeat-checkbox"><input type="checkbox" name="repeat"> &#x21bb;</label>
             <button type="submit" class="order-add-btn">+</button>
         </form>
-    </div>
+    </div></div>
 </div>
 <script>
 function positionTooltip(e, item) {

@@ -70,13 +70,97 @@ body {
     border: 1px solid #808080;
     border-bottom: none;
     background-color: #e0e0e0;
-    border-top-right-radius: 6px;
+    border-top-right-radius: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Panel toggle button */
+.panel-toggle {
+    width: 20px;
+    height: 20px;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.panel-toggle::before,
+.panel-toggle::after {
+    content: '';
+    position: absolute;
+    background: #666;
+    transition: transform 0.3s ease;
+}
+
+/* Horizontal bar (always visible) */
+.panel-toggle::before {
+    width: 14px;
+    height: 2px;
+    top: 9px;
+    left: 3px;
+}
+
+/* Vertical bar (collapses to 0) */
+.panel-toggle::after {
+    width: 2px;
+    height: 14px;
+    top: 3px;
+    left: 9px;
+}
+
+/* When panel is open, vertical bar shrinks and rotates */
+.panel.open .panel-toggle::after {
+    transform: scaleY(0) rotate(90deg);
+}
+
+/* Prevent transition on page load */
+.panel.no-transition .panel-toggle::before,
+.panel.no-transition .panel-toggle::after {
+    transition: none;
+}
+
+/* Panel content wrapper */
+.panel-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.panel-content > div {
+    flex: 1;
+    min-height: 0;
+}
+
+.panel:not(.open) .panel-content {
+    display: none;
+}
+
+/* When panel is closed, don't take up flex space */
+.panel:not(.open) {
+    flex: 0 0 auto !important;
+}
+
+.panel:not(.open) > h2 {
+    border-bottom: 1px solid #808080;
+}
+
+/* Starmap panel wrapper */
+.column-left > .panel[data-panel="starmap"] {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Columnar layout */
 .columns {
-    display: flex;
-    gap: 20px;
+    display: grid;
+    grid-template-columns: minmax(auto, 600px) 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 0 10px;
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -85,23 +169,65 @@ body {
 }
 
 .column-left {
-    flex: 0 0 auto;
+    grid-column: 1;
+    grid-row: 1 / -1;
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
-    width: 100%;
-    max-width: 600px;
 }
 
-.column-right {
-    flex: 1;
-    min-width: 300px;
-    max-width: 500px;
+/* Detail column */
+.column-detail {
+    grid-column: 2;
+    grid-row: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
+    min-width: 300px;
+    max-width: 475px;
+}
+
+/* Orders column */
+.column-orders {
+    grid-column: 2;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    min-width: 300px;
+    max-width: 475px;
+}
+
+.column-orders:empty {
+    display: none;
+}
+
+/* When orders is empty, detail takes full height */
+.column-detail:has(+ .column-orders:empty) {
+    grid-row: 1 / -1;
+}
+
+/* Wide screens: 3-column layout */
+@media (min-width: 1200px) {
+    .columns {
+        grid-template-columns: minmax(500px, 600px) minmax(300px, 1fr) minmax(300px, 1fr);
+        grid-template-rows: 1fr;
+    }
+
+    .column-detail {
+        grid-column: 2;
+        grid-row: 1;
+        max-width: none;
+    }
+
+    .column-orders {
+        grid-column: 3;
+        grid-row: 1;
+        max-width: none;
+    }
 }
 
 /* Mobile responsive - stack columns */
@@ -112,22 +238,18 @@ body {
     }
 
     .columns {
+        display: flex;
         flex-direction: column;
         overflow-y: visible;
         flex: 0 0 auto;
+        gap: 0;
     }
 
-    .column-left {
-        flex: 0 0 auto;
+    .column-left,
+    .column-detail,
+    .column-orders {
         max-width: none;
-        width: 100%;
-        overflow: visible;
-    }
-
-    .column-right {
-        flex: 0 0 auto;
-        max-width: none;
-        width: 100%;
+        width: auto;
         overflow: visible;
     }
 
