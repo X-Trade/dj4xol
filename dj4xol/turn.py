@@ -19,9 +19,7 @@ from .messages import (
     FleetColonisedMessageFactory,
     ColoniseFailedNoStarMessageFactory,
     ColoniseFailedNoColonistsMessageFactory,
-    MineBuiltMessageFactory,
-    FactoryBuiltMessageFactory,
-    DefenseBuiltMessageFactory,
+    ProductionSummaryMessageFactory,
 )
 import random
 
@@ -728,7 +726,8 @@ class GameTurn():
             # No star at location, cannot colonise - create message and delete order
             dest_x, dest_y = order.get_destination_coordinates()
             factory = ColoniseFailedNoStarMessageFactory(
-                self.game, fleet.player, fleet.name, dest_x, dest_y
+                self.game, fleet.player, fleet.name, dest_x, dest_y,
+                target_star=order.target_star  # May be None if order used coordinates
             )
             msg = factory.new_message()
             msg.year = self.game.year
@@ -930,6 +929,7 @@ class GameTurn():
         4. For each item: consume resources FIRST, then BP
         5. Colonists are required for mines/factories (not consumed, just busy)
         6. Continue until blocked on resources, BP, or colonists
+        7. Send aggregate messages for mines/factories/defenses (4+ items)
         """
         from .models import Star, ProductionOrder, PRODUCTION_COSTS
         for star in Star.objects.filter(game=self.game, player__isnull=False):
@@ -937,6 +937,9 @@ class GameTurn():
             colonists_busy = 0  # Track colonists busy with construction this turn
             available_bp = calculate_available_buildpoints(star)
             blocked = False
+
+            # Track production counts for aggregate messages
+            production_counts = {'mine': 0, 'factory': 0, 'defense': 0}
 
             for order in list(star.production_orders.order_by('position')):
                 if blocked:
@@ -1003,7 +1006,7 @@ class GameTurn():
                     if colonist_cost > 0:
                         colonists_busy += colonist_cost
 
-                    self._apply_production_effect(star, order)
+                    self._apply_production_effect(star, order, production_counts)
                     order.completed += 1
                     # Reset spent amounts for next item
                     order.spent_ironium = 0
@@ -1029,18 +1032,24 @@ class GameTurn():
                 elif not blocked:
                     order.save()
 
+            # Send aggregate production messages (only for 4+ items)
+            self._send_production_summary_messages(star, production_counts)
+
             star.save()
 
-    def _apply_production_effect(self, star, order):
+    def _apply_production_effect(self, star, order, production_counts):
         """Apply the effect of a completed production order."""
         if order.order_type == 'BUILD_FLEET':
             self._build_fleet(star, order)
         elif order.order_type == 'BUILD_MINE':
-            self._build_mine(star, order)
+            self._build_mine(star)
+            production_counts['mine'] += 1
         elif order.order_type == 'BUILD_FACTORY':
-            self._build_factory(star, order)
+            self._build_factory(star)
+            production_counts['factory'] += 1
         elif order.order_type == 'BUILD_DEFENSE':
-            self._build_defense(star, order)
+            self._build_defense(star)
+            production_counts['defense'] += 1
         elif order.order_type.startswith('TERRAFORM_'):
             self._apply_terraform_order(star, order)
 
@@ -1067,38 +1076,34 @@ class GameTurn():
         msg.year = self.game.year
         msg.save()
 
-    def _build_mine(self, star, order):
-        """Build a mine at the given star and create notification."""
-        player = star.player
+    def _build_mine(self, star):
+        """Build a mine at the given star."""
         star.mines += 1
 
-        # Create notification message
-        factory = MineBuiltMessageFactory(self.game, player, star)
-        msg = factory.new_message()
-        msg.year = self.game.year
-        msg.save()
-
-    def _build_factory(self, star, order):
-        """Build a factory at the given star and create notification."""
-        player = star.player
+    def _build_factory(self, star):
+        """Build a factory at the given star."""
         star.factories += 1
 
-        # Create notification message
-        factory = FactoryBuiltMessageFactory(self.game, player, star)
-        msg = factory.new_message()
-        msg.year = self.game.year
-        msg.save()
-
-    def _build_defense(self, star, order):
-        """Build a defense at the given star and create notification."""
-        player = star.player
+    def _build_defense(self, star):
+        """Build a defense at the given star."""
         star.defenses += 1
 
-        # Create notification message
-        factory = DefenseBuiltMessageFactory(self.game, player, star)
-        msg = factory.new_message()
-        msg.year = self.game.year
-        msg.save()
+    def _send_production_summary_messages(self, star, production_counts):
+        """Send aggregate production messages for mines/factories/defenses.
+
+        Only sends messages for 4+ items of a type.
+        """
+        player = star.player
+        min_count_for_message = 4
+
+        for production_type, count in production_counts.items():
+            if count >= min_count_for_message:
+                factory = ProductionSummaryMessageFactory(
+                    self.game, player, star, production_type, count
+                )
+                msg = factory.new_message()
+                msg.year = self.game.year
+                msg.save()
 
     def _apply_terraform_order(self, star, order):
         """Apply a single terraforming order.

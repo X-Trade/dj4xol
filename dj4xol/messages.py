@@ -346,59 +346,48 @@ class FleetBuiltMessageFactory(MessageFactory):
         )
 
 
-class MineBuiltMessageFactory(MessageFactory):
-    """Messages for mine construction completion."""
+class ProductionSummaryMessageFactory(MessageFactory):
+    """Messages for summarized production completion (mines, factories, defenses)."""
     category = 'PRODUCTION'
-    templates = [
-        "A new mine has been constructed at {star}.",
-        "Mining operations have expanded at {star}.",
-        "Construction of a new mine completed at {star}.",
-    ]
 
-    def __init__(self, game, player, star, message=None):
+    # Templates for different quantities - {count} and {star} placeholders
+    # Only generate messages for 4+ items
+    TEMPLATES = {
+        'mine': {
+            'plural': [
+                "{count} mines were constructed at {star}.",
+                "Mining operations expanded significantly at {star} - {count} new mines operational.",
+                "{count} new mines completed at {star}.",
+            ],
+        },
+        'factory': {
+            'plural': [
+                "{count} factories were built at {star}.",
+                "Industrial capacity at {star} expanded with {count} new factories.",
+                "{count} new factories completed at {star}.",
+            ],
+        },
+        'defense': {
+            'plural': [
+                "{count} defense installations were completed at {star}.",
+                "Planetary defenses at {star} strengthened with {count} new installations.",
+                "{count} new defenses constructed at {star}.",
+            ],
+        },
+    }
+
+    def __init__(self, game, player, star, production_type, count, message=None):
         super().__init__(game, player, message, intensity=0.2)
         self.star = star
+        self.production_type = production_type  # 'mine', 'factory', or 'defense'
+        self.count = count
 
     def format_message(self):
-        return random.choice(self.templates).format(
-            star=map_object_link(self.star)
-        )
-
-
-class FactoryBuiltMessageFactory(MessageFactory):
-    """Messages for factory construction completion."""
-    category = 'PRODUCTION'
-    templates = [
-        "A new factory has been constructed at {star}.",
-        "Industrial capacity has expanded at {star}.",
-        "Construction of a new factory completed at {star}.",
-    ]
-
-    def __init__(self, game, player, star, message=None):
-        super().__init__(game, player, message, intensity=0.2)
-        self.star = star
-
-    def format_message(self):
-        return random.choice(self.templates).format(
-            star=map_object_link(self.star)
-        )
-
-
-class DefenseBuiltMessageFactory(MessageFactory):
-    """Messages for defense construction completion."""
-    category = 'PRODUCTION'
-    templates = [
-        "Planetary defenses have been strengthened at {star}.",
-        "A new defense installation has been completed at {star}.",
-        "Defense capabilities have expanded at {star}.",
-    ]
-
-    def __init__(self, game, player, star, message=None):
-        super().__init__(game, player, message, intensity=0.2)
-        self.star = star
-
-    def format_message(self):
-        return random.choice(self.templates).format(
+        templates = self.TEMPLATES.get(self.production_type, {}).get('plural', [])
+        if not templates:
+            return f"{self.count} {self.production_type}s completed at {map_object_link(self.star)}."
+        return random.choice(templates).format(
+            count=self.count,
             star=map_object_link(self.star)
         )
 
@@ -450,24 +439,38 @@ class FleetColonisedMessageFactory(MessageFactory):
 class ColoniseFailedNoStarMessageFactory(MessageFactory):
     """Messages for failed colonisation attempts (no star at location)."""
     category = 'GENERAL'
-    templates = [
+    templates_with_star = [
+        "{fleet} failed to colonise {star} - it was not found at ({x}, {y}).",
+        "Colonisation of {star} by {fleet} aborted - no planet at ({x}, {y}).",
+        "{fleet} arrived at ({x}, {y}) to colonise {star}, but found nothing.",
+    ]
+    templates_no_star = [
         "{fleet} aborted colonisation at ({x}, {y}) - no habitable world found.",
         "Colonisation order for {fleet} cancelled - no planet at ({x}, {y}).",
         "{fleet} reached ({x}, {y}) but found no world to colonise.",
     ]
 
-    def __init__(self, game, player, fleet_name, x, y, message=None):
+    def __init__(self, game, player, fleet_name, x, y, target_star=None, message=None):
         super().__init__(game, player, message, intensity=-0.2)
         self.fleet_name = fleet_name
         self.x = x
         self.y = y
+        self.target_star = target_star
 
     def format_message(self):
-        return random.choice(self.templates).format(
-            fleet=self.fleet_name,
-            x=self.x,
-            y=self.y
-        )
+        if self.target_star:
+            return random.choice(self.templates_with_star).format(
+                fleet=self.fleet_name,
+                star=map_object_link(self.target_star),
+                x=self.x,
+                y=self.y
+            )
+        else:
+            return random.choice(self.templates_no_star).format(
+                fleet=self.fleet_name,
+                x=self.x,
+                y=self.y
+            )
 
 
 class ColoniseFailedNoColonistsMessageFactory(MessageFactory):
