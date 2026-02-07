@@ -38,25 +38,27 @@
                 <p class="no-orders">No production orders.</p>
             {% endif %}
         </div>
-        <form method="post" action="{% url 'dj4xol:add_production' game.short_id %}" class="orders-add">
+        <form method="post" action="{% url 'dj4xol:add_production' game.short_id %}" class="order-form">
             {% csrf_token %}
             <input type="hidden" name="star" value="{{ detail.star_short_id }}">
             <input type="hidden" name="x" value="{{ selection.x }}">
             <input type="hidden" name="y" value="{{ selection.y }}">
             <input type="hidden" name="sel" value="{{ selection.sel }}">
-            <select name="order_type" class="order-select">
-                <option value="">Select production...</option>
-                <option value="TERRAFORM_GRAVITY">Terraform Gravity (1%)</option>
-                <option value="TERRAFORM_TEMPERATURE">Terraform Temperature (1%)</option>
-                <option value="TERRAFORM_RADIATION">Terraform Radiation (1%)</option>
-                <option value="BUILD_FLEET">Build Fleet</option>
-                <option value="BUILD_MINE">Build Mine</option>
-                <option value="BUILD_FACTORY">Build Factory</option>
-                <option value="BUILD_DEFENSE">Build Defense</option>
-            </select>
-            <input type="number" name="quantity" value="1" min="1" class="quantity-input" title="Quantity">
-            <label class="repeat-checkbox"><input type="checkbox" name="repeat"> &#x21bb;</label>
-            <button type="submit" class="order-add-btn">+</button>
+            <div class="order-type-row">
+                <select name="order_type" class="order-select">
+                    <option value="">Select production...</option>
+                    <option value="TERRAFORM_GRAVITY">Terraform Gravity (1%)</option>
+                    <option value="TERRAFORM_TEMPERATURE">Terraform Temperature (1%)</option>
+                    <option value="TERRAFORM_RADIATION">Terraform Radiation (1%)</option>
+                    <option value="BUILD_FLEET">Build Fleet</option>
+                    <option value="BUILD_MINE">Build Mine</option>
+                    <option value="BUILD_FACTORY">Build Factory</option>
+                    <option value="BUILD_DEFENSE">Build Defense</option>
+                </select>
+                <input type="number" name="quantity" value="1" min="1" class="quantity-input" title="Quantity">
+                <label class="repeat-checkbox"><input type="checkbox" name="repeat"> &#x21bb;</label>
+                <button type="submit" class="order-add-btn">+</button>
+            </div>
         </form>
     </div></div>
 </div>

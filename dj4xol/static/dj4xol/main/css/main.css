@@ -348,19 +348,13 @@ body {
     background: #aaa;
 }
 
-.orders-add {
-    display: flex;
-    gap: 5px;
+/* Order form (shared by production and fleet orders) */
+.order-form {
+    flex-shrink: 0;
 }
 
 .order-select {
     flex: 1;
-}
-
-.order-add-btn {
-    padding: 4px 12px;
-    font-weight: bold;
-    cursor: pointer;
 }
 
 .no-orders {
@@ -766,22 +760,15 @@ body {
     background: #a33;
 }
 
-/* Order draft section */
-.order-draft {
-    border-top: 1px solid #ccc;
-    padding-top: 10px;
-    margin-top: 10px;
-}
-
-/* Order type row with dropdown and + button */
+/* Order type row with dropdown, controls and + button */
 .order-type-row {
     display: flex;
     gap: 5px;
-    margin-bottom: 8px;
 }
 
-.order-type-row .order-select {
-    flex: 1;
+/* Add bottom margin when followed by params section */
+.order-type-row:has(+ .order-params) {
+    margin-bottom: 8px;
 }
 
 .order-add-btn {
