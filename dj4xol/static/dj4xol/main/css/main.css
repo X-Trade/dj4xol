@@ -1089,6 +1089,7 @@ body {
 .tooltip-table td {
     padding: 2px 8px;
     text-align: right;
+    color: #fff;
 }
 
 .tooltip-table th:first-child,
@@ -1096,6 +1097,7 @@ body {
     text-align: left;
 }
 
+/* Resource name colours (first column only) */
 .tooltip-table .res-col td:first-child { color: #8f8; }
 .tooltip-table .res-iron td:first-child { color: #6cf; }
 .tooltip-table .res-bor td:first-child { color: #fc6; }
