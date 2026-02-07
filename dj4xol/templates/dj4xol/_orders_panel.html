@@ -37,7 +37,7 @@
             {% endif %}
         </div>
 
-        <form method="post" action="{% url 'dj4xol:add_fleet_order' game.short_id %}" class="order-draft">
+        <form method="post" action="{% url 'dj4xol:add_fleet_order' game.short_id %}" class="order-form">
             {% csrf_token %}
             <input type="hidden" name="fleet" value="{{ detail.fleet_short_id }}">
             <input type="hidden" name="order_type" id="order-type-input" value="{% if request.GET.order_type %}{{ request.GET.order_type }}{% else %}MOVE{% endif %}">
