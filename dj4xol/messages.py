@@ -499,3 +499,95 @@ class ColoniseFailedNoColonistsMessageFactory(MessageFactory):
             fleet=self.fleet_name,
             star=map_object_link(self.star)
         )
+
+
+class FleetWarpDamageMessageFactory(MessageFactory):
+    """Messages for fleet damage from exceeding safe warp speed."""
+    category = 'GENERAL'
+    templates_damage_only = [
+        "{fleet} sustained {integrity_loss}% structural damage travelling at warp {warp}.",
+        "Warp {warp} proved too fast for {fleet} - {integrity_loss}% integrity lost.",
+        "{fleet} pushed beyond safe limits at warp {warp}, losing {integrity_loss}% integrity.",
+    ]
+    templates_cargo_loss = [
+        "{fleet} sustained {integrity_loss}% damage at warp {warp}. {cargo_desc} was lost.",
+        "At warp {warp}, {fleet} lost {integrity_loss}% integrity and {cargo_desc}.",
+        "{fleet} suffered structural failure at warp {warp}: {integrity_loss}% damage, {cargo_desc} jettisoned.",
+    ]
+    templates_colonist_loss = [
+        "{fleet} sustained {integrity_loss}% damage at warp {warp}. {colonist_deaths:,}k colonists perished.",
+        "Disaster aboard {fleet} at warp {warp}: {integrity_loss}% damage, {colonist_deaths:,}k lives lost.",
+        "{fleet} pushed to warp {warp} with tragic results: {integrity_loss}% damage, {colonist_deaths:,}k dead.",
+    ]
+    templates_cargo_and_colonist = [
+        "{fleet} at warp {warp}: {integrity_loss}% damage, {cargo_desc} lost, {colonist_deaths:,}k dead.",
+        "Catastrophe aboard {fleet} at warp {warp}: {integrity_loss}% structural damage, {cargo_desc} lost, {colonist_deaths:,}k colonists killed.",
+    ]
+
+    def __init__(self, game, player, fleet_name, warp_speed, integrity_loss,
+                 cargo_losses=None, colonist_deaths=0, message=None):
+        super().__init__(game, player, message, intensity=-0.4)
+        self.fleet_name = fleet_name
+        self.warp_speed = warp_speed
+        self.integrity_loss = integrity_loss
+        self.cargo_losses = cargo_losses or {}
+        self.colonist_deaths = colonist_deaths
+
+    def _format_cargo_desc(self):
+        parts = []
+        for resource, amount in self.cargo_losses.items():
+            if amount > 0:
+                parts.append(f"{amount}kt {resource}")
+        return ", ".join(parts) if parts else "cargo"
+
+    def format_message(self):
+        has_cargo = any(v > 0 for v in self.cargo_losses.values())
+        has_deaths = self.colonist_deaths > 0
+
+        if has_cargo and has_deaths:
+            templates = self.templates_cargo_and_colonist
+        elif has_deaths:
+            templates = self.templates_colonist_loss
+        elif has_cargo:
+            templates = self.templates_cargo_loss
+        else:
+            templates = self.templates_damage_only
+
+        return random.choice(templates).format(
+            fleet=self.fleet_name,
+            warp=self.warp_speed,
+            integrity_loss=self.integrity_loss,
+            cargo_desc=self._format_cargo_desc(),
+            colonist_deaths=self.colonist_deaths
+        )
+
+
+class FleetWarpDestroyedMessageFactory(MessageFactory):
+    """Messages for fleets destroyed by exceeding safe warp speed."""
+    category = 'GENERAL'
+    priority = True
+    templates_instant = [
+        "{fleet} was torn apart at warp {warp}. All hands lost.",
+        "{fleet} disintegrated travelling at warp {warp}.",
+        "Catastrophic structural failure destroyed {fleet} at warp {warp}.",
+        "{fleet} exceeded its limits at warp {warp} and was lost with all hands.",
+    ]
+    templates_accumulated = [
+        "{fleet} broke apart after accumulated damage at warp {warp}.",
+        "Structural failures cascaded through {fleet} at warp {warp}. The fleet is lost.",
+        "{fleet} could not withstand further stress at warp {warp} and was destroyed.",
+    ]
+
+    def __init__(self, game, player, fleet_name, warp_speed, from_damage=False,
+                 message=None):
+        super().__init__(game, player, message, intensity=-0.8)
+        self.fleet_name = fleet_name
+        self.warp_speed = warp_speed
+        self.from_damage = from_damage
+
+    def format_message(self):
+        templates = self.templates_accumulated if self.from_damage else self.templates_instant
+        return random.choice(templates).format(
+            fleet=self.fleet_name,
+            warp=self.warp_speed
+        )

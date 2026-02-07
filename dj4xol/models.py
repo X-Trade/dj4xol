@@ -363,6 +363,9 @@ class Fleet(AbstractMapObject):
     germanium_inventory = models.IntegerField(default=0)  # Current germanium cargo in kt
     colonists = models.IntegerField(default=0)  # Current colonist cargo in thousands
     dry_mass = models.IntegerField(default=100)  # Dry mass in kt for colonise bonus
+    max_safe_warp = models.IntegerField(default=5)
+    integrity = models.IntegerField(default=100,
+            validators=[MinValueValidator(0), MaxValueValidator(100)])
 
     @property
     def cargo_used(self):
