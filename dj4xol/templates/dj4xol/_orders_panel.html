@@ -8,6 +8,9 @@
                     {% if order.order_type == 'MOVE' or not order.order_type %}
                         <span>Warp {{ order.warpfactor }} to {{ order.target }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
                     {% elif order.order_type == 'TRANSFER' %}
+                        {% if order.transfer_type == 'UNLOAD_ALL' %}
+                        <span>Unload All at {{ order.target }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
+                        {% else %}
                         <span>{{ order.transfer_type|title|default:"Transfer" }} at {{ order.target }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
                         <div class="order-tooltip">
                             <div class="tooltip-header">{{ order.transfer_type|title }} Resources</div>
@@ -18,6 +21,7 @@
                                 {% if order.transfer_colonists %}<tr class="res-col"><td>Colonists</td><td>{{ order.transfer_colonists }}k</td></tr>{% endif %}
                             </table>
                         </div>
+                        {% endif %}
                     {% elif order.order_type == 'COLONISE' %}
                         <span>Colonise {{ order.target }}</span>
                     {% else %}
@@ -142,43 +146,46 @@
                         <div class="transfer-type-row">
                             <label><input type="radio" name="transfer_type_radio" value="LOAD" checked> Load</label>
                             <label><input type="radio" name="transfer_type_radio" value="UNLOAD"> Unload</label>
+                            <label><input type="radio" name="transfer_type_radio" value="UNLOAD_ALL"> Unload All</label>
                         </div>
                     </div>
-                    
-                    <div class="order-param-row">
-                        <label for="ironium-slider">Ironium</label>
-                        <div class="transfer-slider-row">
-                            <input type="range" id="ironium-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
-                            <span id="ironium-value" class="transfer-value">0kt</span>
+
+                    <div id="transfer-sliders">
+                        <div class="order-param-row">
+                            <label for="ironium-slider">Ironium</label>
+                            <div class="transfer-slider-row">
+                                <input type="range" id="ironium-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
+                                <span id="ironium-value" class="transfer-value">0kt</span>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div class="order-param-row">
-                        <label for="boranium-slider">Boranium</label>
-                        <div class="transfer-slider-row">
-                            <input type="range" id="boranium-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
-                            <span id="boranium-value" class="transfer-value">0kt</span>
+
+                        <div class="order-param-row">
+                            <label for="boranium-slider">Boranium</label>
+                            <div class="transfer-slider-row">
+                                <input type="range" id="boranium-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
+                                <span id="boranium-value" class="transfer-value">0kt</span>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div class="order-param-row">
-                        <label for="germanium-slider">Germanium</label>
-                        <div class="transfer-slider-row">
-                            <input type="range" id="germanium-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
-                            <span id="germanium-value" class="transfer-value">0kt</span>
+
+                        <div class="order-param-row">
+                            <label for="germanium-slider">Germanium</label>
+                            <div class="transfer-slider-row">
+                                <input type="range" id="germanium-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
+                                <span id="germanium-value" class="transfer-value">0kt</span>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div class="order-param-row">
-                        <label for="colonists-slider">Colonists</label>
-                        <div class="transfer-slider-row">
-                            <input type="range" id="colonists-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
-                            <span id="colonists-value" class="transfer-value">0k</span>
+
+                        <div class="order-param-row">
+                            <label for="colonists-slider">Colonists</label>
+                            <div class="transfer-slider-row">
+                                <input type="range" id="colonists-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
+                                <span id="colonists-value" class="transfer-value">0k</span>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div class="transfer-slider-note">
-                        <small style="color: #666; font-style: italic;">Sliders use cubic scaling for precise small amounts (max {{ detail.fleet_cargo.capacity }}kt each)</small>
+
+                        <div class="transfer-slider-note">
+                            <small style="color: #666; font-style: italic;">Sliders use cubic scaling for precise small amounts (max {{ detail.fleet_cargo.capacity }}kt each)</small>
+                        </div>
                     </div>
                 </div>
 
@@ -224,7 +231,7 @@
         // Get transfer target value from either select dropdown or hidden input
         var transferTargetSelect = document.getElementById('transfer-target');
         var transferTargetValue = '';
-        
+
         if (transferTargetSelect) {
             // Multiple targets case - get from select
             transferTargetValue = transferTargetSelect.value;
@@ -235,12 +242,14 @@
                 transferTargetValue = hiddenInputs[0].value;
             }
         }
-        
-        var hasResources = transferSliders.some(function(resource) {
+
+        // UNLOAD_ALL doesn't require specific resources
+        var isUnloadAll = transferTypeInput.value === 'UNLOAD_ALL';
+        var hasResources = isUnloadAll || transferSliders.some(function(resource) {
             var input = document.getElementById('transfer-' + resource + '-input');
             return input && parseInt(input.value) > 0;
         });
-        
+
         // Transfer orders require a target (or empty space is allowed) and at least one resource
         // Empty space has transferTargetValue = '' which is still valid
         var hasValidTarget = transferTargetValue !== undefined;
@@ -438,9 +447,21 @@
     
     // Transfer type radio buttons
     var transferTypeRadios = document.querySelectorAll('input[name="transfer_type_radio"]');
+    var transferSlidersDiv = document.getElementById('transfer-sliders');
     transferTypeRadios.forEach(function(radio) {
         radio.addEventListener('change', function() {
             transferTypeInput.value = this.value;
+            // Hide sliders for UNLOAD_ALL, show for others
+            if (transferSlidersDiv) {
+                if (this.value === 'UNLOAD_ALL') {
+                    transferSlidersDiv.style.opacity = '0.4';
+                    transferSlidersDiv.style.pointerEvents = 'none';
+                } else {
+                    transferSlidersDiv.style.opacity = '1';
+                    transferSlidersDiv.style.pointerEvents = 'auto';
+                }
+            }
+            updateAddButtonStateTransfer();
         });
     });
     

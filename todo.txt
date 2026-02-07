@@ -1,10 +1,14 @@
 ============= MAIN TODO =============
-2. Cronjob entrypoint
-6. Event generation in turn generator
+2. Speed limits
+3. Merge with fleet Order
+4. Scuttle Fleet order & Salvage
+5. Basic combat (based on mass & chance)
+6. Colony Micromanager
 7. Schedule based turn generation (generate a turn by cronjob)
-8. more comprehensive unit testing
-9. radar system. Ties in to #10. Players cannot see ships beyond their ships or planets sensor range
-10. protect unnecessary/unsporting information from being delivered to the wrong owner-player
+8. More tooltips for colonies
+9. Star names on starmap
+10. radar system (ties to #10). Players cannot see ships beyond their ships or planets sensor range
+11. protect unnecessary/unsporting information from being delivered to the wrong owner-player
    for example, a player cannot see the orders of another player's vessel
 
 =============== GUI =================

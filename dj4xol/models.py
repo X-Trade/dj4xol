@@ -480,6 +480,7 @@ class FleetOrders(AbstractGameObject):
     TRANSFER_TYPE_CHOICES = [
         ('LOAD', 'Load'),
         ('UNLOAD', 'Unload'),
+        ('UNLOAD_ALL', 'Unload All'),
     ]
     transfer_type = models.CharField(max_length=10, choices=TRANSFER_TYPE_CHOICES, 
                                    null=True, blank=True)

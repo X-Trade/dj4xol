@@ -198,7 +198,6 @@ def calculate_growth_factor(player, star):
     - High population: reduced by carrying capacity (tanh curve)
     """
     hab_factor = calculate_habitability_factor(player, star)
-    print(hab_factor)
 
     if hab_factor >= 0:
         # Dampen growth: max ~0.5 at perfect habitability
@@ -273,7 +272,14 @@ class GameTurn():
 
     def fleet_movements(self):
         """Move fleets according to their orders."""
-        for fleet in self.game.fleets.all():
+        # Get fleet IDs first, then fetch fresh for each processing
+        # This ensures we see changes made by other fleet's transfers
+        fleet_ids = list(self.game.fleets.values_list('id', flat=True))
+        for fleet_id in fleet_ids:
+            try:
+                fleet = self.game.fleets.get(id=fleet_id)
+            except self.game.fleets.model.DoesNotExist:
+                continue  # Fleet was deleted (e.g., by colonise order)
             result = self.move_fleet(fleet)
             if result is not None:
                 result.save()
@@ -309,15 +315,15 @@ class GameTurn():
         # Snapshot orders at start of turn to avoid processing newly created repeat orders
         # Transfer orders: execute once and continue to next order (passthrough)
         # Move orders: execute once and stop processing (blocking)
-        
+
         # Snapshot all current orders to prevent processing repeat orders created this turn
         orders_to_process = list(fleet.orders.all())
-        
+
         for order in orders_to_process:
             # Check if order still exists (might have been deleted by previous processing)
             if not fleet.orders.filter(id=order.id).exists():
                 continue
-                
+
             if order.order_type == 'TRANSFER':
                 # Try to execute transfer immediately
                 transfer_result = self._try_execute_transfer(fleet, order)
@@ -329,7 +335,7 @@ class GameTurn():
                 elif transfer_result == 'waiting':
                     # Transfer blocked - stop processing
                     break
-            
+
             elif order.order_type == 'MOVE':
                 # Try to execute move order
                 if self._move_toward_destination(fleet, order):
@@ -350,7 +356,7 @@ class GameTurn():
                 # Unknown order type, just remove it
                 order.delete()
                 continue
-        
+
         return fleet
 
     def _move_fleet_legacy(self, fleet):
@@ -434,11 +440,6 @@ class GameTurn():
         vector = target - position
         distance = linalg.norm(vector)
 
-        print("position: %s" % (str(position)))
-        print("target:   %s" % (str(target)))
-        print("vector:   %s" % (str(vector)))
-        print("distance: %s" % (str(distance)))
-
         # Calculate heading from movement direction (where it's going)
         # 0 = north, 90 = east, 180 = south, 270 = west
         dx, dy = vector[0], vector[1]
@@ -455,10 +456,11 @@ class GameTurn():
         else:
             # Fleet moves toward destination but doesn't reach it
             normalised_vector = vector / distance
-            print("normal:   %s" % (str(normalised_vector)))
             new_position = position + (normalised_vector * warp_speed)
             fleet.x = int(new_position[0])
             fleet.y = int(new_position[1])
+            if (fleet.x, fleet.y) == (x, y):
+                return True
             return False
 
     def _handle_repeating_order(self, order):
@@ -578,13 +580,21 @@ class GameTurn():
             star.save()
             fleet.save()
 
-        elif order.transfer_type == 'UNLOAD':
+        elif order.transfer_type in ('UNLOAD', 'UNLOAD_ALL'):
             # Unload from fleet to star
-            ironium_transfer = min(order.transfer_ironium, fleet.ironium_inventory)
-            boranium_transfer = min(order.transfer_boranium, fleet.boranium_inventory)
-            germanium_transfer = min(order.transfer_germanium, fleet.germanium_inventory)
+            # For UNLOAD_ALL, transfer everything; for UNLOAD, use order amounts
+            if order.transfer_type == 'UNLOAD_ALL':
+                ironium_transfer = fleet.ironium_inventory
+                boranium_transfer = fleet.boranium_inventory
+                germanium_transfer = fleet.germanium_inventory
+                colonists_transfer_kt = fleet.colonists
+            else:
+                ironium_transfer = min(order.transfer_ironium, fleet.ironium_inventory)
+                boranium_transfer = min(order.transfer_boranium, fleet.boranium_inventory)
+                germanium_transfer = min(order.transfer_germanium, fleet.germanium_inventory)
+                colonists_transfer_kt = min(order.transfer_colonists, fleet.colonists)
+
             # Convert colonists: fleet.colonists is thousands, star.colonists is individual units
-            colonists_transfer_kt = min(order.transfer_colonists, fleet.colonists)
             colonists_transfer_individuals = colonists_transfer_kt * 1000
 
             # Execute the transfers
@@ -646,12 +656,19 @@ class GameTurn():
             target_fleet.save()
             source_fleet.save()
 
-        else:  # UNLOAD
+        else:  # UNLOAD or UNLOAD_ALL
             # Unload from source fleet to target fleet
-            ironium_transfer = min(order.transfer_ironium, source_fleet.ironium_inventory)
-            boranium_transfer = min(order.transfer_boranium, source_fleet.boranium_inventory)
-            germanium_transfer = min(order.transfer_germanium, source_fleet.germanium_inventory)
-            colonists_transfer = min(order.transfer_colonists, source_fleet.colonists)
+            # For UNLOAD_ALL, transfer everything; for UNLOAD, use order amounts
+            if order.transfer_type == 'UNLOAD_ALL':
+                ironium_transfer = source_fleet.ironium_inventory
+                boranium_transfer = source_fleet.boranium_inventory
+                germanium_transfer = source_fleet.germanium_inventory
+                colonists_transfer = source_fleet.colonists
+            else:
+                ironium_transfer = min(order.transfer_ironium, source_fleet.ironium_inventory)
+                boranium_transfer = min(order.transfer_boranium, source_fleet.boranium_inventory)
+                germanium_transfer = min(order.transfer_germanium, source_fleet.germanium_inventory)
+                colonists_transfer = min(order.transfer_colonists, source_fleet.colonists)
 
             # Check if target fleet has capacity
             target_used = target_fleet.cargo_used
@@ -1292,13 +1309,22 @@ def apply_population_change(population, factor):
 
     Positive factor: additive growth (pop += pop * factor)
     Negative factor: linear decline (pop *= survival_rate), min 1 loss to prevent infinite decay
+
+    For declining populations under 1000, calculate decline based on 1000 colonists.
+    This speeds up colony death for very small populations instead of lingering.
     """
     if factor >= 0:
         return population + int(population * factor)
     else:
         # Linear decline: survival_rate = 1 - |factor|, capped at 0% survival
         survival_rate = max(0, 1 - abs(factor))
-        new_pop = int(population * survival_rate)
+
+        # For small declining colonies, calculate decline based on 1000 colonists minimum
+        # This prevents drawn-out deaths where <10 colonists lose 1-2 per year
+        base_pop = max(population, 1000)
+        decline = int(base_pop * (1 - survival_rate))
+
+        new_pop = population - decline
         # Ensure at least 1 colonist dies to prevent infinite decay
         new_pop = min(new_pop, population - 1)
         return max(0, new_pop)
