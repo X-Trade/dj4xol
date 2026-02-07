@@ -198,10 +198,13 @@ def calculate_growth_factor(player, star):
     """Calculate population growth factor based on habitability and carrying capacity.
 
     Returns a factor where:
-    - Perfect habitability (all envs at center): ~0.5 (50% growth) at low pop
+    - Perfect habitability (all envs at center): ~0.25 (25% growth) at low pop
     - Edge habitability (all envs at min/max): 0 (no growth)
-    - Outside range: negative (linear decline, handled by apply_population_change)
+    - Outside range: negative (linear decline)
     - High population: reduced by carrying capacity (tanh curve)
+
+    The returned factor should be multiplied by race_type.population_growth_multiplier
+    before being passed to apply_population_change().
     """
     hab_factor = calculate_habitability_factor(player, star)
 
@@ -213,8 +216,8 @@ def calculate_growth_factor(player, star):
         factor *= capacity_modifier(star.colonists, cap)
         return factor
     else:
-        # Negative factors passed through directly for linear decline
-        return hab_factor * 2
+        # Negative factor for environmental deaths
+        return hab_factor
 
 class GameTurn():
     """Generate a turn for a game."""
@@ -960,27 +963,16 @@ class GameTurn():
             player = star.player
             old_pop = star.colonists
 
-            # Calculate habitability and capacity factors separately for messaging
-            hab_factor = calculate_habitability_factor(player, star)
-            cap = effective_capacity(player, star)
-            cap_mod = capacity_modifier(star.colonists, cap)
+            factor = calculate_growth_factor(player, star)
+            factor *= player.race_type.population_growth_multiplier
+            star.colonists = apply_population_change(star.colonists, factor)
+            change = star.colonists - old_pop
 
-            if hab_factor < 0:
-                # Environmental deaths - uninhabitable world
-                factor = hab_factor  # Pass through negative factor
-                factor *= player.race_type.population_growth_multiplier
-                star.colonists = apply_population_change(star.colonists, factor)
-                deaths = old_pop - star.colonists
-                if deaths > 0 and star.colonists > 0:
-                    self._create_environmental_death_message(player, star, deaths)
-            else:
-                # Habitable world - apply growth with capacity modifier
-                factor = (hab_factor ** 2) / 2  # Dampen growth
-                factor *= cap_mod
-                factor *= player.race_type.population_growth_multiplier
-                star.colonists = apply_population_change(star.colonists, factor)
-                change = star.colonists - old_pop
-                if change < 0 and star.colonists > 0:
+            if change < 0 and star.colonists > 0:
+                if factor < 0:
+                    # Environmental deaths - uninhabitable world
+                    self._create_environmental_death_message(player, star, -change)
+                else:
                     # Deaths due to overcrowding
                     self._create_overcrowding_death_message(player, star, -change)
 
