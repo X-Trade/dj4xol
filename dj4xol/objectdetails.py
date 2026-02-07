@@ -341,6 +341,8 @@ class DetailBuilder():
             'boranium': self.selected_obj.boranium_inventory,
             'germanium': self.selected_obj.germanium_inventory,
             'colonists': self.selected_obj.colonists,
+            'max_safe_warp': self.selected_obj.max_safe_warp,
+            'integrity': self.selected_obj.integrity,
         }
 
     def build_fleet_inventory(self):

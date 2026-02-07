@@ -20,6 +20,8 @@ from .messages import (
     ColoniseFailedNoStarMessageFactory,
     ColoniseFailedNoColonistsMessageFactory,
     ProductionSummaryMessageFactory,
+    FleetWarpDamageMessageFactory,
+    FleetWarpDestroyedMessageFactory,
 )
 import random
 
@@ -40,6 +42,10 @@ TURN_INTERVALS = {
 
 # Random event probability per colonized star per turn
 RANDOM_EVENT_CHANCE = 0.01  # 1%
+
+# Warp damage constants
+WARP_DESTRUCTION_THRESHOLD = 10  # Warp speed at which destruction becomes possible
+WARP_DESTRUCTION_CHANCE = 0.30   # 30% chance of instant destruction at warp >= 10
 
 
 def capacity_modifier(population, soft_cap):
@@ -338,7 +344,11 @@ class GameTurn():
 
             elif order.order_type == 'MOVE':
                 # Try to execute move order
-                if self._move_toward_destination(fleet, order):
+                move_result = self._move_toward_destination(fleet, order)
+                if move_result == 'destroyed':
+                    # Fleet destroyed by warp damage
+                    return None
+                if move_result is True:
                     # Reached destination - handle repeat and STOP
                     self._handle_repeating_order(order)
                     order.delete()
@@ -384,7 +394,11 @@ class GameTurn():
 
             elif order.order_type == 'MOVE':
                 # Regular move order
-                if self._move_toward_destination(fleet, order):
+                move_result = self._move_toward_destination(fleet, order)
+                if move_result == 'destroyed':
+                    # Fleet destroyed by warp damage
+                    return None
+                if move_result is True:
                     # Reached destination
                     self._handle_repeating_order(order)
                     order.delete()
@@ -428,7 +442,10 @@ class GameTurn():
     def _move_toward_destination(self, fleet, order):
         """Move fleet toward order destination.
 
-        Returns True if destination reached, False if still moving.
+        Returns:
+            True if destination reached
+            False if still moving
+            'destroyed' if fleet was destroyed by warp damage
         """
         try:
             x, y = order.get_destination_coordinates()
@@ -448,6 +465,12 @@ class GameTurn():
 
         # Check if fleet can reach destination this turn
         warp_speed = order.warpfactor if order.order_type == 'MOVE' else 5
+
+        # Check for warp damage before moving
+        damage_result = self._check_warp_damage(fleet, warp_speed)
+        if damage_result == 'destroyed':
+            return 'destroyed'
+
         if int(distance) <= warp_speed:
             # Fleet reaches destination
             fleet.x = x
@@ -462,6 +485,107 @@ class GameTurn():
             if (fleet.x, fleet.y) == (x, y):
                 return True
             return False
+
+    def _check_warp_damage(self, fleet, warp_speed):
+        """Check if fleet takes damage from exceeding safe warp speed.
+
+        Returns: 'destroyed', 'damaged', or 'safe'
+        """
+        if warp_speed <= fleet.max_safe_warp:
+            return 'safe'
+
+        excess_warp = warp_speed - fleet.max_safe_warp
+
+        # At warp >= 10 and above safe speed: 30% instant destruction chance
+        if warp_speed >= WARP_DESTRUCTION_THRESHOLD:
+            if random.random() < WARP_DESTRUCTION_CHANCE:
+                self._handle_warp_destruction(fleet, warp_speed, from_damage=False)
+                return 'destroyed'
+
+        # Damage chance: 15% per excess warp factor
+        damage_chance = excess_warp * 0.15
+        if random.random() < damage_chance:
+            return self._apply_warp_damage(fleet, warp_speed, excess_warp)
+
+        return 'safe'
+
+    def _apply_warp_damage(self, fleet, warp_speed, excess_warp):
+        """Apply damage effects from exceeding safe warp speed.
+
+        Returns: 'destroyed' if integrity drops to 0, 'damaged' otherwise
+        """
+        # Integrity loss: 5-15% per excess warp factor
+        integrity_loss = sum(
+            random.randint(5, 15) for _ in range(excess_warp)
+        )
+        integrity_loss = min(integrity_loss, fleet.integrity)
+
+        # Cargo loss: 2-10% per excess warp factor
+        cargo_loss_percent = sum(
+            random.randint(2, 10) for _ in range(excess_warp)
+        ) / 100.0
+
+        cargo_losses = {}
+        colonist_deaths = 0
+
+        # Apply cargo losses
+        if fleet.ironium_inventory > 0:
+            loss = int(fleet.ironium_inventory * cargo_loss_percent)
+            if loss > 0:
+                cargo_losses['ironium'] = loss
+                fleet.ironium_inventory -= loss
+
+        if fleet.boranium_inventory > 0:
+            loss = int(fleet.boranium_inventory * cargo_loss_percent)
+            if loss > 0:
+                cargo_losses['boranium'] = loss
+                fleet.boranium_inventory -= loss
+
+        if fleet.germanium_inventory > 0:
+            loss = int(fleet.germanium_inventory * cargo_loss_percent)
+            if loss > 0:
+                cargo_losses['germanium'] = loss
+                fleet.germanium_inventory -= loss
+
+        if fleet.colonists > 0:
+            colonist_deaths = int(fleet.colonists * cargo_loss_percent)
+            if colonist_deaths > 0:
+                fleet.colonists -= colonist_deaths
+
+        # Apply integrity damage
+        fleet.integrity -= integrity_loss
+
+        # Check if fleet is destroyed
+        if fleet.integrity <= 0:
+            self._handle_warp_destruction(fleet, warp_speed, from_damage=True)
+            return 'destroyed'
+
+        # Create damage message
+        self._create_warp_damage_message(
+            fleet, warp_speed, integrity_loss, cargo_losses, colonist_deaths
+        )
+        return 'damaged'
+
+    def _handle_warp_destruction(self, fleet, warp_speed, from_damage=False):
+        """Destroy fleet and create destruction message."""
+        factory = FleetWarpDestroyedMessageFactory(
+            self.game, fleet.player, fleet.name, warp_speed, from_damage
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+        fleet.delete()
+
+    def _create_warp_damage_message(self, fleet, warp_speed, integrity_loss,
+                                     cargo_losses, colonist_deaths):
+        """Create a message for warp damage."""
+        factory = FleetWarpDamageMessageFactory(
+            self.game, fleet.player, fleet.name, warp_speed, integrity_loss,
+            cargo_losses, colonist_deaths
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
 
     def _handle_repeating_order(self, order):
         """Create a repeat copy of the order if needed."""

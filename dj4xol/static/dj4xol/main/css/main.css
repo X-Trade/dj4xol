@@ -864,6 +864,11 @@ body {
     font-size: 0.9em;
 }
 
+.warp-value.warp-warning {
+    color: #f7931e;
+    font-weight: bold;
+}
+
 /* Transfer type radio buttons */
 .transfer-type-row {
     display: flex;
