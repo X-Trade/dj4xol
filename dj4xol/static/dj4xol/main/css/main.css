@@ -297,6 +297,89 @@ body {
     overflow: hidden;
 }
 
+.detail-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.detail-header h3 {
+    margin: 0;
+    flex: 1;
+}
+
+.detail-header .detail-selector {
+    flex: 1;
+}
+
+.rename-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1em;
+    padding: 2px 6px;
+    color: #666;
+    border-radius: 3px;
+}
+
+.rename-btn:hover {
+    background: #e0e0e0;
+    color: #333;
+}
+
+.rename-popover {
+    position: absolute;
+    z-index: 1000;
+    background: #333;
+    border: 1px solid #808080;
+    padding: 12px;
+    margin-top: 5px;
+    min-width: 200px;
+    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.rename-popover-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.rename-popover-content label {
+    color: #fff;
+    font-size: 0.9em;
+}
+
+.rename-popover-content input {
+    padding: 6px;
+    border: 1px solid #808080;
+    background: #222;
+    color: #fff;
+    font-size: 1em;
+}
+
+.rename-popover-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.rename-popover-buttons button {
+    padding: 4px 12px;
+    cursor: pointer;
+    background: #444;
+    border: 1px solid #666;
+    color: #fff;
+}
+
+.rename-popover-buttons button:hover {
+    background: #555;
+}
+
+.rename-error {
+    color: #ff6b6b;
+    font-size: 0.85em;
+}
+
 /* Orders/Production panel */
 .orders-section {
     flex: 1 1 50%;
@@ -866,6 +949,11 @@ body {
 
 .warp-value.warp-warning {
     color: #f7931e;
+    font-weight: bold;
+}
+
+.warp-value.warp-danger {
+    color: #e63946;
     font-weight: bold;
 }
 

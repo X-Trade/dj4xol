@@ -243,6 +243,7 @@ class GameTurn():
         """Process a single year of game time."""
         self.fleet_movements()
         self.check_lost_fleets()
+        self.check_damaged_fleets()
         self.mining()
         self.production()
         self.population_growth()
@@ -305,6 +306,11 @@ class GameTurn():
         msg = factory.new_message()
         msg.year = self.game.year
         msg.save()
+
+    def check_damaged_fleets(self):
+        """Destroy any fleets with zero integrity."""
+        for fleet in self.game.fleets.filter(integrity__lte=0):
+            self._handle_warp_destruction(fleet, warp_speed=0, from_damage=True)
 
     def move_fleet(self, fleet):
         """Process fleet orders, with configurable behavior for multiple orders per turn."""
@@ -467,7 +473,7 @@ class GameTurn():
         warp_speed = order.warpfactor if order.order_type == 'MOVE' else 5
 
         # Check for warp damage before moving
-        damage_result = self._check_warp_damage(fleet, warp_speed)
+        damage_result = self._check_warp_damage(fleet, warp_speed, order)
         if damage_result == 'destroyed':
             return 'destroyed'
 
@@ -486,7 +492,7 @@ class GameTurn():
                 return True
             return False
 
-    def _check_warp_damage(self, fleet, warp_speed):
+    def _check_warp_damage(self, fleet, warp_speed, order):
         """Check if fleet takes damage from exceeding safe warp speed.
 
         Returns: 'destroyed', 'damaged', or 'safe'
@@ -505,11 +511,11 @@ class GameTurn():
         # Damage chance: 15% per excess warp factor
         damage_chance = excess_warp * 0.15
         if random.random() < damage_chance:
-            return self._apply_warp_damage(fleet, warp_speed, excess_warp)
+            return self._apply_warp_damage(fleet, warp_speed, excess_warp, order)
 
         return 'safe'
 
-    def _apply_warp_damage(self, fleet, warp_speed, excess_warp):
+    def _apply_warp_damage(self, fleet, warp_speed, excess_warp, order):
         """Apply damage effects from exceeding safe warp speed.
 
         Returns: 'destroyed' if integrity drops to 0, 'damaged' otherwise
@@ -560,6 +566,12 @@ class GameTurn():
             self._handle_warp_destruction(fleet, warp_speed, from_damage=True)
             return 'destroyed'
 
+        # Reduce warp speed after damage: at least 2, at most max_safe_warp
+        reduced_warp = min(max(2, fleet.max_safe_warp // 2), fleet.max_safe_warp)
+        if order.warpfactor > reduced_warp:
+            order.warpfactor = reduced_warp
+            order.save()
+
         # Create damage message
         self._create_warp_damage_message(
             fleet, warp_speed, integrity_loss, cargo_losses, colonist_deaths
@@ -569,7 +581,8 @@ class GameTurn():
     def _handle_warp_destruction(self, fleet, warp_speed, from_damage=False):
         """Destroy fleet and create destruction message."""
         factory = FleetWarpDestroyedMessageFactory(
-            self.game, fleet.player, fleet.name, warp_speed, from_damage
+            self.game, fleet.player, fleet.name, warp_speed,
+            fleet.x, fleet.y, from_damage
         )
         msg = factory.new_message()
         msg.year = self.game.year
@@ -580,7 +593,7 @@ class GameTurn():
                                      cargo_losses, colonist_deaths):
         """Create a message for warp damage."""
         factory = FleetWarpDamageMessageFactory(
-            self.game, fleet.player, fleet.name, warp_speed, integrity_loss,
+            self.game, fleet.player, fleet, warp_speed, integrity_loss,
             cargo_losses, colonist_deaths
         )
         msg = factory.new_message()

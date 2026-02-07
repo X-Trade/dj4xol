@@ -1348,10 +1348,11 @@ class TestFleetOrdersRepeat(TestCase):
         game = default_game(stars=10, fleets=1)
         player = game.players.first()
         fleet = game.fleets.first()
-        
+
         # Position fleet at 0,0 and create order to move to 5,5 (distance=~7) with repeat=True
         fleet.x = 0
         fleet.y = 0
+        fleet.max_safe_warp = 13  # Prevent warp damage
         fleet.save()
         
         from ..models import FleetOrders
@@ -3127,7 +3128,7 @@ class TestWarpDamage(TestCase):
         star = player.homeworld
 
         damaged_count = 0
-        trials = 50
+        trials = 100
 
         for i in range(trials):
             fleet = Fleet.objects.create(
@@ -3137,7 +3138,7 @@ class TestWarpDamage(TestCase):
 
             FleetOrders.objects.create(
                 game=game, fleet=fleet, order_type='MOVE',
-                x=star.x + 50, y=star.y, warpfactor=8  # 3 excess
+                x=star.x + 50, y=star.y, warpfactor=9  # 4 excess, 60% damage chance
             )
 
             GameTurn(game).generate_turn()
@@ -3147,7 +3148,7 @@ class TestWarpDamage(TestCase):
                 if fleet.integrity < 100:
                     damaged_count += 1
 
-        # With 45% damage chance per turn, expect some damage
+        # With 60% damage chance per turn, expect some damage
         self.assertGreater(damaged_count, 0, "Expected some fleets to take damage")
 
     def test_destruction_at_warp_10(self):
@@ -3366,3 +3367,69 @@ class TestWarpDamage(TestCase):
             GameTurn(game).generate_turn()
 
         self.assertTrue(destroyed, "Expected low-integrity fleet to be destroyed")
+
+    def test_warp_speed_reduced_after_damage(self):
+        """Order warp speed is reduced after fleet takes damage."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        warp_reduced = False
+        trials = 50
+
+        for i in range(trials):
+            fleet = Fleet.objects.create(
+                game=game, player=player, name=f"Fast Fleet {i}",
+                x=star.x, y=star.y, max_safe_warp=6, integrity=100
+            )
+            fleet_id = fleet.id
+
+            # Create order with high warp (destination far enough to not complete)
+            order = FleetOrders.objects.create(
+                game=game, fleet=fleet, order_type='MOVE',
+                x=star.x + 100, y=star.y, warpfactor=9
+            )
+            order_id = order.id
+
+            GameTurn(game).generate_turn()
+
+            # Check if fleet survived and order warp was reduced
+            if Fleet.objects.filter(id=fleet_id).exists():
+                fleet.refresh_from_db()
+                if fleet.integrity < 100:
+                    # Fleet was damaged, check if order warp was reduced
+                    if FleetOrders.objects.filter(id=order_id).exists():
+                        order.refresh_from_db()
+                        # Expected: min(max(2, 6//2), 6) = min(max(2, 3), 6) = 3
+                        if order.warpfactor == 3:
+                            warp_reduced = True
+                            break
+
+        self.assertTrue(warp_reduced, "Expected warp speed to be reduced after damage")
+
+    def test_zero_integrity_fleet_destroyed_at_turn_end(self):
+        """Fleets with 0 integrity are destroyed during check_damaged_fleets."""
+        from ..models import Fleet
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        # Create fleet with 0 integrity (shouldn't happen normally, but testing safety)
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Broken Fleet",
+            x=star.x, y=star.y, max_safe_warp=13, integrity=0
+        )
+        fleet_id = fleet.id
+
+        initial_messages = player.messages.count()
+
+        GameTurn(game).generate_turn()
+
+        # Fleet should be destroyed
+        self.assertFalse(Fleet.objects.filter(id=fleet_id).exists())
+
+        # Should have a destruction message
+        self.assertGreater(player.messages.count(), initial_messages)

@@ -524,10 +524,10 @@ class FleetWarpDamageMessageFactory(MessageFactory):
         "Catastrophe aboard {fleet} at warp {warp}: {integrity_loss}% structural damage, {cargo_desc} lost, {colonist_deaths:,}k colonists killed.",
     ]
 
-    def __init__(self, game, player, fleet_name, warp_speed, integrity_loss,
+    def __init__(self, game, player, fleet, warp_speed, integrity_loss,
                  cargo_losses=None, colonist_deaths=0, message=None):
         super().__init__(game, player, message, intensity=-0.4)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.warp_speed = warp_speed
         self.integrity_loss = integrity_loss
         self.cargo_losses = cargo_losses or {}
@@ -554,7 +554,7 @@ class FleetWarpDamageMessageFactory(MessageFactory):
             templates = self.templates_damage_only
 
         return random.choice(templates).format(
-            fleet=self.fleet_name,
+            fleet=map_object_link(self.fleet),
             warp=self.warp_speed,
             integrity_loss=self.integrity_loss,
             cargo_desc=self._format_cargo_desc(),
@@ -567,27 +567,38 @@ class FleetWarpDestroyedMessageFactory(MessageFactory):
     category = 'GENERAL'
     priority = True
     templates_instant = [
-        "{fleet} was torn apart at warp {warp}. All hands lost.",
-        "{fleet} disintegrated travelling at warp {warp}.",
-        "Catastrophic structural failure destroyed {fleet} at warp {warp}.",
-        "{fleet} exceeded its limits at warp {warp} and was lost with all hands.",
+        "{fleet} was torn apart at warp {warp} {location}. All hands lost.",
+        "{fleet} disintegrated travelling at warp {warp} {location}.",
+        "Catastrophic structural failure destroyed {fleet} at warp {warp} {location}.",
+        "{fleet} exceeded its limits at warp {warp} {location} and was lost with all hands.",
     ]
     templates_accumulated = [
-        "{fleet} broke apart after accumulated damage at warp {warp}.",
-        "Structural failures cascaded through {fleet} at warp {warp}. The fleet is lost.",
-        "{fleet} could not withstand further stress at warp {warp} and was destroyed.",
+        "{fleet} broke apart after accumulated damage at warp {warp} {location}.",
+        "Structural failures cascaded through {fleet} at warp {warp} {location}. The fleet is lost.",
+        "{fleet} could not withstand further stress at warp {warp} {location} and was destroyed.",
     ]
 
-    def __init__(self, game, player, fleet_name, warp_speed, from_damage=False,
-                 message=None):
+    def __init__(self, game, player, fleet_name, warp_speed, x, y,
+                 from_damage=False, message=None):
         super().__init__(game, player, message, intensity=-0.8)
         self.fleet_name = fleet_name
         self.warp_speed = warp_speed
+        self.x = x
+        self.y = y
         self.from_damage = from_damage
+
+    def _format_location(self):
+        """Format the location as a star link or empty space coordinates."""
+        from .models import Star
+        star = Star.objects.filter(game=self.game, x=self.x, y=self.y).first()
+        if star:
+            return f"near {map_object_link(star)}"
+        return f"in empty space ({self.x}, {self.y})"
 
     def format_message(self):
         templates = self.templates_accumulated if self.from_damage else self.templates_instant
         return random.choice(templates).format(
             fleet=self.fleet_name,
-            warp=self.warp_speed
+            warp=self.warp_speed,
+            location=self._format_location()
         )

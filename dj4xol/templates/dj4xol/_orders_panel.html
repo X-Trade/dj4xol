@@ -492,10 +492,13 @@
             var val = parseInt(warpSlider.value);
             warpDisplay.textContent = val === 0 ? 'Stopped' : 'Warp ' + val;
             warpInput.value = val;
+            warpDisplay.classList.remove('warp-warning', 'warp-danger');
             if (val > maxSafeWarp) {
-                warpDisplay.classList.add('warp-warning');
-            } else {
-                warpDisplay.classList.remove('warp-warning');
+                if (val >= 10) {
+                    warpDisplay.classList.add('warp-danger');
+                } else {
+                    warpDisplay.classList.add('warp-warning');
+                }
             }
         }
         warpSlider.addEventListener('input', updateWarpDisplay);

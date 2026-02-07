@@ -250,33 +250,33 @@ class AbstractGameObject(UUIDMixin):
             # Generate deterministic short_id using XOR approach for better entropy distribution
             uuid_int = self.id.int
             self.short_id = self._generate_short_id_from_uuid(uuid_int)
-        
+
         super(UUIDMixin, self).save(*args, **kwargs)
-    
+
     def _generate_short_id_from_uuid(self, uuid_int):
         """Generate short_id by XORing UUID chunks for better entropy distribution."""
         # XOR the 128-bit UUID in 32-bit chunks to get 32 bits
         chunk1 = (uuid_int >> 96) & 0xFFFFFFFF  # Top 32 bits
-        chunk2 = (uuid_int >> 64) & 0xFFFFFFFF  # Next 32 bits  
+        chunk2 = (uuid_int >> 64) & 0xFFFFFFFF  # Next 32 bits
         chunk3 = (uuid_int >> 32) & 0xFFFFFFFF  # Next 32 bits
         chunk4 = uuid_int & 0xFFFFFFFF          # Bottom 32 bits
-        
+
         # XOR all chunks together
         xor_result = chunk1 ^ chunk2 ^ chunk3 ^ chunk4
-        
+
         # Add game prefix for scoping
         game_prefix = self.game.short_id[:4]
-        
+
         # Convert to base36 (0-9, a-z) for readability, take 8 chars to fit in 12 total
         import string
         base36_chars = string.digits + string.ascii_lowercase
-        
+
         short_part = ''
         temp = xor_result
         for _ in range(8):  # Generate 8 characters
             short_part = base36_chars[temp % 36] + short_part
             temp //= 36
-        
+
         return game_prefix + short_part
 
     class Meta:
@@ -355,11 +355,11 @@ class Fleet(AbstractMapObject):
             on_delete=models.CASCADE)
     # Heading in degrees: 0 = north, 90 = east, 180 = south, 270 = west
     heading = models.FloatField(default=0.0)
-    
+
     # Cargo capacity and inventory
     cargo_capacity = models.IntegerField(default=1000)  # Total cargo capacity in kt
     ironium_inventory = models.IntegerField(default=0)  # Current ironium cargo in kt
-    boranium_inventory = models.IntegerField(default=0)  # Current boranium cargo in kt  
+    boranium_inventory = models.IntegerField(default=0)  # Current boranium cargo in kt
     germanium_inventory = models.IntegerField(default=0)  # Current germanium cargo in kt
     colonists = models.IntegerField(default=0)  # Current colonist cargo in thousands
     dry_mass = models.IntegerField(default=100)  # Dry mass in kt for colonise bonus
@@ -371,7 +371,7 @@ class Fleet(AbstractMapObject):
     def cargo_used(self):
         """Total cargo currently loaded (in kt equivalent)."""
         return self.ironium_inventory + self.boranium_inventory + self.germanium_inventory + self.colonists
-    
+
     @property
     def cargo_remaining(self):
         """Remaining cargo capacity (in kt equivalent)."""
@@ -463,12 +463,12 @@ class FleetOrders(AbstractGameObject):
         ('TRANSFER', 'Transfer'),
         ('COLONISE', 'Colonise'),
     ]
-    
+
     fleet = models.ForeignKey(Fleet, related_name="orders",
             on_delete=models.CASCADE)
     order_type = models.CharField(max_length=10, choices=ORDER_TYPE_CHOICES, default='MOVE')
     repeat = models.BooleanField(default=False)
-    
+
     # Movement parameters
     warpfactor = models.IntegerField(default=0,
                                      validators=[MinValueValidator(0), MaxValueValidator(13)])
@@ -478,20 +478,20 @@ class FleetOrders(AbstractGameObject):
             on_delete=models.CASCADE)
     target_fleet = models.ForeignKey(Fleet, null=True, related_name='+',
             on_delete=models.CASCADE)
-    
+
     # Transfer parameters
     TRANSFER_TYPE_CHOICES = [
         ('LOAD', 'Load'),
         ('UNLOAD', 'Unload'),
         ('UNLOAD_ALL', 'Unload All'),
     ]
-    transfer_type = models.CharField(max_length=10, choices=TRANSFER_TYPE_CHOICES, 
+    transfer_type = models.CharField(max_length=10, choices=TRANSFER_TYPE_CHOICES,
                                    null=True, blank=True)
     transfer_ironium = models.IntegerField(default=0)  # Amount to transfer
     transfer_boranium = models.IntegerField(default=0)
-    transfer_germanium = models.IntegerField(default=0) 
+    transfer_germanium = models.IntegerField(default=0)
     transfer_colonists = models.IntegerField(default=0)
-    
+
     @property
     def target(self):
         """Return a string description of the order target."""
@@ -506,7 +506,7 @@ class FleetOrders(AbstractGameObject):
 
     def get_destination_coordinates(self):
         """Get the (x, y) coordinates for this order's destination.
-        
+
         Uses the same logic as turn.py move_fleet() method.
         Returns tuple (x, y) or raises exception if no valid destination.
         """
