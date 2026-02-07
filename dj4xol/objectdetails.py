@@ -1,6 +1,9 @@
 from django.db import models
 from dj4xol.models import Fleet, Star
-from dj4xol.turn import calculate_growth_factor, apply_population_change, effective_capacity, calculate_employment_percent, COLONISTS_PER_JOB
+from dj4xol.turn import (
+    calculate_growth_factor, apply_population_change, effective_capacity,
+    calculate_employment_percent, COLONISTS_PER_JOB
+)
 
 from itertools import chain
 
@@ -103,6 +106,7 @@ class DetailBuilder():
             return None
         if self.selected_obj.colonists == 0:
             return None
+
         factor = calculate_growth_factor(self.player, self.selected_obj)
         factor *= self.player.race_type.population_growth_multiplier
         current = self.selected_obj.colonists
