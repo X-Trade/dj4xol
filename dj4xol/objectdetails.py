@@ -18,6 +18,11 @@ class DetailBuilder():
         """Format empty space coordinates consistently across the UI."""
         return f"Empty Space ({x}, {y})"
 
+    @staticmethod
+    def format_kt(value):
+        """Format a resource value with commas and kt suffix."""
+        return f"{value:,}kt"
+
     def __init__(self, game, x=None, y=None, selected=None, player=None):
         self.game = game
         self.player = player
@@ -278,15 +283,15 @@ class DetailBuilder():
                 },
                 'spent': {
                     'bp': o.spent_bp,
-                    'ironium': o.spent_ironium,
-                    'boranium': o.spent_boranium,
-                    'germanium': o.spent_germanium,
+                    'ironium': self.format_kt(o.spent_ironium),
+                    'boranium': self.format_kt(o.spent_boranium),
+                    'germanium': self.format_kt(o.spent_germanium),
                 },
                 'remaining': {
                     'bp': cost.get('bp', 0) - o.spent_bp,
-                    'ironium': cost.get('ironium', 0) - o.spent_ironium,
-                    'boranium': cost.get('boranium', 0) - o.spent_boranium,
-                    'germanium': cost.get('germanium', 0) - o.spent_germanium,
+                    'ironium': self.format_kt(cost.get('ironium', 0) - o.spent_ironium),
+                    'boranium': self.format_kt(cost.get('boranium', 0) - o.spent_boranium),
+                    'germanium': self.format_kt(cost.get('germanium', 0) - o.spent_germanium),
                 },
             })
         return orders
