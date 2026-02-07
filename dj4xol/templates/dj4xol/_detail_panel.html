@@ -2,14 +2,32 @@
 <div class="detail-section panel no-transition open" data-panel="detail">
 <h2><span>Detail</span><span class="panel-toggle"></span></h2>
 <div class="panel-content"><div id="detail">
-    {% if detail.objects_here|length > 1 %}
-    <select class="detail-selector" onchange="window.location.href='?x={{ selection.x }}&y={{ selection.y }}&sel=' + this.value">
-        {% for obj in detail.objects_here %}
-        <option value="{{ obj.short_id }}" {% if obj.short_id == detail.selected_id %}selected{% endif %}>{{ obj.name }}</option>
-        {% endfor %}
-    </select>
-    {% else %}
-    <h3>{{ detail.name }}</h3>
+    <div class="detail-header">
+        {% if detail.objects_here|length > 1 %}
+        <select class="detail-selector" onchange="window.location.href='?x={{ selection.x }}&y={{ selection.y }}&sel=' + this.value">
+            {% for obj in detail.objects_here %}
+            <option value="{{ obj.short_id }}" {% if obj.short_id == detail.selected_id %}selected{% endif %}>{{ obj.name }}</option>
+            {% endfor %}
+        </select>
+        {% else %}
+        <h3>{{ detail.name }}</h3>
+        {% endif %}
+        {% if detail.is_owned %}
+        <button class="rename-btn" onclick="showRenamePopover()" title="Rename">&#9998;</button>
+        {% endif %}
+    </div>
+    {% if detail.is_owned %}
+    <div id="rename-popover" class="rename-popover" style="display: none;">
+        <div class="rename-popover-content">
+            <label for="rename-input">Rename:</label>
+            <input type="text" id="rename-input" maxlength="30" value="{{ detail.name }}">
+            <div class="rename-popover-buttons">
+                <button type="button" onclick="submitRename()">Save</button>
+                <button type="button" onclick="hideRenamePopover()">Cancel</button>
+            </div>
+            <div id="rename-error" class="rename-error"></div>
+        </div>
+    </div>
     {% endif %}
     <hr>
     <p>{% if detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: <span class="has-tooltip" data-tooltip="{{ detail.population|exact_pop }}">{{ detail.population|humanize_pop }}</span>{% if detail.population_change != None %} <span class="pop-change has-tooltip {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}" data-tooltip="{{ detail.population_change|exact_pop }}">({{ detail.population_change|humanize_pop_change }})</span>{% endif %}{% endif %}</p>
@@ -97,3 +115,63 @@
     {% endif %}
 </div></div>
 </div>
+{% if detail.is_owned %}
+<script>
+function showRenamePopover() {
+    var popover = document.getElementById('rename-popover');
+    var input = document.getElementById('rename-input');
+    popover.style.display = 'block';
+    input.focus();
+    input.select();
+}
+
+function hideRenamePopover() {
+    document.getElementById('rename-popover').style.display = 'none';
+    document.getElementById('rename-error').textContent = '';
+}
+
+function submitRename() {
+    var input = document.getElementById('rename-input');
+    var errorDiv = document.getElementById('rename-error');
+    var newName = input.value.trim();
+
+    if (!newName) {
+        errorDiv.textContent = 'Name is required';
+        return;
+    }
+
+    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    var objectId = '{{ detail.selected_id }}';
+    var gameId = '{{ game.short_id }}';
+
+    var baseUrl = '{% url "dj4xol:game" game.short_id %}';
+    fetch(baseUrl + 'rename/' + objectId + '/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': csrfToken
+        },
+        body: 'name=' + encodeURIComponent(newName)
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            location.reload();
+        } else {
+            errorDiv.textContent = data.error || 'Failed to rename';
+        }
+    })
+    .catch(function(error) {
+        errorDiv.textContent = 'Network error';
+    });
+}
+
+document.getElementById('rename-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        submitRename();
+    } else if (e.key === 'Escape') {
+        hideRenamePopover();
+    }
+});
+</script>
+{% endif %}

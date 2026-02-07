@@ -1,5 +1,4 @@
 ============= MAIN TODO =============
-2. Speed limits
 3. Merge with fleet Order
 4. Scuttle Fleet order & Salvage
 5. Basic combat (based on mass & chance)

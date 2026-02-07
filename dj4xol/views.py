@@ -567,3 +567,42 @@ def objects_at_location(request, game_short_id, x, y):
     
     return JsonResponse({'objects': objects})
 
+
+@player_only_view()
+def rename_object(request, game_short_id, object_short_id):
+    """Rename a star or fleet owned by the player."""
+    from django.http import JsonResponse
+    from .models import Star, Fleet
+
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+
+    new_name = request.POST.get('name', '').strip()
+    if not new_name:
+        return JsonResponse({'error': 'Name is required'}, status=400)
+    if len(new_name) > 30:
+        return JsonResponse({'error': 'Name must be 30 characters or less'}, status=400)
+
+    # Try to find the object (star or fleet) and verify ownership
+    obj = None
+    obj = Star.objects.filter(short_id=object_short_id, game=game).first()
+    if obj:
+        if obj.player != player:
+            return JsonResponse({'error': 'You do not own this star'}, status=403)
+    else:
+        obj = Fleet.objects.filter(short_id=object_short_id, game=game).first()
+        if obj:
+            if obj.player != player:
+                return JsonResponse({'error': 'You do not own this fleet'}, status=403)
+        else:
+            return JsonResponse({'error': 'Object not found'}, status=404)
+
+    obj.name = new_name
+    obj.save()
+
+    return JsonResponse({'success': True, 'name': new_name})
+
