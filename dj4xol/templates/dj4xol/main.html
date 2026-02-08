@@ -38,10 +38,18 @@
                     </form>
                 {% endif %}
             </span>
-            <span class="nav">
-                <a href="{% url 'dj4xol:index' %}">Home</a> |
-                <a href="{% url 'logout' %}">Logout</a>
-            </span>
+            <div class="nav-menu">
+                <button class="hamburger" id="hamburger-btn" aria-label="Menu">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+                <div class="nav-dropdown" id="nav-dropdown">
+                    <a href="{% url 'dj4xol:index' %}">Home</a>
+                    <a href="{% url 'dj4xol:profile' %}">Profile</a>
+                    <a href="{% url 'logout' %}">Logout</a>
+                </div>
+            </div>
         </div>
         <div class="columns">
             {% if dest_mode %}
@@ -95,5 +103,24 @@
                 </div>
             </div>
         </div>
+        <script>
+        (function() {
+            var hamburger = document.getElementById('hamburger-btn');
+            var dropdown = document.getElementById('nav-dropdown');
+
+            hamburger.addEventListener('click', function(e) {
+                e.stopPropagation();
+                dropdown.classList.toggle('open');
+                hamburger.classList.toggle('open');
+            });
+
+            document.addEventListener('click', function(e) {
+                if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                    dropdown.classList.remove('open');
+                    hamburger.classList.remove('open');
+                }
+            });
+        })();
+        </script>
     </body>
 </html>

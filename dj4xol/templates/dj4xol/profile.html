@@ -1,0 +1,81 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Profile - {{ account.alias }}</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+    </head>
+    <body>
+        <h1>Profile</h1>
+        <p><a href="{% url 'dj4xol:index' %}">&larr; Back to Home</a></p>
+
+        <div class="profile-section">
+            <h2>Account Details</h2>
+            <table class="profile-table">
+                <tr>
+                    <th>Username</th>
+                    <td>{{ account.django_user.username }}</td>
+                </tr>
+                <tr>
+                    <th>Alias</th>
+                    <td>{{ account.alias }}</td>
+                </tr>
+                <tr>
+                    <th>Full Name</th>
+                    <td>{{ account.full_name }}</td>
+                </tr>
+                <tr>
+                    <th>Email</th>
+                    <td>{{ account.email }}</td>
+                </tr>
+                <tr>
+                    <th>Member Since</th>
+                    <td>{{ account.django_user.date_joined|date:"d M Y" }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="profile-section">
+            <h2>Games Playing ({{ games_playing|length }})</h2>
+            <ul>
+            {% for game in games_playing %}
+                <li><a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
+                    (Year {{ game.year }})</li>
+            {% empty %}
+                <li>Not playing in any games</li>
+            {% endfor %}
+            </ul>
+        </div>
+
+        {% if games_owned %}
+        <div class="profile-section">
+            <h2>Games Owned ({{ games_owned|length }})</h2>
+            <ul>
+            {% for game in games_owned %}
+                <li><a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
+                    (Year {{ game.year }})</li>
+            {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="profile-section">
+            <h2>Custom Races ({{ races|length }})</h2>
+            <ul>
+            {% for race in races %}
+                <li>{{ race.name }} ({{ race.race_type.name }})</li>
+            {% empty %}
+                <li>No custom races created</li>
+            {% endfor %}
+            </ul>
+            <p><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></p>
+        </div>
+
+        <div class="profile-section">
+            <h2>Actions</h2>
+            <ul>
+                <li><a href="{% url 'logout' %}">Logout</a></li>
+            </ul>
+        </div>
+    </body>
+</html>

@@ -1,0 +1,97 @@
+/* Home and Profile page styles */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+    background: #f5f5f5;
+    color: #333;
+}
+
+h1 {
+    color: #2a5a8a;
+    margin-bottom: 5px;
+}
+
+h2 {
+    color: #444;
+    padding-bottom: 8px;
+    margin-top: 24px;
+    position: relative;
+    display: inline-block;
+}
+
+h2::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 1px;
+    width: 200%;
+    background: linear-gradient(to right, #bbb 0%, #bbb 50%, transparent 100%);
+}
+
+/* Floated columns layout */
+#mygames,
+#publicgames {
+    margin-right: 30px;
+}
+
+a {
+    color: #2a5a8a;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+ul {
+    padding-left: 20px;
+}
+
+li {
+    margin: 8px 0;
+}
+
+/* Profile page styles */
+.profile-section {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+}
+
+.profile-section h2 {
+    margin-top: 0;
+    padding-bottom: 0;
+    display: block;
+}
+
+.profile-section h2::after {
+    display: none;
+}
+
+.profile-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.profile-table th,
+.profile-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.profile-table th {
+    width: 140px;
+    color: #666;
+    font-weight: normal;
+}
+
+.profile-table tr:last-child th,
+.profile-table tr:last-child td {
+    border-bottom: none;
+}

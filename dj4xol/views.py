@@ -546,6 +546,29 @@ def register(request):
     return render(request, 'dj4xol/register.html', {'form': form})
 
 
+@registration_required()
+def profile(request):
+    """View user's account profile."""
+    account = request.user.dj4xol_account
+
+    # Get games the user is playing in
+    playing = Player.objects.filter(account=account, game__ended=False)
+    games_playing = [p.game for p in playing.select_related('game')]
+
+    # Get races owned by the user
+    races = ServerRace.objects.filter(owner=account)
+
+    # Get games owned by the user
+    games_owned = Game.objects.filter(owner=account, ended=False)
+
+    return render(request, 'dj4xol/profile.html', {
+        'account': account,
+        'games_playing': games_playing,
+        'games_owned': games_owned,
+        'races': races,
+    })
+
+
 @player_only_view()
 def objects_at_location(request, game_short_id, x, y):
     """API endpoint to get objects at specific coordinates."""
