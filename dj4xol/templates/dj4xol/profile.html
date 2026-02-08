@@ -3,79 +3,143 @@
     <head>
         <meta charset="utf-8">
         <title>Profile - {{ account.alias }}</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
     </head>
     <body>
-        <h1>Profile</h1>
-        <p><a href="{% url 'dj4xol:index' %}">&larr; Back to Home</a></p>
+        <div class="title-bar">
+            <span class="title">Profile</span>
+            <span class="tagline">{{ account.alias }}</span>
+            <div class="nav-menu">
+                <button class="hamburger" id="hamburger-btn" aria-label="Menu">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+                <div class="nav-dropdown" id="nav-dropdown">
+                    <a href="{% url 'dj4xol:index' %}">Home</a>
+                    <a href="{% url 'logout' %}">Logout</a>
+                </div>
+            </div>
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="account">
+                    <h2><span>Account Details</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <table class="profile-table">
+                            <tr>
+                                <th>Username</th>
+                                <td>{{ account.django_user.username }}</td>
+                            </tr>
+                            <tr>
+                                <th>Alias</th>
+                                <td>{{ account.alias }}</td>
+                            </tr>
+                            <tr>
+                                <th>Full Name</th>
+                                <td>{{ account.full_name }}</td>
+                            </tr>
+                            <tr>
+                                <th>Email</th>
+                                <td>{{ account.email }}</td>
+                            </tr>
+                            <tr>
+                                <th>Member Since</th>
+                                <td>{{ account.django_user.date_joined|date:"d M Y" }}</td>
+                            </tr>
+                        </table>
+                    </div></div>
+                </div>
 
-        <div class="profile-section">
-            <h2>Account Details</h2>
-            <table class="profile-table">
-                <tr>
-                    <th>Username</th>
-                    <td>{{ account.django_user.username }}</td>
-                </tr>
-                <tr>
-                    <th>Alias</th>
-                    <td>{{ account.alias }}</td>
-                </tr>
-                <tr>
-                    <th>Full Name</th>
-                    <td>{{ account.full_name }}</td>
-                </tr>
-                <tr>
-                    <th>Email</th>
-                    <td>{{ account.email }}</td>
-                </tr>
-                <tr>
-                    <th>Member Since</th>
-                    <td>{{ account.django_user.date_joined|date:"d M Y" }}</td>
-                </tr>
-            </table>
+                <div class="panel no-transition open" data-panel="games">
+                    <h2><span>Games Playing ({{ games_playing|length }})</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        {% if games_playing %}
+                        <ul class="game-list">
+                        {% for game in games_playing %}
+                            <li>
+                                <a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
+                                <span class="game-meta">Year {{ game.year }}</span>
+                            </li>
+                        {% endfor %}
+                        </ul>
+                        {% else %}
+                        <p class="no-items">Not playing in any games.</p>
+                        {% endif %}
+                    </div></div>
+                </div>
+
+                {% if games_owned %}
+                <div class="panel no-transition open" data-panel="owned">
+                    <h2><span>Games Owned ({{ games_owned|length }})</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <ul class="game-list">
+                        {% for game in games_owned %}
+                            <li>
+                                <a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
+                                <span class="game-meta">Year {{ game.year }}</span>
+                            </li>
+                        {% endfor %}
+                        </ul>
+                    </div></div>
+                </div>
+                {% endif %}
+
+                <div class="panel no-transition open" data-panel="races">
+                    <h2><span>Custom Races ({{ races|length }})</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        {% if races %}
+                        <ul class="game-list">
+                        {% for race in races %}
+                            <li>
+                                <span>{{ race.name }}</span>
+                                <span class="game-meta">{{ race.race_type.name }}</span>
+                            </li>
+                        {% endfor %}
+                        </ul>
+                        {% else %}
+                        <p class="no-items">No custom races created.</p>
+                        {% endif %}
+                        <p style="margin-top: 12px;"><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></p>
+                    </div></div>
+                </div>
+            </div>
         </div>
 
-        <div class="profile-section">
-            <h2>Games Playing ({{ games_playing|length }})</h2>
-            <ul>
-            {% for game in games_playing %}
-                <li><a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
-                    (Year {{ game.year }})</li>
-            {% empty %}
-                <li>Not playing in any games</li>
-            {% endfor %}
-            </ul>
-        </div>
+        <script>
+        (function() {
+            // Hamburger menu toggle
+            var hamburger = document.getElementById('hamburger-btn');
+            var dropdown = document.getElementById('nav-dropdown');
 
-        {% if games_owned %}
-        <div class="profile-section">
-            <h2>Games Owned ({{ games_owned|length }})</h2>
-            <ul>
-            {% for game in games_owned %}
-                <li><a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
-                    (Year {{ game.year }})</li>
-            {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
+            if (hamburger && dropdown) {
+                hamburger.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    dropdown.classList.toggle('open');
+                    hamburger.classList.toggle('open');
+                });
 
-        <div class="profile-section">
-            <h2>Custom Races ({{ races|length }})</h2>
-            <ul>
-            {% for race in races %}
-                <li>{{ race.name }} ({{ race.race_type.name }})</li>
-            {% empty %}
-                <li>No custom races created</li>
-            {% endfor %}
-            </ul>
-            <p><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></p>
-        </div>
+                document.addEventListener('click', function(e) {
+                    if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                        dropdown.classList.remove('open');
+                        hamburger.classList.remove('open');
+                    }
+                });
+            }
 
-        <div class="profile-section">
-            <h2>Actions</h2>
-            <ul>
-                <li><a href="{% url 'logout' %}">Logout</a></li>
-            </ul>
-        </div>
+            // Panel toggle
+            var panels = document.querySelectorAll('.panel');
+            panels.forEach(function(panel) {
+                var header = panel.querySelector('h2');
+                if (header) {
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                }
+            });
+        })();
+        </script>
     </body>
 </html>

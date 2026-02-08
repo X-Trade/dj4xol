@@ -110,6 +110,7 @@ class UUIDMixin(models.Model):
 class ServerSettings(models.Model):
     key = models.CharField(max_length=30, primary_key=True, unique=True)
     value = models.CharField(max_length=30)
+    long_value = models.TextField(blank=True, default='')
     description = models.CharField(max_length=60)
     modified = models.DateTimeField(auto_now=True, null=True)
     modified_by = models.ForeignKey(auth_models.User, on_delete=models.PROTECT, null=True)
@@ -147,9 +148,13 @@ class ServerSettings(models.Model):
 
     @classmethod
     def get(cls, key, default=None):
-        """Get a setting by key, creating from fixtures if not found."""
+        """Get a setting by key, creating from fixtures if not found.
+
+        Returns long_value if set, otherwise value.
+        """
         try:
-            return cls.objects.get(pk=key).value
+            setting = cls.objects.get(pk=key)
+            return setting.long_value or setting.value
         except cls.DoesNotExist:
             defaults = cls._load_defaults()
             if key in defaults:
@@ -157,9 +162,10 @@ class ServerSettings(models.Model):
                 setting = cls.objects.create(
                     key=key,
                     value=fields.get('value', ''),
+                    long_value=fields.get('long_value', ''),
                     description=fields.get('description', '')
                 )
-                return setting.value
+                return setting.long_value or setting.value
             return default
 
 

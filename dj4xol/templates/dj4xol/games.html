@@ -3,51 +3,137 @@
     <head>
         <meta charset="utf-8">
         <title>{{ server_name }} - Home</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
-        <script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
     </head>
     <body>
-		<h1>{{ server_name }}</h1>
-		<p><i>{{ server_tagline }}</i></p>
-		<div id='mygames' style="float:left;min-width:300px">
-			<h2>My Games</h2>
-			<ul>
-			{% for game in my_games %}
-				<li><a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
-					({{ game.year }}, {% if game.is_generating %}GENERATING{% else %}{{ game.get_turn_scheme_short_display }}{% endif %})</li>
-			{% empty %}
-				<li>No games yet</li>
-			{% endfor %}
-			</ul>
-			{% if invited_games %}
-			<h3>Invitations</h3>
-			<ul>
-			{% for game in invited_games %}
-				<li>{{ game.name }} ({{ game.year }}, {% if game.is_generating %}GENERATING{% else %}{{ game.get_turn_scheme_short_display }}{% endif %})
-					<a href="{% url 'dj4xol:join_game' game.short_id %}">join</a></li>
-			{% endfor %}
-			</ul>
-			{% endif %}
-		</div>
-		<div id='publicgames' style="float:left;min-width:300px">
-			<h2>Open Games</h2>
-			<ul>
-			{% for game in open_games %}
-				<li>{{ game.name }}
-					({{ game.year }}, {% if game.is_generating %}GENERATING{% else %}{{ game.get_turn_scheme_short_display }}{% endif %})
-					<a href="{% url 'dj4xol:join_game' game.short_id %}">join</a></li>
-			{% empty %}
-				<li>No open games</li>
-			{% endfor %}
-			</ul>
-		</div>
-		<div style="clear:both; padding-top:20px;">
-			<h2>Actions</h2>
-			<ul>
-				<li><a href="{% url 'dj4xol:create_game' %}">Create New Game</a></li>
-				<li><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></li>
-				<li><a href="{% url 'logout' %}">Logout</a></li>
-			</ul>
-		</div>
-	</body>
+        <div class="title-bar">
+            <span class="title">{{ server_name }}</span>
+            {% if server_tagline %}<span class="tagline">{{ server_tagline }}</span>{% endif %}
+            <div class="nav-menu">
+                <button class="hamburger" id="hamburger-btn" aria-label="Menu">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+                <div class="nav-dropdown" id="nav-dropdown">
+                    <a href="{% url 'dj4xol:profile' %}">Profile</a>
+                    <a href="{% url 'logout' %}">Logout</a>
+                </div>
+            </div>
+        </div>
+        <div class="columns two-column">
+            <div class="column column-left">
+                {% if server_welcome %}
+                <div class="panel no-transition open" data-panel="welcome">
+                    <h2><span>Welcome</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div class="welcome-content">
+                        {{ server_welcome|linebreaks }}
+                    </div></div>
+                </div>
+                {% endif %}
+
+                <div class="panel no-transition open" data-panel="mygames">
+                    <h2><span>My Games</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        {% if my_games %}
+                        <ul class="game-list">
+                        {% for game in my_games %}
+                            <li>
+                                <a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
+                                <span class="game-meta">Year {{ game.year }} &middot; {% if game.is_generating %}Generating...{% else %}{{ game.get_turn_scheme_short_display }}{% endif %}</span>
+                            </li>
+                        {% endfor %}
+                        </ul>
+                        {% else %}
+                        <p class="no-items">No games yet. Create or join a game to get started.</p>
+                        {% endif %}
+                    </div></div>
+                </div>
+
+                {% if invited_games %}
+                <div class="panel no-transition open" data-panel="invitations">
+                    <h2><span>Invitations</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <ul class="game-list">
+                        {% for game in invited_games %}
+                            <li>
+                                <span>{{ game.name }}</span>
+                                <span class="game-meta">Year {{ game.year }} &middot; {% if game.is_generating %}Generating...{% else %}{{ game.get_turn_scheme_short_display }}{% endif %}</span>
+                                <a href="{% url 'dj4xol:join_game' game.short_id %}" class="action-link">Join</a>
+                            </li>
+                        {% endfor %}
+                        </ul>
+                    </div></div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="column column-right">
+                <div class="panel no-transition open" data-panel="opengames">
+                    <h2><span>Open Games</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        {% if open_games %}
+                        <ul class="game-list">
+                        {% for game in open_games %}
+                            <li>
+                                <span>{{ game.name }}</span>
+                                <span class="game-meta">Year {{ game.year }} &middot; {% if game.is_generating %}Generating...{% else %}{{ game.get_turn_scheme_short_display }}{% endif %}</span>
+                                <a href="{% url 'dj4xol:join_game' game.short_id %}" class="action-link">Join</a>
+                            </li>
+                        {% endfor %}
+                        </ul>
+                        {% else %}
+                        <p class="no-items">No open games available.</p>
+                        {% endif %}
+                    </div></div>
+                </div>
+
+                <div class="panel no-transition open" data-panel="actions">
+                    <h2><span>Actions</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <ul class="action-list">
+                            <li><a href="{% url 'dj4xol:create_game' %}">Create New Game</a></li>
+                            <li><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></li>
+                        </ul>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        (function() {
+            // Hamburger menu toggle
+            var hamburger = document.getElementById('hamburger-btn');
+            var dropdown = document.getElementById('nav-dropdown');
+
+            if (hamburger && dropdown) {
+                hamburger.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    dropdown.classList.toggle('open');
+                    hamburger.classList.toggle('open');
+                });
+
+                document.addEventListener('click', function(e) {
+                    if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                        dropdown.classList.remove('open');
+                        hamburger.classList.remove('open');
+                    }
+                });
+            }
+
+            // Panel toggle
+            var panels = document.querySelectorAll('.panel');
+            panels.forEach(function(panel) {
+                var header = panel.querySelector('h2');
+                if (header) {
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                }
+            });
+        })();
+        </script>
+    </body>
 </html>

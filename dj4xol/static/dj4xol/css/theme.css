@@ -1,0 +1,354 @@
+/*
+ * dj4xol Theme - Shared styling for panels, layout, and typography
+ * This file provides the foundation for a consistent look across all pages
+ */
+
+/* ============================================
+   CSS Custom Properties (Theme Variables)
+   ============================================ */
+:root {
+    /* Primary colours */
+    --theme-bg: #f5f5f5;
+    --theme-text: #333;
+    --theme-accent: #2a5a8a;
+    --theme-accent-hover: #3a6a9a;
+
+    /* Panel colours */
+    --panel-header-bg: #e0e0e0;
+    --panel-header-text: #333;
+    --panel-border: #808080;
+    --panel-content-bg: #fff;
+    --panel-content-border: #808080;
+
+    /* Title bar */
+    --titlebar-bg: #333;
+    --titlebar-text: #fff;
+    --titlebar-link: #8cf;
+
+    /* Status colours */
+    --status-positive: #8f8;
+    --status-warning: #ff8;
+    --status-negative: #f88;
+
+    /* Toggle icon */
+    --toggle-colour: #666;
+
+    /* Spacing */
+    --panel-padding: 10px;
+    --panel-gap: 8px;
+    --border-radius: 12px;
+}
+
+/* ============================================
+   Base Typography
+   ============================================ */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--theme-text);
+    background: var(--theme-bg);
+    margin: 0;
+    padding: 0;
+}
+
+a {
+    color: var(--theme-accent);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* ============================================
+   Title Bar
+   ============================================ */
+.title-bar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 8px 12px;
+    background: var(--titlebar-bg);
+    color: var(--titlebar-text);
+    flex-shrink: 0;
+}
+
+.title-bar .title {
+    font-weight: bold;
+    font-size: 1.2em;
+}
+
+.title-bar .year {
+    color: #aaa;
+}
+
+.title-bar .turn-status {
+    flex: 1;
+}
+
+.title-bar a {
+    color: var(--titlebar-link);
+}
+
+.title-bar button {
+    padding: 4px 12px;
+    cursor: pointer;
+}
+
+.title-bar .status-done {
+    color: var(--status-positive);
+}
+
+.title-bar .status-generating {
+    color: var(--status-warning);
+    font-style: italic;
+}
+
+/* ============================================
+   Panel System
+   ============================================ */
+
+/* Panel header (h2 inside panel) */
+.panel > h2 {
+    margin-top: var(--panel-gap);
+    margin-bottom: 0;
+    padding: 8px;
+    border: 1px solid var(--panel-border);
+    border-bottom: none;
+    background-color: var(--panel-header-bg);
+    color: var(--panel-header-text);
+    border-top-right-radius: var(--border-radius);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    font-size: 1em;
+    font-weight: bold;
+}
+
+/* Panel toggle button (+/-) */
+.panel-toggle {
+    width: 20px;
+    height: 20px;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.panel-toggle::before,
+.panel-toggle::after {
+    content: '';
+    position: absolute;
+    background: var(--toggle-colour);
+    transition: transform 0.3s ease;
+}
+
+/* Horizontal bar (always visible) */
+.panel-toggle::before {
+    width: 14px;
+    height: 2px;
+    top: 9px;
+    left: 3px;
+}
+
+/* Vertical bar (collapses to 0 when open) */
+.panel-toggle::after {
+    width: 2px;
+    height: 14px;
+    top: 3px;
+    left: 9px;
+}
+
+/* When panel is open, vertical bar shrinks */
+.panel.open .panel-toggle::after {
+    transform: scaleY(0) rotate(90deg);
+}
+
+/* Prevent transition on page load */
+.panel.no-transition .panel-toggle::before,
+.panel.no-transition .panel-toggle::after {
+    transition: none;
+}
+
+/* Panel content wrapper */
+.panel-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.panel-content > div {
+    flex: 1;
+    min-height: 0;
+    border: 1px solid var(--panel-content-border);
+    background: var(--panel-content-bg);
+    padding: var(--panel-padding);
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+.panel:not(.open) .panel-content {
+    display: none;
+}
+
+/* When panel is closed, don't take up flex space */
+.panel:not(.open) {
+    flex: 0 0 auto !important;
+}
+
+.panel:not(.open) > h2 {
+    border-bottom: 1px solid var(--panel-border);
+}
+
+/* ============================================
+   Hamburger Menu
+   ============================================ */
+.nav-menu {
+    margin-left: auto;
+    position: relative;
+}
+
+.hamburger {
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    box-sizing: border-box;
+    position: relative;
+}
+
+.hamburger span {
+    position: absolute;
+    left: 2px;
+    width: 24px;
+    height: 3px;
+    background-color: #fff;
+    border-radius: 1px;
+    transition: transform 0.2s ease, opacity 0.2s ease, top 0.2s ease;
+}
+
+.hamburger span:nth-child(1) {
+    top: 5px;
+}
+
+.hamburger span:nth-child(2) {
+    top: 12px;
+}
+
+.hamburger span:nth-child(3) {
+    top: 19px;
+}
+
+.hamburger.open span:nth-child(1) {
+    top: 12px;
+    transform: rotate(45deg);
+}
+
+.hamburger.open span:nth-child(2) {
+    opacity: 0;
+}
+
+.hamburger.open span:nth-child(3) {
+    top: 12px;
+    transform: rotate(-45deg);
+}
+
+.nav-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 8px;
+    background: #444;
+    border: 1px solid #666;
+    border-radius: 4px;
+    min-width: 120px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+}
+
+.nav-dropdown.open {
+    display: block;
+}
+
+.nav-dropdown a {
+    display: block;
+    padding: 10px 16px;
+    color: #fff;
+    text-decoration: none;
+    border-bottom: 1px solid #555;
+}
+
+.nav-dropdown a:last-child {
+    border-bottom: none;
+}
+
+.nav-dropdown a:hover {
+    background: #555;
+}
+
+/* ============================================
+   Column Layout System
+   ============================================ */
+.columns {
+    display: grid;
+    gap: 0 10px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 10px 10px 10px;
+    position: relative;
+}
+
+/* Single column layout (default for simple pages) */
+.columns.single-column {
+    grid-template-columns: minmax(324px, 600px);
+    justify-content: center;
+}
+
+/* Two column layout */
+.columns.two-column {
+    grid-template-columns: minmax(auto, 600px) minmax(324px, 1fr);
+}
+
+/* Flex column container */
+.column {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Panel within a column */
+.column > .panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+.text-muted {
+    color: #888;
+}
+
+.text-positive {
+    color: var(--status-positive);
+}
+
+.text-warning {
+    color: var(--status-warning);
+}
+
+.text-negative {
+    color: var(--status-negative);
+}
+
+.no-items {
+    color: #888;
+    font-style: italic;
+}

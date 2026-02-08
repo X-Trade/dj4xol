@@ -39,6 +39,7 @@ def gamelist(request):
         'open_games': open_games,
         'server_name': ServerSettings.get('server_name', 'dj4xol'),
         'server_tagline': ServerSettings.get('server_tagline', ''),
+        'server_welcome': ServerSettings.get('server_welcome', ''),
     })
 
 @registration_required()

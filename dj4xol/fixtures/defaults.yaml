@@ -25,6 +25,17 @@
     value: 'A Django 4X OL server demo'
 - model: dj4xol.ServerSettings
   fields:
+    key: 'server_welcome'
+    description: 'Welcome message on homepage'
+    long_value: |
+      Welcome to dj4xol, a 4X space strategy game inspired by Stars!
+
+      Build your empire, explore the galaxy, and compete with other players
+      for galactic domination. Create or join a game to get started.
+
+      New players should check the documentation for tips on getting started.
+- model: dj4xol.ServerSettings
+  fields:
     key: 'server_allow_registration'
     description: 'Allow registration'
     value: 'True'
