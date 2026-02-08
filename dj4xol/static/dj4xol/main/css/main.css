@@ -148,18 +148,46 @@ body {
     border-bottom: 1px solid #808080;
 }
 
-/* Starmap panel wrapper */
+/* Starmap panel wrapper - default ~65% of left column */
 .column-left > .panel[data-panel="starmap"] {
-    flex: 0 0 auto;
+    flex: 65 1 200px;
     display: flex;
     flex-direction: column;
+    min-height: 200px;
+}
+
+/* Starmap collapses when closed */
+.column-left > .panel[data-panel="starmap"]:not(.open) {
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+}
+
+/* Messages panel - default ~35% of left column */
+.column-left > .panel[data-panel="messages"] {
+    flex: 35 1 100px;
+}
+
+/* Messages collapses when closed */
+.column-left > .panel[data-panel="messages"]:not(.open) {
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+}
+
+/* When messages is closed, starmap fills remaining space */
+.column-left:has(.panel[data-panel="messages"]:not(.open)) > .panel[data-panel="starmap"].open {
+    flex: 1 1 100%;
+}
+
+/* When starmap is closed, messages fills remaining space */
+.column-left:has(.panel[data-panel="starmap"]:not(.open)) > .panel[data-panel="messages"].open {
+    flex: 1 1 100%;
 }
 
 /* Columnar layout */
 .columns {
     display: grid;
     grid-template-columns: minmax(auto, 600px) 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-rows: 1fr;
     gap: 0 10px;
     flex: 1;
     min-height: 0;
@@ -170,15 +198,15 @@ body {
 
 .column-left {
     grid-column: 1;
-    grid-row: 1 / -1;
+    grid-row: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
 }
 
-/* Detail column */
-.column-detail {
+/* Right column container (holds detail and orders) */
+.column-right {
     grid-column: 2;
     grid-row: 1;
     display: flex;
@@ -189,25 +217,43 @@ body {
     max-width: 475px;
 }
 
-/* Orders column */
-.column-orders {
-    grid-column: 2;
-    grid-row: 2;
+/* Detail section within right column */
+.column-detail {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    overflow: hidden;
-    min-width: 300px;
-    max-width: 475px;
+    flex: 1 1 auto;
+}
+
+/* Collapse column when panel inside is closed */
+.column-detail:has(.panel:not(.open)) {
+    flex: 0 0 auto;
+}
+
+/* Orders section within right column */
+.column-orders {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 auto;
+}
+
+/* Collapse column when panel inside is closed */
+.column-orders:has(.panel:not(.open)) {
+    flex: 0 0 auto;
 }
 
 .column-orders:empty {
     display: none;
 }
 
-/* When orders is empty, detail takes full height */
-.column-detail:has(+ .column-orders:empty) {
-    grid-row: 1 / -1;
+/* Panel minimum heights */
+.panel {
+    min-height: 145px;
+}
+
+.panel:not(.open) {
+    min-height: 0;
 }
 
 /* Wide screens: 3-column layout */
@@ -215,6 +261,10 @@ body {
     .columns {
         grid-template-columns: minmax(500px, 600px) minmax(300px, 1fr) minmax(300px, 1fr);
         grid-template-rows: 1fr;
+    }
+
+    .column-right {
+        display: contents;
     }
 
     .column-detail {
@@ -246,11 +296,19 @@ body {
     }
 
     .column-left,
+    .column-right,
     .column-detail,
     .column-orders {
         max-width: none;
         width: auto;
         overflow: visible;
+        flex: 0 0 auto;
+    }
+
+    /* Reset column collapse rules for mobile */
+    .column-detail:has(.panel:not(.open)),
+    .column-orders:has(.panel:not(.open)) {
+        flex: 0 0 auto;
     }
 
     .detail-section,
@@ -265,13 +323,43 @@ body {
         max-height: none;
     }
 
+    /* Reset panel flex rules for mobile - content-based height */
+    .column-left > .panel[data-panel="starmap"],
+    .column-left > .panel[data-panel="messages"],
+    .column-left:has(.panel[data-panel="messages"]:not(.open)) > .panel[data-panel="starmap"].open,
+    .column-left:has(.panel[data-panel="starmap"]:not(.open)) > .panel[data-panel="messages"].open {
+        flex: 0 0 auto;
+        min-height: 0;
+    }
+
     .messages-section {
-        min-height: 200px;
         max-height: 300px;
     }
 
+    .messages-section.open {
+        min-height: 200px;
+    }
+
+    /* Panels in mobile - auto height, no flex resizing */
+    .panel {
+        min-height: 0;
+        flex: 0 0 auto !important;
+    }
+
+    .panel.open {
+        min-height: 150px;
+    }
+
+    .panel[data-panel="starmap"].open {
+        min-height: 0;
+    }
+
+    /* In mobile, starmap limited to 60% of screen height */
     .starmap {
-        height: min(500px, 50vh);
+        flex: 0 0 auto;
+        height: 60vh;
+        max-height: 60vh;
+        min-height: 150px;
     }
 }
 
@@ -290,7 +378,7 @@ body {
 
 /* Detail section */
 .detail-section {
-    flex: 1 1 50%;
+    flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -382,7 +470,7 @@ body {
 
 /* Orders/Production panel */
 .orders-section {
-    flex: 1 1 50%;
+    flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -445,9 +533,8 @@ body {
     font-style: italic;
 }
 
-/* Messages section fills remaining space */
+/* Messages section layout */
 .messages-section {
-    flex: 1;
     display: flex;
     flex-direction: column;
     min-height: 45px;
