@@ -71,26 +71,28 @@
                 </div>
                 {% include 'dj4xol/_messages_panel.html' %}
             </div>
-            <div class="column-detail">
-                {% if detail %}
-                    {% include 'dj4xol/_detail_panel.html' %}
-                {% else %}
-                    <div class="detail-section panel no-transition open" data-panel="detail">
-                        <h2><span>Detail</span><span class="panel-toggle"></span></h2>
-                        <div class="panel-content"><div id="detail">
-                            <p>Click on a star or fleet to view details.</p>
-                        </div></div>
-                    </div>
-                {% endif %}
-            </div>
-            <div class="column-orders">
-                {% if detail %}
-                    {% if detail.is_owned and detail.is_star %}
-                        {% include 'dj4xol/_production_panel.html' %}
-                    {% elif detail.is_owned and not detail.is_star %}
-                        {% include 'dj4xol/_orders_panel.html' %}
+            <div class="column-right">
+                <div class="column-detail">
+                    {% if detail %}
+                        {% include 'dj4xol/_detail_panel.html' %}
+                    {% else %}
+                        <div class="detail-section panel no-transition open" data-panel="detail">
+                            <h2><span>Detail</span><span class="panel-toggle"></span></h2>
+                            <div class="panel-content"><div id="detail">
+                                <p>Click on a star or fleet to view details.</p>
+                            </div></div>
+                        </div>
                     {% endif %}
-                {% endif %}
+                </div>
+                <div class="column-orders">
+                    {% if detail %}
+                        {% if detail.is_owned and detail.is_star %}
+                            {% include 'dj4xol/_production_panel.html' %}
+                        {% elif detail.is_owned and not detail.is_star %}
+                            {% include 'dj4xol/_orders_panel.html' %}
+                        {% endif %}
+                    {% endif %}
+                </div>
             </div>
         </div>
     </body>
