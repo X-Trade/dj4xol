@@ -4,6 +4,7 @@
         <meta charset="utf-8">
         <title>Profile - {{ account.alias }}</title>
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
     </head>
     <body>
@@ -49,6 +50,22 @@
                                 <td>{{ account.django_user.date_joined|date:"d M Y" }}</td>
                             </tr>
                         </table>
+                    </div></div>
+                </div>
+
+                <div class="panel no-transition open" data-panel="theme">
+                    <h2><span>Theme</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <p style="margin-bottom: 12px;">Select your preferred visual theme:</p>
+                        <div class="theme-selector">
+                            {% for theme_code, theme_name in theme_choices %}
+                            <div class="theme-option{% if account.theme == theme_code %} selected{% endif %}" data-theme="{{ theme_code }}">
+                                <div class="theme-preview {{ theme_code }}"></div>
+                                <span class="theme-name">{{ theme_name }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <p id="theme-status" style="margin-top: 12px; font-size: 0.9em;"></p>
                     </div></div>
                 </div>
 
@@ -138,6 +155,48 @@
                         panel.classList.toggle('open');
                     });
                 }
+            });
+
+            // Theme selection
+            var themeOptions = document.querySelectorAll('.theme-option');
+            var themeStatus = document.getElementById('theme-status');
+            var csrfToken = '{{ csrf_token }}';
+
+            themeOptions.forEach(function(option) {
+                option.addEventListener('click', function() {
+                    var theme = this.dataset.theme;
+
+                    // Update UI
+                    themeOptions.forEach(function(opt) {
+                        opt.classList.remove('selected');
+                    });
+                    this.classList.add('selected');
+                    themeStatus.textContent = 'Saving...';
+
+                    // Save to server
+                    fetch('{% url "dj4xol:update_theme" %}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: 'theme=' + encodeURIComponent(theme)
+                    })
+                    .then(function(response) { return response.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            themeStatus.textContent = 'Theme saved. Reloading...';
+                            setTimeout(function() {
+                                location.reload();
+                            }, 500);
+                        } else {
+                            themeStatus.textContent = 'Error: ' + (data.error || 'Failed to save');
+                        }
+                    })
+                    .catch(function(error) {
+                        themeStatus.textContent = 'Network error';
+                    });
+                });
             });
         })();
         </script>

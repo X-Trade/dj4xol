@@ -171,11 +171,17 @@ class ServerSettings(models.Model):
 
 class Account(models.Model):
     """A dj4xol account linked to a Django user."""
+    THEME_CHOICES = [
+        ('classic', 'Classic'),
+        ('lcars', 'LCARS'),
+    ]
+
     django_user = models.OneToOneField(auth_models.User, primary_key=True,
             related_name="dj4xol_account", on_delete=models.PROTECT)
     full_name = models.CharField(max_length=60)
     alias = models.CharField(max_length=30, unique=True)
     email = models.EmailField()
+    theme = models.CharField(max_length=20, choices=THEME_CHOICES, default='classic')
 
     def save(self, *args, **kwargs):
         if not self.alias:

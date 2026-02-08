@@ -567,7 +567,30 @@ def profile(request):
         'games_playing': games_playing,
         'games_owned': games_owned,
         'races': races,
+        'theme_choices': Account.THEME_CHOICES,
     })
+
+
+@registration_required()
+def update_theme(request):
+    """Update user's theme preference."""
+    from django.http import JsonResponse
+
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    account = request.user.dj4xol_account
+    theme = request.POST.get('theme', 'classic')
+
+    # Validate theme choice
+    valid_themes = [t[0] for t in Account.THEME_CHOICES]
+    if theme not in valid_themes:
+        return JsonResponse({'error': 'Invalid theme'}, status=400)
+
+    account.theme = theme
+    account.save(update_fields=['theme'])
+
+    return JsonResponse({'success': True, 'theme': theme})
 
 
 @player_only_view()
