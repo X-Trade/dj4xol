@@ -56,7 +56,7 @@
                     <option value="BUILD_DEFENSE">Build Defense</option>
                 </select>
                 <input type="number" name="quantity" value="1" min="1" class="quantity-input" title="Quantity">
-                <label class="repeat-checkbox"><input type="checkbox" name="repeat"> &#x21bb;</label>
+                <label class="repeat-checkbox"><input type="checkbox" name="repeat" id="production-repeat"> &#x21bb;</label>
                 <button type="submit" class="order-add-btn">+</button>
             </div>
         </form>
@@ -73,4 +73,16 @@ function hideTooltip(item) {
     var tooltip = item.querySelector('.order-tooltip');
     tooltip.style.display = 'none';
 }
+
+(function() {
+    var repeatCheckbox = document.getElementById('production-repeat');
+    if (repeatCheckbox) {
+        if (localStorage.getItem('productionRepeat') === 'true') {
+            repeatCheckbox.checked = true;
+        }
+        repeatCheckbox.addEventListener('change', function() {
+            localStorage.setItem('productionRepeat', this.checked);
+        });
+    }
+})();
 </script>

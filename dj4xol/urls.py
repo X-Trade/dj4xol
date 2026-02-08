@@ -12,6 +12,7 @@ urlpatterns = [
     url(r'^$', views.gamelist, name='index'),
     url(r'^signup/$', views.signup, name='signup'),
     url(r'^register/$', views.register, name='register'),
+    url(r'^profile/$', views.profile, name='profile'),
     url(r'^create-race/$', views.create_race, name='create_race'),
     url(r'^create-game/$', views.create_game, name='create_game'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/$', views.starmap, name='game'),

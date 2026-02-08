@@ -573,5 +573,16 @@
             });
         }
     });
+
+    // Persist repeat checkbox state
+    var repeatCheckbox = document.getElementById('repeat-checkbox');
+    if (repeatCheckbox) {
+        if (localStorage.getItem('fleetOrderRepeat') === 'true') {
+            repeatCheckbox.checked = true;
+        }
+        repeatCheckbox.addEventListener('change', function() {
+            localStorage.setItem('fleetOrderRepeat', this.checked);
+        });
+    }
 })();
 </script>

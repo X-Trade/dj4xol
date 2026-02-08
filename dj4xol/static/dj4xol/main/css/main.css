@@ -35,17 +35,91 @@ body {
     flex: 1;
 }
 
-.title-bar .nav {
+/* Hamburger menu */
+.nav-menu {
     margin-left: auto;
+    position: relative;
 }
 
-.title-bar .nav a {
-    color: #8cf;
+.hamburger {
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    box-sizing: border-box;
+    position: relative;
+}
+
+.hamburger span {
+    position: absolute;
+    left: 2px;
+    width: 24px;
+    height: 3px;
+    background-color: #fff;
+    border-radius: 1px;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.hamburger span:nth-child(1) {
+    top: 5px;
+}
+
+.hamburger span:nth-child(2) {
+    top: 12px;
+}
+
+.hamburger span:nth-child(3) {
+    top: 19px;
+}
+
+.hamburger.open span:nth-child(1) {
+    top: 12px;
+    transform: rotate(45deg);
+}
+
+.hamburger.open span:nth-child(2) {
+    opacity: 0;
+}
+
+.hamburger.open span:nth-child(3) {
+    top: 12px;
+    transform: rotate(-45deg);
+}
+
+.nav-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 8px;
+    background: #444;
+    border: 1px solid #666;
+    border-radius: 4px;
+    min-width: 120px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+}
+
+.nav-dropdown.open {
+    display: block;
+}
+
+.nav-dropdown a {
+    display: block;
+    padding: 10px 16px;
+    color: #fff;
     text-decoration: none;
+    border-bottom: 1px solid #555;
 }
 
-.title-bar .nav a:hover {
-    text-decoration: underline;
+.nav-dropdown a:last-child {
+    border-bottom: none;
+}
+
+.nav-dropdown a:hover {
+    background: #555;
 }
 
 .title-bar button {
@@ -186,7 +260,7 @@ body {
 /* Columnar layout */
 .columns {
     display: grid;
-    grid-template-columns: minmax(auto, 600px) 1fr;
+    grid-template-columns: minmax(auto, 600px) minmax(324px, 1fr);
     grid-template-rows: 1fr;
     gap: 0 10px;
     flex: 1;
@@ -213,7 +287,7 @@ body {
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
-    min-width: 300px;
+    min-width: 324px;
     max-width: 475px;
 }
 
@@ -259,7 +333,7 @@ body {
 /* Wide screens: 3-column layout */
 @media (min-width: 1200px) {
     .columns {
-        grid-template-columns: minmax(500px, 600px) minmax(300px, 1fr) minmax(300px, 1fr);
+        grid-template-columns: minmax(500px, 600px) minmax(324px, 1fr) minmax(324px, 1fr);
         grid-template-rows: 1fr;
     }
 
@@ -270,12 +344,14 @@ body {
     .column-detail {
         grid-column: 2;
         grid-row: 1;
+        min-width: 324px;
         max-width: none;
     }
 
     .column-orders {
         grid-column: 3;
         grid-row: 1;
+        min-width: 324px;
         max-width: none;
     }
 }
