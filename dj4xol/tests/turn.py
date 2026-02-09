@@ -1080,29 +1080,28 @@ class TestFleetTransferOrders(TestCase):
     def test_transfer_fleet_target_waiting(self):
         """Test transfer waiting behavior when target fleet is not at expected location."""
         from ..models import FleetOrders, Fleet
-        
+
         game = default_game()
         player = game.players.first()
-        star = player.homeworld
-        
-        # Create two fleets at same location
+
+        # Use explicit coordinates within map bounds
         fleet1 = Fleet.objects.create(
             game=game,
             player=player,
             name="Transfer Fleet",
-            x=star.x,
-            y=star.y,
+            x=10,
+            y=10,
             ironium=1000
         )
-        
+
         fleet2 = Fleet.objects.create(
             game=game,
             player=player,
-            name="Target Fleet", 
-            x=star.x,
-            y=star.y
+            name="Target Fleet",
+            x=10,
+            y=10
         )
-        
+
         # Create transfer order from fleet1 to fleet2
         order = FleetOrders.objects.create(
             game=game,
@@ -1112,10 +1111,10 @@ class TestFleetTransferOrders(TestCase):
             transfer_type='UNLOAD',
             transfer_ironium=500
         )
-        
-        # Move target fleet away
-        fleet2.x = star.x + 10
-        fleet2.y = star.y + 10
+
+        # Move target fleet away (still within bounds)
+        fleet2.x = 20
+        fleet2.y = 20
         fleet2.save()
         
         # Generate turn
@@ -3714,19 +3713,19 @@ class TestMergeFleet(TestCase):
 
         game = default_game()
         player = game.players.first()
-        star = player.homeworld
 
+        # Use explicit coordinates within map bounds
         fleet1 = Fleet.objects.create(
             game=game, player=player, name="Fleet 1",
-            x=star.x, y=star.y
+            x=10, y=10
         )
         fleet2 = Fleet.objects.create(
             game=game, player=player, name="Fleet 2",
-            x=star.x, y=star.y
+            x=10, y=10
         )
         fleet3 = Fleet.objects.create(
             game=game, player=player, name="Fleet 3",
-            x=star.x + 10, y=star.y
+            x=20, y=10  # Different location but within bounds
         )
 
         # Fleet3 has a transfer order targeting fleet1
@@ -3794,15 +3793,15 @@ class TestMergeFleet(TestCase):
 
         game = default_game()
         player = game.players.first()
-        star = player.homeworld
 
+        # Use explicit coordinates within map bounds
         fleet1 = Fleet.objects.create(
             game=game, player=player, name="Fleet 1",
-            x=star.x, y=star.y
+            x=10, y=10
         )
         fleet2 = Fleet.objects.create(
             game=game, player=player, name="Fleet 2",
-            x=star.x + 10, y=star.y  # Different location
+            x=20, y=10  # Different location but within bounds
         )
 
         FleetOrders.objects.create(

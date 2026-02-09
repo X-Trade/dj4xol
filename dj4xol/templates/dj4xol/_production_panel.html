@@ -50,10 +50,11 @@
                     <option value="TERRAFORM_GRAVITY">Terraform Gravity (1%)</option>
                     <option value="TERRAFORM_TEMPERATURE">Terraform Temperature (1%)</option>
                     <option value="TERRAFORM_RADIATION">Terraform Radiation (1%)</option>
-                    <option value="BUILD_FLEET">Build Fleet</option>
+                    {% if detail.infrastructure.Shipyards %}<option value="BUILD_FLEET">Build Fleet</option>{% endif %}
                     <option value="BUILD_MINE">Build Mine</option>
                     <option value="BUILD_FACTORY">Build Factory</option>
                     <option value="BUILD_DEFENSE">Build Defense</option>
+                    <option value="BUILD_SHIPYARD">Build Shipyard</option>
                 </select>
                 <input type="number" name="quantity" value="1" min="1" class="quantity-input" title="Quantity">
                 <label class="repeat-checkbox"><input type="checkbox" name="repeat" id="production-repeat"> &#x21bb;</label>
