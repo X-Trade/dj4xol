@@ -1696,10 +1696,11 @@ class GameTurn():
             fleet_repair_share = min(fleet.ship_count, repair_pool)
             repair_pool -= fleet_repair_share
 
-            # Each ship repair share restores integrity proportionally
-            # fleet_repair_share ships get fully repaired out of fleet.ship_count
-            missing_integrity = 100 - fleet.integrity
-            integrity_gain = (fleet_repair_share * missing_integrity) // fleet.ship_count
+            # Each ship repaired restores (100 / ship_count)% integrity
+            # E.g., 5-ship fleet with 1 shipyard = 20% integrity restored
+            integrity_gain = (fleet_repair_share * 100) // fleet.ship_count
+            # Cap at missing integrity (can't repair past 100%)
+            integrity_gain = min(integrity_gain, 100 - fleet.integrity)
 
             if integrity_gain > 0:
                 old_integrity = fleet.integrity
