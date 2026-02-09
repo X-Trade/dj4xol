@@ -307,6 +307,7 @@ class GameTurn():
         self.fleet_movements()
         self.check_lost_fleets()
         self.check_damaged_fleets()
+        self.generate_reports()
         self.mining()
         self.production()
         self.population_growth()
@@ -326,6 +327,82 @@ class GameTurn():
             player.turned_in = False
             player.messages_seen_year = player.last_seen_year
             player.save(update_fields=['turned_in', 'messages_seen_year'])
+
+    def generate_reports(self):
+        """Generate exploration reports for all fleets at their current locations."""
+        from .models import Fleet
+        for fleet in Fleet.objects.filter(game=self.game):
+            self._generate_reports_for_fleet(fleet)
+
+    def _generate_reports_for_fleet(self, fleet):
+        """Generate reports for all objects at fleet's location."""
+        from .models import Star, Salvage, Fleet
+
+        x, y = fleet.x, fleet.y
+        player = fleet.player
+        year = self.game.year
+
+        # Report on all stars at this location
+        for star in Star.objects.filter(game=self.game, x=x, y=y):
+            self._create_or_update_report(player, 'star', star, year)
+
+        # Report on other players' fleets at this location
+        for other_fleet in Fleet.objects.filter(
+            game=self.game, x=x, y=y
+        ).exclude(player=player):
+            self._create_or_update_report(player, 'fleet', other_fleet, year)
+
+        # Report on all salvage at this location
+        for salvage in Salvage.objects.filter(game=self.game, x=x, y=y):
+            self._create_or_update_report(player, 'salvage', salvage, year)
+
+    def _create_or_update_report(self, player, target_type, obj, year):
+        """Create or update a report for an object."""
+        from .models import Report
+
+        report_data = self._build_report_data(obj, target_type)
+
+        report, created = Report.objects.update_or_create(
+            player=player,
+            target_type=target_type,
+            target_id=obj.id,
+            defaults={
+                'game': self.game,
+                'year': year,
+            }
+        )
+        report.set_report_data(report_data)
+        report.save()
+
+    def _build_report_data(self, obj, target_type):
+        """Build the data dict to cache in a report."""
+        if target_type == 'star':
+            return {
+                'name': obj.name,
+                'x': obj.x,
+                'y': obj.y,
+                'colonists': obj.colonists,
+                'player_name': obj.player.name if obj.player else None,
+                'gravity': obj.gravity,
+                'temperature': obj.temperature,
+                'radiation': obj.radiation,
+            }
+        elif target_type == 'fleet':
+            return {
+                'name': obj.name,
+                'x': obj.x,
+                'y': obj.y,
+                'player_name': obj.player.name if obj.player else None,
+                'ship_count': obj.ship_count,
+            }
+        elif target_type == 'salvage':
+            return {
+                'name': obj.name,
+                'x': obj.x,
+                'y': obj.y,
+                'total_minerals': obj.total_minerals,
+            }
+        return {}
 
     def check_quorum(self):
         """Check if all players have turned in. Returns True if quorum met."""

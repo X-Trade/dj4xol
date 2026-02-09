@@ -30,6 +30,13 @@
     </div>
     {% endif %}
     <hr>
+    {% if detail.unexplored %}
+    <div class="unexplored-notice">{% if detail.is_star %}Unexplored{% else %}???{% endif %}</div>
+    <p class="unexplored-hint">Send a fleet to this location to gather intelligence.</p>
+    {% else %}
+    {% if not detail.is_current %}
+    <div class="report-age"><span class="has-tooltip" data-tooltip="{{ detail.report_age }} year{{ detail.report_age|pluralize }} old">Year {{ detail.report_year }} Report</span></div>
+    {% endif %}
     <p>{% if detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: <span class="has-tooltip" data-tooltip="{{ detail.population|exact_pop }}">{{ detail.population|humanize_pop }}</span>{% if detail.population_change != None %} <span class="pop-change has-tooltip {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}" data-tooltip="{{ detail.population_change|exact_pop }}">({{ detail.population_change|humanize_pop_change }})</span>{% endif %}{% endif %}</p>
     {% if detail.environmentals %}
     <div class="collapsible-section" data-section="environmentals">
@@ -147,6 +154,7 @@
         {% endif %}
     </div>
     {% endif %}
+    {% endif %}{# end detail.unexplored else #}
 </div></div>
 </div>
 {% if detail.is_owned %}

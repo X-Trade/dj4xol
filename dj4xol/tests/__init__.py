@@ -5,3 +5,4 @@ from .settings import *
 from .habitability import *
 from .numbers import *
 from .views import *
+from .reports import *
