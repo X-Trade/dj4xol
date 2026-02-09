@@ -1,0 +1,940 @@
+/*
+ * Windows 95 Theme - Classic retro interface
+ * Based on the Microsoft Windows 95 design language
+ */
+
+/* ============================================
+   Win95 Colour Palette
+   ============================================ */
+:root {
+    /* Classic Win95 colours */
+    --win95-desktop: #008080;
+    --win95-window: #c0c0c0;
+    --win95-title-active: #000080;
+    --win95-title-inactive: #808080;
+    --win95-title-text: #ffffff;
+    --win95-button-face: #c0c0c0;
+    --win95-button-highlight: #ffffff;
+    --win95-button-shadow: #808080;
+    --win95-button-dark: #000000;
+    --win95-text: #000000;
+    --win95-selected: #000080;
+    --win95-selected-text: #ffffff;
+
+    /* Override theme variables */
+    --theme-bg: #008080;
+    --theme-text: #000000;
+    --theme-accent: #000080;
+    --theme-accent-hover: #0000a0;
+
+    --panel-header-bg: #000080;
+    --panel-header-text: #ffffff;
+    --panel-border: #000000;
+    --panel-content-bg: #c0c0c0;
+    --panel-content-border: #808080;
+
+    --titlebar-bg: #c0c0c0;
+    --titlebar-text: #000000;
+    --titlebar-link: #000080;
+
+    --status-positive: #008000;
+    --status-warning: #808000;
+    --status-negative: #800000;
+
+    --toggle-colour: #000000;
+
+    --border-radius: 0px;
+}
+
+/* ============================================
+   Win95 Typography
+   ============================================ */
+body {
+    font-family: 'Tahoma', 'MS Sans Serif', 'Arial', sans-serif;
+    font-size: 11px;
+}
+
+/* ============================================
+   Win95 Title Bar
+   ============================================ */
+.title-bar {
+    background: linear-gradient(to right, #000080, #1084d0);
+    border-bottom: none;
+    padding: 2px 4px;
+    min-height: auto;
+    box-shadow: none;
+}
+
+.title-bar .title {
+    background: none;
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 12px;
+    padding: 2px 4px;
+    margin: 0;
+}
+
+.title-bar .year,
+.title-bar .tagline {
+    background: #ffffff;
+    color: #000000;
+    font-weight: normal;
+    padding: 1px 6px;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+.title-bar .turn-status {
+    padding: 0 8px;
+    color: #ffffff;
+}
+
+.title-bar .status-done {
+    color: #00ff00;
+    font-weight: bold;
+}
+
+.title-bar button {
+    background: #c0c0c0;
+    color: #000000;
+    border: none;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: normal;
+    cursor: pointer;
+    min-width: 75px;
+}
+
+.title-bar button:hover {
+    background: #d4d4d4;
+}
+
+.title-bar button:active {
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+/* ============================================
+   Win95 Navigation Menu
+   ============================================ */
+.nav-menu {
+    margin-left: auto;
+}
+
+.hamburger {
+    background: #c0c0c0;
+    border: none;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    width: 20px;
+    height: 18px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+}
+
+.hamburger span {
+    position: static;
+    width: 10px;
+    height: 2px;
+    background-color: #000000;
+    border-radius: 0;
+    transform: none;
+}
+
+.hamburger:active {
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+.hamburger.open span:nth-child(1) {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.hamburger.open span:nth-child(2) {
+    opacity: 0;
+}
+
+.hamburger.open span:nth-child(3) {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.nav-dropdown {
+    background: #c0c0c0;
+    border: none;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    border-radius: 0;
+}
+
+.nav-dropdown a {
+    color: #000000;
+    font-size: 11px;
+    padding: 4px 20px;
+    border-bottom: none;
+}
+
+.nav-dropdown a:hover {
+    background: #000080;
+    color: #ffffff;
+}
+
+/* ============================================
+   Win95 Panel System
+   ============================================ */
+.panel > h2 {
+    background: linear-gradient(to right, #000080, #1084d0);
+    color: #ffffff;
+    border: none;
+    border-radius: 0;
+    padding: 2px 2px 2px 4px;
+    font-size: 11px;
+    font-weight: bold;
+    margin-top: 8px;
+}
+
+.panel > h2 span:first-child {
+    flex: 1;
+}
+
+.panel-toggle {
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+    width: 14px;
+    height: 14px;
+    border-radius: 0;
+}
+
+.panel-toggle::before {
+    width: 8px;
+    height: 2px;
+    top: 6px;
+    left: 3px;
+    background: #000000;
+}
+
+.panel-toggle::after {
+    width: 2px;
+    height: 8px;
+    top: 3px;
+    left: 6px;
+    background: #000000;
+}
+
+.panel-content > div {
+    background: #c0c0c0;
+    border: none;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+    border-radius: 0;
+    color: #000000;
+}
+
+.panel:not(.open) > h2 {
+    border-radius: 0;
+}
+
+/* ============================================
+   Win95 Columns Layout
+   ============================================ */
+.columns {
+    background: #008080;
+    padding: 8px;
+}
+
+.column-left,
+.column-right {
+    background: transparent;
+}
+
+/* ============================================
+   Win95 Links and Buttons
+   ============================================ */
+a {
+    color: #000080;
+}
+
+a:hover {
+    color: #0000ff;
+}
+
+.action-link {
+    background: #c0c0c0;
+    color: #000000 !important;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    border-radius: 0;
+    padding: 2px 12px;
+    font-weight: normal;
+    text-decoration: none;
+}
+
+.action-link:hover {
+    background: #d4d4d4;
+}
+
+/* ============================================
+   Win95 Lists
+   ============================================ */
+.game-list li {
+    border-bottom: 1px solid #808080;
+    padding: 2px 0;
+}
+
+.game-meta {
+    color: #808080;
+}
+
+.no-items {
+    color: #808080;
+}
+
+/* Reduced padding throughout */
+.panel-content > div {
+    padding: 4px;
+}
+
+.order-item {
+    padding: 2px 0;
+}
+
+.message {
+    padding: 4px 0;
+}
+
+.nav-dropdown a {
+    padding: 2px 12px;
+}
+
+/* ============================================
+   Win95 Forms
+   ============================================ */
+select,
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"] {
+    background: #ffffff;
+    border: none;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+    border-radius: 0;
+    color: #000000;
+    padding: 2px 4px;
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 11px;
+}
+
+select:focus,
+input:focus {
+    outline: 1px dotted #000000;
+}
+
+/* ============================================
+   Win95 Tables
+   ============================================ */
+.profile-table th {
+    color: #000000;
+    font-weight: bold;
+    text-align: left;
+    padding: 2px 8px 2px 0;
+}
+
+.profile-table td {
+    color: #000000;
+    padding: 2px 0;
+}
+
+.profile-table tr {
+    border-bottom: 1px solid #808080;
+}
+
+/* ============================================
+   Win95 Scrollbars
+   ============================================ */
+::-webkit-scrollbar {
+    width: 16px;
+    height: 16px;
+}
+
+::-webkit-scrollbar-track {
+    background: repeating-conic-gradient(#c0c0c0 0% 25%, #ffffff 0% 50%)
+                50% / 2px 2px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    border-radius: 0 !important;
+    border: none;
+}
+
+::-webkit-scrollbar-button {
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    display: block;
+    height: 16px;
+    width: 16px;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+/* Hide the extra buttons that appear at wrong ends */
+::-webkit-scrollbar-button:vertical:start:increment,
+::-webkit-scrollbar-button:vertical:end:decrement,
+::-webkit-scrollbar-button:horizontal:start:increment,
+::-webkit-scrollbar-button:horizontal:end:decrement {
+    display: none;
+}
+
+/* Up arrow */
+::-webkit-scrollbar-button:vertical:decrement {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4'%3E%3Cpath d='M0 4 L4 0 L8 4 Z' fill='%23000000'/%3E%3C/svg%3E");
+}
+
+/* Down arrow */
+::-webkit-scrollbar-button:vertical:increment {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4'%3E%3Cpath d='M0 0 L4 4 L8 0 Z' fill='%23000000'/%3E%3C/svg%3E");
+}
+
+/* Left arrow */
+::-webkit-scrollbar-button:horizontal:decrement {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='8'%3E%3Cpath d='M4 0 L0 4 L4 8 Z' fill='%23000000'/%3E%3C/svg%3E");
+}
+
+/* Right arrow */
+::-webkit-scrollbar-button:horizontal:increment {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='8'%3E%3Cpath d='M0 0 L4 4 L0 8 Z' fill='%23000000'/%3E%3C/svg%3E");
+}
+
+::-webkit-scrollbar-button:active {
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+::-webkit-scrollbar-corner {
+    background: #c0c0c0;
+}
+
+/* Ensure consistent scrollbar width on all scrollable elements */
+.orders-list::-webkit-scrollbar,
+.messages-scroll::-webkit-scrollbar,
+.panel-content > div::-webkit-scrollbar,
+#detail::-webkit-scrollbar {
+    width: 16px;
+    height: 16px;
+}
+
+.orders-list::-webkit-scrollbar-thumb,
+.messages-scroll::-webkit-scrollbar-thumb,
+.panel-content > div::-webkit-scrollbar-thumb,
+#detail::-webkit-scrollbar-thumb {
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    border-radius: 0 !important;
+    border: none;
+}
+
+.orders-list::-webkit-scrollbar-thumb:hover,
+.messages-scroll::-webkit-scrollbar-thumb:hover,
+.panel-content > div::-webkit-scrollbar-thumb:hover,
+#detail::-webkit-scrollbar-thumb:hover {
+    background: #a0a0a0;
+}
+
+.orders-list::-webkit-scrollbar-track,
+.messages-scroll::-webkit-scrollbar-track,
+.panel-content > div::-webkit-scrollbar-track,
+#detail::-webkit-scrollbar-track {
+    background: repeating-conic-gradient(#c0c0c0 0% 25%, #ffffff 0% 50%)
+                50% / 2px 2px;
+}
+
+.orders-list::-webkit-scrollbar-corner,
+.messages-scroll::-webkit-scrollbar-corner,
+.panel-content > div::-webkit-scrollbar-corner,
+#detail::-webkit-scrollbar-corner {
+    background: #c0c0c0;
+}
+
+/* Starmap scrollbars - need !important to override map.css */
+.starmap::-webkit-scrollbar {
+    width: 16px !important;
+    height: 16px !important;
+}
+
+.starmap::-webkit-scrollbar-thumb {
+    background: #c0c0c0 !important;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080 !important;
+    border-radius: 0 !important;
+    border: none !important;
+}
+
+.starmap::-webkit-scrollbar-thumb:hover {
+    background: #a0a0a0 !important;
+}
+
+.starmap::-webkit-scrollbar-track {
+    background: repeating-conic-gradient(#c0c0c0 0% 25%, #ffffff 0% 50%)
+                50% / 2px 2px !important;
+}
+
+.starmap::-webkit-scrollbar-corner {
+    background: #c0c0c0 !important;
+}
+
+/* ============================================
+   Win95 Game-Specific Elements
+   ============================================ */
+
+/* Orders panel */
+.orders-panel {
+    background: #c0c0c0;
+}
+
+.orders-list {
+    background: #ffffff;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+.order-item {
+    border-bottom: 1px solid #c0c0c0;
+}
+
+.order-remove-btn {
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+    border-radius: 0;
+    color: #000000;
+    font-weight: bold;
+}
+
+.order-remove-btn:hover {
+    background: #d4d4d4;
+}
+
+.order-add-btn {
+    background: #c0c0c0;
+    color: #000000;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    border-radius: 0;
+    font-weight: normal;
+}
+
+.order-add-btn:hover:not(:disabled) {
+    background: #d4d4d4;
+}
+
+.order-add-btn:active:not(:disabled) {
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+.order-add-btn:disabled {
+    background: #c0c0c0;
+    color: #808080;
+}
+
+/* Order params */
+.order-params {
+    background: #c0c0c0;
+    border: none;
+    border-radius: 0;
+    padding: 6px;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+.order-params label {
+    color: #000000;
+}
+
+.order-params .dest-display {
+    background: #ffffff;
+    border: none;
+    border-radius: 0;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+    color: #000000;
+}
+
+/* Sliders */
+input[type="range"] {
+    -webkit-appearance: none;
+    background: repeating-conic-gradient(#c0c0c0 0% 25%, #ffffff 0% 50%)
+                50% / 2px 2px;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #808080;
+    border-radius: 0;
+    height: 20px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 11px;
+    height: 21px;
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    border-radius: 0;
+    cursor: pointer;
+}
+
+.warp-value {
+    color: #000000;
+}
+
+.warp-value.warp-warning {
+    color: #808000;
+}
+
+.warp-value.warp-danger {
+    color: #800000;
+}
+
+/* Messages */
+.panel #messages {
+    background: #c0c0c0;
+}
+
+.panel .messages-scroll {
+    background: #ffffff;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+    border: none;
+}
+
+.message {
+    border-bottom: 1px solid #c0c0c0;
+}
+
+.message-year {
+    color: #808080;
+}
+
+.message-text {
+    color: #000000;
+}
+
+.message.priority {
+    background: #ffff00;
+}
+
+.message.priority .message-text {
+    color: #800000;
+}
+
+/* Detail panel */
+.panel #detail {
+    background: #c0c0c0;
+}
+
+/* Environmental bars */
+.env-bar {
+    background: linear-gradient(to right, #800000 0%, #008000 50%, #800000 100%);
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #808080;
+}
+
+.env-label {
+    color: #000000;
+}
+
+.env-value {
+    color: #000000;
+}
+
+/* Inventory bars */
+.inventory-bar {
+    background: #ffffff;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #808080;
+}
+
+/* Tooltips */
+.has-tooltip::after {
+    background: #ffffe1;
+    border: 1px solid #000000;
+    border-radius: 0;
+    color: #000000;
+    box-shadow: 1px 1px 0 #000000;
+}
+
+.order-tooltip {
+    background: #ffffe1;
+    border: 1px solid #000000;
+    border-radius: 0;
+    color: #000000;
+    box-shadow: 1px 1px 0 #000000;
+}
+
+.tooltip-header {
+    color: #000000;
+    border-bottom: 1px solid #808080;
+}
+
+/* Rename popover */
+.rename-popover {
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    border: none;
+    border-radius: 0;
+}
+
+.rename-popover-content label {
+    color: #000000;
+}
+
+.rename-popover-content input {
+    background: #ffffff;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #808080;
+    color: #000000;
+}
+
+.rename-popover-buttons button {
+    background: #c0c0c0;
+    color: #000000;
+    border: none;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    border-radius: 0;
+}
+
+.rename-popover-buttons button:hover {
+    background: #d4d4d4;
+}
+
+/* Destination mode banner */
+.dest-mode-banner {
+    background: #000080;
+    color: #ffffff;
+}
+
+.dest-cancel {
+    background: #c0c0c0;
+    color: #000000;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+    border-radius: 0;
+}
+
+/* Collapsible sections */
+.collapsible-header {
+    color: #000080;
+}
+
+.collapse-toggle {
+    color: #000000;
+}
+
+/* Debug actions */
+.debug-actions {
+    border-top: 1px solid #808080;
+}
+
+.debug-actions button {
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+    border-radius: 0;
+}
+
+/* ============================================
+   Win95 Starmap Elements
+   ============================================ */
+.panel[data-panel="starmap"] .panel-content > div {
+    padding: 0;
+}
+
+.starmap {
+    border: none;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+    background: #000000;
+}
+
+.starmap-controls button {
+    background: #c0c0c0;
+    border: none;
+    color: #000000;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    border-radius: 0;
+}
+
+.starmap-controls button:hover {
+    background: #d4d4d4;
+}
+
+.starmap-controls button.active {
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+/* ============================================
+   Win95 Theme Selector
+   ============================================ */
+.theme-selector {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.theme-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+    border: none;
+    border-radius: 0;
+    cursor: pointer;
+}
+
+.theme-option:hover {
+    background: #d4d4d4;
+}
+
+.theme-option.selected {
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000;
+    background: #a0a0a0;
+}
+
+.theme-preview {
+    width: 80px;
+    height: 50px;
+    border-radius: 0;
+    overflow: hidden;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #808080;
+}
+
+.theme-preview.win95 {
+    background: #008080;
+    position: relative;
+}
+
+.theme-preview.win95::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    height: 14px;
+    background: linear-gradient(to right, #000080, #1084d0);
+}
+
+.theme-preview.win95::after {
+    content: '';
+    position: absolute;
+    top: 18px;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+}
+
+.theme-name {
+    font-weight: bold;
+    font-size: 11px;
+}
+
+/* ============================================
+   Win95 Message History Page
+   ============================================ */
+.message-history {
+    color: #000000;
+}
+
+.message-history h1 {
+    color: #000000;
+}
+
+.message-history .filters label {
+    color: #000000;
+    font-weight: bold;
+}
+
+.message-history .message-list {
+    background: #ffffff;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+    border: none;
+    border-radius: 0;
+}
+
+.message-history .message {
+    border-bottom: 1px solid #c0c0c0;
+}
+
+.message-history .message-year {
+    color: #808080;
+}
+
+.message-history .message-text {
+    color: #000000;
+}
+
+.message-history .message.priority {
+    background: #ffff00;
+}
+
+.message-history .message.priority .message-text {
+    color: #800000;
+}
+
+.message-history .message-category {
+    background: #c0c0c0;
+    color: #000000;
+    border-radius: 0;
+    font-size: 10px;
+}
+
+.message-history .pagination a,
+.message-history .pagination span {
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+    border: none;
+    border-radius: 0;
+    color: #000000;
+}
+
+.message-history .pagination a:hover {
+    background: #d4d4d4;
+}
+
+.message-history .pagination .current {
+    background: #000080;
+    color: #ffffff;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000;
+}
+
+.message-history .pagination .disabled {
+    color: #808080;
+}
+
+/* ============================================
+   Win95 Detail Panel HR
+   ============================================ */
+.panel #detail hr {
+    border: none;
+    height: 2px;
+    background: #808080;
+    box-shadow: 0 1px 0 #ffffff;
+    margin: 8px 0;
+}

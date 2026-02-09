@@ -4,8 +4,9 @@
         <meta charset="utf-8">
         <title>Messages - {{ game.name }}</title>
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
-        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
         <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
         <style>
             html, body {
                 overflow: auto;

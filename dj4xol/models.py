@@ -174,6 +174,7 @@ class Account(models.Model):
     THEME_CHOICES = [
         ('classic', 'Classic'),
         ('lcars', 'LCARS'),
+        ('win95', 'Windows 95'),
     ]
 
     django_user = models.OneToOneField(auth_models.User, primary_key=True,

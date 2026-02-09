@@ -14,6 +14,34 @@ body {
     flex-direction: column;
 }
 
+/* Override flex layout for home/profile - panels stack naturally, columns scroll */
+.column {
+    overflow: visible;
+}
+
+.column > .panel {
+    flex: 0 0 auto;
+}
+
+.panel-content {
+    flex: 0 0 auto;
+    overflow: visible;
+}
+
+.panel-content > div {
+    flex: 0 0 auto;
+    min-height: 25vh;
+}
+
+/* Remove default paragraph margin */
+.panel-content p {
+    margin-top: 0;
+}
+
+.panel-content p:first-child {
+    margin-top: 0;
+}
+
 /* Tagline in title bar */
 .title-bar .tagline {
     color: #aaa;

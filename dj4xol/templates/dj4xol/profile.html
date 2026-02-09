@@ -4,8 +4,9 @@
         <meta charset="utf-8">
         <title>Profile - {{ account.alias }}</title>
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
-        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
     </head>
     <body>
         <div class="title-bar">
@@ -23,8 +24,8 @@
                 </div>
             </div>
         </div>
-        <div class="columns single-column">
-            <div class="column">
+        <div class="columns two-column">
+            <div class="column column-left">
                 <div class="panel no-transition open" data-panel="account">
                     <h2><span>Account Details</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content"><div>
@@ -56,7 +57,7 @@
                 <div class="panel no-transition open" data-panel="theme">
                     <h2><span>Theme</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content"><div>
-                        <p style="margin-bottom: 12px;">Select your preferred visual theme:</p>
+                        <p>Select your preferred visual theme:</p>
                         <div class="theme-selector">
                             {% for theme_code, theme_name in theme_choices %}
                             <div class="theme-option{% if account.theme == theme_code %} selected{% endif %}" data-theme="{{ theme_code }}">
@@ -65,10 +66,12 @@
                             </div>
                             {% endfor %}
                         </div>
-                        <p id="theme-status" style="margin-top: 12px; font-size: 0.9em;"></p>
+                        <p id="theme-status"></p>
                     </div></div>
                 </div>
+            </div>
 
+            <div class="column column-right">
                 <div class="panel no-transition open" data-panel="games">
                     <h2><span>Games Playing ({{ games_playing|length }})</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content"><div>
@@ -118,7 +121,7 @@
                         {% else %}
                         <p class="no-items">No custom races created.</p>
                         {% endif %}
-                        <p style="margin-top: 12px;"><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></p>
+                        <p><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></p>
                     </div></div>
                 </div>
             </div>
