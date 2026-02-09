@@ -504,6 +504,7 @@ class ColoniseFailedNoColonistsMessageFactory(MessageFactory):
 class FleetWarpDamageMessageFactory(MessageFactory):
     """Messages for fleet damage from exceeding safe warp speed."""
     category = 'GENERAL'
+    priority = True
     templates_damage_only = [
         "{fleet} sustained {integrity_loss}% structural damage travelling at warp {warp}.",
         "Warp {warp} proved too fast for {fleet} - {integrity_loss}% integrity lost.",

@@ -687,6 +687,17 @@ input[type="range"]::-webkit-slider-thumb {
     border-bottom: 1px solid #808080;
 }
 
+.tooltip-table th,
+.tooltip-table td {
+    color: #000000;
+}
+
+/* Resource name colours for win95 (darker for readability) */
+.tooltip-table .res-col td:first-child { color: #006600; }
+.tooltip-table .res-iron td:first-child { color: #0066aa; }
+.tooltip-table .res-bor td:first-child { color: #aa6600; }
+.tooltip-table .res-germ td:first-child { color: #aa0066; }
+
 /* Rename popover */
 .rename-popover {
     background: #c0c0c0;
