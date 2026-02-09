@@ -48,6 +48,12 @@ RANDOM_EVENT_CHANCE = 0.01  # 1%
 WARP_DESTRUCTION_THRESHOLD = 10  # Warp speed at which destruction becomes possible
 WARP_DESTRUCTION_CHANCE = 0.30   # 30% chance of instant destruction at warp >= 10
 
+# Salvage constants
+SALVAGE_CHANCE_WARP = 0.66       # 66% chance of salvage from warp destruction
+SALVAGE_CHANCE_SCUTTLE = 0.33   # 33% chance of salvage from scuttling
+SALVAGE_DEGRADATION_MIN = 0.30  # Minimum 30% loss when creating salvage
+SALVAGE_DEGRADATION_MAX = 0.70  # Maximum 70% loss when creating salvage
+
 
 def capacity_modifier(population, soft_cap):
     """Returns a modifier that reduces growth at high populations.
@@ -220,6 +226,36 @@ def calculate_growth_factor(player, star):
         # Negative factor for environmental deaths
         return hab_factor
 
+def calculate_salvage_minerals(dry_mass, cargo_iron, cargo_bor, cargo_germ):
+    """Calculate salvage minerals from a destroyed/scuttled fleet.
+
+    Uses the same dry_mass split formula as colonise (random distribution).
+    Applies random degradation (30-70% loss) to simulate battle damage.
+    Returns (ironium, boranium, germanium) tuple.
+    """
+    # Split dry_mass into mineral bonuses (same formula as colonise)
+    bonus_ironium = random.randint(0, dry_mass)
+    remaining = dry_mass - bonus_ironium
+    bonus_boranium = random.randint(0, remaining)
+    bonus_germanium = remaining - bonus_boranium
+
+    # Total minerals before degradation
+    total_iron = cargo_iron + bonus_ironium
+    total_bor = cargo_bor + bonus_boranium
+    total_germ = cargo_germ + bonus_germanium
+
+    # Apply random degradation (30-70% survives)
+    survival_rate = random.uniform(
+        1.0 - SALVAGE_DEGRADATION_MAX,
+        1.0 - SALVAGE_DEGRADATION_MIN
+    )
+    return (
+        int(total_iron * survival_rate),
+        int(total_bor * survival_rate),
+        int(total_germ * survival_rate),
+    )
+
+
 class GameTurn():
     """Generate a turn for a game."""
     def __init__(self, game):
@@ -381,6 +417,13 @@ class GameTurn():
                 elif merge_result == 'waiting':
                     break  # Wait for fleets to be at same location
                 # 'invalid' falls through to continue to next order
+
+            elif order.order_type == 'SCUTTLE':
+                scuttle_result = self._execute_scuttle_order(fleet, order)
+                if scuttle_result == 'executed':
+                    # Fleet deleted, return None so caller doesn't save
+                    return None
+
             else:
                 # Unknown order type, just remove it
                 order.delete()
@@ -592,15 +635,74 @@ class GameTurn():
         return 'damaged'
 
     def _handle_warp_destruction(self, fleet, warp_speed, from_damage=False):
-        """Destroy fleet and create destruction message."""
+        """Destroy fleet, possibly create salvage, and send destruction message."""
+        salvage_created = False
+        salvage_location = None
+
+        # 66% chance of salvage from warp destruction
+        if random.random() < SALVAGE_CHANCE_WARP:
+            salvage_result = self._create_salvage_from_fleet(fleet)
+            if salvage_result:
+                salvage_created = True
+                salvage_location = salvage_result
+
         factory = FleetWarpDestroyedMessageFactory(
             self.game, fleet.player, fleet.name, warp_speed,
-            fleet.x, fleet.y, from_damage
+            fleet.x, fleet.y, from_damage, salvage_created, salvage_location
         )
         msg = factory.new_message()
         msg.year = self.game.year
         msg.save()
         fleet.delete()
+
+    def _create_salvage_from_fleet(self, fleet):
+        """Create salvage from fleet destruction or scuttling.
+
+        If at a star location, deposits minerals on star surface instead.
+        Returns the salvage/star object created/updated, or None if no minerals.
+        """
+        from .models import Star, Salvage
+
+        iron, bor, germ = calculate_salvage_minerals(
+            fleet.dry_mass,
+            fleet.ironium_inventory,
+            fleet.boranium_inventory,
+            fleet.germanium_inventory
+        )
+
+        # If no minerals, no salvage created
+        if iron == 0 and bor == 0 and germ == 0:
+            return None
+
+        # Check for star at location - deposit on surface instead
+        star = Star.objects.filter(
+            game=self.game, x=fleet.x, y=fleet.y
+        ).first()
+
+        if star:
+            star.ironium_inventory += iron
+            star.boranium_inventory += bor
+            star.germanium_inventory += germ
+            star.save()
+            return star
+
+        # No star - create or add to existing salvage pile
+        salvage, created = Salvage.objects.get_or_create(
+            game=self.game, x=fleet.x, y=fleet.y,
+            defaults={
+                'ironium_inventory': iron,
+                'boranium_inventory': bor,
+                'germanium_inventory': germ,
+            }
+        )
+        if not created:
+            # Stack onto existing salvage
+            salvage.ironium_inventory += iron
+            salvage.boranium_inventory += bor
+            salvage.germanium_inventory += germ
+            salvage.save()
+
+        return salvage
 
     def _create_warp_damage_message(self, fleet, warp_speed, integrity_loss,
                                      cargo_losses, colonist_deaths):
@@ -627,6 +729,7 @@ class GameTurn():
                 y=order.y,
                 target_star=order.target_star,
                 target_fleet=order.target_fleet,
+                target_salvage=order.target_salvage,
                 transfer_type=order.transfer_type,
                 transfer_ironium=order.transfer_ironium,
                 transfer_boranium=order.transfer_boranium,
@@ -641,6 +744,8 @@ class GameTurn():
         - 'executed': Transfer completed successfully
         - 'waiting': Transfer blocked waiting for target
         """
+        from .models import Star, Fleet, Salvage
+
         # Get the target object based on order parameters
         target_obj = None
         target_x, target_y = order.get_destination_coordinates()
@@ -658,14 +763,25 @@ class GameTurn():
                 print(f"Transfer waiting: Fleet {target_obj.name} not at expected location ({target_x}, {target_y})")
                 return 'waiting'  # Block and wait for target fleet to arrive
 
+        elif order.target_salvage:
+            target_obj = order.target_salvage
+            # Check if salvage still exists at expected location
+            if target_obj.x != target_x or target_obj.y != target_y:
+                print(f"Warning: Salvage coordinates mismatch")
+
         else:
             # Transfer to coordinates - look for objects there
             possible_targets = list(self.game.stars.filter(x=target_x, y=target_y))
             if possible_targets:
                 target_obj = possible_targets[0]  # Use first star found
             else:
-                print(f"No transfer target found at coordinates ({target_x}, {target_y})")
-                return 'waiting'  # Wait for a target to appear
+                # Check for salvage at coordinates
+                salvage = self.game.salvages.filter(x=target_x, y=target_y).first()
+                if salvage:
+                    target_obj = salvage
+                else:
+                    print(f"No transfer target found at coordinates ({target_x}, {target_y})")
+                    return 'waiting'  # Wait for a target to appear
 
         # Verify fleet is actually at the transfer location
         if fleet.x != target_x or fleet.y != target_y:
@@ -673,12 +789,14 @@ class GameTurn():
             return 'executed'  # Remove invalid order
 
         # Execute transfer based on target type
-        from .models import Star, Fleet
         if isinstance(target_obj, Star):
             self._transfer_with_star(fleet, order, target_obj)
             return 'executed'
         elif isinstance(target_obj, Fleet):
             self._transfer_with_fleet(fleet, order, target_obj)
+            return 'executed'
+        elif isinstance(target_obj, Salvage):
+            self._transfer_with_salvage(fleet, order, target_obj)
             return 'executed'
         else:
             print(f"Transfer to {type(target_obj)} not yet implemented")
@@ -848,6 +966,94 @@ class GameTurn():
 
             source_fleet.save()
             target_fleet.save()
+
+    def _transfer_with_salvage(self, fleet, order, salvage):
+        """Execute transfer from salvage to fleet (LOAD only).
+
+        Salvage only supports LOAD - you pick up minerals from the debris.
+        UNLOAD to salvage doesn't make sense and is ignored.
+        """
+        from .messages import SalvageCollectedMessageFactory
+
+        # Salvage only supports LOAD operations
+        if order.transfer_type not in ('LOAD',):
+            return
+
+        # Calculate how much we can load (respecting cargo capacity)
+        fleet_available = fleet.cargo_remaining
+
+        # If no specific amounts requested, load everything we can
+        if (order.transfer_ironium == 0 and order.transfer_boranium == 0 and
+                order.transfer_germanium == 0):
+            # Load all salvage, respecting capacity
+            total_salvage = salvage.total_minerals
+            if total_salvage == 0:
+                return
+
+            if total_salvage <= fleet_available:
+                # Take everything
+                ironium_transfer = salvage.ironium_inventory
+                boranium_transfer = salvage.boranium_inventory
+                germanium_transfer = salvage.germanium_inventory
+            else:
+                # Proportional transfer
+                ratio = fleet_available / total_salvage
+                ironium_transfer = int(salvage.ironium_inventory * ratio)
+                boranium_transfer = int(salvage.boranium_inventory * ratio)
+                germanium_transfer = int(salvage.germanium_inventory * ratio)
+        else:
+            # Transfer requested amounts (limited by available)
+            total_requested = (order.transfer_ironium + order.transfer_boranium +
+                               order.transfer_germanium)
+            if total_requested == 0:
+                return
+
+            # Limit by fleet available space
+            total_transfer = min(fleet_available, total_requested)
+            if total_transfer <= 0:
+                return
+
+            # Calculate proportional transfers
+            transfer_factor = total_transfer / total_requested
+            ironium_transfer = min(
+                int(order.transfer_ironium * transfer_factor),
+                salvage.ironium_inventory
+            )
+            boranium_transfer = min(
+                int(order.transfer_boranium * transfer_factor),
+                salvage.boranium_inventory
+            )
+            germanium_transfer = min(
+                int(order.transfer_germanium * transfer_factor),
+                salvage.germanium_inventory
+            )
+
+        # Execute the transfer
+        salvage.ironium_inventory -= ironium_transfer
+        salvage.boranium_inventory -= boranium_transfer
+        salvage.germanium_inventory -= germanium_transfer
+
+        fleet.ironium_inventory += ironium_transfer
+        fleet.boranium_inventory += boranium_transfer
+        fleet.germanium_inventory += germanium_transfer
+
+        fleet.save()
+
+        # Delete salvage if emptied, otherwise save
+        if salvage.total_minerals == 0:
+            salvage.delete()
+        else:
+            salvage.save()
+
+        # Create collection message if anything was transferred
+        if ironium_transfer > 0 or boranium_transfer > 0 or germanium_transfer > 0:
+            factory = SalvageCollectedMessageFactory(
+                self.game, fleet.player, fleet,
+                ironium_transfer, boranium_transfer, germanium_transfer
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
 
     def _try_execute_colonise(self, fleet, order):
         """Try to execute a colonise order.
@@ -1028,6 +1234,43 @@ class GameTurn():
         # Create message
         factory = FleetMergedMessageFactory(
             self.game, player, source_name, target_fleet
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+        return 'executed'
+
+    def _execute_scuttle_order(self, fleet, order):
+        """Execute a scuttle order, destroying the fleet with salvage chance.
+
+        Returns 'executed' always (fleet is deleted).
+        """
+        from .messages import FleetScuttledMessageFactory
+
+        # Store fleet data before deletion
+        fleet_name = fleet.name
+        player = fleet.player
+        x, y = fleet.x, fleet.y
+
+        salvage_created = False
+        salvage_location = None
+
+        # 33% chance of salvage from scuttling
+        if random.random() < SALVAGE_CHANCE_SCUTTLE:
+            salvage_result = self._create_salvage_from_fleet(fleet)
+            if salvage_result:
+                salvage_created = True
+                salvage_location = salvage_result
+
+        # Delete order and fleet
+        order.delete()
+        fleet.delete()
+
+        # Create message
+        factory = FleetScuttledMessageFactory(
+            self.game, player, fleet_name, x, y,
+            salvage_created, salvage_location
         )
         msg = factory.new_message()
         msg.year = self.game.year

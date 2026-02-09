@@ -26,6 +26,8 @@
                         <span>Colonise {{ order.target }}</span>
                     {% elif order.order_type == 'MERGE' %}
                         <span>Merge into {{ order.target }}</span>
+                    {% elif order.order_type == 'SCUTTLE' %}
+                        <span>Scuttle Fleet</span>
                     {% else %}
                         <span>Unknown order type: {{ order.order_type }}</span>
                     {% endif %}
@@ -48,6 +50,8 @@
             <input type="hidden" name="fleet" value="{{ detail.fleet_short_id }}">
             <input type="hidden" name="order_type" id="order-type-input" value="{% if request.GET.order_type %}{{ request.GET.order_type }}{% else %}MOVE{% endif %}">
             <input type="hidden" name="target_star" value="{{ dest_star_id|default:'' }}">
+            <input type="hidden" name="target_fleet" value="{{ dest_fleet_id|default:'' }}">
+            <input type="hidden" name="target_salvage" value="{{ dest_salvage_id|default:'' }}">
             <input type="hidden" name="target_x" value="{{ dest_x|default:'' }}">
             <input type="hidden" name="target_y" value="{{ dest_y|default:'' }}">
             <input type="hidden" name="x" value="{{ selection.x }}">
@@ -69,9 +73,10 @@
                     <option value="TRANSFER"{% if request.GET.order_type == 'TRANSFER' %} selected{% endif %}>Transfer</option>
                     <option value="COLONISE"{% if request.GET.order_type == 'COLONISE' %} selected{% endif %}>Colonise</option>
                     <option value="MERGE"{% if request.GET.order_type == 'MERGE' %} selected{% endif %}>Merge Fleet</option>
+                    <option value="SCUTTLE"{% if request.GET.order_type == 'SCUTTLE' %} selected{% endif %}>Scuttle</option>
                 </select>
                 <label class="repeat-checkbox"><input type="checkbox" name="repeat" id="repeat-checkbox"> &#x21bb;</label>
-                <button type="submit" class="order-add-btn" id="add-order-btn" {% if not dest_star_id and not dest_x %}disabled{% endif %}>+</button>
+                <button type="submit" class="order-add-btn" id="add-order-btn" {% if not dest_star_id and not dest_fleet_id and not dest_salvage_id and not dest_x %}disabled{% endif %}>+</button>
             </div>
 
             <div class="order-params">
@@ -80,8 +85,8 @@
                     <label id="dest-target-label">Destination</label>
                     <div class="dest-display-row" id="move-destination">
                         <span id="dest-display" class="dest-display">
-                            {% if dest_star_name %}
-                                {{ dest_star_name }}
+                            {% if dest_name %}
+                                {{ dest_name }}
                             {% elif dest_x and dest_y %}
                                 Empty Space ({{ dest_x }}, {{ dest_y }})
                             {% else %}
@@ -94,7 +99,7 @@
                         {% if detail.transfer_targets.display_mode == 'single' %}
                             <!-- Single target - show as readonly text matching dest-display style -->
                             <span class="dest-display">{{ detail.transfer_targets.default_target }}</span>
-                            <input type="hidden" id="single-target-value" data-target="{% if detail.transfer_targets.targets.0.type == 'star' %}star:{{ detail.transfer_targets.targets.0.short_id }}{% elif detail.transfer_targets.targets.0.type == 'fleet' %}fleet:{{ detail.transfer_targets.targets.0.short_id }}{% endif %}">
+                            <input type="hidden" id="single-target-value" data-target="{% if detail.transfer_targets.targets.0.type == 'star' %}star:{{ detail.transfer_targets.targets.0.short_id }}{% elif detail.transfer_targets.targets.0.type == 'fleet' %}fleet:{{ detail.transfer_targets.targets.0.short_id }}{% elif detail.transfer_targets.targets.0.type == 'salvage' %}salvage:{{ detail.transfer_targets.targets.0.short_id }}{% endif %}">
                         {% elif detail.transfer_targets.display_mode == 'empty' %}
                             <!-- Empty space - show coordinates as readonly text matching dest-display style -->
                             <span class="dest-display"><em>{{ detail.transfer_targets.default_target }}</em></span>
@@ -107,6 +112,8 @@
                                         <option value="star:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Star)</option>
                                     {% elif obj.type == 'fleet' %}
                                         <option value="fleet:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
+                                    {% elif obj.type == 'salvage' %}
+                                        <option value="salvage:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Salvage)</option>
                                     {% endif %}
                                 {% endfor %}
                             </select>
@@ -224,6 +231,13 @@
                         This order will merge this fleet into <strong id="merge-target-name">{% if detail.merge_targets.default_target.name %}{{ detail.merge_targets.default_target.name }}{% else %}the target fleet{% endif %}</strong>, combining ships, cargo, and capabilities. This fleet will be dissolved.
                     </div>
                 </div>
+
+                <!-- Scuttle warning message -->
+                <div id="scuttle-params" class="order-type-params" style="display: none;">
+                    <div class="colonise-warning" style="color: #c44; font-style: italic; padding: 8px 0;">
+                        This order will destroy this fleet. There is a 33% chance that some materials will be left behind as salvage.
+                    </div>
+                </div>
             </div>
         </form>
     </div></div>
@@ -237,6 +251,7 @@
     var transferParams = document.getElementById('transfer-params');
     var coloniseParams = document.getElementById('colonise-params');
     var mergeParams = document.getElementById('merge-params');
+    var scuttleParams = document.getElementById('scuttle-params');
     var transferTypeInput = document.getElementById('transfer-type-input');
     var addBtn = document.getElementById('add-order-btn');
     
@@ -251,10 +266,11 @@
     // Define utility functions first
     function updateAddButtonState() {
         var destStar = document.querySelector('input[name="target_star"]').value;
+        var destFleet = document.querySelector('input[name="target_fleet"]').value;
+        var destSalvage = document.querySelector('input[name="target_salvage"]').value;
         var destX = document.querySelector('input[name="target_x"]').value;
-        var destY = document.querySelector('input[name="target_y"]').value;
-        
-        addBtn.disabled = !destStar && !destX;
+
+        addBtn.disabled = !destStar && !destFleet && !destSalvage && !destX;
     }
     
     function updateAddButtonStateTransfer() {
@@ -411,6 +427,7 @@
             transferParams.style.display = 'block';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'none';
+            if (scuttleParams) scuttleParams.style.display = 'none';
 
             // Switch from destination to target
             if (destTargetLabel) destTargetLabel.textContent = 'Target';
@@ -427,6 +444,7 @@
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'block';
             if (mergeParams) mergeParams.style.display = 'none';
+            if (scuttleParams) scuttleParams.style.display = 'none';
 
             // Switch to target for colonise
             if (destTargetLabel) destTargetLabel.textContent = 'Target';
@@ -443,6 +461,7 @@
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'block';
+            if (scuttleParams) scuttleParams.style.display = 'none';
 
             // Switch to target for merge
             if (destTargetLabel) destTargetLabel.textContent = 'Merge Into';
@@ -454,11 +473,29 @@
             // Initialize merge target input
             initializeMergeTarget();
             updateAddButtonStateMerge();
+        } else if (currentType === 'SCUTTLE') {
+            moveParams.style.display = 'none';
+            transferParams.style.display = 'none';
+            if (coloniseParams) coloniseParams.style.display = 'none';
+            if (mergeParams) mergeParams.style.display = 'none';
+            if (scuttleParams) scuttleParams.style.display = 'block';
+
+            // Hide destination row for scuttle
+            var destRow = document.getElementById('destination-row');
+            if (destRow) destRow.style.display = 'none';
+
+            // Scuttle doesn't require a target - always enabled
+            addBtn.disabled = false;
         } else {
             moveParams.style.display = 'block';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'none';
+            if (scuttleParams) scuttleParams.style.display = 'none';
+
+            // Show destination row
+            var destRow = document.getElementById('destination-row');
+            if (destRow) destRow.style.display = '';
 
             // Switch from target to destination
             if (destTargetLabel) destTargetLabel.textContent = 'Destination';
@@ -488,11 +525,17 @@
             var coloniseDestination = document.getElementById('colonise-destination');
             var mergeDestination = document.getElementById('merge-destination');
 
+            var destRow = document.getElementById('destination-row');
+
             if (type === 'MOVE') {
                 moveParams.style.display = 'block';
                 transferParams.style.display = 'none';
                 if (coloniseParams) coloniseParams.style.display = 'none';
                 if (mergeParams) mergeParams.style.display = 'none';
+                if (scuttleParams) scuttleParams.style.display = 'none';
+
+                // Show destination row
+                if (destRow) destRow.style.display = '';
 
                 // Switch from target to destination
                 if (destTargetLabel) destTargetLabel.textContent = 'Destination';
@@ -507,6 +550,10 @@
                 transferParams.style.display = 'block';
                 if (coloniseParams) coloniseParams.style.display = 'none';
                 if (mergeParams) mergeParams.style.display = 'none';
+                if (scuttleParams) scuttleParams.style.display = 'none';
+
+                // Show destination row
+                if (destRow) destRow.style.display = '';
 
                 // Switch from destination to target
                 if (destTargetLabel) destTargetLabel.textContent = 'Target';
@@ -523,6 +570,10 @@
                 transferParams.style.display = 'none';
                 if (coloniseParams) coloniseParams.style.display = 'block';
                 if (mergeParams) mergeParams.style.display = 'none';
+                if (scuttleParams) scuttleParams.style.display = 'none';
+
+                // Show destination row
+                if (destRow) destRow.style.display = '';
 
                 // Switch to target for colonise
                 if (destTargetLabel) destTargetLabel.textContent = 'Target';
@@ -539,6 +590,10 @@
                 transferParams.style.display = 'none';
                 if (coloniseParams) coloniseParams.style.display = 'none';
                 if (mergeParams) mergeParams.style.display = 'block';
+                if (scuttleParams) scuttleParams.style.display = 'none';
+
+                // Show destination row
+                if (destRow) destRow.style.display = '';
 
                 // Switch to target for merge
                 if (destTargetLabel) destTargetLabel.textContent = 'Merge Into';
@@ -550,6 +605,18 @@
                 // Initialize merge target input
                 initializeMergeTarget();
                 updateAddButtonStateMerge();
+            } else if (type === 'SCUTTLE') {
+                moveParams.style.display = 'none';
+                transferParams.style.display = 'none';
+                if (coloniseParams) coloniseParams.style.display = 'none';
+                if (mergeParams) mergeParams.style.display = 'none';
+                if (scuttleParams) scuttleParams.style.display = 'block';
+
+                // Hide destination row for scuttle
+                if (destRow) destRow.style.display = 'none';
+
+                // Scuttle doesn't require a target - always enabled
+                addBtn.disabled = false;
             }
         });
     }

@@ -578,15 +578,20 @@ class FleetWarpDestroyedMessageFactory(MessageFactory):
         "Structural failures cascaded through {fleet} at warp {warp} {location}. The fleet is lost.",
         "{fleet} could not withstand further stress at warp {warp} {location} and was destroyed.",
     ]
+    salvage_suffix_star = " Salvage deposited on {star}."
+    salvage_suffix_space = " Salvage left at ({x}, {y})."
 
     def __init__(self, game, player, fleet_name, warp_speed, x, y,
-                 from_damage=False, message=None):
+                 from_damage=False, salvage_created=False, salvage_location=None,
+                 message=None):
         super().__init__(game, player, message, intensity=-0.8)
         self.fleet_name = fleet_name
         self.warp_speed = warp_speed
         self.x = x
         self.y = y
         self.from_damage = from_damage
+        self.salvage_created = salvage_created
+        self.salvage_location = salvage_location
 
     def _format_location(self):
         """Format the location as a star link or empty space coordinates."""
@@ -597,12 +602,24 @@ class FleetWarpDestroyedMessageFactory(MessageFactory):
         return f"in empty space ({self.x}, {self.y})"
 
     def format_message(self):
+        from .models import Star
         templates = self.templates_accumulated if self.from_damage else self.templates_instant
-        return random.choice(templates).format(
+        msg = random.choice(templates).format(
             fleet=self.fleet_name,
             warp=self.warp_speed,
             location=self._format_location()
         )
+
+        # Append salvage info if created
+        if self.salvage_created and self.salvage_location:
+            if isinstance(self.salvage_location, Star):
+                msg += self.salvage_suffix_star.format(
+                    star=map_object_link(self.salvage_location)
+                )
+            else:
+                msg += self.salvage_suffix_space.format(x=self.x, y=self.y)
+
+        return msg
 
 
 class FleetMergedMessageFactory(MessageFactory):
@@ -624,4 +641,96 @@ class FleetMergedMessageFactory(MessageFactory):
             source=self.source_name,
             target=map_object_link(self.target_fleet),
             ships=self.target_fleet.ship_count
+        )
+
+
+class FleetScuttledMessageFactory(MessageFactory):
+    """Messages for fleet scuttling."""
+    category = 'GENERAL'
+    priority = True
+    templates_no_salvage = [
+        "{fleet} was scuttled {location}. No recoverable materials.",
+        "{fleet} scuttled {location}. The wreckage was lost.",
+        "Scuttling of {fleet} {location} complete. Nothing salvageable remained.",
+    ]
+    templates_salvage_star = [
+        "{fleet} was scuttled at {location}. Salvage deposited on surface.",
+        "{fleet} scuttled at {location}. Materials recovered to the surface.",
+        "Scuttling of {fleet} at {location} complete. Salvage deposited planetside.",
+    ]
+    templates_salvage_space = [
+        "{fleet} was scuttled {location}. Salvage left in orbit.",
+        "{fleet} scuttled {location}. Debris field remains.",
+        "Scuttling of {fleet} {location} complete. Salvage awaits collection.",
+    ]
+
+    def __init__(self, game, player, fleet_name, x, y,
+                 salvage_created=False, salvage_location=None, message=None):
+        super().__init__(game, player, message, intensity=-0.3)
+        self.fleet_name = fleet_name
+        self.x = x
+        self.y = y
+        self.salvage_created = salvage_created
+        self.salvage_location = salvage_location
+
+    def _format_location(self):
+        """Format the location as a star link or empty space coordinates."""
+        from .models import Star
+        star = Star.objects.filter(game=self.game, x=self.x, y=self.y).first()
+        if star:
+            return map_object_link(star)
+        return f"in empty space ({self.x}, {self.y})"
+
+    def format_message(self):
+        from .models import Star
+        if not self.salvage_created:
+            templates = self.templates_no_salvage
+            return random.choice(templates).format(
+                fleet=self.fleet_name,
+                location=self._format_location()
+            )
+        elif isinstance(self.salvage_location, Star):
+            templates = self.templates_salvage_star
+            return random.choice(templates).format(
+                fleet=self.fleet_name,
+                location=map_object_link(self.salvage_location)
+            )
+        else:
+            templates = self.templates_salvage_space
+            return random.choice(templates).format(
+                fleet=self.fleet_name,
+                location=self._format_location()
+            )
+
+
+class SalvageCollectedMessageFactory(MessageFactory):
+    """Messages for salvage collection via Transfer."""
+    category = 'GENERAL'
+    templates = [
+        "{fleet} collected salvage: {cargo}.",
+        "{fleet} recovered {cargo} from the debris field.",
+        "Salvage operation complete. {fleet} loaded {cargo}.",
+    ]
+
+    def __init__(self, game, player, fleet, iron, bor, germ, message=None):
+        super().__init__(game, player, message, intensity=0.2)
+        self.fleet = fleet
+        self.iron = iron
+        self.bor = bor
+        self.germ = germ
+
+    def _format_cargo(self):
+        parts = []
+        if self.iron > 0:
+            parts.append(f"{self.iron}kt ironium")
+        if self.bor > 0:
+            parts.append(f"{self.bor}kt boranium")
+        if self.germ > 0:
+            parts.append(f"{self.germ}kt germanium")
+        return ", ".join(parts) if parts else "nothing"
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=map_object_link(self.fleet),
+            cargo=self._format_cargo()
         )
