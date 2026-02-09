@@ -1645,10 +1645,10 @@ class TestFleetCargo(TestCase):
     """Test Fleet cargo capacity and inventory."""
     
     def test_default_cargo_capacity(self):
-        """New fleets should have 1,000kt cargo capacity and empty inventory."""
+        """New fleets should have 100kt cargo capacity and empty inventory."""
         game = default_game()
         player = game.players.first()
-        
+
         fleet = Fleet.objects.create(
             game=game,
             player=player,
@@ -1656,8 +1656,8 @@ class TestFleetCargo(TestCase):
             x=5,
             y=5
         )
-        
-        self.assertEqual(fleet.cargo_capacity, 1000)
+
+        self.assertEqual(fleet.cargo_capacity, 100)
         self.assertEqual(fleet.ironium_inventory, 0)
         self.assertEqual(fleet.boranium_inventory, 0)
         self.assertEqual(fleet.germanium_inventory, 0)
@@ -1674,6 +1674,7 @@ class TestFleetCargo(TestCase):
             name="Test Fleet",
             x=5,
             y=5,
+            cargo_capacity=1000,
             ironium_inventory=100,
             boranium_inventory=200,
             germanium_inventory=300,
@@ -1696,6 +1697,7 @@ class TestFleetCargo(TestCase):
             name="Full Fleet",
             x=5,
             y=5,
+            cargo_capacity=1000,
             colonists=1000  # Full capacity with colonists only
         )
 
@@ -1713,6 +1715,7 @@ class TestFleetCargo(TestCase):
             name="Mixed Fleet",
             x=5,
             y=5,
+            cargo_capacity=1000,
             ironium_inventory=250,   # 250kt ironium
             boranium_inventory=250,  # 250kt boranium
             germanium_inventory=250, # 250kt germanium
@@ -1736,6 +1739,7 @@ class TestFleetCargo(TestCase):
             name="Cargo Fleet",
             x=10,
             y=10,
+            cargo_capacity=1000,
             ironium_inventory=500,
             boranium_inventory=300,
             germanium_inventory=150,
@@ -1994,11 +1998,12 @@ class TestFleetTransferOrders(TestCase):
         player = game.players.first()
         fleet = game.fleets.first()
         target_star = game.stars.exclude(pk=player.homeworld.pk).first()
-        
-        # Position fleet at target star and clear cargo
+
+        # Position fleet at target star, set capacity, and clear cargo
         fleet.x = target_star.x
         fleet.y = target_star.y
-        fleet.ironium_inventory = 0  
+        fleet.cargo_capacity = 1000
+        fleet.ironium_inventory = 0
         fleet.boranium_inventory = 0
         fleet.germanium_inventory = 0
         fleet.colonists = 0
@@ -2147,7 +2152,8 @@ class TestFleetTransferOrders(TestCase):
             player=player,
             name="Target Fleet",
             x=star.x,
-            y=star.y
+            y=star.y,
+            cargo_capacity=1000
         )
 
         # Give source fleet cargo
@@ -2204,6 +2210,7 @@ class TestFleetTransferOrders(TestCase):
         # Position fleet at target with existing cargo (almost full)
         fleet.x = target_star.x
         fleet.y = target_star.y
+        fleet.cargo_capacity = 1000
         fleet.ironium_inventory = 0
         fleet.boranium_inventory = 0
         fleet.germanium_inventory = 0

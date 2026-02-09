@@ -1,5 +1,4 @@
 ============= MAIN TODO =============
-1. Merge with fleet Order
 2. Scuttle Fleet order & Salvage
 3. Basic combat (based on mass & chance)
 4. Secret resources
