@@ -54,6 +54,11 @@
     key: 'gpt_api_key'
     description: 'GPT API key'
     value: ''
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'quorum_generation_mode'
+    description: 'Quorum turn generation: webserver or cronjob'
+    value: 'webserver'
 - model: dj4xol.ServerRaceType
   fields:
     code: 'JOAT'
