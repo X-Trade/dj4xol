@@ -260,11 +260,12 @@ body {
 }
 
 .panel-content > div {
-    background: #0a0a14;
+    background: #000;
     border: 3px solid #cc6633;
     border-top: none;
     border-radius: 0 0 0 25px;
     color: #ff9966;
+    margin-top: 4px;
 }
 
 .panel-content > div::-webkit-scrollbar {
@@ -287,7 +288,7 @@ body {
 
 .panel:not(.open) > h2 {
     border-radius: 25px;
-    margin-bottom: 0;
+    margin-bottom: 4px;
 }
 
 /* Alternating panel header colours */
@@ -299,7 +300,9 @@ body {
 }
 
 .panel:nth-child(2n) .panel-content > div {
-    border-color: #9999cc;
+    background: #0a0a14;
+    border: 3px solid #9999cc;
+    border-top: none;
 }
 
 .panel:nth-child(3n) > h2 {
@@ -310,7 +313,9 @@ body {
 }
 
 .panel:nth-child(3n) .panel-content > div {
-    border-color: #cc99cc;
+    background: #0a0a14;
+    border: 3px solid #cc99cc;
+    border-top: none;
 }
 
 /* ============================================
@@ -318,7 +323,6 @@ body {
    ============================================ */
 .columns {
     background: #000;
-    padding: 15px;
 }
 
 .column-left,
@@ -434,17 +438,36 @@ input:focus {
 
 /* Orders panel */
 .panel .orders-panel {
-    background: #0a0a14;
+    background: #000;
     border: 3px solid #cc6633;
     border-top: none;
 }
 
 .panel .orders-list {
     border: none;
+    background: transparent;
+}
+
+.panel .orders-list::-webkit-scrollbar {
+    width: 14px;
+}
+
+.panel .orders-list::-webkit-scrollbar-track {
+    background: #000;
+}
+
+.panel .orders-list::-webkit-scrollbar-thumb {
+    background: #cc6633;
+    border-radius: 7px;
+    border: 2px solid #000;
+}
+
+.panel .orders-list::-webkit-scrollbar-thumb:hover {
+    background: #ff9966;
 }
 
 .order-item {
-    border-bottom-color: #333;
+    border-bottom: none;
 }
 
 .order-remove-btn {
@@ -473,10 +496,71 @@ input:focus {
 }
 
 /* Order params */
-.order-params {
-    background: #1a1a2e;
-    border-color: #9999cc;
-    border-radius: 15px;
+.panel .order-params {
+    background: #000 !important;
+    border: 3px solid #9999cc;
+    border-radius: 0 0 0 15px;
+    padding: 10px 4px 10px 10px;
+    position: relative;
+    border-style: none none solid none;
+}
+
+.transfer-slider-note {
+    text-align: right;
+    border-top: none;
+}
+
+.colonise-warning {
+    text-align: right;
+}
+
+.panel .order-params::before {
+    content: 'Parameters';
+    display: block;
+    background: linear-gradient(to right,
+        #9999cc 0%, #9999cc calc(100% - 24px),
+        #000 calc(100% - 24px), #000 calc(100% - 20px),
+        #cc99cc calc(100% - 20px), #cc99cc 100%);
+    color: #000;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 0.8em;
+    padding: 2px 8px;
+    margin: -10px -10px 10px -10px;
+    border-radius: 0;
+}
+
+.panel .order-params label {
+    color: #9999cc;
+}
+
+.panel .order-params .dest-display {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    color: #ff9966;
+}
+
+.panel .order-params .dest-set-btn {
+    background: #9999cc;
+    color: #000;
+    border-radius: 10px;
+}
+
+.panel .order-params .dest-set-btn:hover {
+    background: #ccccff;
+}
+
+.panel .order-params .transfer-target-select {
+    background: #000;
+    border: none;
+    color: #ff9966;
+}
+
+/* order details input form */
+.order-form {
+    margin-block-end: 0px;
 }
 
 /* Production quantity input */
@@ -550,7 +634,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .message {
-    border-bottom-color: #333;
+    border-bottom: none;
 }
 
 .message-year {
@@ -571,7 +655,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* Detail panel */
 .panel #detail {
-    background: #0a0a14;
+    background: #000;
     border: 3px solid #cc6633;
     border-top: none;
 }
@@ -587,6 +671,7 @@ input[type="range"]::-webkit-slider-thumb {
 .env-bar {
     background: linear-gradient(to right, #660000 0%, #66cc66 50%, #660000 100%);
     border-color: #666;
+    margin-left: 12px;
 }
 
 .env-label {
@@ -687,6 +772,7 @@ input[type="range"]::-webkit-slider-thumb {
    ============================================ */
 .panel[data-panel="starmap"] .panel-content > div {
     padding: 0;
+    border: none;
     border-radius: 0 0 0 25px;
     overflow: hidden;
 }
@@ -777,25 +863,6 @@ input[type="range"]::-webkit-slider-thumb {
     overflow: hidden;
 }
 
-.theme-preview.classic {
-    background: linear-gradient(to bottom, #333 30%, #e0e0e0 30%);
-}
-
-.theme-preview.lcars {
-    background: linear-gradient(to bottom, #000 60%, #cc6633 60%);
-    position: relative;
-}
-
-.theme-preview.lcars::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    width: 20px;
-    height: 20px;
-    background: #9999cc;
-    border-top-right-radius: 10px;
-}
 
 .theme-name {
     font-weight: bold;
@@ -824,13 +891,13 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .message-history .message-list {
-    background: #0a0a14;
+    background: #000;
     border: 3px solid #cc6633;
     border-radius: 0 0 0 25px;
 }
 
 .message-history .message {
-    border-bottom-color: #333;
+    border-bottom: none;
 }
 
 .message-history .message-year {
@@ -885,4 +952,12 @@ input[type="range"]::-webkit-slider-thumb {
 .message-history .pagination .disabled {
     color: #666;
     border-color: #333;
+}
+
+/* ============================================
+   LCARS Home/Profile Page Adjustments
+   ============================================ */
+.columns.two-column .panel .panel-content > div,
+.columns.single-column .panel .panel-content > div {
+    min-height: 15vh;
 }

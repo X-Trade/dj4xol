@@ -1,7 +1,9 @@
 ============= MAIN TODO =============
-3. Merge with fleet Order
-4. Scuttle Fleet order & Salvage
-5. Basic combat (based on mass & chance)
+1. Merge with fleet Order
+2. Scuttle Fleet order & Salvage
+3. Basic combat (based on mass & chance)
+4. Secret resources
+5. show move orders as dotted line
 6. Colony Micromanager
 7. Schedule based turn generation (generate a turn by cronjob)
 8. More tooltips for colonies

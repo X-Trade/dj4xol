@@ -182,6 +182,7 @@ a:hover {
     flex: 1;
     min-height: 0;
     border: 1px solid var(--panel-content-border);
+    border-top: none;
     background: var(--panel-content-bg);
     padding: var(--panel-padding);
     box-sizing: border-box;
@@ -403,30 +404,66 @@ a:hover {
 }
 
 .theme-preview.lcars {
-    background: linear-gradient(to bottom, #000 60%, #cc6633 60%);
+    background: #000;
     position: relative;
+    overflow: hidden;
 }
 
+/* Title bar: orange with mauve corner */
 .theme-preview.lcars::before {
     content: '';
     position: absolute;
+    top: 0;
     left: 0;
-    bottom: 0;
-    width: 25px;
-    height: 24px;
-    background: #9999cc;
-    border-top-right-radius: 12px;
+    right: 0;
+    height: 12px;
+    background: linear-gradient(to right,
+        #cc6633 0%, #cc6633 calc(100% - 22px),
+        #000 calc(100% - 22px), #000 calc(100% - 18px),
+        #cc99cc calc(100% - 18px), #cc99cc 100%);
 }
 
+/* Panel: header bar + gap + content with rounded bottom-left */
 .theme-preview.lcars::after {
     content: '';
     position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 20px;
-    height: 24px;
-    background: #cc99cc;
-    border-top-left-radius: 12px;
+    top: 18px;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    background: linear-gradient(to bottom,
+        #9999cc 0%, #9999cc 10px,
+        #000 10px, #000 14px,
+        transparent 14px);
+    border: 2px solid #cc6633;
+    border-top: none;
+    border-radius: 0 0 0 10px;
+}
+
+.theme-preview.win95 {
+    background: #008080;
+    position: relative;
+}
+
+.theme-preview.win95::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    right: 6px;
+    height: 16px;
+    background: linear-gradient(to right, #000080, #1084d0);
+}
+
+.theme-preview.win95::after {
+    content: '';
+    position: absolute;
+    top: 22px;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
 }
 
 .theme-name {
