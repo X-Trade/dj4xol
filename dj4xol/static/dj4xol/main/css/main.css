@@ -551,6 +551,32 @@ body {
     font-weight: normal;
 }
 
+/* Fleet integrity bar */
+.integrity-bar {
+    flex: 1;
+    height: 12px;
+    background: #333;
+    border: 1px solid #404040;
+    position: relative;
+    margin: 0 8px;
+    border-radius: 2px;
+}
+
+.integrity-fill {
+    height: 100%;
+    border-radius: 1px;
+    transition: width 0.3s ease;
+    background: linear-gradient(to right, #4caf50, #81c784); /* Green - healthy */
+}
+
+.integrity-fill.warning {
+    background: linear-gradient(to right, #ff9800, #ffb74d); /* Orange - damaged */
+}
+
+.integrity-fill.critical {
+    background: linear-gradient(to right, #f44336, #e57373); /* Red - critical */
+}
+
 /* Messages panel */
 #messages {
     border: 1px solid #808080;

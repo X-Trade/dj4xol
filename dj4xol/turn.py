@@ -22,6 +22,7 @@ from .messages import (
     ProductionSummaryMessageFactory,
     FleetWarpDamageMessageFactory,
     FleetWarpDestroyedMessageFactory,
+    FleetMergedMessageFactory,
 )
 import random
 
@@ -371,6 +372,15 @@ class GameTurn():
                     return None
                 elif colonise_result == 'waiting':
                     break  # Wait for fleet to reach destination
+
+            elif order.order_type == 'MERGE':
+                merge_result = self._execute_merge_order(fleet, order)
+                if merge_result == 'executed':
+                    # Source fleet deleted, return None so caller doesn't save
+                    return None
+                elif merge_result == 'waiting':
+                    break  # Wait for fleets to be at same location
+                # 'invalid' falls through to continue to next order
             else:
                 # Unknown order type, just remove it
                 order.delete()
@@ -954,6 +964,74 @@ class GameTurn():
             msg = factory.new_message()
             msg.year = self.game.year
             msg.save()
+
+        return 'executed'
+
+    def _execute_merge_order(self, source_fleet, order):
+        """Execute a merge order, combining source fleet into target fleet.
+
+        Returns:
+        - 'executed': Merge completed, source fleet deleted
+        - 'waiting': Fleets not at same location yet
+        - 'invalid': Target fleet invalid or belongs to different player
+        """
+        from .models import FleetOrders
+
+        target_fleet = order.target_fleet
+
+        # Validate target exists and belongs to same player
+        if not target_fleet or target_fleet.player != source_fleet.player:
+            order.delete()
+            return 'invalid'
+
+        # Check both fleets at same location
+        if source_fleet.x != target_fleet.x or source_fleet.y != target_fleet.y:
+            return 'waiting'
+
+        # Store source name before deletion for message
+        source_name = source_fleet.name
+        player = source_fleet.player
+
+        # Calculate weighted average integrity
+        total_ships = source_fleet.ship_count + target_fleet.ship_count
+        avg_integrity = (
+            (source_fleet.integrity * source_fleet.ship_count) +
+            (target_fleet.integrity * target_fleet.ship_count)
+        ) // total_ships
+
+        # Merge attributes into target fleet
+        target_fleet.ship_count = total_ships
+        target_fleet.cargo_capacity += source_fleet.cargo_capacity
+        target_fleet.dry_mass += source_fleet.dry_mass
+        target_fleet.max_safe_warp = min(
+            target_fleet.max_safe_warp, source_fleet.max_safe_warp
+        )
+        target_fleet.integrity = avg_integrity
+
+        # Transfer cargo (may exceed capacity - intentional for merge)
+        target_fleet.ironium_inventory += source_fleet.ironium_inventory
+        target_fleet.boranium_inventory += source_fleet.boranium_inventory
+        target_fleet.germanium_inventory += source_fleet.germanium_inventory
+        target_fleet.colonists += source_fleet.colonists
+
+        target_fleet.save()
+
+        # Update orders from other fleets that target the source fleet
+        # Use explicit ID to avoid any object reference issues with CASCADE
+        FleetOrders.objects.filter(target_fleet_id=source_fleet.id).update(
+            target_fleet_id=target_fleet.id
+        )
+
+        # Delete source fleet (cascades its orders)
+        source_fleet.delete()
+
+        # Create message
+        factory = FleetMergedMessageFactory(
+            self.game, player, source_name, target_fleet
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
 
         return 'executed'
 

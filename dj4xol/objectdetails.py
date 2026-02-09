@@ -72,6 +72,7 @@ class DetailBuilder():
                      'fleet_inventory': self.build_fleet_inventory(),
                      'transfer_targets': self.get_transfer_targets(),
                      'colonise_targets': self.get_colonise_targets(),
+                     'merge_targets': self.get_merge_targets(),
                      'x': self.selected_obj.x,
                      'y': self.selected_obj.y,
                      }
@@ -347,6 +348,7 @@ class DetailBuilder():
             'colonists': self.selected_obj.colonists,
             'max_safe_warp': self.selected_obj.max_safe_warp,
             'integrity': self.selected_obj.integrity,
+            'ship_count': self.selected_obj.ship_count,
         }
 
     def build_fleet_inventory(self):
@@ -548,6 +550,101 @@ class DetailBuilder():
             }
         else:
             # Multiple stars (rare but possible)
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'multiple',
+                'default_target': targets[0]
+            }
+
+    def get_merge_targets(self):
+        """Get available merge targets at the fleet's effective location.
+
+        Returns a dict with:
+        - targets: list of available fleet targets (same player only)
+        - location: (x, y) coordinates
+        - display_mode: 'single', 'multiple', or 'empty'
+        - default_target: the target to select by default
+
+        Only fleets belonging to the same player are valid merge targets.
+        Includes fleets currently at the location AND fleets with orders
+        targeting the location.
+        """
+        if not isinstance(self.selected_obj, Fleet):
+            return {
+                'targets': [], 'location': (0, 0),
+                'display_mode': 'empty', 'default_target': None
+            }
+
+        if not self.player or self.selected_obj.player != self.player:
+            return {
+                'targets': [], 'location': (0, 0),
+                'display_mode': 'empty', 'default_target': None
+            }
+
+        # Get the location where the fleet will be when the merge executes
+        effective_x, effective_y = self.get_fleet_effective_location()
+
+        # Collect fleet IDs that will be at the effective location
+        fleet_ids_at_location = set()
+
+        # Find fleets currently at the effective location (same player only)
+        current_fleets = self.game.fleets.filter(
+            x=effective_x, y=effective_y, player=self.player
+        ).exclude(id=self.selected_obj.id)
+
+        for fleet in current_fleets:
+            fleet_ids_at_location.add(fleet.id)
+
+        # Find fleets with orders targeting the effective location
+        from .models import FleetOrders
+
+        # Get stars at the effective location for order matching
+        stars_at_location = self.game.stars.filter(
+            x=effective_x, y=effective_y
+        )
+
+        # Query for MOVE orders targeting the effective location
+        target_orders = FleetOrders.objects.filter(
+            game=self.game,
+            fleet__player=self.player,  # Same player only
+            order_type='MOVE'
+        ).filter(
+            models.Q(x=effective_x, y=effective_y) |
+            models.Q(target_star__in=stars_at_location)
+        ).exclude(fleet_id=self.selected_obj.id).select_related('fleet')
+
+        for order in target_orders:
+            fleet_ids_at_location.add(order.fleet.id)
+
+        # Build targets list from collected fleet IDs
+        targets = []
+        if fleet_ids_at_location:
+            fleets = self.game.fleets.filter(id__in=fleet_ids_at_location)
+            for fleet in fleets:
+                targets.append({
+                    'name': fleet.name,
+                    'short_id': fleet.short_id,
+                    'type': 'fleet',
+                    'ship_count': fleet.ship_count,
+                })
+
+        # Determine display mode and default target
+        if not targets:
+            return {
+                'targets': [],
+                'location': (effective_x, effective_y),
+                'display_mode': 'empty',
+                'default_target': None
+            }
+        elif len(targets) == 1:
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'single',
+                'default_target': targets[0]
+            }
+        else:
             return {
                 'targets': targets,
                 'location': (effective_x, effective_y),
