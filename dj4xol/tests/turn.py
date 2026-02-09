@@ -3433,3 +3433,377 @@ class TestWarpDamage(TestCase):
 
         # Should have a destruction message
         self.assertGreater(player.messages.count(), initial_messages)
+
+
+class TestMergeFleet(TestCase):
+    """Test merge fleet order functionality."""
+
+    def test_merge_fleet_basic(self):
+        """Two fleets at same location merge correctly."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        # Create two fleets at same location
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y, ship_count=2
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x, y=star.y, ship_count=3
+        )
+
+        # Add merge order to fleet1 targeting fleet2
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        fleet1_id = fleet1.id
+        fleet2_id = fleet2.id
+
+        GameTurn(game).generate_turn()
+
+        # Fleet1 should be deleted
+        self.assertFalse(Fleet.objects.filter(id=fleet1_id).exists())
+
+        # Fleet2 should still exist
+        self.assertTrue(Fleet.objects.filter(id=fleet2_id).exists())
+
+    def test_merge_fleet_ship_count(self):
+        """Ship counts are summed when merging."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y, ship_count=5
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x, y=star.y, ship_count=7
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet2.refresh_from_db()
+        self.assertEqual(fleet2.ship_count, 12)
+
+    def test_merge_fleet_min_warp(self):
+        """Takes minimum max_safe_warp from both fleets."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y, max_safe_warp=9
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x, y=star.y, max_safe_warp=6
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet2.refresh_from_db()
+        self.assertEqual(fleet2.max_safe_warp, 6)
+
+    def test_merge_fleet_avg_integrity(self):
+        """Integrity is weighted average by ship count."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        # Fleet1: 2 ships at 50% integrity = 100 total
+        # Fleet2: 3 ships at 100% integrity = 300 total
+        # Combined: 5 ships, 400 total = 80% average
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y, ship_count=2, integrity=50
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x, y=star.y, ship_count=3, integrity=100
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet2.refresh_from_db()
+        self.assertEqual(fleet2.integrity, 80)
+
+    def test_merge_fleet_cargo_combined(self):
+        """All cargo is transferred to target fleet."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y,
+            ironium_inventory=100, boranium_inventory=200,
+            germanium_inventory=300, colonists=50
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x, y=star.y,
+            ironium_inventory=50, boranium_inventory=100,
+            germanium_inventory=150, colonists=25
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet2.refresh_from_db()
+        self.assertEqual(fleet2.ironium_inventory, 150)
+        self.assertEqual(fleet2.boranium_inventory, 300)
+        self.assertEqual(fleet2.germanium_inventory, 450)
+        self.assertEqual(fleet2.colonists, 75)
+
+    def test_merge_fleet_capacity_combined(self):
+        """Cargo capacity and dry mass are summed."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y, cargo_capacity=1000, dry_mass=100
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x, y=star.y, cargo_capacity=2000, dry_mass=200
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet2.refresh_from_db()
+        self.assertEqual(fleet2.cargo_capacity, 3000)
+        self.assertEqual(fleet2.dry_mass, 300)
+
+    def test_merge_fleet_orders_redirected(self):
+        """Orders targeting source fleet are updated to target merged fleet."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x, y=star.y
+        )
+        fleet3 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 3",
+            x=star.x + 10, y=star.y
+        )
+
+        # Fleet3 has a transfer order targeting fleet1
+        transfer_order = FleetOrders.objects.create(
+            game=game, fleet=fleet3, order_type='TRANSFER',
+            target_fleet=fleet1, transfer_type='LOAD',
+            transfer_ironium=100
+        )
+
+        # Fleet1 merges into fleet2
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        transfer_order_id = transfer_order.id
+
+        GameTurn(game).generate_turn()
+
+        # Transfer order should now point to fleet2
+        transfer_order.refresh_from_db()
+        self.assertEqual(transfer_order.target_fleet_id, fleet2.id)
+
+    def test_merge_fleet_source_deleted(self):
+        """Source fleet and its orders are deleted after merge."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x, y=star.y
+        )
+
+        # Add merge order and another order to fleet1
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+        move_order = FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MOVE',
+            x=50, y=50, warpfactor=5
+        )
+
+        fleet1_id = fleet1.id
+        move_order_id = move_order.id
+
+        GameTurn(game).generate_turn()
+
+        # Fleet1 should be deleted
+        self.assertFalse(Fleet.objects.filter(id=fleet1_id).exists())
+
+        # All fleet1's orders should be deleted (cascade)
+        self.assertFalse(FleetOrders.objects.filter(id=move_order_id).exists())
+
+    def test_merge_fleet_waiting(self):
+        """Merge doesn't execute until fleets at same location."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x + 10, y=star.y  # Different location
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        fleet1_id = fleet1.id
+        fleet2_id = fleet2.id
+
+        GameTurn(game).generate_turn()
+
+        # Both fleets should still exist (merge waiting)
+        self.assertTrue(Fleet.objects.filter(id=fleet1_id).exists())
+        self.assertTrue(Fleet.objects.filter(id=fleet2_id).exists())
+
+    def test_merge_fleet_wrong_player_invalid(self):
+        """Merge order is invalid if target belongs to different player."""
+        from ..models import FleetOrders
+        from ._util import get_default_user, get_default_race
+        from django.contrib.auth.models import User
+        from ..models import Account, Player
+
+        game = default_game()
+        player1 = game.players.first()
+        star = player1.homeworld
+
+        # Create second player
+        user2, _ = User.objects.get_or_create(
+            username='second_user', defaults={'email': 'test2@example.com'}
+        )
+        account2, _ = Account.objects.get_or_create(django_user=user2)
+        player2 = Player.objects.create(
+            game=game, account=account2, name="Enemy",
+            race_type=get_default_race().race_type
+        )
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player1, name="My Fleet",
+            x=star.x, y=star.y
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player2, name="Enemy Fleet",
+            x=star.x, y=star.y
+        )
+
+        # Try to merge with enemy fleet (should be invalid)
+        merge_order = FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        fleet1_id = fleet1.id
+        fleet2_id = fleet2.id
+        merge_order_id = merge_order.id
+
+        GameTurn(game).generate_turn()
+
+        # Both fleets should still exist
+        self.assertTrue(Fleet.objects.filter(id=fleet1_id).exists())
+        self.assertTrue(Fleet.objects.filter(id=fleet2_id).exists())
+
+        # Merge order should be deleted (invalid)
+        self.assertFalse(FleetOrders.objects.filter(id=merge_order_id).exists())
+
+    def test_merge_fleet_creates_message(self):
+        """Merge creates a notification message."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        initial_messages = player.messages.count()
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x, y=star.y
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        GameTurn(game).generate_turn()
+
+        # Should have a new message about the merge
+        self.assertGreater(player.messages.count(), initial_messages)

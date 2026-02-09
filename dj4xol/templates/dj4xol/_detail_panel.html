@@ -78,6 +78,24 @@
         </div>
     </div>
     {% endif %}
+    {% if detail.fleet_cargo %}
+    <div class="collapsible-section" data-section="composition">
+        <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Composition</h4>
+        <div class="collapsible-content">
+            <div class="env-row">
+                <span class="env-label">Ships</span>
+                <span class="env-value">{{ detail.fleet_cargo.ship_count }}</span>
+            </div>
+            <div class="env-row">
+                <span class="env-label">Integrity</span>
+                <div class="integrity-bar">
+                    <div class="integrity-fill {% if detail.fleet_cargo.integrity < 25 %}critical{% elif detail.fleet_cargo.integrity < 50 %}warning{% endif %}" style="width: {{ detail.fleet_cargo.integrity }}%;"></div>
+                </div>
+                <span class="env-value">{{ detail.fleet_cargo.integrity }}%</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
     {% if detail.infrastructure %}
     <div class="collapsible-section" data-section="infrastructure">
         <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Infrastructure</h4>

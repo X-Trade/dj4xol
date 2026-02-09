@@ -372,6 +372,17 @@ def add_fleet_order(request, game_short_id):
         if colonise_target:
             order.target_star = Star.objects.get(short_id=colonise_target, game=game)
 
+    elif order_type == 'MERGE':
+        # Merge orders always have repeat=False (fleet is deleted on merge)
+        order.repeat = False
+        merge_target = request.POST.get('merge_target', '')
+
+        # Merge target must be a fleet belonging to the same player
+        if merge_target:
+            order.target_fleet = Fleet.objects.get(
+                short_id=merge_target, game=game, player=player
+            )
+
     order.save()
 
     return _redirect_preserving_selection(request, game)

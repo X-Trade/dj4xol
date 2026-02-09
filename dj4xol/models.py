@@ -368,6 +368,7 @@ class Fleet(AbstractMapObject):
             on_delete=models.CASCADE)
     # Heading in degrees: 0 = north, 90 = east, 180 = south, 270 = west
     heading = models.FloatField(default=0.0)
+    ship_count = models.IntegerField(default=1)
 
     # Cargo capacity and inventory
     cargo_capacity = models.IntegerField(default=1000)  # Total cargo capacity in kt
@@ -475,6 +476,7 @@ class FleetOrders(AbstractGameObject):
         ('MOVE', 'Move'),
         ('TRANSFER', 'Transfer'),
         ('COLONISE', 'Colonise'),
+        ('MERGE', 'Merge'),
     ]
 
     fleet = models.ForeignKey(Fleet, related_name="orders",

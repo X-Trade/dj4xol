@@ -602,3 +602,25 @@ class FleetWarpDestroyedMessageFactory(MessageFactory):
             warp=self.warp_speed,
             location=self._format_location()
         )
+
+
+class FleetMergedMessageFactory(MessageFactory):
+    """Messages for fleet merge completion."""
+    category = 'GENERAL'
+    templates = [
+        "{source} has merged with {target}. Combined fleet now has {ships} ships.",
+        "{source} merged into {target}, forming a fleet of {ships} ships.",
+        "Fleet merger complete: {source} joined {target} ({ships} ships total).",
+    ]
+
+    def __init__(self, game, player, source_name, target_fleet, message=None):
+        super().__init__(game, player, message, intensity=0.2)
+        self.source_name = source_name
+        self.target_fleet = target_fleet
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            source=self.source_name,
+            target=map_object_link(self.target_fleet),
+            ships=self.target_fleet.ship_count
+        )

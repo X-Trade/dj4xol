@@ -24,6 +24,8 @@
                         {% endif %}
                     {% elif order.order_type == 'COLONISE' %}
                         <span>Colonise {{ order.target }}</span>
+                    {% elif order.order_type == 'MERGE' %}
+                        <span>Merge into {{ order.target }}</span>
                     {% else %}
                         <span>Unknown order type: {{ order.order_type }}</span>
                     {% endif %}
@@ -59,12 +61,14 @@
             <input type="hidden" name="transfer_germanium" id="transfer-germanium-input" value="0">
             <input type="hidden" name="transfer_colonists" id="transfer-colonists-input" value="0">
             <input type="hidden" name="colonise_target" id="colonise-target-input" value="">
+            <input type="hidden" name="merge_target" id="merge-target-input" value="">
 
             <div class="order-type-row">
                 <select id="order-type" class="order-select">
                     <option value="MOVE"{% if not request.GET.order_type or request.GET.order_type == 'MOVE' %} selected{% endif %}>Move to</option>
                     <option value="TRANSFER"{% if request.GET.order_type == 'TRANSFER' %} selected{% endif %}>Transfer</option>
                     <option value="COLONISE"{% if request.GET.order_type == 'COLONISE' %} selected{% endif %}>Colonise</option>
+                    <option value="MERGE"{% if request.GET.order_type == 'MERGE' %} selected{% endif %}>Merge Fleet</option>
                 </select>
                 <label class="repeat-checkbox"><input type="checkbox" name="repeat" id="repeat-checkbox"> &#x21bb;</label>
                 <button type="submit" class="order-add-btn" id="add-order-btn" {% if not dest_star_id and not dest_x %}disabled{% endif %}>+</button>
@@ -122,6 +126,24 @@
                             <select id="colonise-target" class="transfer-target-select">
                                 {% for obj in detail.colonise_targets.targets %}
                                     <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}</option>
+                                {% endfor %}
+                            </select>
+                        {% endif %}
+                    </div>
+                    <div class="dest-display-row" id="merge-destination" style="display: none;">
+                        {% if detail.merge_targets.display_mode == 'single' %}
+                            <!-- Single fleet target -->
+                            <span class="dest-display">{{ detail.merge_targets.default_target.name }} ({{ detail.merge_targets.default_target.ship_count }} ships)</span>
+                            <input type="hidden" id="merge-single-target-value" data-target="{{ detail.merge_targets.default_target.short_id }}">
+                        {% elif detail.merge_targets.display_mode == 'empty' %}
+                            <!-- No fleet at location -->
+                            <span class="dest-display"><em>No other fleets here</em></span>
+                            <input type="hidden" id="merge-empty-target-value" data-target="">
+                        {% else %}
+                            <!-- Multiple fleets -->
+                            <select id="merge-target" class="transfer-target-select">
+                                {% for obj in detail.merge_targets.targets %}
+                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} ({{ obj.ship_count }} ships)</option>
                                 {% endfor %}
                             </select>
                         {% endif %}
@@ -195,6 +217,13 @@
                         This order will scuttle the fleet, depositing all materials on the surface and founding a new colony at <strong id="colonise-target-name">{% if detail.colonise_targets.default_target.name %}{{ detail.colonise_targets.default_target.name }}{% else %}the target star{% endif %}</strong>.
                     </div>
                 </div>
+
+                <!-- Merge warning message -->
+                <div id="merge-params" class="order-type-params" style="display: none;">
+                    <div class="colonise-warning" style="color: #c44; font-style: italic; padding: 8px 0;">
+                        This order will merge this fleet into <strong id="merge-target-name">{% if detail.merge_targets.default_target.name %}{{ detail.merge_targets.default_target.name }}{% else %}the target fleet{% endif %}</strong>, combining ships, cargo, and capabilities. This fleet will be dissolved.
+                    </div>
+                </div>
             </div>
         </form>
     </div></div>
@@ -207,6 +236,7 @@
     var moveParams = document.getElementById('move-params');
     var transferParams = document.getElementById('transfer-params');
     var coloniseParams = document.getElementById('colonise-params');
+    var mergeParams = document.getElementById('merge-params');
     var transferTypeInput = document.getElementById('transfer-type-input');
     var addBtn = document.getElementById('add-order-btn');
     
@@ -315,6 +345,39 @@
         var hasTarget = coloniseTargetInput && coloniseTargetInput.value !== '';
         addBtn.disabled = !hasTarget;
     }
+
+    // Initialize merge target input based on display mode
+    function initializeMergeTarget() {
+        var mergeTargetInput = document.getElementById('merge-target-input');
+        if (!mergeTargetInput) return;
+
+        // Check for dropdown (multiple targets)
+        var mergeTargetSelect = document.getElementById('merge-target');
+        if (mergeTargetSelect) {
+            mergeTargetInput.value = mergeTargetSelect.value;
+            return;
+        }
+
+        // Check for single target
+        var singleTargetValue = document.getElementById('merge-single-target-value');
+        if (singleTargetValue) {
+            mergeTargetInput.value = singleTargetValue.getAttribute('data-target');
+            return;
+        }
+
+        // Check for empty (no fleet)
+        var emptyTargetValue = document.getElementById('merge-empty-target-value');
+        if (emptyTargetValue) {
+            mergeTargetInput.value = '';
+            return;
+        }
+    }
+
+    function updateAddButtonStateMerge() {
+        var mergeTargetInput = document.getElementById('merge-target-input');
+        var hasTarget = mergeTargetInput && mergeTargetInput.value !== '';
+        addBtn.disabled = !hasTarget;
+    }
     
     // Update destination link with current order type
     function updateDestinationLink(type) {
@@ -341,17 +404,20 @@
         var moveDestination = document.getElementById('move-destination');
         var transferDestination = document.getElementById('transfer-destination');
         var coloniseDestination = document.getElementById('colonise-destination');
+        var mergeDestination = document.getElementById('merge-destination');
 
         if (currentType === 'TRANSFER') {
             moveParams.style.display = 'none';
             transferParams.style.display = 'block';
             if (coloniseParams) coloniseParams.style.display = 'none';
+            if (mergeParams) mergeParams.style.display = 'none';
 
             // Switch from destination to target
             if (destTargetLabel) destTargetLabel.textContent = 'Target';
             if (moveDestination) moveDestination.style.display = 'none';
             if (transferDestination) transferDestination.style.display = 'flex';
             if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (mergeDestination) mergeDestination.style.display = 'none';
 
             // Initialize transfer target input with appropriate value
             initializeTransferTarget();
@@ -360,26 +426,46 @@
             moveParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'block';
+            if (mergeParams) mergeParams.style.display = 'none';
 
             // Switch to target for colonise
             if (destTargetLabel) destTargetLabel.textContent = 'Target';
             if (moveDestination) moveDestination.style.display = 'none';
             if (transferDestination) transferDestination.style.display = 'none';
             if (coloniseDestination) coloniseDestination.style.display = 'flex';
+            if (mergeDestination) mergeDestination.style.display = 'none';
 
             // Initialize colonise target input
             initializeColoniseTarget();
             updateAddButtonStateColonise();
+        } else if (currentType === 'MERGE') {
+            moveParams.style.display = 'none';
+            transferParams.style.display = 'none';
+            if (coloniseParams) coloniseParams.style.display = 'none';
+            if (mergeParams) mergeParams.style.display = 'block';
+
+            // Switch to target for merge
+            if (destTargetLabel) destTargetLabel.textContent = 'Merge Into';
+            if (moveDestination) moveDestination.style.display = 'none';
+            if (transferDestination) transferDestination.style.display = 'none';
+            if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (mergeDestination) mergeDestination.style.display = 'flex';
+
+            // Initialize merge target input
+            initializeMergeTarget();
+            updateAddButtonStateMerge();
         } else {
             moveParams.style.display = 'block';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
+            if (mergeParams) mergeParams.style.display = 'none';
 
             // Switch from target to destination
             if (destTargetLabel) destTargetLabel.textContent = 'Destination';
             if (moveDestination) moveDestination.style.display = 'flex';
             if (transferDestination) transferDestination.style.display = 'none';
             if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (mergeDestination) mergeDestination.style.display = 'none';
 
             updateAddButtonState();
         }
@@ -400,29 +486,34 @@
             var moveDestination = document.getElementById('move-destination');
             var transferDestination = document.getElementById('transfer-destination');
             var coloniseDestination = document.getElementById('colonise-destination');
+            var mergeDestination = document.getElementById('merge-destination');
 
             if (type === 'MOVE') {
                 moveParams.style.display = 'block';
                 transferParams.style.display = 'none';
                 if (coloniseParams) coloniseParams.style.display = 'none';
+                if (mergeParams) mergeParams.style.display = 'none';
 
                 // Switch from target to destination
                 if (destTargetLabel) destTargetLabel.textContent = 'Destination';
                 if (moveDestination) moveDestination.style.display = 'flex';
                 if (transferDestination) transferDestination.style.display = 'none';
                 if (coloniseDestination) coloniseDestination.style.display = 'none';
+                if (mergeDestination) mergeDestination.style.display = 'none';
 
                 updateAddButtonState();
             } else if (type === 'TRANSFER') {
                 moveParams.style.display = 'none';
                 transferParams.style.display = 'block';
                 if (coloniseParams) coloniseParams.style.display = 'none';
+                if (mergeParams) mergeParams.style.display = 'none';
 
                 // Switch from destination to target
                 if (destTargetLabel) destTargetLabel.textContent = 'Target';
                 if (moveDestination) moveDestination.style.display = 'none';
                 if (transferDestination) transferDestination.style.display = 'flex';
                 if (coloniseDestination) coloniseDestination.style.display = 'none';
+                if (mergeDestination) mergeDestination.style.display = 'none';
 
                 // Initialize transfer target input with appropriate value
                 initializeTransferTarget();
@@ -431,16 +522,34 @@
                 moveParams.style.display = 'none';
                 transferParams.style.display = 'none';
                 if (coloniseParams) coloniseParams.style.display = 'block';
+                if (mergeParams) mergeParams.style.display = 'none';
 
                 // Switch to target for colonise
                 if (destTargetLabel) destTargetLabel.textContent = 'Target';
                 if (moveDestination) moveDestination.style.display = 'none';
                 if (transferDestination) transferDestination.style.display = 'none';
                 if (coloniseDestination) coloniseDestination.style.display = 'flex';
+                if (mergeDestination) mergeDestination.style.display = 'none';
 
                 // Initialize colonise target input
                 initializeColoniseTarget();
                 updateAddButtonStateColonise();
+            } else if (type === 'MERGE') {
+                moveParams.style.display = 'none';
+                transferParams.style.display = 'none';
+                if (coloniseParams) coloniseParams.style.display = 'none';
+                if (mergeParams) mergeParams.style.display = 'block';
+
+                // Switch to target for merge
+                if (destTargetLabel) destTargetLabel.textContent = 'Merge Into';
+                if (moveDestination) moveDestination.style.display = 'none';
+                if (transferDestination) transferDestination.style.display = 'none';
+                if (coloniseDestination) coloniseDestination.style.display = 'none';
+                if (mergeDestination) mergeDestination.style.display = 'flex';
+
+                // Initialize merge target input
+                initializeMergeTarget();
+                updateAddButtonStateMerge();
             }
         });
     }
@@ -482,6 +591,16 @@
         coloniseTargetSelect.addEventListener('change', function() {
             coloniseTargetInput.value = this.value;
             updateAddButtonStateColonise();
+        });
+    }
+
+    // Merge target dropdown (only exists in multiple targets mode)
+    var mergeTargetSelect = document.getElementById('merge-target');
+    var mergeTargetInput = document.getElementById('merge-target-input');
+    if (mergeTargetSelect && mergeTargetInput) {
+        mergeTargetSelect.addEventListener('change', function() {
+            mergeTargetInput.value = this.value;
+            updateAddButtonStateMerge();
         });
     }
     
