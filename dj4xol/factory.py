@@ -1,7 +1,15 @@
+from datetime import timedelta
+from django.utils import timezone
 from dj4xol.starnamer import StarNamer
 from .models import Game, Star, Fleet, Player, Account
 import random
 import math
+
+TURN_INTERVALS = {
+    'HOURLY': timedelta(hours=1),
+    'DAILY': timedelta(days=1),
+    'WEEKLY': timedelta(weeks=1),
+}
 
 class GameFactory():
     """A factory class to draft and initialise game instances.
@@ -46,6 +54,10 @@ class GameFactory():
         Returns the saved game model instance. Use join_player() to add players."""
         self.validate()
         self.game.owner = self.owner
+        # Set initial next_generation time for timed turn schemes
+        interval = TURN_INTERVALS.get(self.game.turn_scheme)
+        if interval:
+            self.game.next_generation = timezone.now() + interval
         self.game.save()
         for star in self.stars:
             star.game = self.game
