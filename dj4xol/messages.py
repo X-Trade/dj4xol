@@ -734,3 +734,47 @@ class SalvageCollectedMessageFactory(MessageFactory):
             fleet=map_object_link(self.fleet),
             cargo=self._format_cargo()
         )
+
+
+class FleetBuildBlockedNoShipyardMessageFactory(MessageFactory):
+    """Messages for blocked fleet construction due to no shipyard."""
+    category = 'PRODUCTION'
+    priority = True
+    templates = [
+        "Fleet construction at {star} blocked - no shipyard available.",
+        "Cannot build fleet at {star} - a shipyard is required.",
+        "Fleet production at {star} halted. Build a shipyard first.",
+    ]
+
+    def __init__(self, game, player, star, message=None):
+        super().__init__(game, player, message, intensity=-0.3)
+        self.star = star
+
+    def format_message(self):
+        return random.choice(self.templates).format(star=map_object_link(self.star))
+
+
+class FleetRepairedMessageFactory(MessageFactory):
+    """Messages for fleet repair by shipyard."""
+    category = 'PRODUCTION'
+    templates = [
+        "{fleet} repaired from {old}% to {new}% integrity at {star}.",
+        "Shipyard repairs at {star} restored {fleet} from {old}% to {new}% integrity.",
+        "{fleet} underwent repairs at {star}: {old}% \u2192 {new}% integrity.",
+    ]
+
+    def __init__(self, game, player, fleet, old_integrity, new_integrity, star,
+                 message=None):
+        super().__init__(game, player, message, intensity=0.2)
+        self.fleet = fleet
+        self.old_integrity = old_integrity
+        self.new_integrity = new_integrity
+        self.star = star
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=map_object_link(self.fleet),
+            old=self.old_integrity,
+            new=self.new_integrity,
+            star=map_object_link(self.star)
+        )
