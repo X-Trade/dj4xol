@@ -96,6 +96,21 @@
         </div>
     </div>
     {% endif %}
+    {% if detail.salvage_inventory %}
+    <div class="collapsible-section" data-section="salvage-contents">
+        <div class="collapsible-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 style="margin: 0;"><span class="collapse-toggle">−</span> Contents</h4>
+            <span class="capacity-display">total: {{ detail.salvage_inventory.total|floatformat:0 }}kt</span>
+        </div>
+        <div class="collapsible-content">
+            <ul>
+                <li>Ironium: {{ detail.salvage_inventory.ironium|floatformat:0 }}kt</li>
+                <li>Boranium: {{ detail.salvage_inventory.boranium|floatformat:0 }}kt</li>
+                <li>Germanium: {{ detail.salvage_inventory.germanium|floatformat:0 }}kt</li>
+            </ul>
+        </div>
+    </div>
+    {% endif %}
     {% if detail.infrastructure %}
     <div class="collapsible-section" data-section="infrastructure">
         <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Infrastructure</h4>

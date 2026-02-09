@@ -1,5 +1,5 @@
 from django.db import models
-from dj4xol.models import Fleet, Star
+from dj4xol.models import Fleet, Star, Salvage
 from dj4xol.turn import (
     calculate_growth_factor, apply_population_change, effective_capacity,
     calculate_employment_percent, COLONISTS_PER_JOB
@@ -64,8 +64,11 @@ class DetailBuilder():
                      'infrastructure': self.build_infrastructure_detail(),
                      'is_star': isinstance(self.selected_obj, Star),
                      'is_fleet': isinstance(self.selected_obj, Fleet),
+                     'is_salvage': isinstance(self.selected_obj, Salvage),
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
+                     'salvage_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Salvage) else None,
+                     'salvage_inventory': self.build_salvage_inventory(),
                      'production_orders': self.get_production_orders(),
                      'fleet_orders': self.get_fleet_orders(),
                      'fleet_cargo': self.get_fleet_cargo(),
@@ -82,13 +85,19 @@ class DetailBuilder():
 
     def get_objects_here(self):
         """Return list of dicts with name, short_id, and type for all objects at cursor."""
-        from .models import Star, Fleet
         result = []
         for obj in self.at_cursor:
             name = obj.name or f"{obj.__class__.__name__} {obj.id}"
-            obj_type = 'star' if isinstance(obj, Star) else 'fleet' if isinstance(obj, Fleet) else 'unknown'
+            if isinstance(obj, Star):
+                obj_type = 'star'
+            elif isinstance(obj, Fleet):
+                obj_type = 'fleet'
+            elif isinstance(obj, Salvage):
+                obj_type = 'salvage'
+            else:
+                obj_type = 'unknown'
             result.append({
-                'name': name, 
+                'name': name,
                 'short_id': obj.short_id,
                 'type': obj_type
             })
@@ -140,7 +149,8 @@ class DetailBuilder():
         y = int(y)
         stars = self.game.stars.filter(x=x, y=y).all()
         fleets = self.game.fleets.filter(x=x, y=y).all()
-        self.at_cursor = list(chain(stars, fleets))
+        salvages = self.game.salvages.filter(x=x, y=y).all()
+        self.at_cursor = list(chain(stars, fleets, salvages))
         return self.at_cursor
 
     def find_selected_from_coordinates(self, x, y):
@@ -155,7 +165,8 @@ class DetailBuilder():
             short_id = selected.lower()
             self.selected_obj = (
                 Star.objects.filter(game=self.game, short_id=short_id).first() or
-                Fleet.objects.filter(game=self.game, short_id=short_id).first()
+                Fleet.objects.filter(game=self.game, short_id=short_id).first() or
+                Salvage.objects.filter(game=self.game, short_id=short_id).first()
             )
             if self.selected_obj:
                 self.check_selected()
@@ -314,6 +325,8 @@ class DetailBuilder():
                 target = o.target_star.name
             elif o.target_fleet:
                 target = o.target_fleet.name
+            elif o.target_salvage:
+                target = o.target_salvage.name
             elif o.x is not None and o.y is not None:
                 target = DetailBuilder.format_empty_space(o.x, o.y)
             orders.append({
@@ -328,6 +341,7 @@ class DetailBuilder():
                 'transfer_germanium': o.transfer_germanium,
                 'transfer_colonists': o.transfer_colonists,
                 'target_star': o.target_star,  # For template access
+                'target_salvage': o.target_salvage,  # For template access
             })
         return orders
 
@@ -374,6 +388,18 @@ class DetailBuilder():
             'amount': amount,
             'percent': percent,
             'display': f'{amount:,}{unit}',
+        }
+
+    def build_salvage_inventory(self):
+        """Build salvage mineral inventory data."""
+        if not self.selected_obj or not isinstance(self.selected_obj, Salvage):
+            return None
+
+        return {
+            'ironium': self.selected_obj.ironium_inventory,
+            'boranium': self.selected_obj.boranium_inventory,
+            'germanium': self.selected_obj.germanium_inventory,
+            'total': self.selected_obj.total_minerals,
         }
 
     def get_fleet_effective_location(self):
@@ -472,7 +498,19 @@ class DetailBuilder():
                     'short_id': fleet.short_id,
                     'type': 'fleet'
                 })
-        
+
+        # Add salvage at the effective location
+        salvages_at_location = self.game.salvages.filter(
+            x=effective_x, y=effective_y
+        ).all()
+        for salvage in salvages_at_location:
+            targets.append({
+                'name': salvage.name,
+                'short_id': salvage.short_id,
+                'type': 'salvage',
+                'total_minerals': salvage.total_minerals,
+            })
+
         # Determine display mode and default target
         if not targets:
             # Empty space

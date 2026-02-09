@@ -120,15 +120,27 @@ def starmap(request, game_short_id):
 
     # Check for chosen destination (returned from selection mode)
     dest_star_id = request.GET.get('dest_star', None)
+    dest_fleet_id = request.GET.get('dest_fleet', None)
+    dest_salvage_id = request.GET.get('dest_salvage', None)
     dest_x = request.GET.get('dest_x', None)
     dest_y = request.GET.get('dest_y', None)
 
-    # Look up destination star name if specified
-    dest_star_name = None
+    # Look up destination name if specified
+    dest_name = None
     if dest_star_id:
         dest_star = Star.objects.filter(short_id=dest_star_id, game=game).first()
         if dest_star:
-            dest_star_name = dest_star.name
+            dest_name = dest_star.name
+    elif dest_fleet_id:
+        from .models import Salvage
+        dest_obj = Fleet.objects.filter(short_id=dest_fleet_id, game=game).first()
+        if dest_obj:
+            dest_name = dest_obj.name
+    elif dest_salvage_id:
+        from .models import Salvage
+        dest_obj = Salvage.objects.filter(short_id=dest_salvage_id, game=game).first()
+        if dest_obj:
+            dest_name = dest_obj.name
 
     # Pass dest_mode to StarMap for modified link rendering
     starmap_obj = StarMap(game, player, dest_mode=dest_mode)
@@ -162,7 +174,9 @@ def starmap(request, game_short_id):
         'dest_fleet': dest_fleet,
         'dest_warp': dest_warp,
         'dest_star_id': dest_star_id,
-        'dest_star_name': dest_star_name,
+        'dest_fleet_id': dest_fleet_id,
+        'dest_salvage_id': dest_salvage_id,
+        'dest_name': dest_name,
         'dest_x': dest_x,
         'dest_y': dest_y,
     })
@@ -333,19 +347,27 @@ def add_fleet_order(request, game_short_id):
     order = FleetOrders(game=game, fleet=fleet, order_type=order_type, repeat=repeat)
     
     if order_type == 'MOVE':
+        from .models import Salvage
         target_star_id = request.POST.get('target_star')
+        target_fleet_id = request.POST.get('target_fleet')
+        target_salvage_id = request.POST.get('target_salvage')
         target_x = request.POST.get('target_x')
         target_y = request.POST.get('target_y')
         warpfactor = int(request.POST.get('warpfactor', 5))
         order.warpfactor = warpfactor
-        
+
         if target_star_id:
             order.target_star = Star.objects.get(short_id=target_star_id, game=game)
+        elif target_fleet_id:
+            order.target_fleet = Fleet.objects.get(short_id=target_fleet_id, game=game)
+        elif target_salvage_id:
+            order.target_salvage = Salvage.objects.get(short_id=target_salvage_id, game=game)
         elif target_x and target_y:
             order.x = int(target_x)
             order.y = int(target_y)
     
     elif order_type == 'TRANSFER':
+        from .models import Salvage
         transfer_type = request.POST.get('transfer_type', 'LOAD')
         transfer_target = request.POST.get('transfer_target', '')
 
@@ -355,13 +377,15 @@ def add_fleet_order(request, game_short_id):
         order.transfer_germanium = int(request.POST.get('transfer_germanium', 0))
         order.transfer_colonists = int(request.POST.get('transfer_colonists', 0))
 
-        # Parse transfer target: "star:abc123" or "fleet:def456"
+        # Parse transfer target: "star:abc123", "fleet:def456", or "salvage:ghi789"
         if transfer_target and ':' in transfer_target:
             target_type, target_id = transfer_target.split(':', 1)
             if target_type == 'star':
                 order.target_star = Star.objects.get(short_id=target_id, game=game)
             elif target_type == 'fleet':
                 order.target_fleet = Fleet.objects.get(short_id=target_id, game=game, player=player)
+            elif target_type == 'salvage':
+                order.target_salvage = Salvage.objects.get(short_id=target_id, game=game)
 
     elif order_type == 'COLONISE':
         # Colonise orders always have repeat=False (fleet is destroyed)
@@ -382,6 +406,10 @@ def add_fleet_order(request, game_short_id):
             order.target_fleet = Fleet.objects.get(
                 short_id=merge_target, game=game, player=player
             )
+
+    elif order_type == 'SCUTTLE':
+        # Scuttle orders always have repeat=False (fleet is destroyed)
+        order.repeat = False
 
     order.save()
 

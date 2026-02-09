@@ -1,5 +1,5 @@
 from math import cos, sin, radians
-from .models import Game, Player, Fleet, Star
+from .models import Game, Player, Fleet, Star, Salvage
 
 class StarMap():
     MAP_SCALE = 6
@@ -7,6 +7,7 @@ class StarMap():
     MULTI_STAR_OFFSET = 0.7  # 70% of 1ly spacing
     HTML_STAR_CLASS = "mapstar"
     HTML_FLEET_CLASS = "mapfleet"
+    HTML_SALVAGE_CLASS = "mapsalvage"
     CSS = """.mapstar {
                 height: 5px;
                 width: 5px;
@@ -31,6 +32,7 @@ class StarMap():
         self.dest_mode = dest_mode
         self.stars = game.stars.all()
         self.fleets = game.fleets.all()
+        self.salvages = game.salvages.all()
         self.map = self.render_map()
 
     @property
@@ -50,12 +52,14 @@ class StarMap():
         """Border offset in pixels."""
         return self.MAP_BORDER * self.MAP_SCALE
 
-    def render_map(self, stars=None, fleets=None):
+    def render_map(self, stars=None, fleets=None, salvages=None):
         """Render a map of the stars in the game using HTML objects"""
         if stars is None:
             stars = self.stars
         if fleets is None:
             fleets = self.fleets
+        if salvages is None:
+            salvages = self.salvages
 
         html = ""
 
@@ -80,6 +84,11 @@ class StarMap():
             html += self.render_fleet(fleet)
             self._max_x = max(self._max_x, fleet.x)
             self._max_y = max(self._max_y, fleet.y)
+
+        for salvage in salvages:
+            html += self.render_salvage(salvage)
+            self._max_x = max(self._max_x, salvage.x)
+            self._max_y = max(self._max_y, salvage.y)
 
         return html
 
@@ -129,6 +138,9 @@ class StarMap():
             html_class = self.HTML_STAR_CLASS
         elif isinstance(object, Fleet):
             html_class = self.HTML_FLEET_CLASS
+        elif isinstance(object, Salvage):
+            # Salvage is always neutral (no ownership variants)
+            return self.HTML_SALVAGE_CLASS
         else:
             html_class = ""
 
@@ -149,9 +161,16 @@ class StarMap():
         name = object.name
         style = f"left:{x}px; top:{y}px;{extra_style}"
 
-        # In destination mode, star clicks call JavaScript instead of navigating
-        if self.dest_mode and isinstance(object, Star):
-            url = f"javascript:submitDestination('{object.short_id}', {object.x}, {object.y})"
+        # In destination mode, clicks call JavaScript instead of navigating
+        if self.dest_mode and isinstance(object, (Star, Fleet, Salvage)):
+            if isinstance(object, Fleet):
+                obj_type = 'fleet'
+            elif isinstance(object, Salvage):
+                obj_type = 'salvage'
+            else:
+                obj_type = 'star'
+            url = (f"javascript:submitDestination('{object.short_id}', "
+                   f"{object.x}, {object.y}, '{obj_type}')")
         else:
             url = "?x=%i&y=%i&sel=%s" % (object.x, object.y, object.short_id)
 
@@ -183,3 +202,7 @@ class StarMap():
         rotation = -135 + fleet.heading
         extra_style = f" transform: translate(-20%, -20%) rotate({rotation}deg);"
         return self.render_object(fleet, extra_style)
+
+    def render_salvage(self, salvage):
+        """Render a salvage pile on map using HTML (hollow yellow square)"""
+        return self.render_object(salvage)

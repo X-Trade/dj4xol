@@ -104,6 +104,14 @@
     position: absolute;
 }
 
+.mapsalvage {
+    height: 5px;
+    width: 5px;
+    border: 1.5px solid #ffff00;
+    background-color: transparent;
+    position: absolute;
+}
+
 .mapstar-mixed {
     height: 5px;
     width: 5px;

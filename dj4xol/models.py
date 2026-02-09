@@ -260,7 +260,11 @@ class Game(UUIDMixin):
         return self.stars.filter(x=x, y=y).first() or self.fleets.filter(x=x, y=y).first() or None
 
     def get_all_objects_at(self, x, y):
-        return list(chain(self.stars.filter(x=x, y=y).all(), self.fleets.filter(x=x, y=y).all()))
+        return list(chain(
+            self.stars.filter(x=x, y=y).all(),
+            self.fleets.filter(x=x, y=y).all(),
+            self.salvages.filter(x=x, y=y).all()
+        ))
 
     def get_star_namer(self):
         if not self._star_namer:
@@ -385,6 +389,29 @@ class ServerRaceType(HabitabilityMixin):
         return self.name
 
 
+class Salvage(AbstractMapObject):
+    """Recoverable minerals left behind when vessels are destroyed or scuttled."""
+    ironium_inventory = models.IntegerField(default=0)
+    boranium_inventory = models.IntegerField(default=0)
+    germanium_inventory = models.IntegerField(default=0)
+
+    @property
+    def total_minerals(self):
+        """Total minerals in this salvage pile."""
+        return (self.ironium_inventory + self.boranium_inventory +
+                self.germanium_inventory)
+
+    @property
+    def name(self):
+        """Display name for salvage."""
+        return f"Salvage ({self.x}, {self.y})"
+
+    @property
+    def player(self):
+        """Salvage is neutral - no owner."""
+        return None
+
+
 class Fleet(AbstractMapObject):
     """A group of ships traveling together."""
     name = models.CharField(max_length=30)
@@ -501,6 +528,7 @@ class FleetOrders(AbstractGameObject):
         ('TRANSFER', 'Transfer'),
         ('COLONISE', 'Colonise'),
         ('MERGE', 'Merge'),
+        ('SCUTTLE', 'Scuttle'),
     ]
 
     fleet = models.ForeignKey(Fleet, related_name="orders",
@@ -516,6 +544,8 @@ class FleetOrders(AbstractGameObject):
     target_star = models.ForeignKey(Star, null=True, related_name='+',
             on_delete=models.CASCADE)
     target_fleet = models.ForeignKey(Fleet, null=True, related_name='+',
+            on_delete=models.CASCADE)
+    target_salvage = models.ForeignKey(Salvage, null=True, related_name='+',
             on_delete=models.CASCADE)
 
     # Transfer parameters
@@ -538,6 +568,8 @@ class FleetOrders(AbstractGameObject):
             return self.target_star.name
         elif self.target_fleet:
             return f"Fleet {self.target_fleet.name}"
+        elif self.target_salvage:
+            return f"Salvage ({self.target_salvage.x}, {self.target_salvage.y})"
         elif self.x is not None and self.y is not None:
             return f"({self.x}, {self.y})"
         else:
@@ -553,6 +585,8 @@ class FleetOrders(AbstractGameObject):
             return self.target_star.x, self.target_star.y
         elif self.target_fleet:
             return self.target_fleet.x, self.target_fleet.y
+        elif self.target_salvage:
+            return self.target_salvage.x, self.target_salvage.y
         elif self.x is not None and self.y is not None:
             return self.x, self.y
         else:

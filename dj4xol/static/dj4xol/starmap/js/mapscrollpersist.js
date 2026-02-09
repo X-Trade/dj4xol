@@ -1,11 +1,23 @@
-// Global function for destination selection mode (called from star link onclick)
-function submitDestination(starId, x, y) {
+// Global function for destination selection mode (called from map object onclick)
+function submitDestination(objectId, x, y, objectType) {
     // Get current URL params and update with destination
     var params = new URLSearchParams(window.location.search);
     params.delete('mode');  // Exit destination mode
-    params.set('dest_star', starId);
+    // Clear all destination params first
+    params.delete('dest_star');
+    params.delete('dest_fleet');
+    params.delete('dest_salvage');
     params.delete('dest_x');
     params.delete('dest_y');
+    // Set appropriate param based on object type
+    if (objectType === 'fleet') {
+        params.set('dest_fleet', objectId);
+    } else if (objectType === 'salvage') {
+        params.set('dest_salvage', objectId);
+    } else {
+        // Default to star for backwards compatibility
+        params.set('dest_star', objectId);
+    }
     window.location.search = params.toString();
 }
 
