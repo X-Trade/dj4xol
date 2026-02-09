@@ -3101,7 +3101,11 @@ class TestFleetColoniseOrders(TestCase):
 
 
 class TestWarpDamage(TestCase):
-    """Tests for fleet damage from exceeding safe warp speed."""
+    """Tests for fleet damage from exceeding safe warp speed.
+
+    All tests use fixed positions (1,1) -> (50,50) to ensure fleets stay
+    within map bounds (100x100) and don't complete the journey in one turn.
+    """
 
     def test_no_damage_at_safe_warp(self):
         """Fleet travelling at or below max_safe_warp takes no damage."""
@@ -3109,16 +3113,15 @@ class TestWarpDamage(TestCase):
 
         game = default_game()
         player = game.players.first()
-        star = player.homeworld
 
         fleet = Fleet.objects.create(
             game=game, player=player, name="Safe Fleet",
-            x=star.x, y=star.y, max_safe_warp=5, integrity=100
+            x=1, y=1, max_safe_warp=5, integrity=100
         )
 
         FleetOrders.objects.create(
             game=game, fleet=fleet, order_type='MOVE',
-            x=star.x + 50, y=star.y, warpfactor=5
+            x=50, y=50, warpfactor=5
         )
 
         GameTurn(game).generate_turn()
@@ -3126,295 +3129,49 @@ class TestWarpDamage(TestCase):
         fleet.refresh_from_db()
         self.assertEqual(fleet.integrity, 100)
 
-    def test_damage_possible_above_safe_warp(self):
-        """Fleet exceeding max_safe_warp has chance of damage."""
+    def test_no_damage_below_safe_warp(self):
+        """Fleet travelling below max_safe_warp takes no damage."""
         from ..models import FleetOrders, Fleet
 
         game = default_game()
         player = game.players.first()
-        star = player.homeworld
 
-        damaged_count = 0
-        trials = 100
-
-        for i in range(trials):
-            fleet = Fleet.objects.create(
-                game=game, player=player, name=f"Risk Fleet {i}",
-                x=star.x, y=star.y, max_safe_warp=5, integrity=100
-            )
-
-            FleetOrders.objects.create(
-                game=game, fleet=fleet, order_type='MOVE',
-                x=star.x + 50, y=star.y, warpfactor=9  # 4 excess, 60% damage chance
-            )
-
-            GameTurn(game).generate_turn()
-
-            if Fleet.objects.filter(id=fleet.id).exists():
-                fleet.refresh_from_db()
-                if fleet.integrity < 100:
-                    damaged_count += 1
-
-        # With 60% damage chance per turn, expect some damage
-        self.assertGreater(damaged_count, 0, "Expected some fleets to take damage")
-
-    def test_destruction_at_warp_10(self):
-        """Fleet at warp 10+ has 30% instant destruction chance."""
-        from ..models import FleetOrders, Fleet
-
-        game = default_game()
-        player = game.players.first()
-        star = player.homeworld
-
-        destroyed_count = 0
-        trials = 100
-
-        for i in range(trials):
-            fleet = Fleet.objects.create(
-                game=game, player=player, name=f"Warp10 Fleet {i}",
-                x=star.x, y=star.y, max_safe_warp=5, integrity=100
-            )
-            fleet_id = fleet.id
-
-            FleetOrders.objects.create(
-                game=game, fleet=fleet, order_type='MOVE',
-                x=star.x + 50, y=star.y, warpfactor=10
-            )
-
-            GameTurn(game).generate_turn()
-
-            if not Fleet.objects.filter(id=fleet_id).exists():
-                destroyed_count += 1
-
-        # With 30% destruction chance, expect roughly 30 destroyed
-        self.assertGreater(destroyed_count, 10, "Expected more destructions at warp 10")
-        self.assertLess(destroyed_count, 60, "Destruction rate too high")
-
-    def test_cargo_loss_on_damage(self):
-        """Cargo is lost when fleet takes warp damage."""
-        from ..models import FleetOrders, Fleet
-
-        game = default_game()
-        player = game.players.first()
-        star = player.homeworld
-
-        cargo_lost = False
-        trials = 50
-
-        for i in range(trials):
-            fleet = Fleet.objects.create(
-                game=game, player=player, name=f"Cargo Fleet {i}",
-                x=star.x, y=star.y, max_safe_warp=5, integrity=100,
-                ironium_inventory=1000, boranium_inventory=1000
-            )
-            fleet_id = fleet.id
-
-            FleetOrders.objects.create(
-                game=game, fleet=fleet, order_type='MOVE',
-                x=star.x + 50, y=star.y, warpfactor=8
-            )
-
-            GameTurn(game).generate_turn()
-
-            if Fleet.objects.filter(id=fleet_id).exists():
-                fleet.refresh_from_db()
-                if fleet.ironium_inventory < 1000 or fleet.boranium_inventory < 1000:
-                    cargo_lost = True
-                    break
-
-        self.assertTrue(cargo_lost, "Expected cargo loss when damaged")
-
-    def test_colonist_death_on_damage(self):
-        """Colonists die when fleet takes warp damage."""
-        from ..models import FleetOrders, Fleet
-
-        game = default_game()
-        player = game.players.first()
-        star = player.homeworld
-
-        colonist_deaths = False
-        trials = 50
-
-        for i in range(trials):
-            fleet = Fleet.objects.create(
-                game=game, player=player, name=f"Colonist Fleet {i}",
-                x=star.x, y=star.y, max_safe_warp=5, integrity=100,
-                colonists=100
-            )
-            fleet_id = fleet.id
-
-            FleetOrders.objects.create(
-                game=game, fleet=fleet, order_type='MOVE',
-                x=star.x + 50, y=star.y, warpfactor=8
-            )
-
-            GameTurn(game).generate_turn()
-
-            if Fleet.objects.filter(id=fleet_id).exists():
-                fleet.refresh_from_db()
-                if fleet.colonists < 100:
-                    colonist_deaths = True
-                    break
-
-        self.assertTrue(colonist_deaths, "Expected colonist deaths when damaged")
-
-    def test_damage_message_created(self):
-        """Message is created when fleet takes damage."""
-        from ..models import FleetOrders, Fleet
-
-        game = default_game()
-        player = game.players.first()
-        star = player.homeworld
-
-        message_found = False
-        trials = 50
-
-        for i in range(trials):
-            initial_messages = player.messages.count()
-
-            fleet = Fleet.objects.create(
-                game=game, player=player, name=f"Msg Fleet {i}",
-                x=star.x, y=star.y, max_safe_warp=5, integrity=100
-            )
-            fleet_id = fleet.id
-
-            FleetOrders.objects.create(
-                game=game, fleet=fleet, order_type='MOVE',
-                x=star.x + 50, y=star.y, warpfactor=8
-            )
-
-            GameTurn(game).generate_turn()
-
-            if Fleet.objects.filter(id=fleet_id).exists():
-                fleet.refresh_from_db()
-                if fleet.integrity < 100:
-                    # Check for damage message
-                    if player.messages.count() > initial_messages:
-                        for msg in player.messages.all():
-                            if 'warp' in msg.message.lower():
-                                message_found = True
-                                break
-                    if message_found:
-                        break
-
-        self.assertTrue(message_found, "Expected damage message when fleet damaged")
-
-    def test_destruction_message_created(self):
-        """Priority message is created when fleet is destroyed."""
-        from ..models import FleetOrders, Fleet
-
-        game = default_game()
-        player = game.players.first()
-        star = player.homeworld
-
-        destruction_message_found = False
-        trials = 100
-
-        for i in range(trials):
-            fleet = Fleet.objects.create(
-                game=game, player=player, name=f"Doomed Fleet {i}",
-                x=star.x, y=star.y, max_safe_warp=5, integrity=100
-            )
-            fleet_id = fleet.id
-
-            FleetOrders.objects.create(
-                game=game, fleet=fleet, order_type='MOVE',
-                x=star.x + 50, y=star.y, warpfactor=10
-            )
-
-            GameTurn(game).generate_turn()
-
-            if not Fleet.objects.filter(id=fleet_id).exists():
-                # Fleet destroyed, check for message
-                for msg in player.messages.all():
-                    msg_lower = msg.message.lower()
-                    if ('warp' in msg_lower or 'destroy' in msg_lower or
-                            'torn apart' in msg_lower or 'disintegrat' in msg_lower):
-                        if msg.priority:
-                            destruction_message_found = True
-                            break
-                if destruction_message_found:
-                    break
-
-        self.assertTrue(destruction_message_found,
-                        "Expected priority destruction message")
-
-    def test_accumulated_damage_causes_destruction(self):
-        """Fleet is destroyed when integrity reaches 0 from accumulated damage."""
-        from ..models import FleetOrders, Fleet
-
-        game = default_game()
-        player = game.players.first()
-        star = player.homeworld
-
-        # Create fleet with low integrity that will be destroyed on damage
         fleet = Fleet.objects.create(
-            game=game, player=player, name="Weak Fleet",
-            x=star.x, y=star.y, max_safe_warp=5, integrity=10
+            game=game, player=player, name="Slow Fleet",
+            x=1, y=1, max_safe_warp=8, integrity=100
         )
-        fleet_id = fleet.id
 
-        destroyed = False
-        for _ in range(50):
-            if not Fleet.objects.filter(id=fleet_id).exists():
-                destroyed = True
-                break
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=50, y=50, warpfactor=3
+        )
 
-            fleet.refresh_from_db()
-            # Reset position for another move
-            fleet.x = star.x
-            fleet.y = star.y
-            fleet.save()
+        GameTurn(game).generate_turn()
 
-            FleetOrders.objects.create(
-                game=game, fleet=fleet, order_type='MOVE',
-                x=star.x + 50, y=star.y, warpfactor=9
-            )
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 100)
 
-            GameTurn(game).generate_turn()
-
-        self.assertTrue(destroyed, "Expected low-integrity fleet to be destroyed")
-
-    def test_warp_speed_reduced_after_damage(self):
-        """Order warp speed is reduced after fleet takes damage."""
+    def test_warp_9_below_safe_warp_no_damage(self):
+        """Warp 9 with max_safe_warp=13 takes no damage."""
         from ..models import FleetOrders, Fleet
 
         game = default_game()
         player = game.players.first()
-        star = player.homeworld
 
-        warp_reduced = False
-        trials = 50
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Safe Fast Fleet",
+            x=1, y=1, max_safe_warp=13, integrity=100
+        )
 
-        for i in range(trials):
-            fleet = Fleet.objects.create(
-                game=game, player=player, name=f"Fast Fleet {i}",
-                x=star.x, y=star.y, max_safe_warp=6, integrity=100
-            )
-            fleet_id = fleet.id
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=50, y=50, warpfactor=9
+        )
 
-            # Create order with high warp (destination far enough to not complete)
-            order = FleetOrders.objects.create(
-                game=game, fleet=fleet, order_type='MOVE',
-                x=star.x + 100, y=star.y, warpfactor=9
-            )
-            order_id = order.id
+        GameTurn(game).generate_turn()
 
-            GameTurn(game).generate_turn()
-
-            # Check if fleet survived and order warp was reduced
-            if Fleet.objects.filter(id=fleet_id).exists():
-                fleet.refresh_from_db()
-                if fleet.integrity < 100:
-                    # Fleet was damaged, check if order warp was reduced
-                    if FleetOrders.objects.filter(id=order_id).exists():
-                        order.refresh_from_db()
-                        # Expected: min(max(2, 6//2), 6) = min(max(2, 3), 6) = 3
-                        if order.warpfactor == 3:
-                            warp_reduced = True
-                            break
-
-        self.assertTrue(warp_reduced, "Expected warp speed to be reduced after damage")
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 100)
 
     def test_zero_integrity_fleet_destroyed_at_turn_end(self):
         """Fleets with 0 integrity are destroyed during check_damaged_fleets."""
@@ -3422,12 +3179,11 @@ class TestWarpDamage(TestCase):
 
         game = default_game()
         player = game.players.first()
-        star = player.homeworld
 
-        # Create fleet with 0 integrity (shouldn't happen normally, but testing safety)
+        # Create fleet with 0 integrity
         fleet = Fleet.objects.create(
             game=game, player=player, name="Broken Fleet",
-            x=star.x, y=star.y, max_safe_warp=13, integrity=0
+            x=50, y=50, max_safe_warp=13, integrity=0
         )
         fleet_id = fleet.id
 
@@ -3440,6 +3196,332 @@ class TestWarpDamage(TestCase):
 
         # Should have a destruction message
         self.assertGreater(player.messages.count(), initial_messages)
+
+    def test_damage_when_roll_fails(self):
+        """Fleet takes damage when roll_chance returns True."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Damaged Fleet",
+            x=1, y=1, max_safe_warp=5, integrity=100
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=50, y=50, warpfactor=9  # 4 excess
+        )
+
+        # Mock roll_chance to return True (damage occurs)
+        # and the loss calculations
+        with patch('dj4xol.turn.roll_chance', return_value=True), \
+             patch('dj4xol.turn.calculate_integrity_loss', return_value=20), \
+             patch('dj4xol.turn.calculate_cargo_loss_percent', return_value=0.1):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 80)  # 100 - 20
+
+    def test_no_damage_when_roll_passes(self):
+        """Fleet survives when roll_chance returns False."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Lucky Fleet",
+            x=1, y=1, max_safe_warp=5, integrity=100
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=50, y=50, warpfactor=9  # 4 excess
+        )
+
+        # Mock roll_chance to return False (no damage)
+        with patch('dj4xol.turn.roll_chance', return_value=False):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 100)
+
+    def test_warp_10_destruction_when_first_roll_true(self):
+        """Fleet at warp 10+ is destroyed when first roll_chance returns True."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Doomed Fleet",
+            x=1, y=1, max_safe_warp=5, integrity=100
+        )
+        fleet_id = fleet.id
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=50, y=50, warpfactor=10
+        )
+
+        # First call is destruction check, return True
+        with patch('dj4xol.turn.roll_chance', return_value=True):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Fleet.objects.filter(id=fleet_id).exists())
+
+    def test_warp_10_survives_when_rolls_false(self):
+        """Fleet at warp 10+ survives when roll_chance returns False."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Lucky Fleet",
+            x=1, y=1, max_safe_warp=5, integrity=100
+        )
+        fleet_id = fleet.id
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=50, y=50, warpfactor=10
+        )
+
+        # Both destruction and damage rolls fail
+        with patch('dj4xol.turn.roll_chance', return_value=False):
+            GameTurn(game).generate_turn()
+
+        self.assertTrue(Fleet.objects.filter(id=fleet_id).exists())
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 100)
+
+    def test_cargo_loss_on_damage(self):
+        """Cargo is lost when fleet takes warp damage."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Cargo Fleet",
+            x=1, y=1, max_safe_warp=5, integrity=100,
+            ironium_inventory=1000, boranium_inventory=1000,
+            germanium_inventory=1000
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=50, y=50, warpfactor=8  # 3 excess
+        )
+
+        # Force damage with 30% cargo loss
+        with patch('dj4xol.turn.roll_chance', return_value=True), \
+             patch('dj4xol.turn.calculate_integrity_loss', return_value=10), \
+             patch('dj4xol.turn.calculate_cargo_loss_percent', return_value=0.30):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.ironium_inventory, 700)
+        self.assertEqual(fleet.boranium_inventory, 700)
+        self.assertEqual(fleet.germanium_inventory, 700)
+
+    def test_colonist_death_on_damage(self):
+        """Colonists die when fleet takes warp damage."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Colonist Fleet",
+            x=1, y=1, max_safe_warp=5, integrity=100,
+            colonists=1000
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=50, y=50, warpfactor=8  # 3 excess
+        )
+
+        # Force damage with 20% cargo/colonist loss
+        with patch('dj4xol.turn.roll_chance', return_value=True), \
+             patch('dj4xol.turn.calculate_integrity_loss', return_value=10), \
+             patch('dj4xol.turn.calculate_cargo_loss_percent', return_value=0.20):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.colonists, 800)
+
+    def test_damage_message_created(self):
+        """Message is created when fleet takes damage."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        initial_messages = player.messages.count()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Msg Fleet",
+            x=1, y=1, max_safe_warp=5, integrity=100
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=50, y=50, warpfactor=8
+        )
+
+        # Force damage
+        with patch('dj4xol.turn.roll_chance', return_value=True), \
+             patch('dj4xol.turn.calculate_integrity_loss', return_value=10), \
+             patch('dj4xol.turn.calculate_cargo_loss_percent', return_value=0.05):
+            GameTurn(game).generate_turn()
+
+        # Check for damage message
+        self.assertGreater(player.messages.count(), initial_messages)
+        damage_msg = player.messages.filter(message__icontains='warp').first()
+        self.assertIsNotNone(damage_msg)
+
+    def test_destruction_message_has_priority(self):
+        """Priority message is created when fleet is destroyed at warp 10."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Doomed Fleet",
+            x=1, y=1, max_safe_warp=5, integrity=100
+        )
+        fleet_id = fleet.id
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=50, y=50, warpfactor=10
+        )
+
+        # Force destruction
+        with patch('dj4xol.turn.roll_chance', return_value=True):
+            GameTurn(game).generate_turn()
+
+        # Fleet destroyed
+        self.assertFalse(Fleet.objects.filter(id=fleet_id).exists())
+
+        # Check for priority destruction message
+        destruction_msg = player.messages.filter(priority=True).first()
+        self.assertIsNotNone(destruction_msg)
+
+    def test_integrity_loss_destroys_fleet(self):
+        """Fleet is destroyed when integrity reaches 0 from damage."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        # Create fleet with low integrity
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Weak Fleet",
+            x=1, y=1, max_safe_warp=5, integrity=10
+        )
+        fleet_id = fleet.id
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=50, y=50, warpfactor=9  # 4 excess
+        )
+
+        # Force damage that exceeds integrity
+        with patch('dj4xol.turn.roll_chance', return_value=True), \
+             patch('dj4xol.turn.calculate_integrity_loss', return_value=50), \
+             patch('dj4xol.turn.calculate_cargo_loss_percent', return_value=0.05):
+            GameTurn(game).generate_turn()
+
+        # Fleet should be destroyed (10 - 50 <= 0)
+        self.assertFalse(Fleet.objects.filter(id=fleet_id).exists())
+
+    def test_warp_speed_reduced_after_damage(self):
+        """Order warp speed is reduced after fleet takes damage."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        # Place fleet near center of map, destination within bounds but far
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Fast Fleet",
+            x=10, y=50, max_safe_warp=6, integrity=100
+        )
+
+        # Destination 50 ly away (will take multiple turns at warp 9)
+        order = FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=60, y=50, warpfactor=9
+        )
+
+        # Force damage with low integrity loss (fleet survives)
+        with patch('dj4xol.turn.roll_chance', return_value=True), \
+             patch('dj4xol.turn.calculate_integrity_loss', return_value=5), \
+             patch('dj4xol.turn.calculate_cargo_loss_percent', return_value=0.02):
+            GameTurn(game).generate_turn()
+
+        order.refresh_from_db()
+        # Expected: min(max(2, 6//2), 6) = min(max(2, 3), 6) = 3
+        self.assertEqual(order.warpfactor, 3)
+
+
+class TestWarpDamageHelpers(TestCase):
+    """Unit tests for warp damage helper functions."""
+
+    def test_roll_chance_returns_bool(self):
+        """roll_chance returns a boolean."""
+        from ..turn import roll_chance
+        result = roll_chance(0.5)
+        self.assertIsInstance(result, bool)
+
+    def test_calculate_integrity_loss_range(self):
+        """calculate_integrity_loss returns value in expected range."""
+        from ..turn import calculate_integrity_loss
+
+        # With 1 excess warp, loss should be 5-15
+        for _ in range(20):
+            loss = calculate_integrity_loss(1)
+            self.assertGreaterEqual(loss, 5)
+            self.assertLessEqual(loss, 15)
+
+        # With 3 excess warp, loss should be 15-45 (3 * 5-15)
+        for _ in range(20):
+            loss = calculate_integrity_loss(3)
+            self.assertGreaterEqual(loss, 15)
+            self.assertLessEqual(loss, 45)
+
+    def test_calculate_integrity_loss_zero_excess(self):
+        """calculate_integrity_loss with 0 excess returns 0."""
+        from ..turn import calculate_integrity_loss
+        self.assertEqual(calculate_integrity_loss(0), 0)
+
+    def test_calculate_cargo_loss_percent_range(self):
+        """calculate_cargo_loss_percent returns value in expected range."""
+        from ..turn import calculate_cargo_loss_percent
+
+        # With 1 excess warp, loss should be 0.02-0.10
+        for _ in range(20):
+            loss = calculate_cargo_loss_percent(1)
+            self.assertGreaterEqual(loss, 0.02)
+            self.assertLessEqual(loss, 0.10)
+
+        # With 3 excess warp, loss should be 0.06-0.30 (3 * 2-10%)
+        for _ in range(20):
+            loss = calculate_cargo_loss_percent(3)
+            self.assertGreaterEqual(loss, 0.06)
+            self.assertLessEqual(loss, 0.30)
+
+    def test_calculate_cargo_loss_percent_zero_excess(self):
+        """calculate_cargo_loss_percent with 0 excess returns 0."""
+        from ..turn import calculate_cargo_loss_percent
+        self.assertEqual(calculate_cargo_loss_percent(0), 0.0)
 
 
 class TestMergeFleet(TestCase):

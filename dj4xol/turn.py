@@ -47,12 +47,29 @@ RANDOM_EVENT_CHANCE = 0.01  # 1%
 # Warp damage constants
 WARP_DESTRUCTION_THRESHOLD = 10  # Warp speed at which destruction becomes possible
 WARP_DESTRUCTION_CHANCE = 0.30   # 30% chance of instant destruction at warp >= 10
+WARP_DAMAGE_CHANCE_PER_EXCESS = 0.15  # 15% damage chance per excess warp factor
 
 # Salvage constants
 SALVAGE_CHANCE_WARP = 0.66       # 66% chance of salvage from warp destruction
 SALVAGE_CHANCE_SCUTTLE = 0.33   # 33% chance of salvage from scuttling
 SALVAGE_DEGRADATION_MIN = 0.30  # Minimum 30% loss when creating salvage
 SALVAGE_DEGRADATION_MAX = 0.70  # Maximum 70% loss when creating salvage
+
+
+# Chance calculation functions (separated for testability)
+def roll_chance(threshold):
+    """Return True if random roll is below threshold."""
+    return random.random() < threshold
+
+
+def calculate_integrity_loss(excess_warp):
+    """Calculate integrity loss from warp damage (5-15% per excess warp)."""
+    return sum(random.randint(5, 15) for _ in range(excess_warp))
+
+
+def calculate_cargo_loss_percent(excess_warp):
+    """Calculate cargo loss percentage from warp damage (2-10% per excess warp)."""
+    return sum(random.randint(2, 10) for _ in range(excess_warp)) / 100.0
 
 
 def capacity_modifier(population, soft_cap):
@@ -560,13 +577,13 @@ class GameTurn():
 
         # At warp >= 10 and above safe speed: 30% instant destruction chance
         if warp_speed >= WARP_DESTRUCTION_THRESHOLD:
-            if random.random() < WARP_DESTRUCTION_CHANCE:
+            if roll_chance(WARP_DESTRUCTION_CHANCE):
                 self._handle_warp_destruction(fleet, warp_speed, from_damage=False)
                 return 'destroyed'
 
         # Damage chance: 15% per excess warp factor
-        damage_chance = excess_warp * 0.15
-        if random.random() < damage_chance:
+        damage_chance = excess_warp * WARP_DAMAGE_CHANCE_PER_EXCESS
+        if roll_chance(damage_chance):
             return self._apply_warp_damage(fleet, warp_speed, excess_warp, order)
 
         return 'safe'
@@ -576,16 +593,10 @@ class GameTurn():
 
         Returns: 'destroyed' if integrity drops to 0, 'damaged' otherwise
         """
-        # Integrity loss: 5-15% per excess warp factor
-        integrity_loss = sum(
-            random.randint(5, 15) for _ in range(excess_warp)
-        )
+        integrity_loss = calculate_integrity_loss(excess_warp)
         integrity_loss = min(integrity_loss, fleet.integrity)
 
-        # Cargo loss: 2-10% per excess warp factor
-        cargo_loss_percent = sum(
-            random.randint(2, 10) for _ in range(excess_warp)
-        ) / 100.0
+        cargo_loss_percent = calculate_cargo_loss_percent(excess_warp)
 
         cargo_losses = {}
         colonist_deaths = 0
@@ -640,7 +651,7 @@ class GameTurn():
         salvage_location = None
 
         # 66% chance of salvage from warp destruction
-        if random.random() < SALVAGE_CHANCE_WARP:
+        if roll_chance(SALVAGE_CHANCE_WARP):
             salvage_result = self._create_salvage_from_fleet(fleet)
             if salvage_result:
                 salvage_created = True
@@ -1257,7 +1268,7 @@ class GameTurn():
         salvage_location = None
 
         # 33% chance of salvage from scuttling
-        if random.random() < SALVAGE_CHANCE_SCUTTLE:
+        if roll_chance(SALVAGE_CHANCE_SCUTTLE):
             salvage_result = self._create_salvage_from_fleet(fleet)
             if salvage_result:
                 salvage_created = True
