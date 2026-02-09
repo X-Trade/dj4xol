@@ -2,7 +2,7 @@ from django.db import models
 from dj4xol.models import Fleet, Star, Salvage
 from dj4xol.turn import (
     calculate_growth_factor, apply_population_change, effective_capacity,
-    calculate_employment_percent, COLONISTS_PER_JOB
+    calculate_employment_percent, COLONISTS_PER_JOB, COLONISTS_PER_SHIPYARD
 )
 
 from itertools import chain
@@ -231,12 +231,15 @@ class DetailBuilder():
     def build_infrastructure_detail(self):
         infrastructure = None
         if self.selected_obj and isinstance(self.selected_obj, Star):
-            jobs = (self.selected_obj.mines + self.selected_obj.factories + self.selected_obj.defenses) * COLONISTS_PER_JOB
+            jobs = ((self.selected_obj.mines + self.selected_obj.factories
+                     + self.selected_obj.defenses) * COLONISTS_PER_JOB
+                    + self.selected_obj.shipyards * COLONISTS_PER_SHIPYARD)
             employment = calculate_employment_percent(self.selected_obj)
             infrastructure = {
                 'Mines': self.selected_obj.mines,
                 'Factories': self.selected_obj.factories,
                 'Defenses': self.selected_obj.defenses,
+                'Shipyards': self.selected_obj.shipyards,
                 'Jobs': {'count': jobs, 'employment': employment},
             }
         return infrastructure

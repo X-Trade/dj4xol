@@ -476,6 +476,7 @@ class Star(AbstractMapObject):
     mines = models.IntegerField(default=0)
     factories = models.IntegerField(default=0)
     defenses = models.IntegerField(default=0)
+    shipyards = models.IntegerField(default=0)
     buildpoints_consumed = models.IntegerField(default=0)  # Reset each turn
 
 
@@ -638,6 +639,8 @@ PRODUCTION_COSTS = {
     'BUILD_MINE': {'bp': 0, 'ironium': 10, 'boranium': 0, 'germanium': 0, 'colonists': 1000},
     'BUILD_FACTORY': {'bp': 0, 'ironium': 20, 'boranium': 0, 'germanium': 0, 'colonists': 1000},
     'BUILD_DEFENSE': {'bp': 20, 'ironium': 100, 'boranium': 50, 'germanium': 50, 'colonists': 0},
+    'BUILD_SHIPYARD': {'bp': 100, 'ironium': 250, 'boranium': 50, 'germanium': 100,
+                       'colonists': 0},
     'BUILD_FLEET': {'bp': 50, 'ironium': 100, 'boranium': 200, 'germanium': 200, 'colonists': 0},
     'TERRAFORM_GRAVITY': {'bp': 100, 'ironium': 1000, 'boranium': 0, 'germanium': 0, 'colonists': 0},
     'TERRAFORM_TEMPERATURE': {'bp': 100, 'ironium': 0, 'boranium': 1000, 'germanium': 0, 'colonists': 0},
@@ -655,6 +658,7 @@ class ProductionOrder(AbstractGameObject):
         ('BUILD_MINE', 'Build Mine'),
         ('BUILD_FACTORY', 'Build Factory'),
         ('BUILD_DEFENSE', 'Build Defense'),
+        ('BUILD_SHIPYARD', 'Build Shipyard'),
     ]
 
     star = models.ForeignKey(Star, related_name='production_orders',

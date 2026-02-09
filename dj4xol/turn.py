@@ -23,6 +23,8 @@ from .messages import (
     FleetWarpDamageMessageFactory,
     FleetWarpDestroyedMessageFactory,
     FleetMergedMessageFactory,
+    FleetBuildBlockedNoShipyardMessageFactory,
+    FleetRepairedMessageFactory,
 )
 import random
 
@@ -121,6 +123,7 @@ def habitability_proportion(hab_min, hab_max, centre, value):
 
 # Economic constants
 COLONISTS_PER_JOB = 1000  # Each mine/factory employs this many colonists
+COLONISTS_PER_SHIPYARD = 10000  # Shipyards employ 10x more colonists
 BUILDPOINTS_PER_FACTORY = 10  # Each factory produces this many buildpoints per turn
 KT_PER_MINE = 10  # Each mine extracts this many kt of minerals per turn
 YIELD_DEPLETION_RATE = 0.00001  # Yield drops by this % per kt extracted (0.001% per kt)
@@ -128,14 +131,16 @@ HOMEWORLD_MIN_YIELD = 30  # Homeworld yields never drop below this percentage
 
 
 def calculate_employment_percent(star):
-    """Calculate employment percentage based on mines, factories, and defenses.
+    """Calculate employment percentage based on infrastructure.
 
     Each mine, factory, and defense employs COLONISTS_PER_JOB colonists.
+    Each shipyard employs COLONISTS_PER_SHIPYARD colonists (10x more).
     Returns 0-100, capped at 100%.
     """
     if star.colonists == 0:
         return 0
-    jobs = (star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
+    jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
+            + star.shipyards * COLONISTS_PER_SHIPYARD)
     return min(100, jobs / star.colonists * 100)
 
 
@@ -148,7 +153,8 @@ def calculate_available_buildpoints(star):
     """
     if star.factories == 0:
         return 0
-    jobs = (star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
+    jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
+            + star.shipyards * COLONISTS_PER_SHIPYARD)
     if jobs == 0:
         return 0
     staffing_ratio = min(1.0, star.colonists / jobs)
@@ -1408,6 +1414,7 @@ class GameTurn():
         5. Colonists are required for mines/factories (not consumed, just busy)
         6. Continue until blocked on resources, BP, or colonists
         7. Send aggregate messages for mines/factories/defenses (4+ items)
+        8. Repair damaged fleets using available shipyards
         """
         from .models import Star, ProductionOrder, PRODUCTION_COSTS
         for star in Star.objects.filter(game=self.game, player__isnull=False):
@@ -1415,15 +1422,31 @@ class GameTurn():
             colonists_busy = 0  # Track colonists busy with construction this turn
             available_bp = calculate_available_buildpoints(star)
             blocked = False
+            fleets_built_this_turn = 0  # Track fleets built for shipyard availability
+            shipyard_blocked_message_sent = False  # Only send once per star
 
             # Track production counts for aggregate messages
-            production_counts = {'mine': 0, 'factory': 0, 'defense': 0}
+            production_counts = {'mine': 0, 'factory': 0, 'defense': 0, 'shipyard': 0}
 
             for order in list(star.production_orders.order_by('position')):
                 if blocked:
                     break
 
                 cost = PRODUCTION_COSTS.get(order.order_type, {})
+
+                # Check shipyard requirement for BUILD_FLEET
+                if order.order_type == 'BUILD_FLEET' and star.shipyards == 0:
+                    # No shipyard - block and send message (once per star)
+                    if not shipyard_blocked_message_sent:
+                        factory = FleetBuildBlockedNoShipyardMessageFactory(
+                            self.game, star.player, star
+                        )
+                        msg = factory.new_message()
+                        msg.year = self.game.year
+                        msg.save()
+                        shipyard_blocked_message_sent = True
+                    blocked = True
+                    break
 
                 # Build items until we've completed the quantity or get blocked
                 while order.completed < order.quantity and not blocked:
@@ -1484,7 +1507,11 @@ class GameTurn():
                     if colonist_cost > 0:
                         colonists_busy += colonist_cost
 
-                    self._apply_production_effect(star, order, production_counts)
+                    fleet_built = self._apply_production_effect(
+                        star, order, production_counts
+                    )
+                    if fleet_built:
+                        fleets_built_this_turn += 1
                     order.completed += 1
                     # Reset spent amounts for next item
                     order.spent_ironium = 0
@@ -1515,10 +1542,18 @@ class GameTurn():
 
             star.save()
 
+            # Repair damaged fleets using available shipyards
+            available_shipyards = star.shipyards - fleets_built_this_turn
+            self._repair_fleets_at_star(star, available_shipyards)
+
     def _apply_production_effect(self, star, order, production_counts):
-        """Apply the effect of a completed production order."""
+        """Apply the effect of a completed production order.
+
+        Returns True if a fleet was built (for shipyard availability tracking).
+        """
         if order.order_type == 'BUILD_FLEET':
             self._build_fleet(star, order)
+            return True
         elif order.order_type == 'BUILD_MINE':
             self._build_mine(star)
             production_counts['mine'] += 1
@@ -1528,8 +1563,12 @@ class GameTurn():
         elif order.order_type == 'BUILD_DEFENSE':
             self._build_defense(star)
             production_counts['defense'] += 1
+        elif order.order_type == 'BUILD_SHIPYARD':
+            self._build_shipyard(star)
+            production_counts['shipyard'] += 1
         elif order.order_type.startswith('TERRAFORM_'):
             self._apply_terraform_order(star, order)
+        return False
 
     def _build_fleet(self, star, order):
         """Build a fleet at the given star and create notification."""
@@ -1565,6 +1604,10 @@ class GameTurn():
     def _build_defense(self, star):
         """Build a defense at the given star."""
         star.defenses += 1
+
+    def _build_shipyard(self, star):
+        """Build a shipyard at the given star."""
+        star.shipyards += 1
 
     def _send_production_summary_messages(self, star, production_counts):
         """Send aggregate production messages for mines/factories/defenses.
@@ -1613,6 +1656,64 @@ class GameTurn():
 
         setattr(star, field, new_value)
         star.save()
+
+    def _repair_fleets_at_star(self, star, available_shipyards):
+        """Repair damaged fleets orbiting a star using available shipyards.
+
+        Each available shipyard repairs one ship's share of integrity per year.
+        Repair is distributed across all damaged friendly fleets at the location.
+        """
+        from .models import Fleet
+
+        if available_shipyards <= 0:
+            return
+
+        # Find player's damaged fleets at star location
+        damaged_fleets = Fleet.objects.filter(
+            game=self.game,
+            player=star.player,
+            x=star.x,
+            y=star.y,
+            integrity__lt=100
+        )
+
+        if not damaged_fleets.exists():
+            return
+
+        # Calculate total ships needing repair
+        total_damaged_ships = sum(f.ship_count for f in damaged_fleets)
+        if total_damaged_ships == 0:
+            return
+
+        # Each shipyard can repair one ship's worth of integrity per turn
+        repair_pool = available_shipyards  # Number of "ship repairs" available
+
+        for fleet in damaged_fleets:
+            if repair_pool <= 0:
+                break
+
+            # Calculate fleet's share of repairs based on ship count
+            fleet_repair_share = min(fleet.ship_count, repair_pool)
+            repair_pool -= fleet_repair_share
+
+            # Each ship repair share restores integrity proportionally
+            # fleet_repair_share ships get fully repaired out of fleet.ship_count
+            missing_integrity = 100 - fleet.integrity
+            integrity_gain = (fleet_repair_share * missing_integrity) // fleet.ship_count
+
+            if integrity_gain > 0:
+                old_integrity = fleet.integrity
+                fleet.integrity = min(100, fleet.integrity + integrity_gain)
+                fleet.save()
+
+                # Create repair message
+                factory = FleetRepairedMessageFactory(
+                    self.game, star.player, fleet,
+                    old_integrity, fleet.integrity, star
+                )
+                msg = factory.new_message()
+                msg.year = self.game.year
+                msg.save()
 
     def random_events(self):
         """Process random events for colonized planets."""
