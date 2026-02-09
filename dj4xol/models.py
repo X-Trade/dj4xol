@@ -676,3 +676,40 @@ class ProductionOrder(AbstractGameObject):
 
     class Meta:
         ordering = ['position']
+
+
+class Report(AbstractGameObject):
+    """Cached exploration report for a player about a game object.
+
+    Each player maintains their own reports - players cannot see each other's
+    reports. The unique_together constraint ensures one report per player per
+    target, with the latest report overwriting previous ones.
+    """
+    TARGET_TYPE_CHOICES = [
+        ('star', 'Star'),
+        ('fleet', 'Fleet'),
+        ('salvage', 'Salvage'),
+    ]
+
+    player = models.ForeignKey(Player, related_name='reports',
+                               on_delete=models.CASCADE)
+    year = models.IntegerField()
+    target_type = models.CharField(max_length=10, choices=TARGET_TYPE_CHOICES)
+    target_id = models.UUIDField()
+    cached_report = models.TextField()  # JSON-serialised report data
+
+    class Meta:
+        unique_together = [['player', 'target_type', 'target_id']]
+
+    def __str__(self):
+        return f'{self.player.name} report on {self.target_type} {self.target_id}'
+
+    def get_report_data(self):
+        """Deserialise and return the cached report as a dictionary."""
+        import json
+        return json.loads(self.cached_report) if self.cached_report else {}
+
+    def set_report_data(self, data):
+        """Serialise and store the report data."""
+        import json
+        self.cached_report = json.dumps(data)

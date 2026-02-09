@@ -432,6 +432,26 @@ body {
     min-height: 0;
 }
 
+/* Unexplored objects */
+.unexplored-notice {
+    font-weight: bold;
+    color: #888;
+}
+
+.unexplored-hint {
+    font-size: 0.85em;
+    font-style: italic;
+    color: #666;
+    margin-top: 4px;
+}
+
+/* Report age indicator */
+.report-age {
+    font-size: 0.9em;
+    color: #888;
+    margin-bottom: 4px;
+}
+
 /* Collapsible sections */
 .collapsible-section {
     margin-bottom: 8px;

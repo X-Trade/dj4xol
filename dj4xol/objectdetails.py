@@ -1,5 +1,5 @@
 from django.db import models
-from dj4xol.models import Fleet, Star, Salvage
+from dj4xol.models import Fleet, Star, Salvage, Report
 from dj4xol.turn import (
     calculate_growth_factor, apply_population_change, effective_capacity,
     calculate_employment_percent, COLONISTS_PER_JOB, COLONISTS_PER_SHIPYARD
@@ -51,6 +51,27 @@ class DetailBuilder():
 
     def build_detail(self):
         if self.selected_obj:
+            can_view, report_year = self.can_view_object(self.selected_obj)
+
+            if not can_view:
+                # Return unexplored placeholder
+                return {
+                    'name': self.get_object_name(),
+                    'selected_id': self.selected_obj.short_id,
+                    'objects_here': self.get_objects_here(),
+                    'unexplored': True,
+                    'x': self.selected_obj.x,
+                    'y': self.selected_obj.y,
+                    'is_star': isinstance(self.selected_obj, Star),
+                    'is_fleet': isinstance(self.selected_obj, Fleet),
+                    'is_salvage': isinstance(self.selected_obj, Salvage),
+                }
+
+            if report_year is not None:
+                # Load from cached report
+                return self._build_detail_from_report(report_year)
+
+            # Current data (owned or fleet present)
             detail = {'name': self.get_object_name(),
                      'selected_id': self.selected_obj.short_id,
                      'objects_here': self.get_objects_here(),
@@ -78,10 +99,75 @@ class DetailBuilder():
                      'merge_targets': self.get_merge_targets(),
                      'x': self.selected_obj.x,
                      'y': self.selected_obj.y,
+                     'report_year': None,
+                     'is_current': True,
                      }
         else:
             detail = None
         return detail
+
+    def _build_detail_from_report(self, report_year):
+        """Build detail dict from a cached report."""
+        target_type = self._get_target_type(self.selected_obj)
+        report = Report.objects.get(
+            player=self.player,
+            target_type=target_type,
+            target_id=self.selected_obj.id
+        )
+        data = report.get_report_data()
+
+        # Base detail fields
+        detail = {
+            'name': data.get('name', self.get_object_name()),
+            'selected_id': self.selected_obj.short_id,
+            'objects_here': self.get_objects_here(),
+            'x': data.get('x', self.selected_obj.x),
+            'y': data.get('y', self.selected_obj.y),
+            'is_star': target_type == 'star',
+            'is_fleet': target_type == 'fleet',
+            'is_salvage': target_type == 'salvage',
+            'report_year': report_year,
+            'report_age': self.game.year - report_year,
+            'is_current': False,
+            'is_owned': False,
+        }
+
+        # Add player name from cached data
+        if data.get('player_name'):
+            detail['player'] = data['player_name']
+
+        # Type-specific fields from cached report
+        if target_type == 'star':
+            detail['star_short_id'] = self.selected_obj.short_id
+            detail['population'] = data.get('colonists')
+            # Build environmental detail from cached data
+            if all(k in data for k in ['gravity', 'temperature', 'radiation']):
+                detail['environmentals'] = self._build_env_from_report(data)
+        elif target_type == 'fleet':
+            detail['fleet_short_id'] = self.selected_obj.short_id
+            if 'ship_count' in data:
+                detail['fleet_cargo'] = {'ship_count': data['ship_count']}
+        elif target_type == 'salvage':
+            detail['salvage_short_id'] = self.selected_obj.short_id
+            if 'total_minerals' in data:
+                detail['salvage_inventory'] = {'total': data['total_minerals']}
+
+        return detail
+
+    def _build_env_from_report(self, data):
+        """Build environmental detail dict from cached report data."""
+        grav = data['gravity']
+        temp = data['temperature']
+        rad = data['radiation']
+        return {
+            'Gravity': self._build_env_data('gravity', grav, '%.2fg' % grav),
+            'Temperature': self._build_env_data(
+                'temperature', temp, '%+d°C' % int((temp - 1.0) * 100)
+            ),
+            'Radiation': self._build_env_data(
+                'radiation', rad, '%dmR' % int(rad * 50)
+            ),
+        }
 
     def get_objects_here(self):
         """Return list of dicts with name, short_id, and type for all objects at cursor."""
@@ -176,6 +262,53 @@ class DetailBuilder():
         if self.selected_obj and self.selected_obj.game != self.game:
             self.selected_obj = None
             raise Exception("Selected object is not in this game")
+
+    def can_view_object(self, obj):
+        """Check if player can view object details.
+
+        Returns tuple: (can_view, report_year or None)
+        - can_view=True, year=None means current data (owned or fleet present)
+        - can_view=True, year=N means cached report from year N
+        - can_view=False, year=None means unexplored
+        """
+        if not self.player:
+            return (False, None)
+
+        # Player owns the object
+        if hasattr(obj, 'player') and obj.player == self.player:
+            return (True, None)
+
+        # Player has a fleet at the location
+        player_fleets_here = Fleet.objects.filter(
+            game=self.game,
+            player=self.player,
+            x=obj.x,
+            y=obj.y
+        ).exists()
+        if player_fleets_here:
+            return (True, None)
+
+        # Player has a cached report
+        target_type = self._get_target_type(obj)
+        report = Report.objects.filter(
+            player=self.player,
+            target_type=target_type,
+            target_id=obj.id
+        ).first()
+        if report:
+            return (True, report.year)
+
+        return (False, None)
+
+    def _get_target_type(self, obj):
+        """Get target_type string for an object."""
+        if isinstance(obj, Star):
+            return 'star'
+        elif isinstance(obj, Fleet):
+            return 'fleet'
+        elif isinstance(obj, Salvage):
+            return 'salvage'
+        return 'unknown'
 
     def build_environmental_detail(self):
         environmentals = None
