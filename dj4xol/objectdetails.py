@@ -97,11 +97,16 @@ class DetailBuilder():
                      'transfer_targets': self.get_transfer_targets(),
                      'colonise_targets': self.get_colonise_targets(),
                      'merge_targets': self.get_merge_targets(),
+                     'patrol_targets': self.get_patrol_targets(),
+                     'effective_location': self.get_fleet_effective_location() if isinstance(self.selected_obj, Fleet) else None,
                      'x': self.selected_obj.x,
                      'y': self.selected_obj.y,
                      'report_year': None,
                      'is_current': True,
                      }
+            if detail['effective_location']:
+                effective_x, effective_y = detail['effective_location']
+                detail['effective_location_name'] = self.format_empty_space(effective_x, effective_y)
         else:
             detail = None
         return detail
@@ -286,6 +291,16 @@ class DetailBuilder():
             y=obj.y
         ).exists()
         if player_fleets_here:
+            return (True, None)
+
+        # Player owns a star at the location
+        player_star_here = Star.objects.filter(
+            game=self.game,
+            player=self.player,
+            x=obj.x,
+            y=obj.y
+        ).exists()
+        if player_star_here:
             return (True, None)
 
         # Player has a cached report
@@ -547,10 +562,12 @@ class DetailBuilder():
         current_x, current_y = fleet.x, fleet.y
         
         # Walk through orders to find the final destination
-        orders = fleet.orders.filter(order_type__in=['MOVE', 'TRANSFER']).order_by('id')
+        orders = fleet.orders.filter(
+            order_type__in=['MOVE', 'TRANSFER', 'INTERCEPT', 'PATROL']
+        ).order_by('id')
         
         for order in orders:
-            if order.order_type == 'MOVE':
+            if order.order_type in ['MOVE', 'INTERCEPT', 'PATROL']:
                 # Use the same logic as turn.py move_fleet()
                 try:
                     current_x, current_y = order.get_destination_coordinates()
@@ -817,6 +834,62 @@ class DetailBuilder():
                 'location': (effective_x, effective_y),
                 'display_mode': 'single',
                 'default_target': targets[0]
+            }
+        else:
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'multiple',
+                'default_target': targets[0]
+            }
+
+    def get_patrol_targets(self):
+        """Get available patrol targets at the fleet's effective location.
+
+        Returns a dict with:
+        - targets: list of available targets (stars and fleets, any player)
+        - location: (x, y) coordinates
+        - display_mode: 'single', 'multiple', or 'empty'
+        - default_target: the target to select by default
+        """
+        if not isinstance(self.selected_obj, Fleet):
+            return {'targets': [], 'location': (0, 0), 'display_mode': 'empty', 'default_target': None}
+
+        effective_x, effective_y = self.get_fleet_effective_location()
+
+        targets = []
+        stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
+        for star in stars_at_location:
+            targets.append({
+                'name': star.name,
+                'short_id': star.short_id,
+                'type': 'star'
+            })
+
+        fleets_at_location = self.game.fleets.filter(x=effective_x, y=effective_y).exclude(id=self.selected_obj.id)
+        for fleet in fleets_at_location:
+            targets.append({
+                'name': fleet.name,
+                'short_id': fleet.short_id,
+                'type': 'fleet',
+            })
+
+        if not targets:
+            empty_space_name = self.format_empty_space(effective_x, effective_y)
+            return {
+                'targets': [],
+                'location': (effective_x, effective_y),
+                'display_mode': 'empty',
+                'default_target': empty_space_name
+            }
+        elif len(targets) == 1:
+            target = targets[0]
+            display_name = f"{target['name']} ({target['type'].title()})"
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'single',
+                'default_target': display_name
             }
         else:
             return {

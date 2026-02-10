@@ -852,8 +852,9 @@ class GameTurn():
             False if still moving
             'destroyed' if fleet was destroyed by warp damage
         """
+        is_intercept = order.order_type == 'INTERCEPT' and order.target_fleet
         try:
-            if order.order_type == 'INTERCEPT':
+            if is_intercept:
                 x, y = self._get_intercept_destination(order)
             else:
                 x, y = order.get_destination_coordinates()
@@ -883,6 +884,11 @@ class GameTurn():
             # Fleet reaches destination
             fleet.x = x
             fleet.y = y
+            if is_intercept:
+                target = order.target_fleet
+                if target and (fleet.x, fleet.y) == (target.x, target.y):
+                    return True
+                return False
             return True
         else:
             # Fleet moves toward destination but doesn't reach it
@@ -891,11 +897,20 @@ class GameTurn():
             fleet.x = int(new_position[0])
             fleet.y = int(new_position[1])
             if (fleet.x, fleet.y) == (x, y):
+                if is_intercept:
+                    target = order.target_fleet
+                    if target and (fleet.x, fleet.y) == (target.x, target.y):
+                        return True
+                    return False
                 return True
+            if is_intercept:
+                target = order.target_fleet
+                if target and (fleet.x, fleet.y) == (target.x, target.y):
+                    return True
             return False
 
     def _get_intercept_destination(self, order):
-        """Calculate intercept destination based on target fleet heading/speed."""
+        """Calculate intercept destination based on target fleet movement."""
         from math import radians, sin, cos
 
         if not order.target_fleet:
@@ -905,6 +920,13 @@ class GameTurn():
         target_speed = self._get_fleet_current_speed(target_fleet)
         if target_speed <= 0:
             return target_fleet.x, target_fleet.y
+
+        try:
+            dest_x, dest_y = target_fleet.orders.first().get_destination_coordinates()
+            if (target_fleet.x, target_fleet.y) == (dest_x, dest_y):
+                return target_fleet.x, target_fleet.y
+        except Exception:
+            pass
 
         theta = radians(target_fleet.heading)
         dx = sin(theta)
@@ -919,6 +941,12 @@ class GameTurn():
         if not order:
             return 0
         if order.order_type in ['MOVE', 'INTERCEPT']:
+            try:
+                dest_x, dest_y = order.get_destination_coordinates()
+                if (fleet.x, fleet.y) == (dest_x, dest_y):
+                    return 0
+            except Exception:
+                return 0
             return order.warpfactor
         return 0
 
@@ -1654,8 +1682,8 @@ class GameTurn():
         If repeat is enabled, a new patrol order is appended to the queue.
         """
         target_x, target_y = self._get_patrol_target_coordinates(order)
-        enemy_fleet = self._find_enemy_fleet_in_radius(
-            fleet.player, target_x, target_y, order.patrol_radius
+        enemy_fleet = self._find_patrol_enemy(
+            fleet.player, target_x, target_y, order.patrol_radius, order.target_fleet
         )
 
         if order.repeat:
@@ -1732,6 +1760,21 @@ class GameTurn():
                 nearest = enemy
                 nearest_dist = dist
         return nearest
+
+    def _find_patrol_enemy(self, player, x, y, radius, patrol_target_fleet):
+        """Prefer enemy fleets other than the patrol target, if possible."""
+        if patrol_target_fleet and patrol_target_fleet.player != player:
+            enemy = self._find_enemy_fleet_in_radius(
+                player, x, y, radius,
+            )
+            if enemy and enemy.id != patrol_target_fleet.id:
+                return enemy
+            return patrol_target_fleet
+
+        enemy = self._find_enemy_fleet_in_radius(player, x, y, radius)
+        if enemy and patrol_target_fleet and enemy.id == patrol_target_fleet.id:
+            return None
+        return enemy
 
     def population_growth(self):
         """Apply population growth/decline to all colonized planets."""

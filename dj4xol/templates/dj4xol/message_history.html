@@ -118,7 +118,12 @@
                     {% endfor %}
                 </select>
 
-                {% if current_year or current_category %}
+                <label class="priority-filter">
+                    <input type="checkbox" id="priority-filter" onchange="applyFilters();" {% if priority_only %}checked{% endif %}>
+                    Priority only
+                </label>
+
+                {% if current_year or current_category or priority_only %}
                 <a href="{% url 'dj4xol:message_history' game.short_id %}">Clear filters</a>
                 {% endif %}
             </div>
@@ -142,8 +147,8 @@
             {% if page_obj.has_other_pages %}
             <div class="pagination">
                 {% if page_obj.has_previous %}
-                <a href="?page=1{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}">&laquo; First</a>
-                <a href="?page={{ page_obj.previous_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}">&lsaquo; Prev</a>
+                <a href="?page=1{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">&laquo; First</a>
+                <a href="?page={{ page_obj.previous_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">&lsaquo; Prev</a>
                 {% else %}
                 <span class="disabled">&laquo; First</span>
                 <span class="disabled">&lsaquo; Prev</span>
@@ -152,8 +157,8 @@
                 <span class="current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
 
                 {% if page_obj.has_next %}
-                <a href="?page={{ page_obj.next_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}">Next &rsaquo;</a>
-                <a href="?page={{ page_obj.paginator.num_pages }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}">Last &raquo;</a>
+                <a href="?page={{ page_obj.next_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">Next &rsaquo;</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">Last &raquo;</a>
                 {% else %}
                 <span class="disabled">Next &rsaquo;</span>
                 <span class="disabled">Last &raquo;</span>
@@ -170,9 +175,11 @@
         function applyFilters() {
             var year = document.getElementById('year-filter').value;
             var category = document.getElementById('category-filter').value;
+            var priority = document.getElementById('priority-filter').checked;
             var params = new URLSearchParams();
             if (year) params.set('year', year);
             if (category) params.set('category', category);
+            if (priority) params.set('priority', '1');
             window.location.search = params.toString();
         }
 

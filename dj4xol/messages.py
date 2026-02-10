@@ -743,14 +743,17 @@ class CombatMessageFactory(MessageFactory):
         return "Losses: " + ", ".join(parts) + "."
 
     def _format_salvage(self):
-        return "Salvage detected." if self.salvage_created else "No salvage detected."
+        return "Salvage detected." if self.salvage_created else ""
 
     def format_message(self):
+        salvage = self._format_salvage()
+        if salvage:
+            salvage = " " + salvage
         return random.choice(self.templates).format(
             location=self._format_location(),
             winner=self.winner.name,
             losses=self._format_losses(),
-            salvage=self._format_salvage()
+            salvage=salvage
         )
 
 

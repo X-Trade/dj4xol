@@ -365,6 +365,9 @@ def add_fleet_order(request, game_short_id):
         elif target_x and target_y:
             order.x = int(target_x)
             order.y = int(target_y)
+
+        if order_type == 'INTERCEPT' and not order.target_fleet:
+            order.order_type = 'MOVE'
     
     elif order_type == 'PATROL':
         from .models import Salvage
@@ -373,11 +376,21 @@ def add_fleet_order(request, game_short_id):
         target_salvage_id = request.POST.get('target_salvage')
         target_x = request.POST.get('target_x')
         target_y = request.POST.get('target_y')
+        patrol_target = request.POST.get('patrol_target', '')
 
         order.patrol_radius = int(request.POST.get('patrol_radius', 15))
         order.intercept_speed = int(request.POST.get('intercept_speed', fleet.max_safe_warp))
 
-        if target_star_id:
+        if patrol_target and ':' in patrol_target:
+            target_type, target_id = patrol_target.split(':', 1)
+            if target_type == 'star':
+                order.target_star = Star.objects.get(short_id=target_id, game=game)
+            elif target_type == 'fleet':
+                order.target_fleet = Fleet.objects.get(short_id=target_id, game=game)
+        elif patrol_target == 'empty' and target_x and target_y:
+            order.x = int(target_x)
+            order.y = int(target_y)
+        elif target_star_id:
             order.target_star = Star.objects.get(short_id=target_star_id, game=game)
         elif target_fleet_id:
             order.target_fleet = Fleet.objects.get(short_id=target_fleet_id, game=game)
@@ -386,6 +399,7 @@ def add_fleet_order(request, game_short_id):
         elif target_x and target_y:
             order.x = int(target_x)
             order.y = int(target_y)
+
     
     elif order_type == 'TRANSFER':
         from .models import Salvage
@@ -550,6 +564,11 @@ def message_history(request, game_short_id):
     if category_filter:
         messages_qs = messages_qs.filter(category=category_filter)
 
+    # Filter by priority
+    priority_only = request.GET.get('priority') == '1'
+    if priority_only:
+        messages_qs = messages_qs.filter(priority=True)
+
     # Get available years and categories for filter dropdowns
     all_years = player.messages.values_list('year', flat=True).distinct().order_by('-year')
     categories = GameMessage.CATEGORY_CHOICES
@@ -573,6 +592,7 @@ def message_history(request, game_short_id):
         'categories': categories,
         'current_year': year_filter,
         'current_category': category_filter,
+        'priority_only': priority_only,
     })
 
 
