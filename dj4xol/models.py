@@ -582,6 +582,52 @@ class FleetOrders(AbstractGameObject):
         else:
             return "Unknown destination"
 
+    def target_is_star(self):
+        return self.target_star_id is not None
+
+    def target_is_fleet(self):
+        return self.target_fleet_id is not None
+
+    def target_is_salvage(self):
+        return self.target_salvage_id is not None
+
+    def has_target_coordinates(self):
+        return self.x is not None and self.y is not None
+
+    def get_actual_target(self):
+        """Return canonical target and coordinates.
+
+        Prefers explicit target objects when present and valid, otherwise falls
+        back to explicit x/y coordinates. Returns (obj, x, y, kind).
+        """
+        if self.target_star_id:
+            try:
+                obj = self.target_star
+                return obj, obj.x, obj.y, 'star'
+            except Star.DoesNotExist:
+                if self.has_target_coordinates():
+                    return None, self.x, self.y, 'space'
+                return None, None, None, 'none'
+        if self.target_fleet_id:
+            try:
+                obj = self.target_fleet
+                return obj, obj.x, obj.y, 'fleet'
+            except Fleet.DoesNotExist:
+                if self.has_target_coordinates():
+                    return None, self.x, self.y, 'space'
+                return None, None, None, 'none'
+        if self.target_salvage_id:
+            try:
+                obj = self.target_salvage
+                return obj, obj.x, obj.y, 'salvage'
+            except Salvage.DoesNotExist:
+                if self.has_target_coordinates():
+                    return None, self.x, self.y, 'space'
+                return None, None, None, 'none'
+        if self.has_target_coordinates():
+            return None, self.x, self.y, 'space'
+        return None, None, None, 'none'
+
     def get_destination_coordinates(self):
         """Get the (x, y) coordinates for this order's destination.
 
@@ -594,7 +640,7 @@ class FleetOrders(AbstractGameObject):
             return self.target_fleet.x, self.target_fleet.y
         elif self.target_salvage:
             return self.target_salvage.x, self.target_salvage.y
-        elif self.x is not None and self.y is not None:
+        elif self.has_target_coordinates():
             return self.x, self.y
         else:
             raise ValueError(f"Invalid order {self.id} - no valid destination")

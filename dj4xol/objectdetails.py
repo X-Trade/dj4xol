@@ -472,14 +472,11 @@ class DetailBuilder():
         orders = []
         for o in self.selected_obj.orders.all():
             target = None
-            if o.target_star:
-                target = o.target_star.name
-            elif o.target_fleet:
-                target = o.target_fleet.name
-            elif o.target_salvage:
-                target = o.target_salvage.name
-            elif o.x is not None and o.y is not None:
-                target = DetailBuilder.format_empty_space(o.x, o.y)
+            obj, x, y, kind = o.get_actual_target()
+            if kind in ['star', 'fleet', 'salvage'] and obj:
+                target = obj.name
+            elif kind == 'space':
+                target = DetailBuilder.format_empty_space(x, y)
             orders.append({
                 'short_id': o.short_id,
                 'target': target,
@@ -568,12 +565,10 @@ class DetailBuilder():
         
         for order in orders:
             if order.order_type in ['MOVE', 'INTERCEPT', 'PATROL']:
-                # Use the same logic as turn.py move_fleet()
-                try:
-                    current_x, current_y = order.get_destination_coordinates()
-                except ValueError:
-                    # Skip invalid orders
+                _, x, y, kind = order.get_actual_target()
+                if kind in ['invalid', 'none']:
                     continue
+                current_x, current_y = x, y
             elif order.order_type == 'TRANSFER':
                 # Transfer orders execute at the current location but don't change it
                 # (the fleet stays where it is)

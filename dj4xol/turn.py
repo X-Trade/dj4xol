@@ -831,9 +831,8 @@ class GameTurn():
         - 'executed': Transfer completed successfully
         - 'waiting': Transfer blocked waiting for target or location
         """
-        try:
-            dest_x, dest_y = order.get_destination_coordinates()
-        except ValueError:
+        _, dest_x, dest_y, kind = order.get_actual_target()
+        if kind == 'none':
             return 'executed'  # Invalid order, treat as executed to remove it
 
         # Check if fleet is at the transfer destination
@@ -857,7 +856,9 @@ class GameTurn():
             if is_intercept:
                 x, y = self._get_intercept_destination(order)
             else:
-                x, y = order.get_destination_coordinates()
+                _, x, y, kind = order.get_actual_target()
+                if kind == 'none':
+                    return True
         except ValueError:
             return True  # Invalid order, treat as reached to remove it
 
@@ -914,7 +915,10 @@ class GameTurn():
         from math import radians, sin, cos
 
         if not order.target_fleet:
-            return order.get_destination_coordinates()
+            _, x, y, kind = order.get_actual_target()
+            if kind in ['invalid', 'none']:
+                return order.fleet.x, order.fleet.y
+            return x, y
 
         target_fleet = order.target_fleet
         target_speed = self._get_fleet_current_speed(target_fleet)
@@ -922,9 +926,13 @@ class GameTurn():
             return target_fleet.x, target_fleet.y
 
         try:
-            dest_x, dest_y = target_fleet.orders.first().get_destination_coordinates()
-            if (target_fleet.x, target_fleet.y) == (dest_x, dest_y):
-                return target_fleet.x, target_fleet.y
+            target_order = target_fleet.orders.first()
+            if target_order:
+                _, dest_x, dest_y, kind = target_order.get_actual_target()
+                if kind in ['invalid', 'none']:
+                    return target_fleet.x, target_fleet.y
+                if (target_fleet.x, target_fleet.y) == (dest_x, dest_y):
+                    return target_fleet.x, target_fleet.y
         except Exception:
             pass
 
@@ -942,7 +950,9 @@ class GameTurn():
             return 0
         if order.order_type in ['MOVE', 'INTERCEPT']:
             try:
-                dest_x, dest_y = order.get_destination_coordinates()
+                _, dest_x, dest_y, kind = order.get_actual_target()
+                if kind in ['invalid', 'none']:
+                    return 0
                 if (fleet.x, fleet.y) == (dest_x, dest_y):
                     return 0
             except Exception:
@@ -1115,6 +1125,10 @@ class GameTurn():
         """Create a repeat copy of the order if needed."""
         if order.repeat:
             from .models import FleetOrders
+            # Discard repeat if target no longer exists
+            _, _, _, kind = order.get_actual_target()
+            if kind in ['invalid', 'none']:
+                return
             FleetOrders.objects.create(
                 game=self.game,
                 fleet=order.fleet,
@@ -1123,9 +1137,9 @@ class GameTurn():
                 warpfactor=order.warpfactor,
                 x=order.x,
                 y=order.y,
-                target_star=order.target_star,
-                target_fleet=order.target_fleet,
-                target_salvage=order.target_salvage,
+                target_star_id=order.target_star_id,
+                target_fleet_id=order.target_fleet_id,
+                target_salvage_id=order.target_salvage_id,
                 transfer_type=order.transfer_type,
                 transfer_ironium=order.transfer_ironium,
                 transfer_boranium=order.transfer_boranium,
@@ -1145,8 +1159,9 @@ class GameTurn():
         from .models import Star, Fleet, Salvage
 
         # Get the target object based on order parameters
-        target_obj = None
-        target_x, target_y = order.get_destination_coordinates()
+        target_obj, target_x, target_y, target_kind = order.get_actual_target()
+        if target_kind in ['invalid', 'none']:
+            return 'waiting'
 
         if order.target_star:
             target_obj = order.target_star
@@ -1463,9 +1478,8 @@ class GameTurn():
         - 'executed': Colonise completed, fleet destroyed
         - 'waiting': Waiting for fleet to reach destination
         """
-        try:
-            dest_x, dest_y = order.get_destination_coordinates()
-        except ValueError:
+        _, dest_x, dest_y, kind = order.get_actual_target()
+        if kind in ['invalid', 'none']:
             return 'executed'  # Invalid order, treat as executed to remove it
 
         # Check if fleet is at the colonise destination
@@ -1490,12 +1504,12 @@ class GameTurn():
             star = order.target_star
         else:
             # Look for star at the fleet's location
-            dest_x, dest_y = order.get_destination_coordinates()
+            _, dest_x, dest_y, _ = order.get_actual_target()
             star = Star.objects.filter(game=self.game, x=dest_x, y=dest_y).first()
 
         if not star:
             # No star at location, cannot colonise - create message and delete order
-            dest_x, dest_y = order.get_destination_coordinates()
+            _, dest_x, dest_y, _ = order.get_actual_target()
             factory = ColoniseFailedNoStarMessageFactory(
                 self.game, fleet.player, fleet.name, dest_x, dest_y,
                 target_star=order.target_star  # May be None if order used coordinates
@@ -1728,17 +1742,17 @@ class GameTurn():
             intercept_speed=order.intercept_speed,
             x=order.x,
             y=order.y,
-            target_star=order.target_star,
-            target_fleet=order.target_fleet,
-            target_salvage=order.target_salvage,
+            target_star_id=order.target_star_id,
+            target_fleet_id=order.target_fleet_id,
+            target_salvage_id=order.target_salvage_id,
         )
 
     def _get_patrol_target_coordinates(self, order):
         """Get patrol center coordinates from order target."""
-        try:
-            return order.get_destination_coordinates()
-        except ValueError:
+        _, x, y, kind = order.get_actual_target()
+        if kind in ['invalid', 'none']:
             return order.fleet.x, order.fleet.y
+        return x, y
 
     def _find_enemy_fleet_in_radius(self, player, x, y, radius):
         """Find nearest enemy fleet within radius of a point."""
