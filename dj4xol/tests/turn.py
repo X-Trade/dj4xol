@@ -2,12 +2,15 @@ from ..turn import (
     GameTurn, habitability_proportion, calculate_growth_factor, capacity_modifier,
     effective_capacity, BILLION, calculate_employment_percent, calculate_economy_percent,
     calculate_available_buildpoints, calculate_productivity_percent, calculate_economy_factor,
-    COLONISTS_PER_JOB, BUILDPOINTS_PER_FACTORY, KT_PER_MINE, HOMEWORLD_MIN_YIELD
+    COLONISTS_PER_JOB, BUILDPOINTS_PER_FACTORY, KT_PER_MINE, HOMEWORLD_MIN_YIELD,
+    calculate_fleet_strength
 )
-from ..models import ProductionOrder, GameMessage, Fleet, Star
+from ..models import ProductionOrder, GameMessage, Fleet, Star, Salvage, Account
+from ..factory import GameFactory
 from django.test import TestCase
-from ._util import default_game, get_default_race
+from ._util import default_game, get_default_race, get_default_race_type
 from unittest.mock import patch
+from django.contrib.auth.models import User
 import random
 
 
@@ -3895,3 +3898,104 @@ class TestMergeFleet(TestCase):
 
         # Should have a new message about the merge
         self.assertGreater(player.messages.count(), initial_messages)
+
+
+class TestCombat(TestCase):
+    def _create_two_player_game(self):
+        get_default_race_type()
+        user1 = User.objects.create_user('combat_p1', 'c1@test.com', 'pass')
+        user2 = User.objects.create_user('combat_p2', 'c2@test.com', 'pass')
+        account1 = Account.objects.create(django_user=user1)
+        account2 = Account.objects.create(django_user=user2)
+
+        factory = GameFactory()
+        factory.set_map_size(100, 100)
+        factory.set_owner(account1)
+        factory.create_stars(5)
+        game = factory.save()
+        game.joinable = True
+        game.save()
+        player1 = factory.join_player(account1, get_default_race())
+        player2 = factory.join_player(account2, get_default_race())
+        return game, player1, player2
+
+    def test_combat_strength_caps_ship_count(self):
+        """Ship count cap makes 3 vs 2 strength equal at full integrity."""
+        game, player1, player2 = self._create_two_player_game()
+        fleet1 = Fleet.objects.create(
+            game=game, player=player1, name="Fleet 1",
+            x=10, y=10, ship_count=3, integrity=100
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player2, name="Fleet 2",
+            x=10, y=10, ship_count=2, integrity=100
+        )
+
+        strength1 = calculate_fleet_strength(fleet1, opponent_defence_multiplier=1.0)
+        strength2 = calculate_fleet_strength(fleet2, opponent_defence_multiplier=1.0)
+        self.assertEqual(strength1, strength2)
+
+    def test_combat_destruction_creates_salvage_and_messages(self):
+        """Combat destroys fleets, creates salvage, and sends combat messages."""
+        game, player1, player2 = self._create_two_player_game()
+
+        Fleet.objects.create(
+            game=game, player=player1, name="Weak Fleet",
+            x=20, y=20, ship_count=2, integrity=10,
+            dry_mass=100, ironium_inventory=50, boranium_inventory=0, germanium_inventory=0
+        )
+        Fleet.objects.create(
+            game=game, player=player2, name="Strong Fleet",
+            x=20, y=20, ship_count=2, integrity=100,
+            dry_mass=100, ironium_inventory=0, boranium_inventory=0, germanium_inventory=0
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=False), \
+             patch('dj4xol.turn.calculate_salvage_minerals', return_value=(10, 0, 0)):
+            GameTurn(game).generate_turn()
+
+        self.assertTrue(Salvage.objects.filter(game=game, x=20, y=20).exists())
+        self.assertGreater(player1.messages.filter(category='COMBAT', priority=True).count(), 0)
+        self.assertGreater(player2.messages.filter(category='COMBAT', priority=True).count(), 0)
+
+    def test_combat_low_integrity_can_reduce_ship_count(self):
+        """Low integrity fleets can lose ships after combat damage."""
+        game, player1, player2 = self._create_two_player_game()
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player1, name="Fleet 1",
+            x=30, y=30, ship_count=3, integrity=60
+        )
+        Fleet.objects.create(
+            game=game, player=player2, name="Fleet 2",
+            x=30, y=30, ship_count=2, integrity=100
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=True):
+            GameTurn(game).generate_turn()
+
+        fleet1.refresh_from_db()
+        self.assertEqual(fleet1.ship_count, 2)
+
+    def test_combat_luck_jitter_scales_outcome_roll(self):
+        """Luck multiplier only affects the random jitter in winner selection."""
+        game, player1, player2 = self._create_two_player_game()
+        player1.race_type.luck_multiplier = 1.5
+        player1.race_type.save(update_fields=['luck_multiplier'])
+        player2.race_type.luck_multiplier = 0.5
+        player2.race_type.save(update_fields=['luck_multiplier'])
+
+        Fleet.objects.create(
+            game=game, player=player1, name="Fleet 1",
+            x=40, y=40, ship_count=2, integrity=100
+        )
+        Fleet.objects.create(
+            game=game, player=player2, name="Fleet 2",
+            x=40, y=40, ship_count=2, integrity=100
+        )
+
+        with patch('dj4xol.turn.random.uniform', side_effect=[0.10, -0.10, 0.0, 0.0]):
+            GameTurn(game).generate_turn()
+
+        self.assertGreater(player1.messages.filter(category='COMBAT').count(), 0)
+        self.assertGreater(player2.messages.filter(category='COMBAT').count(), 0)
