@@ -346,15 +346,36 @@ def add_fleet_order(request, game_short_id):
     # Create order based on type
     order = FleetOrders(game=game, fleet=fleet, order_type=order_type, repeat=repeat)
     
-    if order_type == 'MOVE':
+    if order_type in ['MOVE', 'INTERCEPT']:
         from .models import Salvage
         target_star_id = request.POST.get('target_star')
         target_fleet_id = request.POST.get('target_fleet')
         target_salvage_id = request.POST.get('target_salvage')
         target_x = request.POST.get('target_x')
         target_y = request.POST.get('target_y')
-        warpfactor = int(request.POST.get('warpfactor', 5))
+        warpfactor = int(request.POST.get('warpfactor', fleet.max_safe_warp))
         order.warpfactor = warpfactor
+
+        if target_star_id:
+            order.target_star = Star.objects.get(short_id=target_star_id, game=game)
+        elif target_fleet_id:
+            order.target_fleet = Fleet.objects.get(short_id=target_fleet_id, game=game)
+        elif target_salvage_id:
+            order.target_salvage = Salvage.objects.get(short_id=target_salvage_id, game=game)
+        elif target_x and target_y:
+            order.x = int(target_x)
+            order.y = int(target_y)
+    
+    elif order_type == 'PATROL':
+        from .models import Salvage
+        target_star_id = request.POST.get('target_star')
+        target_fleet_id = request.POST.get('target_fleet')
+        target_salvage_id = request.POST.get('target_salvage')
+        target_x = request.POST.get('target_x')
+        target_y = request.POST.get('target_y')
+
+        order.patrol_radius = int(request.POST.get('patrol_radius', 15))
+        order.intercept_speed = int(request.POST.get('intercept_speed', fleet.max_safe_warp))
 
         if target_star_id:
             order.target_star = Star.objects.get(short_id=target_star_id, game=game)
@@ -691,4 +712,3 @@ def rename_object(request, game_short_id, object_short_id):
     obj.save()
 
     return JsonResponse({'success': True, 'name': new_name})
-
