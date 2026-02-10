@@ -1285,6 +1285,74 @@ class TestFleetTransferOrders(TestCase):
         
         # Should not include fleet1 itself
         self.assertNotIn(fleet1.name, target_names)
+
+    def test_repeat_transfer_with_salvage_target_does_not_error(self):
+        """Repeat transfer to salvage should not error when creating repeat order."""
+        from ..models import FleetOrders, Salvage
+
+        game = default_game()
+        player = game.players.first()
+
+        salvage = Salvage.objects.create(
+            game=game, x=10, y=10,
+            ironium_inventory=100, boranium_inventory=0, germanium_inventory=0
+        )
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Salvager",
+            x=10, y=10, ship_count=1, integrity=100
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='TRANSFER',
+            repeat=True, transfer_type='LOAD', target_salvage=salvage
+        )
+
+        GameTurn(game).generate_turn()
+        self.assertTrue(fleet.orders.filter(order_type='TRANSFER', repeat=True).exists())
+
+    def test_repeat_move_with_empty_space_target_is_kept(self):
+        """Repeat move to empty space should preserve repeat order."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Explorer",
+            x=1, y=1, ship_count=1, integrity=100
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            repeat=True, x=0, y=0, warpfactor=3
+        )
+
+        GameTurn(game).generate_turn()
+        self.assertTrue(fleet.orders.filter(order_type='MOVE', repeat=True).exists())
+
+    def test_repeat_order_with_missing_target_is_discarded(self):
+        """Repeat order with missing target should be discarded."""
+        from ..models import FleetOrders, Star
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        star = game.stars.first()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Scout",
+            x=star.x, y=star.y, ship_count=1, integrity=100
+        )
+
+        order = FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            repeat=True, target_star=star, warpfactor=3
+        )
+
+        Star.objects.filter(id=star.id).delete()
+        GameTurn(game).generate_turn()
+        self.assertFalse(fleet.orders.filter(id=order.id).exists())
+        self.assertFalse(fleet.orders.filter(order_type='MOVE', repeat=True).exists())
     
     def test_multiple_instant_transfers(self):
         """Test multiple transfer orders executing in same turn."""
