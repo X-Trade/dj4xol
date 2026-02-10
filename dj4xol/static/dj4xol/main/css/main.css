@@ -112,6 +112,7 @@ body {
 /* Collapse column when panel inside is closed */
 .column-orders:has(.panel:not(.open)) {
     flex: 0 0 auto;
+    min-height: 0;
 }
 
 .column-orders:empty {
@@ -188,6 +189,19 @@ body {
     .orders-section {
         flex: 0 0 auto;
         overflow: visible;
+    }
+
+    /* One-column panel sizing: messages/detail/orders */
+    .messages-section.panel.open,
+    .detail-section.panel.open {
+        min-height: 248px;
+        max-height: 50vh;
+    }
+
+    .orders-section.panel.open {
+        min-height: 248px;
+        max-height: 50vh;
+        height: 50vh;
     }
 
     #detail,

@@ -336,6 +336,17 @@ $("document").ready(function() {
         $('.panel').removeClass('no-transition');
     }, 50);
 
+    // LCARS panel colour cycling across columns (global panel order)
+    var $columns = $('.columns');
+    if ($columns.length) {
+        var variants = ['lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3'];
+        $columns.find('.panel').each(function(index) {
+            var $panel = $(this);
+            $panel.removeClass('lcars-variant-1 lcars-variant-2 lcars-variant-3');
+            $panel.addClass(variants[index % variants.length]);
+        });
+    }
+
     // Toggle panel on h2 click
     $('.panel > h2').on('click', function() {
         var $panel = $(this).closest('.panel');
