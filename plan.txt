@@ -1,4 +1,9 @@
 ======== Ideas ========
+*** unique ores ***
+* Uniquadium / Unobtainium?
+* Khyberium
+* Ohmegium
+
 *** Stability ***
 * StabilityCoef = pow2(Employment - 0.5)
 * Stability = Stability * StabilityCoef

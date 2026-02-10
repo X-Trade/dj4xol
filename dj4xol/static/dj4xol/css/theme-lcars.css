@@ -289,30 +289,31 @@ body {
 .panel:not(.open) > h2 {
     border-radius: 25px;
     margin-bottom: 4px;
+    border-bottom: none;
 }
 
-/* Alternating panel header colours */
-.panel:nth-child(2n) > h2 {
+/* Alternating panel header colours (assigned in JS across columns) */
+.panel.lcars-variant-2 > h2 {
     background: linear-gradient(to right,
         #9999cc 0%, #9999cc calc(100% - 44px),
         #000 calc(100% - 44px), #000 calc(100% - 40px),
         #cc99cc calc(100% - 40px), #cc99cc 100%);
 }
 
-.panel:nth-child(2n) .panel-content > div {
+.panel.lcars-variant-2 .panel-content > div {
     background: #0a0a14;
     border: 3px solid #9999cc;
     border-top: none;
 }
 
-.panel:nth-child(3n) > h2 {
+.panel.lcars-variant-3 > h2 {
     background: linear-gradient(to right,
         #cc99cc 0%, #cc99cc calc(100% - 44px),
         #000 calc(100% - 44px), #000 calc(100% - 40px),
         #66cccc calc(100% - 40px), #66cccc 100%);
 }
 
-.panel:nth-child(3n) .panel-content > div {
+.panel.lcars-variant-3 .panel-content > div {
     background: #0a0a14;
     border: 3px solid #cc99cc;
     border-top: none;
