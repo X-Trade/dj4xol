@@ -57,6 +57,14 @@ SALVAGE_CHANCE_SCUTTLE = 0.33   # 33% chance of salvage from scuttling
 SALVAGE_DEGRADATION_MIN = 0.30  # Minimum 30% loss when creating salvage
 SALVAGE_DEGRADATION_MAX = 0.70  # Maximum 70% loss when creating salvage
 
+# Combat constants (MVP)
+COMBAT_COUNT_CAP = 2            # Cap for normalized ship count (2+ ships treated equally)
+COMBAT_DAMAGE_SCALE = 60        # Total integrity points distributed across combatants
+COMBAT_SALVAGE_DAMAGE_CHANCE = 0.25
+COMBAT_SALVAGE_DAMAGE_FACTOR = 0.20
+COMBAT_SHIP_LOSS_MAX_CHANCE = 0.50
+COMBAT_LUCK_JITTER = 0.12
+
 
 # Chance calculation functions (separated for testability)
 def roll_chance(threshold):
@@ -279,6 +287,23 @@ def calculate_salvage_minerals(dry_mass, cargo_iron, cargo_bor, cargo_germ):
     )
 
 
+def normalize_ship_count(ship_count):
+    """Normalize ship count to 0-1 with a cap for MVP combat balance."""
+    if ship_count <= 0:
+        return 0.0
+    return min(ship_count, COMBAT_COUNT_CAP) / float(COMBAT_COUNT_CAP)
+
+
+def calculate_fleet_strength(fleet, opponent_defence_multiplier):
+    """Calculate fleet combat strength (0-1-ish) against a given opponent defence."""
+    count_norm = normalize_ship_count(fleet.ship_count)
+    integrity_norm = max(0.0, min(1.0, fleet.integrity / 100.0))
+    combat_mult = fleet.player.race_type.combat_multiplier
+    defence_factor = 1.0 / opponent_defence_multiplier if opponent_defence_multiplier else 1.0
+    strength = count_norm - ((1.0 - integrity_norm) ** 2) * combat_mult * defence_factor
+    return max(0.0, strength)
+
+
 class GameTurn():
     """Generate a turn for a game."""
     def __init__(self, game):
@@ -307,6 +332,7 @@ class GameTurn():
         self.fleet_movements()
         self.check_lost_fleets()
         self.check_damaged_fleets()
+        self.resolve_combat()
         self.generate_reports()
         self.mining()
         self.production()
@@ -451,6 +477,216 @@ class GameTurn():
         """Destroy any fleets with zero integrity."""
         for fleet in self.game.fleets.filter(integrity__lte=0):
             self._handle_warp_destruction(fleet, warp_speed=0, from_damage=True)
+
+    def resolve_combat(self):
+        """Resolve combat at any location with fleets from 2+ players."""
+        from .models import Fleet
+        fleets = list(Fleet.objects.filter(game=self.game))
+        locations = {}
+        for fleet in fleets:
+            locations.setdefault((fleet.x, fleet.y), []).append(fleet)
+
+        for (x, y), loc_fleets in locations.items():
+            players = {fleet.player_id for fleet in loc_fleets}
+            if len(players) < 2:
+                continue
+            self._resolve_battle_at_location(x, y, loc_fleets)
+
+    def _resolve_battle_at_location(self, x, y, fleets):
+        """Resolve a single battle at a location."""
+        from .messages import CombatMessageFactory
+        from .models import Star
+
+        fleets_by_player = {}
+        for fleet in fleets:
+            fleets_by_player.setdefault(fleet.player, []).append(fleet)
+
+        players = sorted(fleets_by_player.keys(), key=lambda p: p.id)
+        if len(players) < 2:
+            return
+
+        strength_by_player = {}
+        for player in players:
+            opponents = [p for p in players if p != player]
+            if opponents:
+                opponent_defence = sum(p.race_type.defence_multiplier for p in opponents) / len(opponents)
+            else:
+                opponent_defence = 1.0
+            strength_by_player[player] = sum(
+                calculate_fleet_strength(fleet, opponent_defence)
+                for fleet in fleets_by_player[player]
+            )
+
+        winner = self._choose_combat_winner(players, strength_by_player)
+        damage_taken = self._calculate_combat_damage(strength_by_player)
+        results = self._apply_combat_damage(fleets_by_player, damage_taken)
+
+        star = Star.objects.filter(game=self.game, x=x, y=y).first()
+        location = star if star else (x, y)
+
+        for player in players:
+            result = results[player]
+            factory = CombatMessageFactory(
+                self.game,
+                player,
+                winner=winner,
+                location=location,
+                fleets_destroyed=result['fleets_destroyed'],
+                ships_lost=result['ships_lost'],
+                integrity_lost=result['integrity_lost'],
+                salvage_created=result['salvage_created'],
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
+    def _choose_combat_winner(self, players, strength_by_player):
+        """Choose a winner weighted by strength."""
+        weighted_strengths = {}
+        for player in players:
+            base_strength = strength_by_player[player]
+            luck = player.race_type.luck_multiplier
+            jitter = random.uniform(-COMBAT_LUCK_JITTER, COMBAT_LUCK_JITTER) * luck
+            weighted_strengths[player] = max(0.0, base_strength * (1.0 + jitter))
+
+        total_strength = sum(weighted_strengths.values())
+        if total_strength <= 0:
+            return random.choice(players)
+
+        roll = random.uniform(0, total_strength)
+        cumulative = 0.0
+        for player in players:
+            cumulative += weighted_strengths[player]
+            if roll <= cumulative:
+                return player
+        return players[-1]
+
+    def _calculate_combat_damage(self, strength_by_player):
+        """Calculate damage each player takes, based on opponents' strength."""
+        total_strength = sum(strength_by_player.values())
+        if total_strength <= 0:
+            per_player = COMBAT_DAMAGE_SCALE / max(1, len(strength_by_player))
+            return {player: per_player for player in strength_by_player}
+
+        damage_taken = {}
+        for player, strength in strength_by_player.items():
+            opponent_strength = total_strength - strength
+            damage_taken[player] = COMBAT_DAMAGE_SCALE * (opponent_strength / total_strength)
+        return damage_taken
+
+    def _apply_combat_damage(self, fleets_by_player, damage_taken):
+        """Apply combat damage to fleets and return summary results."""
+        results = {}
+        for player, fleets in fleets_by_player.items():
+            total_ships = sum(fleet.ship_count for fleet in fleets) or 1
+            total_integrity_loss = 0
+            ships_lost = 0
+            fleets_destroyed = 0
+            salvage_created = False
+
+            for fleet in fleets:
+                share = fleet.ship_count / total_ships
+                integrity_loss = int(round(damage_taken[player] * share))
+                if damage_taken[player] > 0 and integrity_loss == 0:
+                    integrity_loss = 1
+
+                total_integrity_loss += integrity_loss
+                old_integrity = fleet.integrity
+                fleet.integrity = max(0, fleet.integrity - integrity_loss)
+
+                if fleet.integrity <= 0:
+                    if self._handle_combat_destruction(fleet):
+                        salvage_created = True
+                    fleets_destroyed += 1
+                    continue
+
+                ship_loss = self._maybe_reduce_ship_count(fleet)
+                if ship_loss:
+                    ships_lost += ship_loss
+
+                if integrity_loss > 0 and self._maybe_create_combat_salvage(fleet, integrity_loss):
+                    salvage_created = True
+
+                fleet.save(update_fields=['integrity', 'ship_count'])
+
+            results[player] = {
+                'integrity_lost': total_integrity_loss,
+                'ships_lost': ships_lost,
+                'fleets_destroyed': fleets_destroyed,
+                'salvage_created': salvage_created,
+            }
+        return results
+
+    def _handle_combat_destruction(self, fleet):
+        """Destroy fleet from combat and create salvage (always)."""
+        salvage_result = self._create_salvage_from_fleet(fleet)
+        fleet.delete()
+        return bool(salvage_result)
+
+    def _maybe_reduce_ship_count(self, fleet):
+        """If integrity is low, there is a chance of losing a ship."""
+        if fleet.integrity >= 50 or fleet.ship_count <= 1:
+            return 0
+        chance = min(COMBAT_SHIP_LOSS_MAX_CHANCE, (50 - fleet.integrity) / 100.0)
+        if roll_chance(chance):
+            fleet.ship_count -= 1
+            return 1
+        return 0
+
+    def _maybe_create_combat_salvage(self, fleet, integrity_loss):
+        """Chance to create a small amount of salvage based on damage dealt."""
+        if not roll_chance(COMBAT_SALVAGE_DAMAGE_CHANCE):
+            return False
+
+        damage_fraction = max(0.0, min(1.0, integrity_loss / 100.0))
+        if damage_fraction == 0:
+            return False
+
+        salvage_dry_mass = int(fleet.dry_mass * damage_fraction * COMBAT_SALVAGE_DAMAGE_FACTOR)
+        salvage_iron = int(fleet.ironium_inventory * damage_fraction * COMBAT_SALVAGE_DAMAGE_FACTOR)
+        salvage_bor = int(fleet.boranium_inventory * damage_fraction * COMBAT_SALVAGE_DAMAGE_FACTOR)
+        salvage_germ = int(fleet.germanium_inventory * damage_fraction * COMBAT_SALVAGE_DAMAGE_FACTOR)
+
+        if salvage_dry_mass == 0 and salvage_iron == 0 and salvage_bor == 0 and salvage_germ == 0:
+            return False
+
+        iron, bor, germ = calculate_salvage_minerals(
+            salvage_dry_mass, salvage_iron, salvage_bor, salvage_germ
+        )
+        if iron == 0 and bor == 0 and germ == 0:
+            return False
+
+        self._create_salvage_at_location(fleet.x, fleet.y, iron, bor, germ)
+        return True
+
+    def _create_salvage_at_location(self, x, y, iron, bor, germ):
+        """Create salvage at location, or deposit on star if present."""
+        from .models import Star, Salvage
+        if iron == 0 and bor == 0 and germ == 0:
+            return None
+
+        star = Star.objects.filter(game=self.game, x=x, y=y).first()
+        if star:
+            star.ironium_inventory += iron
+            star.boranium_inventory += bor
+            star.germanium_inventory += germ
+            star.save()
+            return star
+
+        salvage, created = Salvage.objects.get_or_create(
+            game=self.game, x=x, y=y,
+            defaults={
+                'ironium_inventory': iron,
+                'boranium_inventory': bor,
+                'germanium_inventory': germ,
+            }
+        )
+        if not created:
+            salvage.ironium_inventory += iron
+            salvage.boranium_inventory += bor
+            salvage.germanium_inventory += germ
+            salvage.save()
+        return salvage
 
     def move_fleet(self, fleet):
         """Process fleet orders, with configurable behavior for multiple orders per turn."""

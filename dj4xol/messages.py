@@ -703,6 +703,57 @@ class FleetScuttledMessageFactory(MessageFactory):
             )
 
 
+class CombatMessageFactory(MessageFactory):
+    """Messages for combat resolution."""
+    category = 'COMBAT'
+    priority = True
+    templates = [
+        "Combat at {location}. {winner} prevailed. {losses} {salvage}",
+        "Battle report: {location}. {winner} won. {losses} {salvage}",
+        "Engagement at {location} ended. {winner} holds the field. {losses} {salvage}",
+    ]
+
+    def __init__(self, game, player, winner, location,
+                 fleets_destroyed=0, ships_lost=0, integrity_lost=0,
+                 salvage_created=False, message=None):
+        super().__init__(game, player, message, intensity=-0.2)
+        self.winner = winner
+        self.location = location
+        self.fleets_destroyed = fleets_destroyed
+        self.ships_lost = ships_lost
+        self.integrity_lost = integrity_lost
+        self.salvage_created = salvage_created
+
+    def _format_location(self):
+        if isinstance(self.location, tuple):
+            x, y = self.location
+            return f"({x}, {y})"
+        return map_object_link(self.location)
+
+    def _format_losses(self):
+        parts = []
+        if self.fleets_destroyed:
+            parts.append(f"{self.fleets_destroyed} fleet(s) destroyed")
+        if self.ships_lost:
+            parts.append(f"{self.ships_lost} ship(s) lost")
+        if self.integrity_lost:
+            parts.append(f"{self.integrity_lost}% integrity lost")
+        if not parts:
+            return "No significant losses reported."
+        return "Losses: " + ", ".join(parts) + "."
+
+    def _format_salvage(self):
+        return "Salvage detected." if self.salvage_created else "No salvage detected."
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            location=self._format_location(),
+            winner=self.winner.name,
+            losses=self._format_losses(),
+            salvage=self._format_salvage()
+        )
+
+
 class SalvageCollectedMessageFactory(MessageFactory):
     """Messages for salvage collection via Transfer."""
     category = 'GENERAL'
