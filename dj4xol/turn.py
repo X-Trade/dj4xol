@@ -724,7 +724,7 @@ class GameTurn():
                     # Transfer blocked - stop processing
                     break
 
-            elif order.order_type == 'MOVE':
+            elif order.order_type in ['MOVE', 'INTERCEPT']:
                 # Try to execute move order
                 move_result = self._move_toward_destination(fleet, order)
                 if move_result == 'destroyed':
@@ -759,6 +759,13 @@ class GameTurn():
                 if scuttle_result == 'executed':
                     # Fleet deleted, return None so caller doesn't save
                     return None
+
+            elif order.order_type == 'PATROL':
+                patrol_result = self._execute_patrol_order(fleet, order)
+                if patrol_result == 'executed':
+                    return None
+                elif patrol_result in ['moved', 'blocked']:
+                    break
 
             else:
                 # Unknown order type, just remove it
@@ -846,7 +853,10 @@ class GameTurn():
             'destroyed' if fleet was destroyed by warp damage
         """
         try:
-            x, y = order.get_destination_coordinates()
+            if order.order_type == 'INTERCEPT':
+                x, y = self._get_intercept_destination(order)
+            else:
+                x, y = order.get_destination_coordinates()
         except ValueError:
             return True  # Invalid order, treat as reached to remove it
 
@@ -862,7 +872,7 @@ class GameTurn():
         fleet.heading = degrees(atan2(dx, -dy)) % 360
 
         # Check if fleet can reach destination this turn
-        warp_speed = order.warpfactor if order.order_type == 'MOVE' else 5
+        warp_speed = order.warpfactor if order.order_type in ['MOVE', 'INTERCEPT'] else 5
 
         # Check for warp damage before moving
         damage_result = self._check_warp_damage(fleet, warp_speed, order)
@@ -883,6 +893,34 @@ class GameTurn():
             if (fleet.x, fleet.y) == (x, y):
                 return True
             return False
+
+    def _get_intercept_destination(self, order):
+        """Calculate intercept destination based on target fleet heading/speed."""
+        from math import radians, sin, cos
+
+        if not order.target_fleet:
+            return order.get_destination_coordinates()
+
+        target_fleet = order.target_fleet
+        target_speed = self._get_fleet_current_speed(target_fleet)
+        if target_speed <= 0:
+            return target_fleet.x, target_fleet.y
+
+        theta = radians(target_fleet.heading)
+        dx = sin(theta)
+        dy = -cos(theta)
+        intercept_x = int(target_fleet.x + dx * target_speed)
+        intercept_y = int(target_fleet.y + dy * target_speed)
+        return intercept_x, intercept_y
+
+    def _get_fleet_current_speed(self, fleet):
+        """Return fleet's current movement speed based on its orders."""
+        order = fleet.orders.first()
+        if not order:
+            return 0
+        if order.order_type in ['MOVE', 'INTERCEPT']:
+            return order.warpfactor
+        return 0
 
     def _check_warp_damage(self, fleet, warp_speed, order):
         """Check if fleet takes damage from exceeding safe warp speed.
@@ -1065,6 +1103,8 @@ class GameTurn():
                 transfer_boranium=order.transfer_boranium,
                 transfer_germanium=order.transfer_germanium,
                 transfer_colonists=order.transfer_colonists,
+                patrol_radius=order.patrol_radius,
+                intercept_speed=order.intercept_speed,
             )
 
     def _execute_transfer_order(self, fleet, order):
@@ -1607,6 +1647,91 @@ class GameTurn():
         msg.save()
 
         return 'executed'
+
+    def _execute_patrol_order(self, fleet, order):
+        """Execute a patrol order by converting it to MOVE or INTERCEPT.
+
+        If repeat is enabled, a new patrol order is appended to the queue.
+        """
+        target_x, target_y = self._get_patrol_target_coordinates(order)
+        enemy_fleet = self._find_enemy_fleet_in_radius(
+            fleet.player, target_x, target_y, order.patrol_radius
+        )
+
+        if order.repeat:
+            self._append_patrol_repeat(order, fleet)
+            order.repeat = False
+
+        if enemy_fleet:
+            order.order_type = 'INTERCEPT'
+            order.target_fleet = enemy_fleet
+            order.warpfactor = order.intercept_speed
+            order.save(update_fields=['order_type', 'target_fleet', 'warpfactor', 'repeat'])
+        else:
+            order.order_type = 'MOVE'
+            order.warpfactor = fleet.max_safe_warp
+            order.target_fleet = None
+            order.target_salvage = None
+            order.target_star = None
+            order.x = target_x
+            order.y = target_y
+            order.save(update_fields=[
+                'order_type', 'warpfactor', 'target_fleet', 'target_salvage',
+                'target_star', 'x', 'y', 'repeat'
+            ])
+
+        move_result = self._move_toward_destination(fleet, order)
+        if move_result == 'destroyed':
+            return 'executed'
+        if move_result is True:
+            order.delete()
+            return 'moved'
+        return 'blocked'
+
+    def _append_patrol_repeat(self, order, fleet):
+        """Append a repeat patrol order to the end of the queue."""
+        from .models import FleetOrders
+        FleetOrders.objects.create(
+            game=self.game,
+            fleet=fleet,
+            order_type='PATROL',
+            repeat=True,
+            patrol_radius=order.patrol_radius,
+            intercept_speed=order.intercept_speed,
+            x=order.x,
+            y=order.y,
+            target_star=order.target_star,
+            target_fleet=order.target_fleet,
+            target_salvage=order.target_salvage,
+        )
+
+    def _get_patrol_target_coordinates(self, order):
+        """Get patrol center coordinates from order target."""
+        try:
+            return order.get_destination_coordinates()
+        except ValueError:
+            return order.fleet.x, order.fleet.y
+
+    def _find_enemy_fleet_in_radius(self, player, x, y, radius):
+        """Find nearest enemy fleet within radius of a point."""
+        from .models import Fleet
+        if radius <= 0:
+            return None
+
+        candidates = Fleet.objects.filter(
+            game=self.game
+        ).exclude(player=player)
+
+        nearest = None
+        nearest_dist = None
+        for enemy in candidates:
+            dx = enemy.x - x
+            dy = enemy.y - y
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist <= radius and (nearest_dist is None or dist < nearest_dist):
+                nearest = enemy
+                nearest_dist = dist
+        return nearest
 
     def population_growth(self):
         """Apply population growth/decline to all colonized planets."""

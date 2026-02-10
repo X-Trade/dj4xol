@@ -526,10 +526,12 @@ class FleetOrders(AbstractGameObject):
     """Movement and action orders for a fleet."""
     ORDER_TYPE_CHOICES = [
         ('MOVE', 'Move'),
+        ('INTERCEPT', 'Intercept'),
         ('TRANSFER', 'Transfer'),
         ('COLONISE', 'Colonise'),
         ('MERGE', 'Merge'),
         ('SCUTTLE', 'Scuttle'),
+        ('PATROL', 'Patrol'),
     ]
 
     fleet = models.ForeignKey(Fleet, related_name="orders",
@@ -561,6 +563,10 @@ class FleetOrders(AbstractGameObject):
     transfer_boranium = models.IntegerField(default=0)
     transfer_germanium = models.IntegerField(default=0)
     transfer_colonists = models.IntegerField(default=0)
+
+    # Patrol parameters
+    patrol_radius = models.IntegerField(default=0)
+    intercept_speed = models.IntegerField(default=5)
 
     @property
     def target(self):

@@ -7,6 +7,8 @@
                 <div class="order-item">
                     {% if order.order_type == 'MOVE' or not order.order_type %}
                         <span>Warp {{ order.warpfactor }} to {{ order.target }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
+                    {% elif order.order_type == 'INTERCEPT' %}
+                        <span>Intercept {{ order.target }} at warp {{ order.warpfactor }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
                     {% elif order.order_type == 'TRANSFER' %}
                         {% if order.transfer_type == 'UNLOAD_ALL' %}
                         <span>Unload All at {{ order.target }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
@@ -28,6 +30,8 @@
                         <span>Merge into {{ order.target }}</span>
                     {% elif order.order_type == 'SCUTTLE' %}
                         <span>Scuttle Fleet</span>
+                    {% elif order.order_type == 'PATROL' %}
+                        <span>Patrol {{ order.target }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
                     {% else %}
                         <span>Unknown order type: {{ order.order_type }}</span>
                     {% endif %}
@@ -57,7 +61,7 @@
             <input type="hidden" name="x" value="{{ selection.x }}">
             <input type="hidden" name="y" value="{{ selection.y }}">
             <input type="hidden" name="sel" value="{{ selection.sel }}">
-            <input type="hidden" name="warpfactor" id="warpfactor-input" value="5">
+            <input type="hidden" name="warpfactor" id="warpfactor-input" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
             <input type="hidden" name="transfer_type" id="transfer-type-input" value="LOAD">
             <input type="hidden" name="transfer_target" id="transfer-target-input" value="">
             <input type="hidden" name="transfer_ironium" id="transfer-ironium-input" value="0">
@@ -66,14 +70,18 @@
             <input type="hidden" name="transfer_colonists" id="transfer-colonists-input" value="0">
             <input type="hidden" name="colonise_target" id="colonise-target-input" value="">
             <input type="hidden" name="merge_target" id="merge-target-input" value="">
+            <input type="hidden" name="patrol_radius" id="patrol-radius-input" value="15">
+            <input type="hidden" name="intercept_speed" id="intercept-speed-input" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
 
             <div class="order-type-row">
                 <select id="order-type" class="order-select">
                     <option value="MOVE"{% if not request.GET.order_type or request.GET.order_type == 'MOVE' %} selected{% endif %}>Move to</option>
+                    <option value="INTERCEPT"{% if request.GET.order_type == 'INTERCEPT' %} selected{% endif %}>Intercept</option>
                     <option value="TRANSFER"{% if request.GET.order_type == 'TRANSFER' %} selected{% endif %}>Transfer</option>
                     <option value="COLONISE"{% if request.GET.order_type == 'COLONISE' %} selected{% endif %}>Colonise</option>
                     <option value="MERGE"{% if request.GET.order_type == 'MERGE' %} selected{% endif %}>Merge Fleet</option>
                     <option value="SCUTTLE"{% if request.GET.order_type == 'SCUTTLE' %} selected{% endif %}>Scuttle</option>
+                    <option value="PATROL"{% if request.GET.order_type == 'PATROL' %} selected{% endif %}>Patrol</option>
                 </select>
                 <label class="repeat-checkbox"><input type="checkbox" name="repeat" id="repeat-checkbox"> &#x21bb;</label>
                 <button type="submit" class="order-add-btn" id="add-order-btn" {% if not dest_star_id and not dest_fleet_id and not dest_salvage_id and not dest_x %}disabled{% endif %}>+</button>
@@ -162,8 +170,25 @@
                     <div class="order-param-row">
                         <label for="warp-slider">Speed</label>
                         <div class="speed-row">
-                            <input type="range" id="warp-slider" min="0" max="13" value="5" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
-                            <span id="warp-value" class="warp-value">Warp 5</span>
+                            <input type="range" id="warp-slider" min="0" max="13" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
+                            <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.max_safe_warp|default:5 }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Patrol parameters -->
+                <div id="patrol-params" class="order-type-params" style="display: none;">
+                    <div class="order-param-row">
+                        <label for="patrol-radius">Radius (ly)</label>
+                        <div class="speed-row">
+                            <input type="number" id="patrol-radius" min="0" max="100" value="15">
+                        </div>
+                    </div>
+                    <div class="order-param-row">
+                        <label for="intercept-speed-slider">Intercept Speed</label>
+                        <div class="speed-row">
+                            <input type="range" id="intercept-speed-slider" min="0" max="13" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
+                            <span id="intercept-speed-value" class="warp-value">Warp {{ detail.fleet_cargo.max_safe_warp|default:5 }}</span>
                         </div>
                     </div>
                 </div>
@@ -252,6 +277,7 @@
     var coloniseParams = document.getElementById('colonise-params');
     var mergeParams = document.getElementById('merge-params');
     var scuttleParams = document.getElementById('scuttle-params');
+    var patrolParams = document.getElementById('patrol-params');
     var transferTypeInput = document.getElementById('transfer-type-input');
     var addBtn = document.getElementById('add-order-btn');
     
@@ -259,6 +285,13 @@
     var warpSlider = document.getElementById('warp-slider');
     var warpDisplay = document.getElementById('warp-value');
     var warpInput = document.getElementById('warpfactor-input');
+
+    // Patrol inputs
+    var patrolRadiusInput = document.getElementById('patrol-radius');
+    var patrolRadiusHidden = document.getElementById('patrol-radius-input');
+    var interceptSpeedSlider = document.getElementById('intercept-speed-slider');
+    var interceptSpeedDisplay = document.getElementById('intercept-speed-value');
+    var interceptSpeedInput = document.getElementById('intercept-speed-input');
     
     // Transfer sliders - define at top level
     var transferSliders = ['ironium', 'boranium', 'germanium', 'colonists'];
@@ -428,6 +461,7 @@
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'none';
             if (scuttleParams) scuttleParams.style.display = 'none';
+            if (patrolParams) patrolParams.style.display = 'none';
 
             // Switch from destination to target
             if (destTargetLabel) destTargetLabel.textContent = 'Target';
@@ -445,6 +479,7 @@
             if (coloniseParams) coloniseParams.style.display = 'block';
             if (mergeParams) mergeParams.style.display = 'none';
             if (scuttleParams) scuttleParams.style.display = 'none';
+            if (patrolParams) patrolParams.style.display = 'none';
 
             // Switch to target for colonise
             if (destTargetLabel) destTargetLabel.textContent = 'Target';
@@ -462,6 +497,7 @@
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'block';
             if (scuttleParams) scuttleParams.style.display = 'none';
+            if (patrolParams) patrolParams.style.display = 'none';
 
             // Switch to target for merge
             if (destTargetLabel) destTargetLabel.textContent = 'Merge Into';
@@ -479,6 +515,7 @@
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'none';
             if (scuttleParams) scuttleParams.style.display = 'block';
+            if (patrolParams) patrolParams.style.display = 'none';
 
             // Hide destination row for scuttle
             var destRow = document.getElementById('destination-row');
@@ -486,12 +523,47 @@
 
             // Scuttle doesn't require a target - always enabled
             addBtn.disabled = false;
+        } else if (currentType === 'PATROL') {
+            moveParams.style.display = 'none';
+            transferParams.style.display = 'none';
+            if (coloniseParams) coloniseParams.style.display = 'none';
+            if (mergeParams) mergeParams.style.display = 'none';
+            if (scuttleParams) scuttleParams.style.display = 'none';
+            if (patrolParams) patrolParams.style.display = 'block';
+
+            // Show destination row
+            var destRow = document.getElementById('destination-row');
+            if (destRow) destRow.style.display = '';
+
+            if (destTargetLabel) destTargetLabel.textContent = 'Patrol Center';
+            if (moveDestination) moveDestination.style.display = 'flex';
+            if (transferDestination) transferDestination.style.display = 'none';
+            if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (mergeDestination) mergeDestination.style.display = 'none';
+
+            updateAddButtonState();
+        } else if (currentType === 'INTERCEPT') {
+            moveParams.style.display = 'block';
+            transferParams.style.display = 'none';
+            if (coloniseParams) coloniseParams.style.display = 'none';
+            if (mergeParams) mergeParams.style.display = 'none';
+            if (scuttleParams) scuttleParams.style.display = 'none';
+            if (patrolParams) patrolParams.style.display = 'none';
+
+            if (destTargetLabel) destTargetLabel.textContent = 'Target';
+            if (moveDestination) moveDestination.style.display = 'flex';
+            if (transferDestination) transferDestination.style.display = 'none';
+            if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (mergeDestination) mergeDestination.style.display = 'none';
+
+            updateAddButtonState();
         } else {
             moveParams.style.display = 'block';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'none';
             if (scuttleParams) scuttleParams.style.display = 'none';
+            if (patrolParams) patrolParams.style.display = 'none';
 
             // Show destination row
             var destRow = document.getElementById('destination-row');
@@ -533,6 +605,7 @@
                 if (coloniseParams) coloniseParams.style.display = 'none';
                 if (mergeParams) mergeParams.style.display = 'none';
                 if (scuttleParams) scuttleParams.style.display = 'none';
+                if (patrolParams) patrolParams.style.display = 'none';
 
                 // Show destination row
                 if (destRow) destRow.style.display = '';
@@ -545,12 +618,30 @@
                 if (mergeDestination) mergeDestination.style.display = 'none';
 
                 updateAddButtonState();
+            } else if (type === 'INTERCEPT') {
+                moveParams.style.display = 'block';
+                transferParams.style.display = 'none';
+                if (coloniseParams) coloniseParams.style.display = 'none';
+                if (mergeParams) mergeParams.style.display = 'none';
+                if (scuttleParams) scuttleParams.style.display = 'none';
+                if (patrolParams) patrolParams.style.display = 'none';
+
+                if (destRow) destRow.style.display = '';
+
+                if (destTargetLabel) destTargetLabel.textContent = 'Target';
+                if (moveDestination) moveDestination.style.display = 'flex';
+                if (transferDestination) transferDestination.style.display = 'none';
+                if (coloniseDestination) coloniseDestination.style.display = 'none';
+                if (mergeDestination) mergeDestination.style.display = 'none';
+
+                updateAddButtonState();
             } else if (type === 'TRANSFER') {
                 moveParams.style.display = 'none';
                 transferParams.style.display = 'block';
                 if (coloniseParams) coloniseParams.style.display = 'none';
                 if (mergeParams) mergeParams.style.display = 'none';
                 if (scuttleParams) scuttleParams.style.display = 'none';
+                if (patrolParams) patrolParams.style.display = 'none';
 
                 // Show destination row
                 if (destRow) destRow.style.display = '';
@@ -571,6 +662,7 @@
                 if (coloniseParams) coloniseParams.style.display = 'block';
                 if (mergeParams) mergeParams.style.display = 'none';
                 if (scuttleParams) scuttleParams.style.display = 'none';
+                if (patrolParams) patrolParams.style.display = 'none';
 
                 // Show destination row
                 if (destRow) destRow.style.display = '';
@@ -591,6 +683,7 @@
                 if (coloniseParams) coloniseParams.style.display = 'none';
                 if (mergeParams) mergeParams.style.display = 'block';
                 if (scuttleParams) scuttleParams.style.display = 'none';
+                if (patrolParams) patrolParams.style.display = 'none';
 
                 // Show destination row
                 if (destRow) destRow.style.display = '';
@@ -611,12 +704,30 @@
                 if (coloniseParams) coloniseParams.style.display = 'none';
                 if (mergeParams) mergeParams.style.display = 'none';
                 if (scuttleParams) scuttleParams.style.display = 'block';
+                if (patrolParams) patrolParams.style.display = 'none';
 
                 // Hide destination row for scuttle
                 if (destRow) destRow.style.display = 'none';
 
                 // Scuttle doesn't require a target - always enabled
                 addBtn.disabled = false;
+            } else if (type === 'PATROL') {
+                moveParams.style.display = 'none';
+                transferParams.style.display = 'none';
+                if (coloniseParams) coloniseParams.style.display = 'none';
+                if (mergeParams) mergeParams.style.display = 'none';
+                if (scuttleParams) scuttleParams.style.display = 'none';
+                if (patrolParams) patrolParams.style.display = 'block';
+
+                if (destRow) destRow.style.display = '';
+
+                if (destTargetLabel) destTargetLabel.textContent = 'Patrol Center';
+                if (moveDestination) moveDestination.style.display = 'flex';
+                if (transferDestination) transferDestination.style.display = 'none';
+                if (coloniseDestination) coloniseDestination.style.display = 'none';
+                if (mergeDestination) mergeDestination.style.display = 'none';
+
+                updateAddButtonState();
             }
         });
     }
@@ -689,6 +800,32 @@
         }
         warpSlider.addEventListener('input', updateWarpDisplay);
         updateWarpDisplay();  // Initialise on page load
+    }
+
+    if (patrolRadiusInput && patrolRadiusHidden) {
+        patrolRadiusInput.addEventListener('input', function() {
+            patrolRadiusHidden.value = parseInt(patrolRadiusInput.value) || 0;
+        });
+        patrolRadiusHidden.value = parseInt(patrolRadiusInput.value) || 0;
+    }
+
+    if (interceptSpeedSlider && interceptSpeedDisplay && interceptSpeedInput) {
+        var maxSafeIntercept = parseInt(interceptSpeedSlider.dataset.maxSafeWarp) || 5;
+        function updateInterceptDisplay() {
+            var val = parseInt(interceptSpeedSlider.value);
+            interceptSpeedDisplay.textContent = val === 0 ? 'Stopped' : 'Warp ' + val;
+            interceptSpeedInput.value = val;
+            interceptSpeedDisplay.classList.remove('warp-warning', 'warp-danger');
+            if (val > maxSafeIntercept) {
+                if (val >= 10) {
+                    interceptSpeedDisplay.classList.add('warp-danger');
+                } else {
+                    interceptSpeedDisplay.classList.add('warp-warning');
+                }
+            }
+        }
+        interceptSpeedSlider.addEventListener('input', updateInterceptDisplay);
+        updateInterceptDisplay();
     }
     
     // Transfer sliders

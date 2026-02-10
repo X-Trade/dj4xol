@@ -3999,3 +3999,64 @@ class TestCombat(TestCase):
 
         self.assertGreater(player1.messages.filter(category='COMBAT').count(), 0)
         self.assertGreater(player2.messages.filter(category='COMBAT').count(), 0)
+
+
+class TestInterceptPatrolOrders(TestCase):
+    def _create_two_player_game(self):
+        get_default_race_type()
+        user1 = User.objects.create_user('patrol_p1', 'p1@test.com', 'pass')
+        user2 = User.objects.create_user('patrol_p2', 'p2@test.com', 'pass')
+        account1 = Account.objects.create(django_user=user1)
+        account2 = Account.objects.create(django_user=user2)
+
+        factory = GameFactory()
+        factory.set_map_size(100, 100)
+        factory.set_owner(account1)
+        factory.create_stars(5)
+        game = factory.save()
+        game.joinable = True
+        game.save()
+        player1 = factory.join_player(account1, get_default_race())
+        player2 = factory.join_player(account2, get_default_race())
+        return game, player1, player2
+
+    def test_patrol_repeat_appends_new_patrol(self):
+        """Patrol repeat appends a new patrol and converts current order."""
+        from ..models import FleetOrders
+
+        game, player1, _ = self._create_two_player_game()
+        fleet = Fleet.objects.create(
+            game=game, player=player1, name="Patrol Fleet",
+            x=5, y=5, ship_count=2, integrity=100
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='PATROL', repeat=True,
+            x=50, y=50, patrol_radius=10, intercept_speed=3
+        )
+
+        GameTurn(game).generate_turn()
+
+        patrol_orders = fleet.orders.filter(order_type='PATROL')
+        move_orders = fleet.orders.filter(order_type='MOVE')
+        self.assertEqual(patrol_orders.count(), 1)
+        self.assertEqual(move_orders.count(), 1)
+
+    def test_intercept_order_moves(self):
+        """Intercept behaves like move when target is not a fleet."""
+        from ..models import FleetOrders
+
+        game, player1, _ = self._create_two_player_game()
+        fleet = Fleet.objects.create(
+            game=game, player=player1, name="Interceptor",
+            x=10, y=10, ship_count=1, integrity=100
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='INTERCEPT',
+            x=20, y=10, warpfactor=5
+        )
+
+        GameTurn(game).generate_turn()
+        fleet.refresh_from_db()
+        self.assertNotEqual((fleet.x, fleet.y), (10, 10))
