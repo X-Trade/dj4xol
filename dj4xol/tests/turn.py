@@ -5,7 +5,7 @@ from ..turn import (
     COLONISTS_PER_JOB, BUILDPOINTS_PER_FACTORY, KT_PER_MINE, HOMEWORLD_MIN_YIELD,
     calculate_fleet_strength
 )
-from ..models import ProductionOrder, GameMessage, Fleet, Star, Salvage, Account
+from ..models import ProductionOrder, GameMessage, Fleet, Star, Salvage, Account, Player
 from ..factory import GameFactory
 from django.test import TestCase
 from ._util import default_game, get_default_race, get_default_race_type
@@ -2286,6 +2286,400 @@ class TestFleetTransferOrders(TestCase):
         self.assertEqual(salvage.boranium_inventory, 30)  # 5 + 25
         self.assertEqual(salvage.germanium_inventory, 10)
 
+    def test_transfer_unload_to_space_kills_colonists_no_salvage(self):
+        """Colonists unloaded to space are lost and not added to salvage."""
+        from ..models import FleetOrders, Salvage
+
+        game = default_game()
+        player = game.players.first()
+
+        occupied = {(s.x, s.y) for s in game.stars.all()}
+        target_x, target_y = 12, 12
+        if (target_x, target_y) in occupied:
+            for x in range(0, 100):
+                for y in range(0, 100):
+                    if (x, y) not in occupied:
+                        target_x, target_y = x, y
+                        break
+                else:
+                    continue
+                break
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Colonist Dump",
+            x=target_x,
+            y=target_y
+        )
+        fleet.ironium_inventory = 0
+        fleet.boranium_inventory = 0
+        fleet.germanium_inventory = 0
+        fleet.colonists = 20
+        fleet.save()
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='UNLOAD',
+            transfer_colonists=20,
+            x=target_x,
+            y=target_y
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.colonists, 0)
+        self.assertFalse(Salvage.objects.filter(game=game, x=target_x, y=target_y).exists())
+        self.assertTrue(player.messages.filter(message__icontains="colonists").exists())
+
+    def test_transfer_unload_to_space_minerals_and_colonists(self):
+        """Minerals create salvage; colonists are lost when unloading to space."""
+        from ..models import FleetOrders, Salvage
+
+        game = default_game()
+        player = game.players.first()
+
+        occupied = {(s.x, s.y) for s in game.stars.all()}
+        target_x, target_y = 22, 22
+        if (target_x, target_y) in occupied:
+            for x in range(0, 100):
+                for y in range(0, 100):
+                    if (x, y) not in occupied:
+                        target_x, target_y = x, y
+                        break
+                else:
+                    continue
+                break
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Mixed Dump",
+            x=target_x,
+            y=target_y
+        )
+        fleet.ironium_inventory = 30
+        fleet.boranium_inventory = 10
+        fleet.germanium_inventory = 5
+        fleet.colonists = 15
+        fleet.save()
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='UNLOAD',
+            transfer_ironium=30,
+            transfer_boranium=10,
+            transfer_germanium=5,
+            transfer_colonists=15,
+            x=target_x,
+            y=target_y
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        salvage = Salvage.objects.get(game=game, x=target_x, y=target_y)
+
+        self.assertEqual(fleet.colonists, 0)
+        self.assertEqual(salvage.ironium_inventory, 30)
+        self.assertEqual(salvage.boranium_inventory, 10)
+        self.assertEqual(salvage.germanium_inventory, 5)
+        self.assertTrue(player.messages.filter(message__icontains="colonists").exists())
+
+    def test_transfer_invasion_changes_owner_on_success(self):
+        """Transferring colonists to enemy colony can capture the star."""
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        attacker_race = attacker.race_type
+        attacker_race.population_growth_multiplier = 0
+        attacker_race.save()
+        defender = Player.objects.exclude(id=attacker.id).first()
+        if not defender:
+            other_user = User.objects.create_user('inv_def', 'invdef@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(
+                game=game,
+                account=other_account,
+                race_type=attacker.race_type,
+            )
+        defender_race = defender.race_type
+        defender_race.population_growth_multiplier = 0
+        defender_race.save()
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 2000
+        star.defenses = 0
+        star.save()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name="Invader",
+            x=star.x,
+            y=star.y,
+            colonists=10
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='UNLOAD',
+            transfer_colonists=10
+        )
+
+        GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+
+        self.assertEqual(star.player, attacker)
+        # Invaders 10k - defenders 2k = 8k remaining
+        self.assertEqual(star.colonists, 8000)
+        self.assertEqual(fleet.colonists, 0)
+
+    def test_transfer_invasion_fails_when_defenders_stronger(self):
+        """Transferring colonists to enemy colony fails if defenders are stronger."""
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        attacker_race = attacker.race_type
+        attacker_race.population_growth_multiplier = 0
+        attacker_race.save()
+        defender = Player.objects.exclude(id=attacker.id).first()
+        if not defender:
+            other_user = User.objects.create_user('inv_def2', 'invdef2@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(
+                game=game,
+                account=other_account,
+                race_type=attacker.race_type,
+            )
+        defender_race = defender.race_type
+        defender_race.population_growth_multiplier = 0
+        defender_race.save()
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 20000
+        star.defenses = 0
+        star.save()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name="Invader",
+            x=star.x,
+            y=star.y,
+            colonists=5
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='UNLOAD',
+            transfer_colonists=5
+        )
+
+        GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+
+        self.assertEqual(star.player, defender)
+        # Defenders 20k - invaders 5k = 15k remaining
+        self.assertEqual(star.colonists, 15000)
+        self.assertEqual(fleet.colonists, 0)
+
+    def test_transfer_invasion_defenses_damage_fleet(self):
+        """Planetary defenses should damage the invading fleet."""
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = Player.objects.exclude(id=attacker.id).first()
+        if not defender:
+            other_user = User.objects.create_user('inv_def3', 'invdef3@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(
+                game=game,
+                account=other_account,
+                race_type=attacker.race_type,
+            )
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 1000
+        star.defenses = 5
+        star.save()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name="Invader",
+            x=star.x,
+            y=star.y,
+            colonists=2,
+            integrity=100,
+            ship_count=1
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='UNLOAD',
+            transfer_colonists=2
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        # Defenses should have reduced integrity
+        self.assertLess(fleet.integrity, 100)
+
+    def test_transfer_colonists_to_unowned_star_random_failure(self):
+        """Colonists transferred to unowned star usually fail to colonise."""
+        from ..models import FleetOrders
+        from unittest.mock import patch
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        star = game.stars.exclude(pk=player.homeworld.pk).first()
+        star.player = None
+        star.colonists = 0
+        star.save()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Settlers",
+            x=star.x,
+            y=star.y,
+            colonists=5
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='UNLOAD',
+            transfer_colonists=5
+        )
+
+        with patch('dj4xol.turn.random.random', return_value=0.5):
+            GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+
+        self.assertIsNone(star.player)
+        self.assertEqual(star.colonists, 0)
+        self.assertEqual(fleet.colonists, 0)
+
+    def test_transfer_colonists_to_unowned_star_random_success(self):
+        """Colonists transferred to unowned star can establish a colony."""
+        from ..models import FleetOrders
+        from unittest.mock import patch
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        race = player.race_type
+        race.population_growth_multiplier = 0
+        race.save()
+        star = game.stars.exclude(pk=player.homeworld.pk).first()
+        star.player = None
+        star.colonists = 0
+        star.save()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Settlers",
+            x=star.x,
+            y=star.y,
+            colonists=5
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='UNLOAD',
+            transfer_colonists=5
+        )
+
+        with patch('dj4xol.turn.random.random', return_value=0.01):
+            GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+
+        self.assertEqual(star.player, player)
+        self.assertEqual(star.colonists, 5000)
+        self.assertEqual(fleet.colonists, 0)
+
+    def test_transfer_minerals_to_other_player_generates_message(self):
+        """Mineral transfer to another player's star sends a message to the owner."""
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        player = game.players.first()
+
+        other_player = Player.objects.exclude(id=player.id).first()
+        if not other_player:
+            other_user = User.objects.create_user('gift_owner', 'gift@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            other_player = Player.objects.create(
+                game=game,
+                account=other_account,
+                race_type=player.race_type,
+            )
+
+        star = game.stars.exclude(pk=player.homeworld.pk).first()
+        star.player = other_player
+        star.save()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Trader",
+            x=star.x,
+            y=star.y,
+            ironium_inventory=40,
+            boranium_inventory=20,
+            germanium_inventory=0
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='UNLOAD',
+            transfer_ironium=40,
+            transfer_boranium=20
+        )
+
+        GameTurn(game).generate_turn()
+
+        self.assertTrue(other_player.messages.filter(message__icontains="minerals").exists())
+
     def test_load_transfer_from_star(self):
         """Test loading resources from star to fleet."""
         game = default_game(stars=5, fleets=1)
@@ -2383,8 +2777,13 @@ class TestFleetTransferOrders(TestCase):
         """Test UNLOAD_ALL transfers everything from fleet to star."""
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
+        race = player.race_type
+        race.population_growth_multiplier = 0
+        race.save()
         fleet = game.fleets.first()
         target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+        target_star.player = player
+        target_star.save()
 
         # Position fleet at target star and give it cargo
         fleet.x = target_star.x
@@ -2597,8 +2996,13 @@ class TestFleetTransferOrders(TestCase):
         """Test unloading limited by what fleet actually has."""
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
+        race = player.race_type
+        race.population_growth_multiplier = 0
+        race.save()
         fleet = game.fleets.first()
         target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+        target_star.player = player
+        target_star.save()
 
         # Position fleet at target with limited cargo
         fleet.x = target_star.x
@@ -3343,6 +3747,80 @@ class TestFleetColoniseOrders(TestCase):
                 failed_msg = msg
                 break
         self.assertIsNotNone(failed_msg, "Expected colonise failed message not found")
+
+    def test_colonise_fails_if_star_already_owned_by_self(self):
+        """Colonise should fail when the star is already owned by the same player."""
+        game = default_game(stars=2)
+        player = game.players.first()
+        star = player.homeworld
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Coloniser",
+            x=star.x,
+            y=star.y,
+            colonists=10
+        )
+
+        from ..models import FleetOrders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=star
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertTrue(Fleet.objects.filter(id=fleet.id).exists())
+        self.assertFalse(fleet.orders.filter(order_type='COLONISE').exists())
+        self.assertTrue(player.messages.filter(message__icontains="already").exists())
+
+    def test_colonise_fails_if_star_owned_by_other(self):
+        """Colonise should fail when the star is owned by another player."""
+        game = default_game(stars=2)
+        player = game.players.first()
+
+        other_player = Player.objects.exclude(id=player.id).first()
+        if not other_player:
+            other_user = User.objects.create_user('other_owner', 'o@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            other_player = Player.objects.create(
+                game=game,
+                account=other_account,
+                race_type=player.race_type,
+            )
+
+        star = game.stars.exclude(pk=player.homeworld.pk).first()
+        star.player = other_player
+        star.colonists = 10000
+        star.save()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Coloniser",
+            x=star.x,
+            y=star.y,
+            colonists=10
+        )
+
+        from ..models import FleetOrders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=star
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertTrue(Fleet.objects.filter(id=fleet.id).exists())
+        self.assertFalse(fleet.orders.filter(order_type='COLONISE').exists())
+        self.assertTrue(player.messages.filter(message__icontains=other_player.formal_name).exists())
 
     def test_colonise_fails_without_colonists(self):
         """Colonise order should fail if fleet has no colonists."""

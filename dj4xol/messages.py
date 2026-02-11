@@ -453,24 +453,54 @@ class FleetColonisedMessageFactory(MessageFactory):
     """Messages for successful fleet colonisation."""
     category = 'GENERAL'
     templates = [
-        "{fleet} has established a colony at {star}. Deposited {cargo} and {bonus}kt salvaged materials.",
-        "Colony established at {star} by {fleet}. {cargo} unloaded, {bonus}kt bonus materials recovered.",
-        "{fleet} completed colonisation of {star}. Cargo transferred: {cargo}. Salvage: {bonus}kt.",
+        "{fleet} completed colonisation of {star}, depositing {cargo} on the surface.",
     ]
 
-    def __init__(self, game, player, fleet_name, star, cargo_summary, bonus_materials, message=None):
+    def __init__(self, game, player, fleet_name, star, cargo_summary, message=None):
         super().__init__(game, player, message, intensity=0.5)
         self.fleet_name = fleet_name
         self.star = star
         self.cargo_summary = cargo_summary
-        self.bonus_materials = bonus_materials
 
     def format_message(self):
         return random.choice(self.templates).format(
             fleet=self.fleet_name,
             star=format_map_object(self.star),
             cargo=self.cargo_summary,
-            bonus=self.bonus_materials
+        )
+
+
+class ColoniseFailedAlreadyOwnedMessageFactory(MessageFactory):
+    """Messages for colonisation attempts on already owned stars."""
+    category = 'EXCEPTION'
+    priority = True
+    templates_same = [
+        "{fleet} failed to colonise {star} because we already have a colony there.",
+        "{fleet} could not colonise {star} - the world is already ours.",
+        "{fleet} arrived at {star}, but we already maintain a colony there.",
+    ]
+    templates_other = [
+        "{fleet} failed to colonise {star} because it is already colonized by {race}.",
+        "{fleet} could not colonise {star} - it is owned by {race}.",
+        "{fleet} arrived at {star} but found it already claimed by {race}.",
+    ]
+
+    def __init__(self, game, player, fleet_name, star, same_player=False, message=None):
+        super().__init__(game, player, message, intensity=-0.3)
+        self.fleet_name = fleet_name
+        self.star = star
+        self.same_player = same_player
+
+    def format_message(self):
+        if self.same_player:
+            return random.choice(self.templates_same).format(
+                fleet=self.fleet_name,
+                star=format_map_object(self.star)
+            )
+        return random.choice(self.templates_other).format(
+            fleet=self.fleet_name,
+            star=format_map_object(self.star),
+            race=self.star.player.formal_name if self.star.player else "another race"
         )
 
 
@@ -532,6 +562,159 @@ class ColoniseFailedNoColonistsMessageFactory(MessageFactory):
             star=format_map_object(self.star)
         )
 
+
+class ColonistsLostInSpaceMessageFactory(MessageFactory):
+    """Messages for colonists lost when transferred to empty space."""
+    category = 'EXCEPTION'
+    priority = True
+    templates = [
+        "{fleet} vented {colonists}k colonists into {location}. No survivors.",
+        "{colonists}k colonists from {fleet} were lost in the vacuum of {location}.",
+        "{fleet} released {colonists}k colonists into {location}. They did not survive.",
+    ]
+
+    def __init__(self, game, player, fleet_name, colonists_kt, x, y, message=None):
+        super().__init__(game, player, message, intensity=-0.6)
+        self.fleet_name = fleet_name
+        self.colonists_kt = colonists_kt
+        self.x = x
+        self.y = y
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=self.fleet_name,
+            colonists=self.colonists_kt,
+            location=format_space(self.x, self.y)
+        )
+
+
+class ColonistsFailedToColoniseMessageFactory(MessageFactory):
+    """Messages for colonists transferred to an unowned star failing to colonise."""
+    category = 'EXCEPTION'
+    priority = True
+    templates = [
+        "{colonists}k colonists from {fleet} perished on {star}. The colony did not survive.",
+        "{fleet} delivered {colonists}k colonists to {star}, but the settlement failed.",
+        "{colonists}k colonists sent to {star} from {fleet} could not sustain a colony.",
+    ]
+
+    def __init__(self, game, player, fleet_name, colonists_kt, star, message=None):
+        super().__init__(game, player, message, intensity=-0.6)
+        self.fleet_name = fleet_name
+        self.colonists_kt = colonists_kt
+        self.star = star
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=self.fleet_name,
+            colonists=self.colonists_kt,
+            star=format_map_object(self.star)
+        )
+
+
+class ColonistsUnexpectedColonyMessageFactory(MessageFactory):
+    """Messages for unexpected colonisation via transfer."""
+    category = 'GENERAL'
+    priority = True
+    templates = [
+        "{fleet} unexpectedly established a colony at {star} with {colonists}k colonists.",
+        "Against the odds, {colonists}k colonists from {fleet} founded a colony at {star}.",
+    ]
+
+    def __init__(self, game, player, fleet_name, colonists_kt, star, message=None):
+        super().__init__(game, player, message, intensity=0.2)
+        self.fleet_name = fleet_name
+        self.colonists_kt = colonists_kt
+        self.star = star
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=self.fleet_name,
+            colonists=self.colonists_kt,
+            star=format_map_object(self.star)
+        )
+
+
+class MineralGiftMessageFactory(MessageFactory):
+    """Messages for minerals gifted to another player's star."""
+    category = 'DIPLOMATIC'
+    priority = True
+    templates = [
+        "{fleet} deposited minerals on {star}: {cargo}.",
+        "A foreign fleet delivered minerals to {star}: {cargo}.",
+        "{fleet} left a mineral shipment on {star}: {cargo}.",
+    ]
+
+    def __init__(self, game, player, fleet_name, star, iron, bor, germ, message=None):
+        super().__init__(game, player, message, intensity=0.2)
+        self.fleet_name = fleet_name
+        self.star = star
+        self.iron = iron
+        self.bor = bor
+        self.germ = germ
+
+    def _format_cargo(self):
+        parts = []
+        if self.iron > 0:
+            parts.append(f"{self.iron}kt Ironium")
+        if self.bor > 0:
+            parts.append(f"{self.bor}kt Boranium")
+        if self.germ > 0:
+            parts.append(f"{self.germ}kt Germanium")
+        return ", ".join(parts) if parts else "no minerals"
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=self.fleet_name,
+            star=format_map_object(self.star),
+            cargo=self._format_cargo()
+        )
+
+
+class InvasionReportMessageFactory(MessageFactory):
+    """Messages for invasions (attacker/defender)."""
+    category = 'EXCEPTION'
+    priority = True
+    templates_attacker_win = [
+        "Invasion success at {star}. We lost {attacker_losses} colonists and {fleet_losses}. Remaining forces secured the colony.",
+        "Our invasion of {star} succeeded. {attacker_losses} colonists and {fleet_losses} lost.",
+    ]
+    templates_attacker_fail = [
+        "Invasion failed at {star}. We lost {attacker_losses} colonists and {fleet_losses}.",
+        "Our invasion of {star} was repelled. {attacker_losses} colonists and {fleet_losses} lost.",
+    ]
+    templates_defender_win = [
+        "Invasion at {star} repelled. We lost {defender_losses} colonists.",
+        "Our forces held {star}. Defender losses: {defender_losses} colonists.",
+    ]
+    templates_defender_fail = [
+        "Invasion at {star} succeeded. We lost {defender_losses} colonists and the colony was captured.",
+        "{star} has fallen after an invasion. Defender losses: {defender_losses} colonists.",
+    ]
+
+    def __init__(self, game, player, star, attacker_won, attacker_losses, defender_losses,
+                 fleet_losses_desc, perspective='attacker', message=None):
+        super().__init__(game, player, message, intensity=-0.6)
+        self.star = star
+        self.attacker_won = attacker_won
+        self.attacker_losses = attacker_losses
+        self.defender_losses = defender_losses
+        self.fleet_losses_desc = fleet_losses_desc
+        self.perspective = perspective
+
+    def format_message(self):
+        if self.perspective == 'attacker':
+            templates = self.templates_attacker_win if self.attacker_won else self.templates_attacker_fail
+            return random.choice(templates).format(
+                star=format_map_object(self.star),
+                attacker_losses=f"{self.attacker_losses:,}",
+                fleet_losses=self.fleet_losses_desc
+            )
+        templates = self.templates_defender_fail if self.attacker_won else self.templates_defender_win
+        return random.choice(templates).format(
+            star=format_map_object(self.star),
+            defender_losses=f"{self.defender_losses:,}"
+        )
 
 class FleetWarpDamageMessageFactory(MessageFactory):
     """Messages for fleet damage from exceeding safe warp speed."""
