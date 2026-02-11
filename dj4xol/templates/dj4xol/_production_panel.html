@@ -68,7 +68,7 @@ function positionTooltip(e, item) {
     var tooltip = item.querySelector('.order-tooltip');
     tooltip.style.display = 'block';
     tooltip.style.left = (e.clientX + 12) + 'px';
-    tooltip.style.top = (e.clientY - tooltip.offsetHeight - 8) + 'px';
+    tooltip.style.top = (e.clientY + 12) + 'px';
 }
 function hideTooltip(item) {
     var tooltip = item.querySelector('.order-tooltip');
