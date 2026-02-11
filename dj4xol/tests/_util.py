@@ -18,7 +18,6 @@ def get_default_race():
         name='Tester',
         defaults={
             'plural_name': 'Testers',
-            'formal_name': 'The Testers',
             'race_type': get_default_race_type()
         }
     )

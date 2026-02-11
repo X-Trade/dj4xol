@@ -253,7 +253,6 @@ class GameFactory():
             account=account,
             name=race.name,
             plural_name=race.plural_name,
-            formal_name=race.formal_name,
             homeworld_name=race.homeworld_name,
             race_type=race.race_type,
         )

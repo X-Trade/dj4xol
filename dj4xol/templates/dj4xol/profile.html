@@ -2,7 +2,7 @@
 <html>
     <head>
         <meta charset="utf-8">
-        <title>Profile - {{ account.alias }}</title>
+        <title>4x Profile - {{ account.alias }}</title>
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
         {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
@@ -10,7 +10,7 @@
     </head>
     <body>
         <div class="title-bar">
-            <span class="title">Profile</span>
+            <span class="title">4x Profile</span>
             <span class="tagline">{{ account.alias }}</span>
             <div class="nav-menu">
                 <button class="hamburger" id="hamburger-btn" aria-label="Menu">
@@ -27,8 +27,8 @@
         <div class="columns two-column">
             <div class="column column-left">
                 <div class="panel no-transition open" data-panel="account">
-                    <h2><span>Account Details</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <h2><span>4x Profile Details</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div class="panel-body panel-body-spread">
                         <table class="profile-table">
                             <tr>
                                 <th>Username</th>
@@ -46,6 +46,12 @@
                                 <th>Email</th>
                                 <td>{{ account.email }}</td>
                             </tr>
+                            {% if account.website_url %}
+                            <tr>
+                                <th>Website</th>
+                                <td>{{ account.website_url }}</td>
+                            </tr>
+                            {% endif %}
                             <tr>
                                 <th>Member Since</th>
                                 <td>{{ account.django_user.date_joined|date:"d M Y" }}</td>
@@ -74,7 +80,7 @@
             <div class="column column-right">
                 <div class="panel no-transition open" data-panel="games">
                     <h2><span>Games Playing ({{ games_playing|length }})</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content"><div class="panel-body panel-body-spread">
                         {% if games_playing %}
                         <ul class="game-list">
                         {% for game in games_playing %}
@@ -87,6 +93,9 @@
                         {% else %}
                         <p class="no-items">Not playing in any games.</p>
                         {% endif %}
+                        <div class="panel-footer">
+                            <a href="{% url 'dj4xol:create_game' %}">Create New Game</a>
+                        </div>
                     </div></div>
                 </div>
 
@@ -108,7 +117,7 @@
 
                 <div class="panel no-transition open" data-panel="races">
                     <h2><span>Custom Races ({{ races|length }})</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content"><div class="panel-body panel-body-spread">
                         {% if races %}
                         <ul class="game-list">
                         {% for race in races %}
@@ -121,7 +130,9 @@
                         {% else %}
                         <p class="no-items">No custom races created.</p>
                         {% endif %}
-                        <p><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></p>
+                        <div class="panel-footer">
+                            <a href="{% url 'dj4xol:create_race' %}">Create New Race</a>
+                        </div>
                     </div></div>
                 </div>
             </div>
@@ -159,6 +170,16 @@
                     });
                 }
             });
+
+            // LCARS panel colour cycling across columns
+            if (document.body.classList.contains('lcars')) {
+                var variants = ['lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3'];
+                var panelsList = document.querySelectorAll('.columns .panel');
+                panelsList.forEach(function(panel, index) {
+                    panel.classList.remove('lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3');
+                    panel.classList.add(variants[index % variants.length]);
+                });
+            }
 
             // Theme selection
             var themeOptions = document.querySelectorAll('.theme-option');

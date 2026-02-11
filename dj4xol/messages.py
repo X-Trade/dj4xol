@@ -158,7 +158,7 @@ class DiplomaticMessageFactory(MessageFactory):
         self.encounter_player = encounter_player
 
     def format_message(self):
-        return random.choice(self.templates).format(race_formal=self.encounter_player.formal_name,
+        return random.choice(self.templates).format(race_formal=self.encounter_player.name,
                                                     adverb=self._format_adverb(),
                                                     verb=self._format_verb())
 
@@ -500,7 +500,7 @@ class ColoniseFailedAlreadyOwnedMessageFactory(MessageFactory):
         return random.choice(self.templates_other).format(
             fleet=self.fleet_name,
             star=format_map_object(self.star),
-            race=self.star.player.formal_name if self.star.player else "another race"
+            race=self.star.player.name if self.star.player else "another race"
         )
 
 
@@ -1028,7 +1028,7 @@ class FirstContactFleetMessageFactory(MessageFactory):
         msg = random.choice(self.templates).format(
             fleet=format_map_object(self.fleet),
             location=format_space(self.other_fleet.x, self.other_fleet.y),
-            race=self.other_fleet.player.formal_name
+            race=self.other_fleet.player.name
         )
         if self.first_any:
             msg += self.first_contact_suffix
@@ -1056,7 +1056,7 @@ class FirstContactStarMessageFactory(MessageFactory):
         msg = random.choice(self.templates).format(
             fleet=format_map_object(self.fleet),
             star=format_map_object(self.star),
-            race=self.star.player.formal_name
+            race=self.star.player.name
         )
         if self.first_any:
             msg += self.first_contact_suffix

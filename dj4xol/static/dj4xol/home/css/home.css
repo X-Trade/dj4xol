@@ -55,6 +55,61 @@ body {
     padding-top: 10px;
 }
 
+/* Onboarding pages - allow full width for hint columns */
+.onboarding .columns.single-column {
+    max-width: 800px;
+    margin: 0 auto;
+    grid-template-columns: minmax(324px, 1fr);
+    justify-content: stretch;
+}
+
+.onboarding .profile-table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+.onboarding .profile-table th {
+    width: 18%;
+    vertical-align: top;
+}
+
+.onboarding .profile-table td:nth-child(2) {
+    width: 32%;
+    vertical-align: top;
+}
+
+.onboarding .profile-table td.hint {
+    width: 50%;
+    vertical-align: top;
+    padding-left: 16px;
+}
+
+.onboarding .profile-table input,
+.onboarding .profile-table select,
+.onboarding .profile-table textarea {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.form-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+    gap: 8px;
+}
+
+.form-nav .nav-button,
+.form-nav .button-link {
+    display: inline-block;
+    padding: 6px 10px;
+    border: 1px solid #666;
+    background: #333;
+    color: #fff;
+    text-decoration: none;
+    cursor: pointer;
+}
+
 /* Two column layout for homepage */
 .columns.two-column {
     grid-template-columns: 1fr 1fr;
@@ -100,6 +155,24 @@ body {
 
 .game-list li:last-child {
     border-bottom: none;
+}
+
+.panel-footer {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #333;
+    text-align: right;
+    font-size: 0.9em;
+}
+
+.panel-body-spread {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
+
+.panel-body-spread .panel-footer {
+    margin-top: auto;
 }
 
 .game-list li > a:first-child,

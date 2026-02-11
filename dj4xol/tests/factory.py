@@ -12,7 +12,7 @@ class testGameFactory(TestCase):
         )
         self.races = [
             ServerRace.objects.create(
-                name=n, plural_name=n+'s', formal_name='The '+n, race_type=self.race_type
+                name=n, plural_name=n+'s', race_type=self.race_type
             ) for n in ['Humanoid', 'Roboticon']
         ]
         self.accounts = [
