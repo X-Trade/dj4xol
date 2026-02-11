@@ -470,7 +470,7 @@ class DetailBuilder():
         if not self.player or self.selected_obj.player != self.player:
             return []
         orders = []
-        for o in self.selected_obj.orders.all():
+        for o in self.selected_obj.orders.order_by('position', 'id'):
             target = None
             obj, x, y, kind = o.get_actual_target()
             if kind in ['star', 'fleet', 'salvage'] and obj:

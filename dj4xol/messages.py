@@ -773,6 +773,22 @@ class SalvageCollectedMessageFactory(MessageFactory):
         self.bor = bor
         self.germ = germ
 
+    def _format_cargo(self):
+        parts = []
+        if self.iron > 0:
+            parts.append(f"{self.iron}kt ironium")
+        if self.bor > 0:
+            parts.append(f"{self.bor}kt boranium")
+        if self.germ > 0:
+            parts.append(f"{self.germ}kt germanium")
+        return ", ".join(parts) if parts else "salvage"
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=map_object_link(self.fleet),
+            cargo=self._format_cargo()
+        )
+
 
 class FirstContactFleetMessageFactory(MessageFactory):
     """Messages for first contact with an enemy fleet."""

@@ -458,6 +458,7 @@ class GameTurn():
         # Get fleet IDs first, then fetch fresh for each processing
         # This ensures we see changes made by other fleet's transfers
         fleet_ids = list(self.game.fleets.values_list('id', flat=True))
+        random.shuffle(fleet_ids)
         for fleet_id in fleet_ids:
             try:
                 fleet = self.game.fleets.get(id=fleet_id)
@@ -775,7 +776,7 @@ class GameTurn():
         # Move orders: execute once and stop processing (blocking)
 
         # Snapshot all current orders to prevent processing repeat orders created this turn
-        orders_to_process = list(fleet.orders.all())
+        orders_to_process = list(fleet.orders.order_by('position', 'id'))
 
         for order in orders_to_process:
             # Check if order still exists (might have been deleted by previous processing)
@@ -850,7 +851,7 @@ class GameTurn():
         max_orders_per_turn = 10  # Prevent infinite loops
 
         while processed_orders < max_orders_per_turn:
-            order = fleet.orders.first()
+            order = fleet.orders.order_by('position', 'id').first()
             if not order:
                 break
 
@@ -965,8 +966,16 @@ class GameTurn():
             # Fleet moves toward destination but doesn't reach it
             normalised_vector = vector / distance
             new_position = position + (normalised_vector * warp_speed)
-            fleet.x = int(new_position[0])
-            fleet.y = int(new_position[1])
+            new_x = int(new_position[0])
+            new_y = int(new_position[1])
+            # Ensure progress even with low warp + diagonal movement
+            if new_x == fleet.x and new_y == fleet.y:
+                step_x = 0 if vector[0] == 0 else (1 if vector[0] > 0 else -1)
+                step_y = 0 if vector[1] == 0 else (1 if vector[1] > 0 else -1)
+                new_x = fleet.x + step_x
+                new_y = fleet.y + step_y
+            fleet.x = new_x
+            fleet.y = new_y
             if (fleet.x, fleet.y) == (x, y):
                 if is_intercept:
                     target = order.target_fleet
@@ -996,7 +1005,7 @@ class GameTurn():
             return target_fleet.x, target_fleet.y
 
         try:
-            target_order = target_fleet.orders.first()
+            target_order = target_fleet.orders.order_by('position', 'id').first()
             if target_order:
                 _, dest_x, dest_y, kind = target_order.get_actual_target()
                 if kind in ['invalid', 'none']:
@@ -1015,7 +1024,7 @@ class GameTurn():
 
     def _get_fleet_current_speed(self, fleet):
         """Return fleet's current movement speed based on its orders."""
-        order = fleet.orders.first()
+        order = fleet.orders.order_by('position', 'id').first()
         if not order:
             return 0
         if order.order_type in ['MOVE', 'INTERCEPT']:
@@ -1230,8 +1239,12 @@ class GameTurn():
 
         # Get the target object based on order parameters
         target_obj, target_x, target_y, target_kind = order.get_actual_target()
-        if target_kind in ['invalid', 'none']:
+        if target_kind == 'none':
             return 'waiting'
+
+        if target_kind == 'space':
+            self._transfer_with_space(fleet, order, target_x, target_y)
+            return 'executed'
 
         if order.target_star:
             target_obj = order.target_star
@@ -1253,18 +1266,7 @@ class GameTurn():
                 print(f"Warning: Salvage coordinates mismatch")
 
         else:
-            # Transfer to coordinates - look for objects there
-            possible_targets = list(self.game.stars.filter(x=target_x, y=target_y))
-            if possible_targets:
-                target_obj = possible_targets[0]  # Use first star found
-            else:
-                # Check for salvage at coordinates
-                salvage = self.game.salvages.filter(x=target_x, y=target_y).first()
-                if salvage:
-                    target_obj = salvage
-                else:
-                    print(f"No transfer target found at coordinates ({target_x}, {target_y})")
-                    return 'waiting'  # Wait for a target to appear
+            return 'waiting'
 
         # Verify fleet is actually at the transfer location
         if fleet.x != target_x or fleet.y != target_y:
@@ -1284,6 +1286,35 @@ class GameTurn():
         else:
             print(f"Transfer to {type(target_obj)} not yet implemented")
             return 'executed'  # Remove unsupported order
+
+    def _transfer_with_space(self, fleet, order, target_x, target_y):
+        """Execute transfer to empty space (creates/updates salvage)."""
+        if order.transfer_type not in ('UNLOAD', 'UNLOAD_ALL'):
+            return
+
+        if order.transfer_type == 'UNLOAD_ALL':
+            ironium_transfer = fleet.ironium_inventory
+            boranium_transfer = fleet.boranium_inventory
+            germanium_transfer = fleet.germanium_inventory
+            colonists_transfer = fleet.colonists
+        else:
+            ironium_transfer = min(order.transfer_ironium, fleet.ironium_inventory)
+            boranium_transfer = min(order.transfer_boranium, fleet.boranium_inventory)
+            germanium_transfer = min(order.transfer_germanium, fleet.germanium_inventory)
+            colonists_transfer = min(order.transfer_colonists, fleet.colonists)
+
+        if ironium_transfer == 0 and boranium_transfer == 0 and germanium_transfer == 0 and colonists_transfer == 0:
+            return
+
+        fleet.ironium_inventory -= ironium_transfer
+        fleet.boranium_inventory -= boranium_transfer
+        fleet.germanium_inventory -= germanium_transfer
+        fleet.colonists -= colonists_transfer
+        fleet.save()
+
+        if ironium_transfer or boranium_transfer or germanium_transfer:
+            self._create_salvage_at_location(target_x, target_y,
+                                             ironium_transfer, boranium_transfer, germanium_transfer)
 
     def _transfer_with_star(self, fleet, order, star):
         """Execute transfer between fleet and star."""

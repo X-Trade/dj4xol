@@ -112,12 +112,14 @@
                         {% elif detail.transfer_targets.display_mode == 'empty' %}
                             <!-- Empty space - show coordinates as readonly text matching dest-display style -->
                             <span class="dest-display"><em>{{ detail.transfer_targets.default_target }}</em></span>
-                            <input type="hidden" id="empty-target-value" data-target="">
+                            <input type="hidden" id="empty-target-value" data-target="space" data-x="{{ detail.transfer_targets.location.0 }}" data-y="{{ detail.transfer_targets.location.1 }}">
                         {% else %}
                             <!-- Multiple targets - show as dropdown -->
                             <select id="transfer-target" name="transfer_target" class="transfer-target-select">
                                 {% for obj in detail.transfer_targets.targets %}
-                                    {% if obj.type == 'star' %}
+                                    {% if obj.type == 'space' %}
+                                        <option value="space" data-x="{{ detail.transfer_targets.location.0 }}" data-y="{{ detail.transfer_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Space)</option>
+                                    {% elif obj.type == 'star' %}
                                         <option value="star:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Star)</option>
                                     {% elif obj.type == 'fleet' %}
                                         <option value="fleet:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
@@ -134,11 +136,13 @@
                             <input type="hidden" id="patrol-single-target-value" data-target="{% if detail.patrol_targets.targets.0.type == 'star' %}star:{{ detail.patrol_targets.targets.0.short_id }}{% elif detail.patrol_targets.targets.0.type == 'fleet' %}fleet:{{ detail.patrol_targets.targets.0.short_id }}{% endif %}">
                         {% elif detail.patrol_targets.display_mode == 'empty' %}
                             <span class="dest-display"><em>{{ detail.patrol_targets.default_target }}</em></span>
-                            <input type="hidden" id="patrol-empty-target-value" data-target="empty" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}">
+                            <input type="hidden" id="patrol-empty-target-value" data-target="space" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}">
                         {% else %}
                             <select id="patrol-target" name="patrol_target" class="transfer-target-select">
                                 {% for obj in detail.patrol_targets.targets %}
-                                    {% if obj.type == 'star' %}
+                                    {% if obj.type == 'space' %}
+                                        <option value="space" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Space)</option>
+                                    {% elif obj.type == 'star' %}
                                         <option value="star:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Star)</option>
                                     {% elif obj.type == 'fleet' %}
                                         <option value="fleet:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
@@ -384,6 +388,12 @@
         var emptyTargetValue = document.getElementById('empty-target-value');
         if (emptyTargetValue) {
             transferTargetInput.value = emptyTargetValue.getAttribute('data-target');
+            var x = emptyTargetValue.getAttribute('data-x');
+            var y = emptyTargetValue.getAttribute('data-y');
+            if (targetXInput && targetYInput) {
+                targetXInput.value = x;
+                targetYInput.value = y;
+            }
             return;
         }
     }
@@ -837,6 +847,13 @@
     if (transferTargetSelect && transferTargetInput) {
         transferTargetSelect.addEventListener('change', function() {
             transferTargetInput.value = this.value;
+            var selected = transferTargetSelect.options[transferTargetSelect.selectedIndex];
+            if (selected && selected.value === 'space') {
+                if (targetXInput && targetYInput) {
+                    targetXInput.value = selected.getAttribute('data-x') || '';
+                    targetYInput.value = selected.getAttribute('data-y') || '';
+                }
+            }
             updateAddButtonStateTransfer();
         });
     }
@@ -846,6 +863,13 @@
     if (patrolTargetSelect && patrolTargetInput) {
         patrolTargetSelect.addEventListener('change', function() {
             patrolTargetInput.value = this.value;
+            var selected = patrolTargetSelect.options[patrolTargetSelect.selectedIndex];
+            if (selected && selected.value === 'space') {
+                if (targetXInput && targetYInput) {
+                    targetXInput.value = selected.getAttribute('data-x') || '';
+                    targetYInput.value = selected.getAttribute('data-y') || '';
+                }
+            }
             updateAddButtonStatePatrol();
         });
     }

@@ -411,6 +411,9 @@ class Salvage(AbstractMapObject):
         """Salvage is neutral - no owner."""
         return None
 
+    class Meta:
+        unique_together = [['game', 'x', 'y']]
+
 
 class Fleet(AbstractMapObject):
     """A group of ships traveling together."""
@@ -538,6 +541,7 @@ class FleetOrders(AbstractGameObject):
             on_delete=models.CASCADE)
     order_type = models.CharField(max_length=10, choices=ORDER_TYPE_CHOICES, default='MOVE')
     repeat = models.BooleanField(default=False)
+    position = models.IntegerField(default=0)
 
     # Movement parameters
     warpfactor = models.IntegerField(default=0,
@@ -644,6 +648,14 @@ class FleetOrders(AbstractGameObject):
             return self.x, self.y
         else:
             raise ValueError(f"Invalid order {self.id} - no valid destination")
+
+    def save(self, *args, **kwargs):
+        if self.pk is None and (self.position is None or self.position == 0):
+            max_pos = FleetOrders.objects.filter(
+                fleet=self.fleet
+            ).aggregate(models.Max('position'))['position__max'] or 0
+            self.position = max_pos + 1
+        super(FleetOrders, self).save(*args, **kwargs)
 
 
 class GameMessage(AbstractGameObject):
