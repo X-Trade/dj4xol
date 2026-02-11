@@ -733,8 +733,8 @@ class TestEconomicCalculations(TestCase):
         self.assertGreater(total_minerals, 0)
 
 
-class TestFleetTransferOrders(TestCase):
-    """Test fleet transfer order functionality."""
+class TestFleetTransferOrderExecution(TestCase):
+    """Test fleet transfer order execution and movement behavior."""
     
     def test_transfer_order_creation(self):
         """Test creation of transfer orders with all parameters."""
@@ -1353,61 +1353,88 @@ class TestFleetTransferOrders(TestCase):
         GameTurn(game).generate_turn()
         self.assertFalse(fleet.orders.filter(id=order.id).exists())
         self.assertFalse(fleet.orders.filter(order_type='MOVE', repeat=True).exists())
-    
-    def test_multiple_instant_transfers(self):
-        """Test multiple transfer orders executing in same turn."""
-        from ..models import FleetOrders, Fleet
-        
-        game = default_game()
-        player = game.players.first()
-        star = player.homeworld
-        
-        # Set up star with resources
-        star.ironium_inventory = 2000
-        star.boranium_inventory = 2000
-        star.save()
-        
-        fleet = Fleet.objects.create(
-            game=game,
-            player=player,
-            name="Multi-Transfer Fleet",
-            x=star.x,
-            y=star.y
+
+
+class TestFirstContactMessages(TestCase):
+    def _create_two_player_game(self):
+        get_default_race_type()
+        user1 = User.objects.create_user('contact_p1', 'c1@test.com', 'pass')
+        user2 = User.objects.create_user('contact_p2', 'c2@test.com', 'pass')
+        account1 = Account.objects.create(django_user=user1)
+        account2 = Account.objects.create(django_user=user2)
+
+        factory = GameFactory()
+        factory.set_map_size(100, 100)
+        factory.set_owner(account1)
+        factory.create_stars(5)
+        game = factory.save()
+        game.joinable = True
+        game.save()
+        player1 = factory.join_player(account1, get_default_race())
+        player2 = factory.join_player(account2, get_default_race())
+        return game, player1, player2
+
+    def test_first_contact_star_message(self):
+        """First contact with an enemy star sends a diplomatic priority message."""
+        game, player1, player2 = self._create_two_player_game()
+        star = game.stars.exclude(player=player1).exclude(player__isnull=True).first()
+        if not star:
+            star = game.stars.exclude(player=player1).first()
+            star.player = player2
+            star.save()
+
+        Fleet.objects.create(
+            game=game, player=player1, name="Scout",
+            x=star.x, y=star.y
         )
-        
-        # Create multiple transfer orders
-        FleetOrders.objects.create(
-            game=game,
-            fleet=fleet,
-            order_type='TRANSFER',
-            target_star=star,
-            transfer_type='LOAD',
-            transfer_ironium=500
-        )
-        
-        FleetOrders.objects.create(
-            game=game,
-            fleet=fleet,
-            order_type='TRANSFER',
-            target_star=star,
-            transfer_type='LOAD',
-            transfer_boranium=300
-        )
-        
-        # Generate turn - both should execute instantly
+
         GameTurn(game).generate_turn()
-        
-        fleet.refresh_from_db()
-        star.refresh_from_db()
-        
-        # Both transfers should have executed
-        self.assertEqual(fleet.ironium_inventory, 500)
-        self.assertEqual(fleet.boranium_inventory, 300)
-        self.assertEqual(star.ironium_inventory, 1500)
-        self.assertEqual(star.boranium_inventory, 1700)
-        
-        # No orders should remain
-        self.assertEqual(fleet.orders.count(), 0)
+        msg = player1.messages.filter(category='DIPLOMATIC', priority=True).order_by('-id').first()
+        self.assertIsNotNone(msg)
+
+    def test_first_contact_fleet_message(self):
+        """First contact with an enemy fleet sends a diplomatic priority message."""
+        game, player1, player2 = self._create_two_player_game()
+        x, y = 10, 10
+
+        Fleet.objects.create(
+            game=game, player=player1, name="Scout",
+            x=x, y=y
+        )
+        Fleet.objects.create(
+            game=game, player=player2, name="Stranger",
+            x=x, y=y
+        )
+
+        GameTurn(game).generate_turn()
+        msg = player1.messages.filter(category='DIPLOMATIC', priority=True).order_by('-id').first()
+        self.assertIsNotNone(msg)
+
+
+class TestHabitableWorldMessages(TestCase):
+    def test_habitable_world_message_once(self):
+        """Habitable world message should only fire on first report."""
+        game = default_game(stars=1)
+        player = game.players.first()
+        star = game.stars.first()
+        star.gravity = 1.0
+        star.temperature = 1.0
+        star.radiation = 1.0
+        star.player = None
+        star.save()
+
+        Fleet.objects.create(
+            game=game, player=player, name="Scout",
+            x=star.x, y=star.y
+        )
+
+        GameTurn(game).generate_turn()
+        count_after_first = player.messages.filter(category='ENVIRONMENTAL').count()
+        self.assertGreater(count_after_first, 0)
+
+        GameTurn(game).generate_turn()
+        count_after_second = player.messages.filter(category='ENVIRONMENTAL').count()
+        self.assertEqual(count_after_first, count_after_second)
 
 
 class TestFleetOrdersRepeat(TestCase):
@@ -2017,6 +2044,62 @@ class TestProductionProgress(TestCase):
 
 class TestFleetTransferOrders(TestCase):
     """Test fleet transfer order functionality."""
+
+    def test_multiple_instant_transfers(self):
+        """Test multiple transfer orders executing in same turn."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        # Set up star with resources
+        star.ironium_inventory = 2000
+        star.boranium_inventory = 2000
+        star.save()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Multi-Transfer Fleet",
+            x=star.x,
+            y=star.y,
+            cargo_capacity=1000
+        )
+
+        # Create multiple transfer orders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='LOAD',
+            transfer_ironium=500
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='LOAD',
+            transfer_boranium=300
+        )
+
+        # Generate turn - both should execute instantly
+        GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        star.refresh_from_db()
+
+        # Both transfers should have executed
+        self.assertEqual(fleet.ironium_inventory, 500)
+        self.assertEqual(fleet.boranium_inventory, 300)
+        self.assertEqual(star.ironium_inventory, 1500)
+        self.assertEqual(star.boranium_inventory, 1700)
+
+        # No orders should remain
+        self.assertEqual(fleet.orders.count(), 0)
     
     def test_transfer_order_waits_at_destination(self):
         """Transfer orders wait for fleet to be at destination (they don't move fleets)."""

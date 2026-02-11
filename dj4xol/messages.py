@@ -773,20 +773,82 @@ class SalvageCollectedMessageFactory(MessageFactory):
         self.bor = bor
         self.germ = germ
 
-    def _format_cargo(self):
-        parts = []
-        if self.iron > 0:
-            parts.append(f"{self.iron}kt ironium")
-        if self.bor > 0:
-            parts.append(f"{self.bor}kt boranium")
-        if self.germ > 0:
-            parts.append(f"{self.germ}kt germanium")
-        return ", ".join(parts) if parts else "nothing"
+
+class FirstContactFleetMessageFactory(MessageFactory):
+    """Messages for first contact with an enemy fleet."""
+    category = 'DIPLOMATIC'
+    priority = True
+    templates = [
+        "{fleet} encountered another fleet at ({x}, {y}) claiming to be from {race}.",
+        "{fleet} made first contact at ({x}, {y}) with a fleet from {race}.",
+        "First contact: {fleet} met a fleet from {race} at ({x}, {y}).",
+    ]
+    first_contact_suffix = " We are no longer alone in the universe."
+
+    def __init__(self, game, player, fleet, other_fleet, first_any=False, message=None):
+        super().__init__(game, player, message, intensity=0.3)
+        self.fleet = fleet
+        self.other_fleet = other_fleet
+        self.first_any = first_any
+
+    def format_message(self):
+        msg = random.choice(self.templates).format(
+            fleet=map_object_link(self.fleet),
+            x=self.other_fleet.x,
+            y=self.other_fleet.y,
+            race=self.other_fleet.player.formal_name
+        )
+        if self.first_any:
+            msg += self.first_contact_suffix
+        return msg
+
+
+class FirstContactStarMessageFactory(MessageFactory):
+    """Messages for first contact with an enemy star."""
+    category = 'DIPLOMATIC'
+    priority = True
+    templates = [
+        "{fleet} has surveyed {star} and found another civilization already flourishes there.",
+        "{fleet} discovered {star} is inhabited by {race}.",
+        "Survey complete: {star} is claimed by {race}.",
+    ]
+    first_contact_suffix = " We are no longer alone in the universe."
+
+    def __init__(self, game, player, fleet, star, first_any=False, message=None):
+        super().__init__(game, player, message, intensity=0.3)
+        self.fleet = fleet
+        self.star = star
+        self.first_any = first_any
+
+    def format_message(self):
+        msg = random.choice(self.templates).format(
+            fleet=map_object_link(self.fleet),
+            star=map_object_link(self.star),
+            race=self.star.player.formal_name
+        )
+        if self.first_any:
+            msg += self.first_contact_suffix
+        return msg
+
+
+class HabitableWorldMessageFactory(MessageFactory):
+    """Messages for newly discovered habitable worlds."""
+    category = 'ENVIRONMENTAL'
+    templates = [
+        "{fleet} has discovered a habitable world at {star}.",
+        "Survey report: {star} is within habitable range for our people.",
+        "{fleet} reports {star} is suitable for colonisation.",
+    ]
+
+    def __init__(self, game, player, fleet, star, message=None):
+        super().__init__(game, player, message, intensity=0.2)
+        self.fleet = fleet
+        self.star = star
 
     def format_message(self):
         return random.choice(self.templates).format(
             fleet=map_object_link(self.fleet),
-            cargo=self._format_cargo()
+            star=map_object_link(self.star)
         )
 
 

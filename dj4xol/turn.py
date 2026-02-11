@@ -332,14 +332,15 @@ class GameTurn():
         self.fleet_movements()
         self.check_lost_fleets()
         self.check_damaged_fleets()
+        self.first_contact_checks()
         self.resolve_combat()
-        self.generate_reports()
         self.mining()
         self.production()
         self.population_growth()
         self.random_events()
         self.clear_empty_planets()
         self.check_join_deadline()
+        self.generate_reports()
         self.game.year += 1
 
     def _calculate_next_generation(self):
@@ -384,7 +385,8 @@ class GameTurn():
 
     def _create_or_update_report(self, player, target_type, obj, year):
         """Create or update a report for an object."""
-        from .models import Report
+        from .models import Report, Fleet
+        from .messages import HabitableWorldMessageFactory
 
         report_data = self._build_report_data(obj, target_type)
 
@@ -399,6 +401,14 @@ class GameTurn():
         )
         report.set_report_data(report_data)
         report.save()
+
+        if created and target_type == 'star' and player.is_habitable(obj):
+            fleet = Fleet.objects.filter(game=self.game, player=player, x=obj.x, y=obj.y).first()
+            if fleet:
+                factory = HabitableWorldMessageFactory(self.game, player, fleet, obj)
+                msg = factory.new_message()
+                msg.year = self.game.year
+                msg.save()
 
     def _build_report_data(self, obj, target_type):
         """Build the data dict to cache in a report."""
@@ -491,6 +501,66 @@ class GameTurn():
             if len(players) < 2:
                 continue
             self._resolve_battle_at_location(x, y, loc_fleets)
+
+    def first_contact_checks(self):
+        """Send first contact messages before combat resolves."""
+        from .models import Fleet, Star, Report
+        from .messages import FirstContactFleetMessageFactory, FirstContactStarMessageFactory
+
+        handled = set()
+        fleets = list(Fleet.objects.filter(game=self.game))
+
+        for fleet in fleets:
+            player = fleet.player
+            x, y = fleet.x, fleet.y
+
+            # Star contact
+            for star in Star.objects.filter(game=self.game, x=x, y=y).exclude(player=player).exclude(player__isnull=True):
+                key = (player.id, 'star', star.id)
+                if key in handled:
+                    continue
+                if Report.objects.filter(player=player, target_type='star', target_id=star.id).exists():
+                    continue
+                first_any = not self._player_has_other_contacts(player)
+                factory = FirstContactStarMessageFactory(self.game, player, fleet, star, first_any=first_any)
+                msg = factory.new_message()
+                msg.year = self.game.year
+                msg.save()
+                handled.add(key)
+
+            # Fleet contact
+            for other in Fleet.objects.filter(game=self.game, x=x, y=y).exclude(player=player):
+                key = (player.id, 'fleet', other.id)
+                if key in handled:
+                    continue
+                if Report.objects.filter(player=player, target_type='fleet', target_id=other.id).exists():
+                    continue
+                first_any = not self._player_has_other_contacts(player)
+                factory = FirstContactFleetMessageFactory(self.game, player, fleet, other, first_any=first_any)
+                msg = factory.new_message()
+                msg.year = self.game.year
+                msg.save()
+                handled.add(key)
+
+    def _player_has_other_contacts(self, player):
+        """Return True if player has seen any other player's star/fleet before."""
+        from .models import Report, Fleet, Star
+        other_fleet_ids = list(
+            Fleet.objects.filter(game=self.game)
+            .exclude(player=player)
+            .values_list('id', flat=True)
+        )
+        other_star_ids = list(
+            Star.objects.filter(game=self.game)
+            .exclude(player=player)
+            .exclude(player__isnull=True)
+            .values_list('id', flat=True)
+        )
+        return Report.objects.filter(
+            player=player,
+            target_type__in=['fleet', 'star'],
+            target_id__in=(other_fleet_ids + other_star_ids)
+        ).exists()
 
     def _resolve_battle_at_location(self, x, y, fleets):
         """Resolve a single battle at a location."""
