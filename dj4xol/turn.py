@@ -17,8 +17,13 @@ from .messages import (
     FleetBuiltMessageFactory,
     FleetLostMessageFactory,
     FleetColonisedMessageFactory,
+    ColoniseFailedAlreadyOwnedMessageFactory,
     ColoniseFailedNoStarMessageFactory,
     ColoniseFailedNoColonistsMessageFactory,
+    ColonistsLostInSpaceMessageFactory,
+    ColonistsFailedToColoniseMessageFactory,
+    ColonistsUnexpectedColonyMessageFactory,
+    MineralGiftMessageFactory,
     ProductionSummaryMessageFactory,
     FleetWarpDamageMessageFactory,
     FleetWarpDestroyedMessageFactory,
@@ -1312,9 +1317,113 @@ class GameTurn():
         fleet.colonists -= colonists_transfer
         fleet.save()
 
+        if colonists_transfer > 0:
+            factory = ColonistsLostInSpaceMessageFactory(
+                self.game, fleet.player, fleet.name, colonists_transfer, target_x, target_y
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
         if ironium_transfer or boranium_transfer or germanium_transfer:
             self._create_salvage_at_location(target_x, target_y,
                                              ironium_transfer, boranium_transfer, germanium_transfer)
+
+    def _handle_invasion(self, fleet, star, invader_colonists_kt):
+        """Resolve invasion when colonists are transferred to an enemy colony."""
+        from .messages import InvasionReportMessageFactory
+
+        if invader_colonists_kt <= 0:
+            return
+
+        attacker = fleet.player
+        defender = star.player
+        defender_race = defender.race_type if defender else None
+        attacker_race = attacker.race_type
+
+        fleet_losses_desc = "no fleet losses"
+        if star.defenses > 0:
+            attacker_strength = calculate_fleet_strength(
+                fleet,
+                defender_race.defence_multiplier if defender_race else 1.0
+            )
+            defender_strength = normalize_ship_count(star.defenses)
+            strength_by_player = {
+                attacker: attacker_strength,
+                defender: defender_strength,
+            }
+            damage_taken = self._calculate_combat_damage(strength_by_player)
+            results = self._apply_combat_damage(
+                {attacker: [fleet], defender: []},
+                damage_taken
+            )
+            res = results.get(attacker, {})
+            integrity_lost = res.get('integrity_lost', 0)
+            ships_lost = res.get('ships_lost', 0)
+            fleets_destroyed = res.get('fleets_destroyed', 0)
+            if fleets_destroyed:
+                fleet_losses_desc = "fleet destroyed by defenses"
+            elif ships_lost or integrity_lost:
+                fleet_losses_desc = f"{ships_lost} ships lost, {integrity_lost}% integrity lost"
+
+            if fleets_destroyed:
+                attacker_msg = InvasionReportMessageFactory(
+                    self.game, attacker, star, False,
+                    invader_colonists_kt * 1000, 0,
+                    fleet_losses_desc, perspective='attacker'
+                ).new_message()
+                attacker_msg.year = self.game.year
+                attacker_msg.save()
+                if defender:
+                    defender_msg = InvasionReportMessageFactory(
+                        self.game, defender, star, False,
+                        invader_colonists_kt * 1000, 0,
+                        fleet_losses_desc, perspective='defender'
+                    ).new_message()
+                    defender_msg.year = self.game.year
+                    defender_msg.save()
+                return
+
+        invaders = invader_colonists_kt * 1000
+        defenders = star.colonists
+
+        attacker_force = invaders * (attacker_race.ground_force_multiplier or 1.0)
+        defender_force = defenders * (defender_race.ground_force_multiplier if defender_race else 1.0)
+
+        attacker_won = attacker_force > defender_force
+        if attacker_force == defender_force:
+            attacker_won = False
+
+        if attacker_won:
+            remaining_invaders = int((attacker_force - defender_force) / (attacker_race.ground_force_multiplier or 1.0))
+            attacker_losses = invaders - remaining_invaders
+            defender_losses = defenders
+            star.colonists = max(0, remaining_invaders)
+            star.player = attacker
+            star.save(update_fields=['colonists', 'player'])
+        else:
+            remaining_defenders = int((defender_force - attacker_force) / (defender_race.ground_force_multiplier if defender_race else 1.0))
+            defender_losses = defenders - remaining_defenders
+            attacker_losses = invaders
+            star.colonists = max(0, remaining_defenders)
+            star.save(update_fields=['colonists'])
+
+        attacker_msg = InvasionReportMessageFactory(
+            self.game, attacker, star, attacker_won,
+            attacker_losses, defender_losses,
+            fleet_losses_desc, perspective='attacker'
+        ).new_message()
+        attacker_msg.year = self.game.year
+        attacker_msg.save()
+
+        if defender:
+            defender_msg = InvasionReportMessageFactory(
+                self.game, defender, star, attacker_won,
+                attacker_losses, defender_losses,
+                fleet_losses_desc, perspective='defender'
+            ).new_message()
+            defender_msg.year = self.game.year
+            defender_msg.save()
 
     def _transfer_with_star(self, fleet, order, star):
         """Execute transfer between fleet and star."""
@@ -1376,6 +1485,35 @@ class GameTurn():
                 germanium_transfer = min(order.transfer_germanium, fleet.germanium_inventory)
                 colonists_transfer_kt = min(order.transfer_colonists, fleet.colonists)
 
+            # If transferring colonists to an unowned star, allow low-chance colonisation
+            if colonists_transfer_kt > 0 and star.player is None:
+                if random.random() < 0.10:
+                    star.player = fleet.player
+                    factory = ColonistsUnexpectedColonyMessageFactory(
+                        self.game, fleet.player, fleet.name, colonists_transfer_kt, star
+                    )
+                    msg = factory.new_message()
+                    msg.year = self.game.year
+                    msg.save()
+                else:
+                    # Colonists perish
+                    fleet.colonists -= colonists_transfer_kt
+                    factory = ColonistsFailedToColoniseMessageFactory(
+                        self.game, fleet.player, fleet.name, colonists_transfer_kt, star
+                    )
+                    msg = factory.new_message()
+                    msg.year = self.game.year
+                    msg.save()
+                    colonists_transfer_kt = 0
+
+            # If transferring colonists to an enemy colony, trigger invasion
+            if colonists_transfer_kt > 0 and star.player and star.player != fleet.player:
+                self._handle_invasion(fleet, star, colonists_transfer_kt)
+                # Remove colonists from fleet regardless of invasion outcome
+                fleet.colonists -= colonists_transfer_kt
+                # Continue with mineral transfers only
+                colonists_transfer_kt = 0
+
             # Convert colonists: fleet.colonists is thousands, star.colonists is individual units
             colonists_transfer_individuals = colonists_transfer_kt * 1000
 
@@ -1392,6 +1530,15 @@ class GameTurn():
 
             star.save()
             fleet.save()
+
+            if (ironium_transfer or boranium_transfer or germanium_transfer) and star.player and star.player != fleet.player:
+                gift_factory = MineralGiftMessageFactory(
+                    self.game, star.player, fleet.name, star,
+                    ironium_transfer, boranium_transfer, germanium_transfer
+                )
+                gift_msg = gift_factory.new_message()
+                gift_msg.year = self.game.year
+                gift_msg.save()
 
     def _transfer_with_fleet(self, source_fleet, order, target_fleet):
         """Execute transfer between two fleets.
@@ -1621,6 +1768,21 @@ class GameTurn():
             order.delete()
             return 'executed'
 
+        # Check if star is already owned
+        if star.player is not None:
+            factory = ColoniseFailedAlreadyOwnedMessageFactory(
+                self.game,
+                fleet.player,
+                fleet.name,
+                star,
+                same_player=(star.player == fleet.player)
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+            order.delete()
+            return 'executed'
+
         # Check if fleet has colonists - can't colonise without them
         if fleet.colonists <= 0:
             factory = ColoniseFailedNoColonistsMessageFactory(
@@ -1648,17 +1810,25 @@ class GameTurn():
         bonus_germanium = remaining - bonus_boranium
         total_bonus = bonus_ironium + bonus_boranium + bonus_germanium
 
-        # Build cargo summary for message (before transaction)
+        # Build cargo summary including bonus materials (before transaction)
+        total_ironium = ironium + bonus_ironium
+        total_boranium = boranium + bonus_boranium
+        total_germanium = germanium + bonus_germanium
         cargo_parts = []
-        if ironium > 0:
-            cargo_parts.append(f"{ironium}kt ironium")
-        if boranium > 0:
-            cargo_parts.append(f"{boranium}kt boranium")
-        if germanium > 0:
-            cargo_parts.append(f"{germanium}kt germanium")
+        if total_ironium > 0:
+            cargo_parts.append(f"{total_ironium}kt Ironium")
+        if total_boranium > 0:
+            cargo_parts.append(f"{total_boranium}kt Boranium")
+        if total_germanium > 0:
+            cargo_parts.append(f"{total_germanium}kt Germanium")
         if colonists_kt > 0:
             cargo_parts.append(f"{colonists_kt}k colonists")
-        cargo_summary = ", ".join(cargo_parts) if cargo_parts else "no cargo"
+        if len(cargo_parts) > 1:
+            cargo_summary = ", ".join(cargo_parts[:-1]) + ", and " + cargo_parts[-1]
+        elif cargo_parts:
+            cargo_summary = cargo_parts[0]
+        else:
+            cargo_summary = "no cargo"
 
         # Execute all database changes atomically
         with transaction.atomic():
@@ -1678,7 +1848,7 @@ class GameTurn():
 
             # Create message for player
             factory = FleetColonisedMessageFactory(
-                self.game, player, fleet_name, star, cargo_summary, total_bonus
+                self.game, player, fleet_name, star, cargo_summary
             )
             msg = factory.new_message()
             msg.year = self.game.year

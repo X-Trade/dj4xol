@@ -2,8 +2,7 @@
 4. Secret resources
 5. show move orders as dotted line
 6. Colony Micromanager
-7. Schedule based turn generation (generate a turn by cronjob)
-8. More tooltips for colonies
+8. More tooltips for colonies' details
 9. Star names on starmap
 10. radar system (ties to #10). Players cannot see ships beyond their ships or planets sensor range
 11. protect unnecessary/unsporting information from being delivered to the wrong owner-player
