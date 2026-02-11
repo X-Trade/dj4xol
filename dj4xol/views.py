@@ -621,7 +621,7 @@ def signup(request):
         if form.is_valid():
             user = form.save()
             login(request, user)
-            return redirect('dj4xol:index')
+            return redirect('dj4xol:register')
     else:
         form = SignupForm()
     return render(request, 'dj4xol/signup.html', {'form': form})
@@ -632,15 +632,57 @@ def register(request):
     """Complete dj4xol registration for existing Django user."""
     # Check if already registered
     if hasattr(request.user, 'dj4xol_account'):
-        return redirect('dj4xol:index')
+        return redirect('dj4xol:onboarding_theme')
     if request.method == 'POST':
         form = RegistrationForm(request.user, request.POST)
         if form.is_valid():
             form.save()
-            return redirect('dj4xol:index')
+            return redirect('dj4xol:onboarding_theme')
     else:
         form = RegistrationForm(request.user)
-    return render(request, 'dj4xol/register.html', {'form': form})
+    return render(request, 'dj4xol/onboarding_profile.html', {'form': form})
+
+
+@login_required
+def onboarding_theme(request):
+    """Step 2: choose theme during onboarding."""
+    if not hasattr(request.user, 'dj4xol_account'):
+        return redirect('dj4xol:register')
+    account = request.user.dj4xol_account
+    if request.method == 'POST':
+        theme = request.POST.get('theme', 'classic')
+        valid_themes = [t[0] for t in Account.THEME_CHOICES]
+        if theme in valid_themes:
+            account.theme = theme
+            account.save(update_fields=['theme'])
+            return redirect('dj4xol:onboarding_race')
+    return render(request, 'dj4xol/onboarding_theme.html', {
+        'theme_choices': Account.THEME_CHOICES,
+        'selected_theme': account.theme,
+    })
+
+
+@login_required
+def onboarding_race(request):
+    """Step 3: create first race during onboarding."""
+    if not hasattr(request.user, 'dj4xol_account'):
+        return redirect('dj4xol:register')
+    account = request.user.dj4xol_account
+    if ServerRace.objects.filter(owner=account).exists():
+        return redirect('dj4xol:index')
+    if request.method == 'POST':
+        form = ServerRaceForm(request.POST)
+        if form.is_valid():
+            race = form.save(commit=False)
+            race.owner = account
+            race.save()
+            return redirect('dj4xol:index')
+    else:
+        form = ServerRaceForm()
+    return render(request, 'dj4xol/onboarding_race.html', {
+        'form': form,
+        'selected_theme': account.theme,
+    })
 
 
 @registration_required()

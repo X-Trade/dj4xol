@@ -15,7 +15,7 @@ class testDiplomaticMessageFactory(TestCase):
         game.save()
         players = []
         for name in ["The Orb of Great Importance", "The Bard Empirium", "Humanity"]:
-            player = Player(game=game, name=name, formal_name=name, plural_name=name, race_type=self.race_type)
+            player = Player(game=game, name=name, plural_name=name, race_type=self.race_type)
             player.save()
             players.append(player)
         mf = DiplomaticMessageFactory(game=game, player=players[0], encounter_player=players[1])

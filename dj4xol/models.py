@@ -207,6 +207,7 @@ class Account(models.Model):
     alias = models.CharField(max_length=30, unique=True)
     email = models.EmailField()
     theme = models.CharField(max_length=20, choices=THEME_CHOICES, default='classic')
+    website_url = models.URLField(blank=True, default='')
 
     def save(self, *args, **kwargs):
         if not self.alias:
@@ -486,7 +487,6 @@ class Star(AbstractMapObject):
 class ServerRace(UUIDMixin, HabitabilityMixin):
     name = models.CharField(max_length=16)
     plural_name = models.CharField(max_length=16)
-    formal_name = models.CharField(max_length=32)
     homeworld_name = models.CharField(max_length=30, blank=True, default='')
     public = models.BooleanField(default=False)
     owner = models.ForeignKey(Account, related_name="custom_races",
@@ -506,7 +506,6 @@ class Player(AbstractGameObject, HabitabilityMixin):
                                 on_delete=models.SET_NULL)
     name = models.CharField(max_length=16)
     plural_name = models.CharField(max_length=16, null=True, default=None)
-    formal_name = models.CharField(max_length=32, null=True, default=None)
     homeworld_name = models.CharField(max_length=30, blank=True, default='')
     homeworld = models.ForeignKey(Star, null=True, default=None,
                                   related_name="homeworld_of",
@@ -520,8 +519,6 @@ class Player(AbstractGameObject, HabitabilityMixin):
     def save(self, *args, **kwargs):
         if self.plural_name is None:
             self.plural_name = self.name + 's'
-        if self.formal_name is None:
-            self.formal_name = self.name
         super(Player, self).save(*args, **kwargs)
 
 

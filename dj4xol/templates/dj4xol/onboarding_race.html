@@ -1,0 +1,158 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>4x Profile - Create Race</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        {% if selected_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if selected_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+    </head>
+    <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} onboarding">
+        <div class="title-bar">
+            <span class="title">4x Profile</span>
+            <span class="tagline">Step 3 of 3</span>
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="race">
+                    <h2><span>Create Your First Race</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <form method="post">
+                            {% csrf_token %}
+                            {% if form.non_field_errors %}
+                                <div class="form-errors">
+                                    {{ form.non_field_errors }}
+                                </div>
+                            {% endif %}
+                            <table class="profile-table">
+                                <tr>
+                                    <th>{{ form.name.label_tag }}</th>
+                                    <td>
+                                        {{ form.name }}
+                                        {{ form.name.errors }}
+                                    </td>
+                                    <td class="hint">The singular name for your people.</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.plural_name.label_tag }}</th>
+                                    <td>
+                                        {{ form.plural_name }}
+                                        {{ form.plural_name.errors }}
+                                    </td>
+                                    <td class="hint">Used when referring to the race as a whole.</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.homeworld_name.label_tag }}</th>
+                                    <td>
+                                        {{ form.homeworld_name }}
+                                        {{ form.homeworld_name.errors }}
+                                    </td>
+                                    <td class="hint">Leave blank to keep the generated star name.</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.race_type.label_tag }}</th>
+                                    <td>
+                                        {{ form.race_type }}
+                                        {{ form.race_type.errors }}
+                                    </td>
+                                    <td class="hint">&nbsp;</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.description.label_tag }}</th>
+                                    <td>
+                                        {{ form.description }}
+                                        {{ form.description.errors }}
+                                    </td>
+                                    <td class="hint">Private notes to remind you what this race is about.</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.gravity_center.label_tag }}</th>
+                                    <td>
+                                        {{ form.gravity_center }}
+                                        {{ form.gravity_center.errors }}
+                                    </td>
+                                    <td class="hint">&nbsp;</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.gravity_width.label_tag }}</th>
+                                    <td>
+                                        {{ form.gravity_width }}
+                                        {{ form.gravity_width.errors }}
+                                    </td>
+                                    <td class="hint">&nbsp;</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.temperature_center.label_tag }}</th>
+                                    <td>
+                                        {{ form.temperature_center }}
+                                        {{ form.temperature_center.errors }}
+                                    </td>
+                                    <td class="hint">&nbsp;</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.temperature_width.label_tag }}</th>
+                                    <td>
+                                        {{ form.temperature_width }}
+                                        {{ form.temperature_width.errors }}
+                                    </td>
+                                    <td class="hint">&nbsp;</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.radiation_center.label_tag }}</th>
+                                    <td>
+                                        {{ form.radiation_center }}
+                                        {{ form.radiation_center.errors }}
+                                    </td>
+                                    <td class="hint">&nbsp;</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.radiation_width.label_tag }}</th>
+                                    <td>
+                                        {{ form.radiation_width }}
+                                        {{ form.radiation_width.errors }}
+                                    </td>
+                                    <td class="hint">&nbsp;</td>
+                                </tr>
+                            </table>
+                            <div class="form-nav">
+                                <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:onboarding_theme' %}'">&laquo; Prev</button>
+                                <button type="submit" class="nav-button">Finish &raquo;</button>
+                            </div>
+                        </form>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (header) {
+                        header.addEventListener('click', function() {
+                            panel.classList.remove('no-transition');
+                            panel.classList.toggle('open');
+                        });
+                    }
+                });
+
+                var nameInput = document.getElementById('id_name');
+                var pluralInput = document.getElementById('id_plural_name');
+                if (nameInput && pluralInput) {
+                    var autoPlural = function() {
+                        if (!pluralInput.value || pluralInput.dataset.autofill === 'true') {
+                            pluralInput.value = nameInput.value ? nameInput.value + 's' : '';
+                            pluralInput.dataset.autofill = 'true';
+                        }
+                    };
+                    nameInput.addEventListener('input', autoPlural);
+                    pluralInput.addEventListener('input', function() {
+                        pluralInput.dataset.autofill = 'false';
+                    });
+                    autoPlural();
+                }
+            })();
+        </script>
+    </body>
+</html>

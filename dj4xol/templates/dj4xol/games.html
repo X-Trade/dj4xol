@@ -19,7 +19,7 @@
                     <span></span>
                 </button>
                 <div class="nav-dropdown" id="nav-dropdown">
-                    <a href="{% url 'dj4xol:profile' %}">Profile</a>
+                    <a href="{% url 'dj4xol:profile' %}">4x Profile</a>
                     <a href="{% url 'logout' %}">Logout</a>
                 </div>
             </div>
@@ -135,6 +135,16 @@
                     });
                 }
             });
+
+            // LCARS panel colour cycling across columns
+            if (document.body.classList.contains('lcars')) {
+                var variants = ['lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3'];
+                var panelsList = document.querySelectorAll('.columns .panel');
+                panelsList.forEach(function(panel, index) {
+                    panel.classList.remove('lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3');
+                    panel.classList.add(variants[index % variants.length]);
+                });
+            }
         })();
         </script>
     </body>

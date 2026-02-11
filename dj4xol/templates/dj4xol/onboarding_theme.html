@@ -1,0 +1,78 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>4x Profile - Theme</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        {% if selected_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if selected_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+    </head>
+    <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} onboarding">
+        <div class="title-bar">
+            <span class="title">4x Profile</span>
+            <span class="tagline">Step 2 of 3</span>
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="theme">
+                    <h2><span>Choose Theme</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <p>Select your preferred visual theme. You can always change this later in your 4x Profile.</p>
+                        <form method="post">
+                            {% csrf_token %}
+                            <div class="theme-selector">
+                                {% for theme_code, theme_name in theme_choices %}
+                                <label class="theme-option{% if selected_theme == theme_code %} selected{% endif %}">
+                                    <input type="radio" name="theme" value="{{ theme_code }}" {% if selected_theme == theme_code %}checked{% endif %}>
+                                    <div class="theme-preview {{ theme_code }}"></div>
+                                    <span class="theme-name">{{ theme_name }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                            <div class="form-nav">
+                                <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:register' %}'">&laquo; Prev</button>
+                                <button type="submit" class="nav-button">Next &raquo;</button>
+                            </div>
+                        </form>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (header) {
+                        header.addEventListener('click', function() {
+                            panel.classList.remove('no-transition');
+                            panel.classList.toggle('open');
+                        });
+                    }
+                });
+
+                var options = document.querySelectorAll('input[name="theme"]');
+                var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]');
+                if (!options.length || !csrfToken) return;
+                options.forEach(function(opt) {
+                    opt.addEventListener('change', function() {
+                        var formData = 'theme=' + encodeURIComponent(this.value);
+                        fetch('{% url "dj4xol:update_theme" %}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'X-CSRFToken': csrfToken.value
+                            },
+                            body: formData
+                        }).then(function(response) {
+                            if (response.ok) {
+                                window.location.reload();
+                            }
+                        }).catch(function() {});
+                    });
+                });
+            })();
+        </script>
+    </body>
+</html>

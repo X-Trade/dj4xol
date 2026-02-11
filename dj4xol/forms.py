@@ -9,7 +9,7 @@ class ServerRaceForm(forms.ModelForm):
     class Meta:
         model = ServerRace
         fields = [
-            'name', 'plural_name', 'formal_name', 'homeworld_name', 'race_type', 'description',
+            'name', 'plural_name', 'homeworld_name', 'race_type', 'description',
             'gravity_center', 'gravity_width',
             'temperature_center', 'temperature_width',
             'radiation_center', 'radiation_width',
@@ -157,19 +157,9 @@ from django.db import models
 
 class SignupForm(UserCreationForm):
     """Combined form for creating Django user and dj4xol Account."""
-    alias = forms.CharField(
-        label="Player Alias",
-        max_length=30,
-        help_text="Your display name in games"
-    )
     email = forms.EmailField(
         label="Email",
         required=True
-    )
-    full_name = forms.CharField(
-        label="Full Name",
-        max_length=60,
-        required=False
     )
 
     class Meta:
@@ -181,12 +171,6 @@ class SignupForm(UserCreationForm):
         user.email = self.cleaned_data['email']
         if commit:
             user.save()
-            Account.objects.create(
-                django_user=user,
-                alias=self.cleaned_data['alias'],
-                email=self.cleaned_data['email'],
-                full_name=self.cleaned_data.get('full_name', '')
-            )
         return user
 
 
@@ -194,7 +178,7 @@ class RegistrationForm(forms.ModelForm):
     """Form for completing dj4xol registration with existing Django user."""
     class Meta:
         model = Account
-        fields = ['alias', 'email', 'full_name']
+        fields = ['alias', 'email', 'full_name', 'website_url']
 
     def __init__(self, user, *args, **kwargs):
         super().__init__(*args, **kwargs)

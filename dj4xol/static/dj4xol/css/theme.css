@@ -360,12 +360,28 @@ a:hover {
 }
 
 /* ============================================
+   Form Errors
+   ============================================ */
+.form-errors,
+.errorlist {
+    color: #cc3333;
+}
+
+.errorlist {
+    list-style: none;
+    margin: 4px 0 0 0;
+    padding: 0;
+    font-weight: bold;
+}
+
+/* ============================================
    Theme Selector
    ============================================ */
 .theme-selector {
     display: flex;
     gap: 15px;
     flex-wrap: wrap;
+    justify-content: center;
 }
 
 .theme-option {

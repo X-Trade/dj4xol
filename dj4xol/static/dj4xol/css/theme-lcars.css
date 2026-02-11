@@ -835,6 +835,7 @@ input[type="range"]::-webkit-slider-thumb {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+    justify-content: center;
 }
 
 .theme-option {
@@ -843,18 +844,20 @@ input[type="range"]::-webkit-slider-thumb {
     align-items: center;
     gap: 8px;
     padding: 10px;
-    border: 3px solid #333;
+    border: 3px solid #7c6a7a;
     border-radius: 15px;
     cursor: pointer;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, background-color 0.2s;
+    background: rgba(20, 20, 20, 0.6);
 }
 
 .theme-option:hover {
-    border-color: #666;
+    border-color: #b68aa8;
 }
 
 .theme-option.selected {
-    border-color: #99ccff;
+    border-color: #ff9933;
+    background: rgba(255, 153, 51, 0.08);
 }
 
 .theme-preview {
@@ -862,6 +865,7 @@ input[type="range"]::-webkit-slider-thumb {
     height: 50px;
     border-radius: 8px;
     overflow: hidden;
+    border: 1px solid #444;
 }
 
 

@@ -3820,7 +3820,7 @@ class TestFleetColoniseOrders(TestCase):
         fleet.refresh_from_db()
         self.assertTrue(Fleet.objects.filter(id=fleet.id).exists())
         self.assertFalse(fleet.orders.filter(order_type='COLONISE').exists())
-        self.assertTrue(player.messages.filter(message__icontains=other_player.formal_name).exists())
+        self.assertTrue(player.messages.filter(message__icontains=other_player.name).exists())
 
     def test_colonise_fails_without_colonists(self):
         """Colonise order should fail if fleet has no colonists."""

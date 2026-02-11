@@ -9,7 +9,7 @@ class TestHabitabilityMixin(TestCase):
             code='TEST', name='Test', description='Test'
         )
         self.race = ServerRace.objects.create(
-            name='Testling', plural_name='Testlings', formal_name='The Testlings',
+            name='Testling', plural_name='Testlings',
             race_type=self.race_type,
             gravity_center=1.0, gravity_width=1.0,
             temperature_center=1.0, temperature_width=1.0,
@@ -101,7 +101,7 @@ class TestHabitabilityMixin(TestCase):
     def test_copy_habitability_from(self):
         """Test copying habitability fields."""
         source = ServerRace.objects.create(
-            name='Source', plural_name='Sources', formal_name='The Sources',
+            name='Source', plural_name='Sources',
             race_type=self.race_type,
             gravity_center=0.5, gravity_width=0.8,
             temperature_center=1.5, temperature_width=0.6,
