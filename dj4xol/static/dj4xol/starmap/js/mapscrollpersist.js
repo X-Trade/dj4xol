@@ -1,5 +1,8 @@
 // Global function for destination selection mode (called from map object onclick)
 function submitDestination(objectId, x, y, objectType) {
+    if (window.playerTurnedIn) {
+        return;
+    }
     // Get current URL params and update with destination
     var params = new URLSearchParams(window.location.search);
     params.delete('mode');  // Exit destination mode
@@ -23,6 +26,9 @@ function submitDestination(objectId, x, y, objectType) {
 
 // Submit coordinate-based destination (for empty space clicks)
 function submitCoordinateDestination(x, y) {
+    if (window.playerTurnedIn) {
+        return;
+    }
     var params = new URLSearchParams(window.location.search);
     params.delete('mode');  // Exit destination mode
     params.delete('dest_star');

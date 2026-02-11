@@ -173,6 +173,13 @@ function hideRenamePopover() {
 }
 
 function submitRename() {
+    if (window.playerTurnedIn) {
+        var errorDiv = document.getElementById('rename-error');
+        if (errorDiv) {
+            errorDiv.textContent = 'Turn already submitted';
+        }
+        return;
+    }
     var input = document.getElementById('rename-input');
     var errorDiv = document.getElementById('rename-error');
     var newName = input.value.trim();

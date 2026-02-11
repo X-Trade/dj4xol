@@ -258,6 +258,8 @@ def debug_create_fleet(request, game_short_id):
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
+    if player.turned_in:
+        return _redirect_preserving_selection(request, game)
 
     x = int(request.POST.get('x') or request.GET.get('x') or 0)
     y = int(request.POST.get('y') or request.GET.get('y') or 0)
@@ -292,6 +294,8 @@ def add_production_order(request, game_short_id):
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
+    if player.turned_in:
+        return _redirect_preserving_selection(request, game)
 
     star_short_id = request.POST.get('star')
     order_type = request.POST.get('order_type')
@@ -322,6 +326,8 @@ def remove_production_order(request, game_short_id, order_short_id):
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
+    if player.turned_in:
+        return _redirect_preserving_selection(request, game)
 
     order = ProductionOrder.objects.get(short_id=order_short_id, game=game, star__player=player)
     order.delete()
@@ -335,6 +341,8 @@ def add_fleet_order(request, game_short_id):
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
+    if player.turned_in:
+        return _redirect_preserving_selection(request, game)
 
     fleet_short_id = request.POST.get('fleet')
     order_type = request.POST.get('order_type', 'MOVE')
@@ -463,6 +471,8 @@ def remove_fleet_order(request, game_short_id, order_short_id):
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
+    if player.turned_in:
+        return _redirect_preserving_selection(request, game)
 
     # Verify order's fleet belongs to player
     order = FleetOrders.objects.get(short_id=order_short_id, game=game, fleet__player=player)
@@ -702,6 +712,16 @@ def objects_at_location(request, game_short_id, x, y):
 
 
 @player_only_view()
+def game_status(request, game_short_id):
+    """Return current game year and player turn-in status."""
+    from django.http import JsonResponse
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    return JsonResponse({'year': game.year, 'turned_in': player.turned_in})
+
+
+@player_only_view()
 def rename_object(request, game_short_id, object_short_id):
     """Rename a star or fleet owned by the player."""
     from django.http import JsonResponse
@@ -713,6 +733,8 @@ def rename_object(request, game_short_id, object_short_id):
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
+    if player.turned_in:
+        return JsonResponse({'error': 'Turn already submitted'}, status=403)
 
     new_name = request.POST.get('name', '').strip()
     if not new_name:

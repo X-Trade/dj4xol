@@ -419,6 +419,33 @@ body {
     flex-shrink: 0;
 }
 
+/* Readonly overlay when player has turned in */
+body.turned-in .order-form,
+body.turned-in .order-params {
+    position: relative;
+}
+
+body.turned-in .order-form::after,
+body.turned-in .order-params::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: rgba(128, 128, 128, 0.2);
+}
+
+body.turned-in.lcars .order-form::after,
+body.turned-in.lcars .order-params::after {
+    background-image: repeating-linear-gradient(
+        45deg,
+        rgba(90, 90, 90, 0.75) 0px,
+        rgba(90, 90, 90, 0.75) 12px,
+        rgba(90, 90, 90, 0) 12px,
+        rgba(90, 90, 90, 0) 24px
+    );
+    background-color: rgba(0, 0, 0, 0);
+}
+
 .order-select {
     flex: 1;
 }

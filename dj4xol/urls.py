@@ -19,6 +19,7 @@ urlpatterns = [
     url(r'^(?P<game_short_id>[0-9a-z]{8})/$', views.starmap, name='game'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/join/$', views.join_game, name='join_game'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/turn-in/$', views.turn_in, name='turn_in'),
+    url(r'^(?P<game_short_id>[0-9a-z]{8})/status/$', views.game_status, name='game_status'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/generate/$', views.generate_turn, name='generate_turn'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/debug/colonize/(?P<star_short_id>[0-9a-z]{12})/$', views.debug_colonize, name='debug_colonize'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/debug/create-fleet/$', views.debug_create_fleet, name='debug_create_fleet'),
@@ -30,4 +31,3 @@ urlpatterns = [
     url(r'^(?P<game_short_id>[0-9a-z]{8})/messages/$', views.message_history, name='message_history'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/rename/(?P<object_short_id>[0-9a-z]{12})/$', views.rename_object, name='rename_object'),
 ]
-
