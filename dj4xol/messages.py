@@ -12,6 +12,39 @@ def map_object_link(obj):
     return f'<a href="{base_url}?x={obj.x}&y={obj.y}&sel={obj.short_id}&locate=1">{name}</a>'
 
 
+def format_space(x, y):
+    return f"Empty Space ({x}, {y})"
+
+
+def format_salvage(x, y):
+    return f"Salvage ({x}, {y})"
+
+
+def format_map_object(obj, link=True):
+    """Format a map object name, optionally with a hyperlink."""
+    if obj is None:
+        return ""
+    from .models import Star, Fleet, Salvage
+    if isinstance(obj, Salvage):
+        name = format_salvage(obj.x, obj.y)
+    elif isinstance(obj, (Star, Fleet)):
+        name = obj.name
+    else:
+        name = getattr(obj, 'name', str(obj))
+    if link and hasattr(obj, 'game'):
+        return map_object_link(obj)
+    return name
+
+
+def format_location(obj=None, x=None, y=None, link=True):
+    """Format a location as a map object or empty space."""
+    if obj is not None:
+        return format_map_object(obj, link=link)
+    if x is not None and y is not None:
+        return format_space(x, y)
+    return ""
+
+
 def weighted_random_choice(choices, offset, window_size=1):
         """Select a random choice from a list of choices, with a moving window based on intensity."""
         position = offset * (len(choices)-1) + random.randint(0-window_size, window_size)
@@ -148,7 +181,7 @@ class EnvironmentalDeathMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            star=map_object_link(self.star),
+            star=format_map_object(self.star),
             deaths=self.deaths
         )
 
@@ -171,7 +204,7 @@ class OvercrowdingDeathMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            star=map_object_link(self.star),
+            star=format_map_object(self.star),
             deaths=self.deaths
         )
 
@@ -193,7 +226,7 @@ class ColonyAbandonedMessageFactory(MessageFactory):
         self.star = star
 
     def format_message(self):
-        return random.choice(self.templates).format(star=map_object_link(self.star))
+        return random.choice(self.templates).format(star=format_map_object(self.star))
 
 
 class PlanetoidEventMessageFactory(MessageFactory):
@@ -223,7 +256,7 @@ class PlanetoidEventMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            star=map_object_link(self.star),
+            star=format_map_object(self.star),
             adverb=self._format_adverb(),
             verb=self._format_verb()
         )
@@ -244,7 +277,7 @@ class PopulationBoomMessageFactory(MessageFactory):
         self.qty = qty
 
     def format_message(self):
-        return random.choice(self.templates).format(star=map_object_link(self.star), qty=self.qty)
+        return random.choice(self.templates).format(star=format_map_object(self.star), qty=self.qty)
 
 
 class MiningDiscoveryMessageFactory(MessageFactory):
@@ -264,7 +297,7 @@ class MiningDiscoveryMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            star=map_object_link(self.star),
+            star=format_map_object(self.star),
             qty=self.qty,
             resource=self.resource
         )
@@ -285,7 +318,7 @@ class ColonyVanishedMessageFactory(MessageFactory):
         self.star = star
 
     def format_message(self):
-        return random.choice(self.templates).format(star=map_object_link(self.star))
+        return random.choice(self.templates).format(star=format_map_object(self.star))
 
 
 class MiningAccidentDeathsMessageFactory(MessageFactory):
@@ -303,7 +336,7 @@ class MiningAccidentDeathsMessageFactory(MessageFactory):
         self.qty = qty
 
     def format_message(self):
-        return random.choice(self.templates).format(star=map_object_link(self.star), qty=self.qty)
+        return random.choice(self.templates).format(star=format_map_object(self.star), qty=self.qty)
 
 
 class MiningAccidentResourcesMessageFactory(MessageFactory):
@@ -323,7 +356,7 @@ class MiningAccidentResourcesMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            star=map_object_link(self.star),
+            star=format_map_object(self.star),
             qty=self.qty,
             resource=self.resource
         )
@@ -345,8 +378,8 @@ class FleetBuiltMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            star=map_object_link(self.star),
-            fleet=map_object_link(self.fleet)
+            star=format_map_object(self.star),
+            fleet=format_map_object(self.fleet)
         )
 
 
@@ -389,10 +422,10 @@ class ProductionSummaryMessageFactory(MessageFactory):
     def format_message(self):
         templates = self.TEMPLATES.get(self.production_type, {}).get('plural', [])
         if not templates:
-            return f"{self.count} {self.production_type}s completed at {map_object_link(self.star)}."
+            return f"{self.count} {self.production_type}s completed at {format_map_object(self.star)}."
         return random.choice(templates).format(
             count=self.count,
-            star=map_object_link(self.star)
+            star=format_map_object(self.star)
         )
 
 
@@ -435,7 +468,7 @@ class FleetColonisedMessageFactory(MessageFactory):
     def format_message(self):
         return random.choice(self.templates).format(
             fleet=self.fleet_name,
-            star=map_object_link(self.star),
+            star=format_map_object(self.star),
             cargo=self.cargo_summary,
             bonus=self.bonus_materials
         )
@@ -446,14 +479,14 @@ class ColoniseFailedNoStarMessageFactory(MessageFactory):
     category = 'EXCEPTION'
     priority = True
     templates_with_star = [
-        "{fleet} failed to colonise {star} - it was not found at ({x}, {y}).",
-        "Colonisation of {star} by {fleet} aborted - no planet at ({x}, {y}).",
-        "{fleet} arrived at ({x}, {y}) to colonise {star}, but found nothing.",
+        "{fleet} failed to colonise {star} - it was not found at {location}.",
+        "Colonisation of {star} by {fleet} aborted - no planet at {location}.",
+        "{fleet} arrived at {location} to colonise {star}, but found nothing.",
     ]
     templates_no_star = [
-        "{fleet} aborted colonisation at ({x}, {y}) - no habitable world found.",
-        "Colonisation order for {fleet} cancelled - no planet at ({x}, {y}).",
-        "{fleet} reached ({x}, {y}) but found no world to colonise.",
+        "{fleet} aborted colonisation at {location} - no habitable world found.",
+        "Colonisation order for {fleet} cancelled - no planet at {location}.",
+        "{fleet} reached {location} but found no world to colonise.",
     ]
 
     def __init__(self, game, player, fleet_name, x, y, target_star=None, message=None):
@@ -464,18 +497,17 @@ class ColoniseFailedNoStarMessageFactory(MessageFactory):
         self.target_star = target_star
 
     def format_message(self):
+        location = format_space(self.x, self.y)
         if self.target_star:
             return random.choice(self.templates_with_star).format(
                 fleet=self.fleet_name,
-                star=map_object_link(self.target_star),
-                x=self.x,
-                y=self.y
+                star=format_map_object(self.target_star),
+                location=location
             )
         else:
             return random.choice(self.templates_no_star).format(
                 fleet=self.fleet_name,
-                x=self.x,
-                y=self.y
+                location=location
             )
 
 
@@ -497,7 +529,7 @@ class ColoniseFailedNoColonistsMessageFactory(MessageFactory):
     def format_message(self):
         return random.choice(self.templates).format(
             fleet=self.fleet_name,
-            star=map_object_link(self.star)
+            star=format_map_object(self.star)
         )
 
 
@@ -555,7 +587,7 @@ class FleetWarpDamageMessageFactory(MessageFactory):
             templates = self.templates_damage_only
 
         return random.choice(templates).format(
-            fleet=map_object_link(self.fleet),
+            fleet=format_map_object(self.fleet),
             warp=self.warp_speed,
             integrity_loss=self.integrity_loss,
             cargo_desc=self._format_cargo_desc(),
@@ -579,7 +611,7 @@ class FleetWarpDestroyedMessageFactory(MessageFactory):
         "{fleet} could not withstand further stress at warp {warp} {location} and was destroyed.",
     ]
     salvage_suffix_star = " Salvage deposited on {star}."
-    salvage_suffix_space = " Salvage left at ({x}, {y})."
+    salvage_suffix_space = " Salvage left at {location}."
 
     def __init__(self, game, player, fleet_name, warp_speed, x, y,
                  from_damage=False, salvage_created=False, salvage_location=None,
@@ -598,8 +630,8 @@ class FleetWarpDestroyedMessageFactory(MessageFactory):
         from .models import Star
         star = Star.objects.filter(game=self.game, x=self.x, y=self.y).first()
         if star:
-            return f"near {map_object_link(star)}"
-        return f"in empty space ({self.x}, {self.y})"
+            return f"near {format_map_object(star)}"
+        return f"in {format_space(self.x, self.y)}"
 
     def format_message(self):
         from .models import Star
@@ -614,10 +646,12 @@ class FleetWarpDestroyedMessageFactory(MessageFactory):
         if self.salvage_created and self.salvage_location:
             if isinstance(self.salvage_location, Star):
                 msg += self.salvage_suffix_star.format(
-                    star=map_object_link(self.salvage_location)
+                    star=format_map_object(self.salvage_location)
                 )
             else:
-                msg += self.salvage_suffix_space.format(x=self.x, y=self.y)
+                msg += self.salvage_suffix_space.format(
+                    location=format_salvage(self.x, self.y)
+                )
 
         return msg
 
@@ -639,7 +673,7 @@ class FleetMergedMessageFactory(MessageFactory):
     def format_message(self):
         return random.choice(self.templates).format(
             source=self.source_name,
-            target=map_object_link(self.target_fleet),
+            target=format_map_object(self.target_fleet),
             ships=self.target_fleet.ship_count
         )
 
@@ -678,8 +712,8 @@ class FleetScuttledMessageFactory(MessageFactory):
         from .models import Star
         star = Star.objects.filter(game=self.game, x=self.x, y=self.y).first()
         if star:
-            return map_object_link(star)
-        return f"in empty space ({self.x}, {self.y})"
+            return format_map_object(star)
+        return f"in {format_space(self.x, self.y)}"
 
     def format_message(self):
         from .models import Star
@@ -693,7 +727,7 @@ class FleetScuttledMessageFactory(MessageFactory):
             templates = self.templates_salvage_star
             return random.choice(templates).format(
                 fleet=self.fleet_name,
-                location=map_object_link(self.salvage_location)
+                location=format_map_object(self.salvage_location)
             )
         else:
             templates = self.templates_salvage_space
@@ -727,8 +761,8 @@ class CombatMessageFactory(MessageFactory):
     def _format_location(self):
         if isinstance(self.location, tuple):
             x, y = self.location
-            return f"({x}, {y})"
-        return map_object_link(self.location)
+            return format_space(x, y)
+        return format_map_object(self.location)
 
     def _format_losses(self):
         parts = []
@@ -785,7 +819,7 @@ class SalvageCollectedMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            fleet=map_object_link(self.fleet),
+            fleet=format_map_object(self.fleet),
             cargo=self._format_cargo()
         )
 
@@ -795,9 +829,9 @@ class FirstContactFleetMessageFactory(MessageFactory):
     category = 'DIPLOMATIC'
     priority = True
     templates = [
-        "{fleet} encountered another fleet at ({x}, {y}) claiming to be from {race}.",
-        "{fleet} made first contact at ({x}, {y}) with a fleet from {race}.",
-        "First contact: {fleet} met a fleet from {race} at ({x}, {y}).",
+        "{fleet} encountered another fleet at {location} claiming to be from {race}.",
+        "{fleet} made first contact at {location} with a fleet from {race}.",
+        "First contact: {fleet} met a fleet from {race} at {location}.",
     ]
     first_contact_suffix = " We are no longer alone in the universe."
 
@@ -809,9 +843,8 @@ class FirstContactFleetMessageFactory(MessageFactory):
 
     def format_message(self):
         msg = random.choice(self.templates).format(
-            fleet=map_object_link(self.fleet),
-            x=self.other_fleet.x,
-            y=self.other_fleet.y,
+            fleet=format_map_object(self.fleet),
+            location=format_space(self.other_fleet.x, self.other_fleet.y),
             race=self.other_fleet.player.formal_name
         )
         if self.first_any:
@@ -838,8 +871,8 @@ class FirstContactStarMessageFactory(MessageFactory):
 
     def format_message(self):
         msg = random.choice(self.templates).format(
-            fleet=map_object_link(self.fleet),
-            star=map_object_link(self.star),
+            fleet=format_map_object(self.fleet),
+            star=format_map_object(self.star),
             race=self.star.player.formal_name
         )
         if self.first_any:
@@ -863,8 +896,8 @@ class HabitableWorldMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            fleet=map_object_link(self.fleet),
-            star=map_object_link(self.star)
+            fleet=format_map_object(self.fleet),
+            star=format_map_object(self.star)
         )
 
 
@@ -883,7 +916,7 @@ class FleetBuildBlockedNoShipyardMessageFactory(MessageFactory):
         self.star = star
 
     def format_message(self):
-        return random.choice(self.templates).format(star=map_object_link(self.star))
+        return random.choice(self.templates).format(star=format_map_object(self.star))
 
 
 class FleetRepairedMessageFactory(MessageFactory):
@@ -905,8 +938,8 @@ class FleetRepairedMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            fleet=map_object_link(self.fleet),
+            fleet=format_map_object(self.fleet),
             old=self.old_integrity,
             new=self.new_integrity,
-            star=map_object_link(self.star)
+            star=format_map_object(self.star)
         )

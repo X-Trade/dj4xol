@@ -1,5 +1,4 @@
 ============= MAIN TODO =============
-3. Basic combat (based on mass & chance)
 4. Secret resources
 5. show move orders as dotted line
 6. Colony Micromanager
