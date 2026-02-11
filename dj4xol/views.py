@@ -387,7 +387,7 @@ def add_fleet_order(request, game_short_id):
                 order.target_star = Star.objects.get(short_id=target_id, game=game)
             elif target_type == 'fleet':
                 order.target_fleet = Fleet.objects.get(short_id=target_id, game=game)
-        elif patrol_target == 'empty' and target_x and target_y:
+        elif patrol_target in ['empty', 'space'] and target_x and target_y:
             order.x = int(target_x)
             order.y = int(target_y)
         elif target_star_id:
@@ -421,6 +421,12 @@ def add_fleet_order(request, game_short_id):
                 order.target_fleet = Fleet.objects.get(short_id=target_id, game=game, player=player)
             elif target_type == 'salvage':
                 order.target_salvage = Salvage.objects.get(short_id=target_id, game=game)
+        else:
+            target_x = request.POST.get('target_x', '')
+            target_y = request.POST.get('target_y', '')
+            if target_x and target_y:
+                order.x = int(target_x)
+                order.y = int(target_y)
 
     elif order_type == 'COLONISE':
         # Colonise orders always have repeat=False (fleet is destroyed)
