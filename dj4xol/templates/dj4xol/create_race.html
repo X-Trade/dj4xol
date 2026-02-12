@@ -69,6 +69,14 @@
                                     <td class="hint">Private notes to remind you what this race is about.</td>
                                 </tr>
                                 <tr>
+                                    <th>Starting Colonists:</th>
+                                    <td>
+                                        <label>k {{ form.starting_colonists }}</label>
+                                        {{ form.starting_colonists.errors }}
+                                    </td>
+                                    <td class="hint">Thousands (k). 1 point per k.</td>
+                                </tr>
+                                <tr>
                                     <th>Gravity:</th>
                                     <td>
                                         <div class="env-inputs">

@@ -60,15 +60,15 @@ class testGameFactory(TestCase):
         self.assertEqual(game.owner, self.accounts[0])
 
     def test_join_player_sets_homeworld_population(self):
-        self.race_type.starting_population = 500
-        self.race_type.save()
+        self.races[0].starting_colonists = 5
+        self.races[0].save()
         gf = GameFactory()
         gf.set_map_size(100, 100)
         gf.set_owner(self.accounts[0])
         gf.create_stars(5)
         gf.save()
         player = gf.join_player(self.accounts[0], self.races[0])
-        self.assertEqual(player.homeworld.colonists, 500)
+        self.assertEqual(player.homeworld.colonists, 5000)
 
     def test_homeworlds_are_spaced_apart(self):
         gf = GameFactory()

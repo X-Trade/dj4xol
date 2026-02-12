@@ -66,6 +66,15 @@
     color: #cc3333;
 }
 
+.habitability-total.under-budget {
+    color: #008800;
+}
+
+.habitability-total::after {
+    content: " / " attr(data-budget);
+    color: inherit;
+}
+
 .habitability-errors {
     margin-bottom: 6px;
 }

@@ -476,6 +476,7 @@ class ServerRace(UUIDMixin, HabitabilityMixin):
     name = models.CharField(max_length=16)
     plural_name = models.CharField(max_length=16)
     homeworld_name = models.CharField(max_length=30, blank=True, default='')
+    starting_colonists = models.IntegerField(default=10)
     public = models.BooleanField(default=False)
     owner = models.ForeignKey(Account, related_name="custom_races",
                                       null=True, default=None,
@@ -500,6 +501,7 @@ class Player(AbstractGameObject, HabitabilityMixin):
                                   on_delete=models.SET_NULL)
     description = models.TextField(blank=True, default='')
     race_type = models.ForeignKey(ServerRaceType)
+    starting_colonists = models.IntegerField(default=10)
     turned_in = models.BooleanField(default=False)
     last_seen_year = models.IntegerField(null=True, blank=True)
     messages_seen_year = models.IntegerField(null=True, blank=True)
