@@ -62,22 +62,64 @@ class HabitabilityRules:
 
 
 class RaceCreationRules(HabitabilityRules):
-    HABITABILITY_BUDGET = 34.0
+    HABITABILITY_BUDGET = 60.0
     HABITABILITY_COST_MULTIPLIER = 4.0
     MIN_WIDTH = 0.1
+    CENTER_STEP = 0.05
     DEFAULT_STARTING_COLONISTS = 10
+    DEFAULT_STARTING_MINES = 4
+    DEFAULT_STARTING_FACTORIES = 2
+    DEFAULT_STARTING_SHIPYARDS = 1
+    DEFAULT_STARTING_FLEETS = 2
 
-    def __init__(self, centers, widths, starting_colonists=None, budget=None, envs=None):
+    def __init__(
+        self,
+        centers,
+        widths,
+        starting_colonists=None,
+        starting_mines=None,
+        starting_factories=None,
+        starting_shipyards=None,
+        starting_fleets=None,
+        budget=None,
+        envs=None,
+    ):
         super().__init__(centers, widths, budget=budget, envs=envs, cost_multiplier=self.HABITABILITY_COST_MULTIPLIER)
         if starting_colonists is None:
             starting_colonists = self.DEFAULT_STARTING_COLONISTS
+        if starting_mines is None:
+            starting_mines = self.DEFAULT_STARTING_MINES
+        if starting_factories is None:
+            starting_factories = self.DEFAULT_STARTING_FACTORIES
+        if starting_shipyards is None:
+            starting_shipyards = self.DEFAULT_STARTING_SHIPYARDS
+        if starting_fleets is None:
+            starting_fleets = self.DEFAULT_STARTING_FLEETS
         self.starting_colonists = int(starting_colonists)
+        self.starting_mines = int(starting_mines)
+        self.starting_factories = int(starting_factories)
+        self.starting_shipyards = int(starting_shipyards)
+        self.starting_fleets = int(starting_fleets)
 
     def colonist_cost(self):
         return max(0, self.starting_colonists)
 
+    def mines_cost(self):
+        return max(0, self.starting_mines)
+
+    def factories_cost(self):
+        return max(0, self.starting_factories)
+
+    def shipyards_cost(self):
+        return max(0, self.starting_shipyards) * 4
+
+    def fleets_cost(self):
+        return max(0, self.starting_fleets) * 8
+
     def total_cost(self):
-        return self.habitability_cost() + self.colonist_cost()
+        return (self.habitability_cost() + self.colonist_cost() +
+                self.mines_cost() + self.factories_cost() +
+                self.shipyards_cost() + self.fleets_cost())
 
     def validate(self):
         errors = []
@@ -93,6 +135,14 @@ class RaceCreationRules(HabitabilityRules):
                 errors.append(f'{env.title()} range extends above 2')
             if width < 0:
                 errors.append(f'{env.title()} width cannot be negative')
+        if self.starting_mines < 0:
+            errors.append('Starting mines cannot be negative')
+        if self.starting_factories < 0:
+            errors.append('Starting factories cannot be negative')
+        if self.starting_shipyards < 0:
+            errors.append('Starting shipyards cannot be negative')
+        if self.starting_fleets < 0:
+            errors.append('Starting fleets cannot be negative')
         if self.total_cost() > self.budget:
             errors.append(
                 f'Habitability cost ({self.total_cost():.2f}) exceeds budget ({self.budget})'

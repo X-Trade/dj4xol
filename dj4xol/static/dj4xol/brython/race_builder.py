@@ -2,10 +2,14 @@ from browser import document, html
 from habitability_rules import RaceCreationRules
 
 STEP = 0.1
+CENTER_STEP = 0.05
+WIDTH_STEP = 0.1
 
 
-def _round_step(value):
-    return round(value, 1)
+def _round_step(value, step):
+    if step == 0:
+        return value
+    return round(value / step) * step
 
 
 def _clamp(value, min_value, max_value):
@@ -19,8 +23,9 @@ def _read_float(input_el):
         return 0.0
 
 
-def _set_input(input_el, value):
-    input_el.value = f"{_round_step(value):.1f}"
+def _set_input(input_el, value, step):
+    decimals = 2 if step == 0.05 else 1
+    input_el.value = f"{_round_step(value, step):.{decimals}f}"
 
 
 def _build_env_ui(env, center_input, width_input):
@@ -137,15 +142,37 @@ def _update_all(ui_rows, summary_value, error_box):
             starting_colonists = int(starting_input.value or 0)
         except ValueError:
             starting_colonists = 0
+
+    def read_int(field_id, default=0):
+        el = document.getElementById(field_id)
+        if not el:
+            return default
+        try:
+            return int(el.value or 0)
+        except ValueError:
+            return default
+
+    starting_mines = read_int('id_starting_mines', 4)
+    starting_factories = read_int('id_starting_factories', 2)
+    starting_shipyards = read_int('id_starting_shipyards', 1)
+    starting_fleets = read_int('id_starting_fleets', 2)
     for ui in ui_rows:
         env = ui['env']
         widths[env] = _clamp(widths[env], 0.1, 2.0)
         min_center = widths[env] / 2.0
         max_center = 2.0 - widths[env] / 2.0
         centers[env] = _clamp(centers[env], min_center, max_center)
-        _set_input(ui['width'], widths[env])
-        _set_input(ui['center'], centers[env])
-    rules = RaceCreationRules(centers, widths, starting_colonists=starting_colonists)
+        _set_input(ui['width'], widths[env], WIDTH_STEP)
+        _set_input(ui['center'], centers[env], CENTER_STEP)
+    rules = RaceCreationRules(
+        centers,
+        widths,
+        starting_colonists=starting_colonists,
+        starting_mines=starting_mines,
+        starting_factories=starting_factories,
+        starting_shipyards=starting_shipyards,
+        starting_fleets=starting_fleets,
+    )
 
     for ui in ui_rows:
         _apply_bar(ui, rules)
@@ -173,11 +200,18 @@ def _update_all(ui_rows, summary_value, error_box):
             err_list <= html.LI(msg)
         error_box <= err_list
 
-    colonist_row = document.select_one('tr[data-colonist-row=\"1\"]')
-    if colonist_row:
-        points_target = colonist_row.select_one('.colonist-points')
-        if points_target:
-            points_target.text = f"{rules.colonist_cost():.2f} pts"
+    def set_points(row_id, value):
+        row = document.select_one(f'tr[data-{row_id}=\"1\"]')
+        if row:
+            points_target = row.select_one(f'.{row_id}-points')
+            if points_target:
+                points_target.text = f"{value:.2f} pts"
+
+    set_points('colonist-row', rules.colonist_cost())
+    set_points('mine-row', rules.mines_cost())
+    set_points('factory-row', rules.factories_cost())
+    set_points('shipyard-row', rules.shipyards_cost())
+    set_points('fleet-row', rules.fleets_cost())
 
 
 
@@ -187,23 +221,23 @@ def _wire_controls(ui_rows, summary_value, error_box):
 
     for ui in ui_rows:
         def shrink(ev, ui=ui):
-            value = _read_float(ui['width']) - STEP
-            _set_input(ui['width'], _clamp(value, 0.0, 2.0))
+            value = _read_float(ui['width']) - WIDTH_STEP
+            _set_input(ui['width'], _clamp(value, 0.1, 2.0), WIDTH_STEP)
             refresh()
 
         def grow(ev, ui=ui):
-            value = _read_float(ui['width']) + STEP
-            _set_input(ui['width'], _clamp(value, 0.0, 2.0))
+            value = _read_float(ui['width']) + WIDTH_STEP
+            _set_input(ui['width'], _clamp(value, 0.1, 2.0), WIDTH_STEP)
             refresh()
 
         def down(ev, ui=ui):
-            value = _read_float(ui['center']) - STEP
-            _set_input(ui['center'], _clamp(value, 0.0, 2.0))
+            value = _read_float(ui['center']) - CENTER_STEP
+            _set_input(ui['center'], _clamp(value, 0.0, 2.0), CENTER_STEP)
             refresh()
 
         def up(ev, ui=ui):
-            value = _read_float(ui['center']) + STEP
-            _set_input(ui['center'], _clamp(value, 0.0, 2.0))
+            value = _read_float(ui['center']) + CENTER_STEP
+            _set_input(ui['center'], _clamp(value, 0.0, 2.0), CENTER_STEP)
             refresh()
 
         ui['shrink'].bind('click', shrink)
@@ -234,10 +268,10 @@ def _wire_controls(ui_rows, summary_value, error_box):
                 width_delta = -dy * unit_per_px
 
                 new_center = _clamp(state['start_center'] + center_delta, 0.0, 2.0)
-                new_width = _clamp(state['start_width'] + width_delta, 0.0, 2.0)
+                new_width = _clamp(state['start_width'] + width_delta, 0.1, 2.0)
 
-                _set_input(ui['center'], new_center)
-                _set_input(ui['width'], new_width)
+                _set_input(ui['center'], new_center, CENTER_STEP)
+                _set_input(ui['width'], new_width, WIDTH_STEP)
                 refresh()
 
             def on_up(up_ev):
@@ -287,18 +321,29 @@ def init_habitability_form():
     if not ui_rows:
         return
 
-    colonist_row = None
+    def attach_points(field_id, row_attr, points_class):
+        input_el = document.getElementById(field_id)
+        if not input_el:
+            return None
+        row = input_el.closest('tr')
+        if not row:
+            return None
+        cells = row.getElementsByTagName('td')
+        if len(cells) < 2:
+            return row
+        hint_cell = cells[1]
+        hint_cell.textContent = ''
+        points = html.DIV(Class=f'habitability-points {points_class}')
+        hint_cell <= points
+        row.attrs[f'data-{row_attr}'] = '1'
+        return row
+
     starting_input = document.getElementById('id_starting_colonists')
-    if starting_input:
-        colonist_row = starting_input.closest('tr')
-        if colonist_row:
-            cells = colonist_row.getElementsByTagName('td')
-            if len(cells) >= 2:
-                hint_cell = cells[1]
-                hint_cell.textContent = ''
-                points = html.DIV(Class='habitability-points colonist-points')
-                hint_cell <= points
-                colonist_row.attrs['data-colonist-row'] = '1'
+    attach_points('id_starting_colonists', 'colonist-row', 'colonist-row-points')
+    attach_points('id_starting_mines', 'mine-row', 'mine-row-points')
+    attach_points('id_starting_factories', 'factory-row', 'factory-row-points')
+    attach_points('id_starting_shipyards', 'shipyard-row', 'shipyard-row-points')
+    attach_points('id_starting_fleets', 'fleet-row', 'fleet-row-points')
     existing_summary = document.select_one('.habitability-summary')
     if existing_summary:
         summary_row = existing_summary
@@ -323,19 +368,35 @@ def init_habitability_form():
     else:
         summary_row <= html.TD(error_box)
 
-    last_width = document.getElementById('id_radiation_width')
-    if last_width and existing_summary is None:
-        last_row = last_width.closest('tr')
-        if last_row and last_row.parentNode:
-            last_row.parentNode.insertBefore(summary_row, last_row.nextSibling)
+    leftover_checkbox = document.getElementById('id_spend_leftover_on_minerals')
+    if existing_summary is None and leftover_checkbox:
+        leftover_row = leftover_checkbox.closest('tr')
+        if leftover_row and leftover_row.parentNode:
+            leftover_row.parentNode.insertBefore(summary_row, leftover_row)
         else:
             table <= summary_row
     elif existing_summary is None:
-        table <= summary_row
+        last_width = document.getElementById('id_radiation_width')
+        if last_width:
+            last_row = last_width.closest('tr')
+            if last_row and last_row.parentNode:
+                last_row.parentNode.insertBefore(summary_row, last_row.nextSibling)
+            else:
+                table <= summary_row
+        else:
+            table <= summary_row
 
     _wire_controls(ui_rows, summary_value, error_box)
-    if starting_input:
-        starting_input.bind('input', lambda ev: _update_all(ui_rows, summary_value, error_box))
+    for field_id in [
+        'id_starting_colonists',
+        'id_starting_mines',
+        'id_starting_factories',
+        'id_starting_shipyards',
+        'id_starting_fleets',
+    ]:
+        input_el = document.getElementById(field_id)
+        if input_el:
+            input_el.bind('input', lambda ev: _update_all(ui_rows, summary_value, error_box))
     _update_all(ui_rows, summary_value, error_box)
 
 

@@ -1,0 +1,167 @@
+{% if form.non_field_errors %}
+    <div class="form-errors">
+        {{ form.non_field_errors }}
+    </div>
+{% endif %}
+<table class="profile-table">
+    <tr>
+        <th>{{ form.name.label_tag }}</th>
+        <td>
+            {{ form.name }}
+            {{ form.name.errors }}
+        </td>
+        <td class="hint">The singular name for your people.</td>
+    </tr>
+    <tr>
+        <th>{{ form.plural_name.label_tag }}</th>
+        <td>
+            {{ form.plural_name }}
+            {{ form.plural_name.errors }}
+        </td>
+        <td class="hint">Used when referring to the race as a whole.</td>
+    </tr>
+    <tr>
+        <th>{{ form.homeworld_name.label_tag }}</th>
+        <td>
+            {{ form.homeworld_name }}
+            {{ form.homeworld_name.errors }}
+        </td>
+        <td class="hint">Leave blank to keep the generated star name.</td>
+    </tr>
+    <tr>
+        <th>{{ form.race_type.label_tag }}</th>
+        <td>
+            {{ form.race_type }}
+            {{ form.race_type.errors }}
+        </td>
+        <td class="hint">&nbsp;</td>
+    </tr>
+    <tr>
+        <th>{{ form.description.label_tag }}</th>
+        <td>
+            {{ form.description }}
+            {{ form.description.errors }}
+        </td>
+        <td class="hint">Private notes to remind you what this race is about.</td>
+    </tr>
+    <tr>
+        <th>Gravity:</th>
+        <td>
+            <div class="env-inputs">
+                <label>Width {{ form.gravity_width }}</label>
+                <label>Center {{ form.gravity_center }}</label>
+            </div>
+            {{ form.gravity_width.errors }}
+            {{ form.gravity_center.errors }}
+        </td>
+        <td class="hint">&nbsp;</td>
+    </tr>
+    <tr>
+        <th>Temperature:</th>
+        <td>
+            <div class="env-inputs">
+                <label>Width {{ form.temperature_width }}</label>
+                <label>Center {{ form.temperature_center }}</label>
+            </div>
+            {{ form.temperature_width.errors }}
+            {{ form.temperature_center.errors }}
+        </td>
+        <td class="hint">&nbsp;</td>
+    </tr>
+    <tr>
+        <th>Radiation:</th>
+        <td>
+            <div class="env-inputs">
+                <label>Width {{ form.radiation_width }}</label>
+                <label>Center {{ form.radiation_center }}</label>
+            </div>
+            {{ form.radiation_width.errors }}
+            {{ form.radiation_center.errors }}
+        </td>
+        <td class="hint">&nbsp;</td>
+    </tr>
+    <tr>
+        <th>Gravity:</th>
+        <td>
+            <div class="env-inputs">
+                <label>Width {{ form.gravity_width }}</label>
+                <label>Center {{ form.gravity_center }}</label>
+            </div>
+            {{ form.gravity_width.errors }}
+            {{ form.gravity_center.errors }}
+        </td>
+        <td class="hint">&nbsp;</td>
+    </tr>
+    <tr>
+        <th>Temperature:</th>
+        <td>
+            <div class="env-inputs">
+                <label>Width {{ form.temperature_width }}</label>
+                <label>Center {{ form.temperature_center }}</label>
+            </div>
+            {{ form.temperature_width.errors }}
+            {{ form.temperature_center.errors }}
+        </td>
+        <td class="hint">&nbsp;</td>
+    </tr>
+    <tr>
+        <th>Radiation:</th>
+        <td>
+            <div class="env-inputs">
+                <label>Width {{ form.radiation_width }}</label>
+                <label>Center {{ form.radiation_center }}</label>
+            </div>
+            {{ form.radiation_width.errors }}
+            {{ form.radiation_center.errors }}
+        </td>
+        <td class="hint">&nbsp;</td>
+    </tr>
+    <tr>
+        <th>Starting Colonists:</th>
+        <td>
+            <label>{{ form.starting_colonists }} k</label>
+            {{ form.starting_colonists.errors }}
+        </td>
+        <td class="hint">Thousands (k). 1 point per k.</td>
+    </tr>
+    <tr>
+        <th>Starting Mines:</th>
+        <td>
+            {{ form.starting_mines }}
+            {{ form.starting_mines.errors }}
+        </td>
+        <td class="hint">1 point per mine.</td>
+    </tr>
+    <tr>
+        <th>Starting Factories:</th>
+        <td>
+            {{ form.starting_factories }}
+            {{ form.starting_factories.errors }}
+        </td>
+        <td class="hint">1 point per factory.</td>
+    </tr>
+    <tr>
+        <th>Starting Shipyards:</th>
+        <td>
+            {{ form.starting_shipyards }}
+            {{ form.starting_shipyards.errors }}
+        </td>
+        <td class="hint">4 points per shipyard.</td>
+    </tr>
+    <tr>
+        <th>Starting Fleets:</th>
+        <td>
+            {{ form.starting_fleets }}
+            {{ form.starting_fleets.errors }}
+        </td>
+        <td class="hint">8 points per fleet.</td>
+    </tr>
+    <tr>
+        <th>Leftover Points:</th>
+        <td>
+            {{ form.spend_leftover_on_minerals }}
+            <label for="id_spend_leftover_on_minerals">Spend leftover points on surface minerals</label>
+        </td>
+        <td class="hint">Only applied if you have unused points.</td>
+    </tr>
+</table>
