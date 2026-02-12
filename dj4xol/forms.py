@@ -28,6 +28,13 @@ class ServerRaceForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['race_type'].queryset = ServerRaceType.objects.filter(enabled=True)
         self.fields['description'].required = False
+        for field in [
+            'gravity_center', 'gravity_width',
+            'temperature_center', 'temperature_width',
+            'radiation_center', 'radiation_width',
+        ]:
+            css_class = self.fields[field].widget.attrs.get('class', '')
+            self.fields[field].widget.attrs['class'] = (css_class + ' habitability-field').strip()
 
     def clean(self):
         cleaned_data = super().clean()

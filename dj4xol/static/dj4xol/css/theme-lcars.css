@@ -388,6 +388,18 @@ input[type="password"] {
     padding: 8px 15px;
 }
 
+textarea {
+    background: #1a1a2e;
+    border: 2px solid #cc6633;
+    border-radius: 15px;
+    color: #ff9966;
+    padding: 8px 15px;
+}
+
+textarea {
+    border-bottom-right-radius: 0;
+}
+
 select:focus,
 input:focus {
     border-color: #99ccff;
@@ -409,6 +421,25 @@ input:focus {
 
 .profile-table tr {
     border-bottom-color: #333;
+}
+
+/* ============================================
+   LCARS Navigation Buttons
+   ============================================ */
+.nav-button {
+    background: #9c6f7f;
+    border: none;
+    color: #1a1a2e;
+    border-radius: 20px;
+    padding: 10px 18px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.nav-button.primary {
+    background: #ff9933;
+    color: #1a1a2e;
 }
 
 /* ============================================

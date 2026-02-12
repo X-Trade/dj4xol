@@ -1,0 +1,19 @@
+<div class="nav-menu">
+    <button class="hamburger" id="hamburger-btn" aria-label="Menu">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+    <div class="nav-dropdown" id="nav-dropdown">
+        {% if current_page != 'home' %}
+        <a href="{% url 'dj4xol:index' %}">Home</a>
+        {% endif %}
+        {% if game and current_page != 'game' %}
+        <a href="{% url 'dj4xol:game' game.short_id %}">Back to Game</a>
+        {% endif %}
+        {% if current_page != 'profile' %}
+        <a href="{% url 'dj4xol:profile' %}">Profile</a>
+        {% endif %}
+        <a href="{% url 'logout' %}">Logout</a>
+    </div>
+</div>

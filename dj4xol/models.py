@@ -5,6 +5,7 @@ from django.contrib.auth import models as auth_models
 from django.core.validators import MaxValueValidator, MinValueValidator
 from itertools import chain
 from .starnamer import StarNamer
+from .habitability_rules import HabitabilityRules
 import random
 import uuid
 from uuid_extensions import uuid7 as _uuid7
@@ -67,40 +68,27 @@ class HabitabilityMixin(models.Model):
 
     def hab_min(self, env):
         """Get minimum habitable value for an environmental factor."""
-        return getattr(self, f'{env}_center') - getattr(self, f'{env}_width') / 2
+        return HabitabilityRules.from_source(self).hab_min(env)
 
     def hab_max(self, env):
         """Get maximum habitable value for an environmental factor."""
-        return getattr(self, f'{env}_center') + getattr(self, f'{env}_width') / 2
+        return HabitabilityRules.from_source(self).hab_max(env)
 
     def habitability_width_cost(self):
         """Total width points spent."""
-        return sum(getattr(self, f'{env}_width') for env in self.ENVS)
+        return HabitabilityRules.from_source(self).width_cost()
 
     def habitability_center_cost(self):
         """Total center points spent (average centers cost more)."""
-        return sum(1.0 - abs(getattr(self, f'{env}_center') - 1.0) for env in self.ENVS)
+        return HabitabilityRules.from_source(self).center_cost()
 
     def habitability_total_cost(self):
         """Total habitability points spent."""
-        return self.habitability_width_cost() + self.habitability_center_cost()
+        return HabitabilityRules.from_source(self).total_cost()
 
     def validate_habitability(self):
         """Validate habitability configuration. Returns list of errors."""
-        errors = []
-        for env in self.ENVS:
-            center = getattr(self, f'{env}_center')
-            width = getattr(self, f'{env}_width')
-            half = width / 2
-            if center - half < 0.0:
-                errors.append(f'{env.title()} range extends below 0')
-            if center + half > 2.0:
-                errors.append(f'{env.title()} range extends above 2')
-            if width < 0:
-                errors.append(f'{env.title()} width cannot be negative')
-        if self.habitability_total_cost() > self.HABITABILITY_BUDGET:
-            errors.append(f'Habitability cost ({self.habitability_total_cost():.2f}) exceeds budget ({self.HABITABILITY_BUDGET})')
-        return errors
+        return HabitabilityRules.from_source(self, budget=self.HABITABILITY_BUDGET).validate()
 
     def is_habitable(self, star):
         """Check if a star is within habitable range for all factors."""

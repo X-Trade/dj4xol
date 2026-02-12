@@ -3,111 +3,158 @@
     <head>
         <meta charset="utf-8">
         <title>Create Race</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        {% if selected_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if selected_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/habitability.css' %}">
     </head>
-    <body>
-        <h1>Create New Race</h1>
-        <form method="post">
-            {% csrf_token %}
-            {% if form.non_field_errors %}
-                <div class="form-errors">
-                    {{ form.non_field_errors }}
+    <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} create-race">
+        <div class="title-bar">
+            <span class="title">Create Race</span>
+            <span class="tagline">Custom race template</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='create_race' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="race">
+                    <h2><span>Create New Race</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <form method="post" class="race-form">
+                            {% csrf_token %}
+                            {% if form.non_field_errors %}
+                                <div class="form-errors">
+                                    {{ form.non_field_errors }}
+                                </div>
+                            {% endif %}
+                            <table class="profile-table">
+                                <tr>
+                                    <th>{{ form.name.label_tag }}</th>
+                                    <td>
+                                        {{ form.name }}
+                                        {{ form.name.errors }}
+                                    </td>
+                                    <td class="hint">The singular name for your people.</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.plural_name.label_tag }}</th>
+                                    <td>
+                                        {{ form.plural_name }}
+                                        {{ form.plural_name.errors }}
+                                    </td>
+                                    <td class="hint">Used when referring to the race as a whole.</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.homeworld_name.label_tag }}</th>
+                                    <td>
+                                        {{ form.homeworld_name }}
+                                        {{ form.homeworld_name.errors }}
+                                    </td>
+                                    <td class="hint">Leave blank to keep the generated star name.</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.race_type.label_tag }}</th>
+                                    <td>
+                                        {{ form.race_type }}
+                                        {{ form.race_type.errors }}
+                                    </td>
+                                    <td class="hint">&nbsp;</td>
+                                </tr>
+                                <tr>
+                                    <th>{{ form.description.label_tag }}</th>
+                                    <td>
+                                        {{ form.description }}
+                                        {{ form.description.errors }}
+                                    </td>
+                                    <td class="hint">Private notes to remind you what this race is about.</td>
+                                </tr>
+                                <tr>
+                                    <th>Gravity:</th>
+                                    <td>
+                                        <div class="env-inputs">
+                                            <label>Width {{ form.gravity_width }}</label>
+                                            <label>Center {{ form.gravity_center }}</label>
+                                        </div>
+                                        {{ form.gravity_width.errors }}
+                                        {{ form.gravity_center.errors }}
+                                    </td>
+                                    <td class="hint">&nbsp;</td>
+                                </tr>
+                                <tr>
+                                    <th>Temperature:</th>
+                                    <td>
+                                        <div class="env-inputs">
+                                            <label>Width {{ form.temperature_width }}</label>
+                                            <label>Center {{ form.temperature_center }}</label>
+                                        </div>
+                                        {{ form.temperature_width.errors }}
+                                        {{ form.temperature_center.errors }}
+                                    </td>
+                                    <td class="hint">&nbsp;</td>
+                                </tr>
+                                <tr>
+                                    <th>Radiation:</th>
+                                    <td>
+                                        <div class="env-inputs">
+                                            <label>Width {{ form.radiation_width }}</label>
+                                            <label>Center {{ form.radiation_center }}</label>
+                                        </div>
+                                        {{ form.radiation_width.errors }}
+                                        {{ form.radiation_center.errors }}
+                                    </td>
+                                    <td class="hint">&nbsp;</td>
+                                </tr>
+                            </table>
+                            <div class="form-nav">
+                                <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:index' %}'">Back to Games</button>
+                                <button type="submit" class="nav-button primary">Create Race</button>
+                            </div>
+                        </form>
+                    </div></div>
                 </div>
-            {% endif %}
-            <table>
-                <tr>
-                    <th>{{ form.name.label_tag }}</th>
-                    <td>
-                        {{ form.name }}
-                        {{ form.name.errors }}
-                    </td>
-                    <td class="hint">The singular name for your people.</td>
-                </tr>
-                <tr>
-                    <th>{{ form.plural_name.label_tag }}</th>
-                    <td>
-                        {{ form.plural_name }}
-                        {{ form.plural_name.errors }}
-                    </td>
-                    <td class="hint">Used when referring to the race as a whole.</td>
-                </tr>
-                <tr>
-                    <th>{{ form.homeworld_name.label_tag }}</th>
-                    <td>
-                        {{ form.homeworld_name }}
-                        {{ form.homeworld_name.errors }}
-                    </td>
-                    <td class="hint">Leave blank to keep the generated star name.</td>
-                </tr>
-                <tr>
-                    <th>{{ form.race_type.label_tag }}</th>
-                    <td>
-                        {{ form.race_type }}
-                        {{ form.race_type.errors }}
-                    </td>
-                    <td class="hint">&nbsp;</td>
-                </tr>
-                <tr>
-                    <th>{{ form.description.label_tag }}</th>
-                    <td>
-                        {{ form.description }}
-                        {{ form.description.errors }}
-                    </td>
-                    <td class="hint">Private notes to remind you what this race is about.</td>
-                </tr>
-                <tr>
-                    <th>{{ form.gravity_center.label_tag }}</th>
-                    <td>
-                        {{ form.gravity_center }}
-                        {{ form.gravity_center.errors }}
-                    </td>
-                    <td class="hint">&nbsp;</td>
-                </tr>
-                <tr>
-                    <th>{{ form.gravity_width.label_tag }}</th>
-                    <td>
-                        {{ form.gravity_width }}
-                        {{ form.gravity_width.errors }}
-                    </td>
-                    <td class="hint">&nbsp;</td>
-                </tr>
-                <tr>
-                    <th>{{ form.temperature_center.label_tag }}</th>
-                    <td>
-                        {{ form.temperature_center }}
-                        {{ form.temperature_center.errors }}
-                    </td>
-                    <td class="hint">&nbsp;</td>
-                </tr>
-                <tr>
-                    <th>{{ form.temperature_width.label_tag }}</th>
-                    <td>
-                        {{ form.temperature_width }}
-                        {{ form.temperature_width.errors }}
-                    </td>
-                    <td class="hint">&nbsp;</td>
-                </tr>
-                <tr>
-                    <th>{{ form.radiation_center.label_tag }}</th>
-                    <td>
-                        {{ form.radiation_center }}
-                        {{ form.radiation_center.errors }}
-                    </td>
-                    <td class="hint">&nbsp;</td>
-                </tr>
-                <tr>
-                    <th>{{ form.radiation_width.label_tag }}</th>
-                    <td>
-                        {{ form.radiation_width }}
-                        {{ form.radiation_width.errors }}
-                    </td>
-                    <td class="hint">&nbsp;</td>
-                </tr>
-            </table>
-            <p><button type="submit">Create Race</button></p>
-        </form>
-        <p><a href="{% url 'dj4xol:index' %}">Back to Games</a></p>
+            </div>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython_stdlib.js"></script>
+        <script type="text/python" src="{% static 'dj4xol/brython/habitability_rules.py' %}"></script>
+        <script type="text/python" src="{% static 'dj4xol/brython/race_builder.py' %}"></script>
+        <script>
+            window.addEventListener('load', function() {
+                if (window.brython) {
+                    brython();
+                }
+            });
+        </script>
         <script>
             (function() {
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (header) {
+                        header.addEventListener('click', function() {
+                            panel.classList.remove('no-transition');
+                            panel.classList.toggle('open');
+                        });
+                    }
+                });
                 var nameInput = document.getElementById('id_name');
                 var pluralInput = document.getElementById('id_plural_name');
                 if (nameInput && pluralInput) {
