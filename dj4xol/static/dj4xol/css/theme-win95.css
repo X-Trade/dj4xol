@@ -239,6 +239,7 @@ body {
                 inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
     border-radius: 0;
     color: #000000;
+    margin: 0;
 }
 
 .panel:not(.open) > h2 {
@@ -830,6 +831,22 @@ input[type="range"]::-webkit-slider-thumb {
 .theme-option.selected {
     box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000;
     background: #a0a0a0;
+}
+
+/* ============================================
+   Win95 Navigation Buttons
+   ============================================ */
+.nav-button {
+    background: #c0c0c0;
+    border: 2px solid #808080;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+    color: #000;
+    padding: 6px 12px;
+}
+
+.nav-button.primary {
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+    background: #c0c0c0;
 }
 
 .theme-preview {

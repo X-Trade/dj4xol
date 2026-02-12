@@ -53,6 +53,7 @@ body {
     max-width: 600px;
     margin: 0 auto;
     padding-top: 10px;
+    width: 100%;
 }
 
 /* Onboarding pages - allow full width for hint columns */
@@ -61,6 +62,14 @@ body {
     margin: 0 auto;
     grid-template-columns: minmax(324px, 1fr);
     justify-content: stretch;
+}
+
+.onboarding .column {
+    width: 100%;
+}
+
+.onboarding .panel-content > div {
+    padding-top: 0;
 }
 
 .onboarding .profile-table {
@@ -103,11 +112,12 @@ body {
 .form-nav .button-link {
     display: inline-block;
     padding: 6px 10px;
-    border: 1px solid #666;
-    background: #333;
-    color: #fff;
     text-decoration: none;
     cursor: pointer;
+}
+
+.race-form {
+    margin-bottom: 0;
 }
 
 /* Two column layout for homepage */
@@ -116,6 +126,7 @@ body {
     max-width: 1000px;
     margin: 0 auto;
     padding-top: 10px;
+    width: 100%;
 }
 
 .columns.two-column .column-left,

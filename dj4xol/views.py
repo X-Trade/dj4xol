@@ -485,6 +485,7 @@ def remove_fleet_order(request, game_short_id, order_short_id):
 def create_race(request):
     """Create a new custom race template."""
     account = request.user.dj4xol_account
+    selected_theme = account.theme if account else 'classic'
     if request.method == 'POST':
         form = ServerRaceForm(request.POST)
         if form.is_valid():
@@ -494,7 +495,7 @@ def create_race(request):
             return redirect('dj4xol:index')
     else:
         form = ServerRaceForm()
-    return render(request, 'dj4xol/create_race.html', {'form': form})
+    return render(request, 'dj4xol/create_race.html', {'form': form, 'selected_theme': selected_theme})
 
 
 @registration_required()
@@ -609,6 +610,7 @@ def message_history(request, game_short_id):
         'current_year': year_filter,
         'current_category': category_filter,
         'priority_only': priority_only,
+        'user_theme': account.theme if account else 'classic',
     })
 
 

@@ -124,6 +124,12 @@ a:hover {
     user-select: none;
     font-size: 1em;
     font-weight: bold;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.panel {
+    width: 100%;
 }
 
 /* Panel toggle button (+/-) */
@@ -187,6 +193,8 @@ a:hover {
     padding: var(--panel-padding);
     box-sizing: border-box;
     overflow-y: auto;
+    padding-top: 4px;
+    padding-bottom: 4px;
 }
 
 /* Starmap panel has no padding */
@@ -372,6 +380,137 @@ a:hover {
     margin: 4px 0 0 0;
     padding: 0;
     font-weight: bold;
+}
+
+/* ============================================
+   Navigation Buttons
+   ============================================ */
+.nav-button {
+    border: 1px solid #666;
+    background: #333;
+    color: #fff;
+    padding: 6px 12px;
+    cursor: pointer;
+}
+
+.nav-button.primary {
+    background: #444;
+    border-color: #555;
+}
+
+/* ============================================
+   Habitability UI
+   ============================================ */
+.habitability-ui {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.habitability-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 0.85em;
+}
+
+.habitability-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 10px;
+    border-right: 1px solid #aaa;
+}
+
+.habitability-group:last-child {
+    border-right: none;
+    padding-right: 0;
+}
+
+.habitability-value {
+    min-width: 32px;
+    text-align: right;
+    font-weight: bold;
+}
+
+.habitability-button {
+    padding: 2px 6px;
+    border: 1px solid #666;
+    background: #eee;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.habitability-points {
+    font-size: 0.85em;
+    color: #b34700;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.habitability-summary th {
+    text-align: left;
+}
+
+.habitability-total {
+    font-weight: bold;
+}
+
+.habitability-total.over-budget {
+    color: #cc3333;
+}
+
+.habitability-errors {
+    margin-bottom: 6px;
+}
+
+.habitability-range {
+    color: #666;
+    font-size: 0.85em;
+}
+
+/* Environmental bars (for habitability editor) */
+.env-bar {
+    flex: 1;
+    height: 12px;
+    background: linear-gradient(to right,
+        #400000 0%,
+        #00ff00 50%,
+        #400000 100%);
+    border: 1px solid #404040;
+    position: relative;
+    margin: 0 8px 0 0;
+}
+
+.env-range {
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    background: rgba(0, 170, 0, 0.25);
+    border: 1px solid #00aa00;
+    clip-path: polygon(0 50%, 6px 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 6px 100%);
+}
+
+.env-marker {
+    position: absolute;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    background-color: #ffffff;
+    border: 1px solid #000000;
+    transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.env-marker.habitable {
+    background-color: #00ff00;
+}
+
+/* Hide raw habitability inputs when Brython is active */
+.brython .habitability-field {
+    display: none;
 }
 
 /* ============================================

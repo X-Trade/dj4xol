@@ -1,5 +1,6 @@
 from django.test import TestCase
 from ..models import ServerRaceType, ServerRace, Player, Star, Game, Account
+from ..habitability_rules import HabitabilityRules
 from django.contrib.auth.models import User
 
 
@@ -64,6 +65,15 @@ class TestHabitabilityMixin(TestCase):
         self.race.gravity_width = 2.0
         errors = self.race.validate_habitability()
         self.assertTrue(any('exceeds budget' in e for e in errors))
+
+    def test_rules_per_env_cost(self):
+        rules = HabitabilityRules(
+            centers={'gravity': 1.0, 'temperature': 0.5, 'radiation': 1.5},
+            widths={'gravity': 1.0, 'temperature': 0.8, 'radiation': 1.2},
+        )
+        self.assertAlmostEqual(rules.per_env_cost('gravity'), 2.0)
+        self.assertAlmostEqual(rules.per_env_cost('temperature'), 1.3)
+        self.assertAlmostEqual(rules.per_env_cost('radiation'), 1.7)
 
     def test_validate_habitability_range_below_zero(self):
         """Range extending below 0 should return error."""

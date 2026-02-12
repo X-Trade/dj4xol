@@ -82,23 +82,11 @@
             }
         </style>
     </head>
-    <body>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %}">
         <div class="title-bar">
             <span class="title">{{ game.name }}</span>
             <span class="tagline">Message History</span>
-            <div class="nav-menu">
-                <button class="hamburger" id="hamburger-btn" aria-label="Menu">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </button>
-                <div class="nav-dropdown" id="nav-dropdown">
-                    <a href="{% url 'dj4xol:game' game.short_id %}">Back to Game</a>
-                    <a href="{% url 'dj4xol:index' %}">Home</a>
-                    <a href="{% url 'dj4xol:profile' %}">4x Profile</a>
-                    <a href="{% url 'logout' %}">Logout</a>
-                </div>
-            </div>
+            {% include 'dj4xol/_nav_menu.html' with current_page='message_history' game=game %}
         </div>
         <div class="message-history">
             <div class="filters">
