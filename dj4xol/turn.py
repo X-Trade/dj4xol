@@ -157,6 +157,25 @@ def calculate_employment_percent(star):
     return min(100, jobs / star.colonists * 100)
 
 
+def calculate_effective_defenses(star):
+    """Calculate effective defenses based on staffing levels.
+
+    If employment exceeds 100%, defenses are reduced proportionally
+    by the reciprocal of the employment ratio.
+    """
+    if star.defenses <= 0:
+        return 0.0
+    if star.colonists <= 0:
+        return 0.0
+    jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
+            + star.shipyards * COLONISTS_PER_SHIPYARD)
+    if jobs <= 0:
+        return 0.0
+    employment_ratio = jobs / star.colonists
+    staffing_ratio = 1.0 if employment_ratio <= 1.0 else (1.0 / employment_ratio)
+    return star.defenses * staffing_ratio
+
+
 def calculate_available_buildpoints(star):
     """Calculate buildpoints available this turn from factories.
 
@@ -166,12 +185,34 @@ def calculate_available_buildpoints(star):
     """
     if star.factories == 0:
         return 0
+    staffing_ratio = calculate_staffing_ratio(star)
+    if staffing_ratio == 0:
+        return 0
+    productivity = calculate_productivity_multiplier(staffing_ratio)
+    return int(star.factories * BUILDPOINTS_PER_FACTORY * productivity)
+
+
+def calculate_staffing_ratio(star):
+    """Calculate staffing ratio (0-1) based on colonists and infrastructure jobs."""
     jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
             + star.shipyards * COLONISTS_PER_SHIPYARD)
-    if jobs == 0:
+    if jobs <= 0 or star.colonists <= 0:
         return 0
-    staffing_ratio = min(1.0, star.colonists / jobs)
-    return int(star.factories * BUILDPOINTS_PER_FACTORY * staffing_ratio)
+    return min(1.0, star.colonists / jobs)
+
+
+def calculate_productivity_multiplier(employment_ratio):
+    """Bell-curve productivity based on employment ratio.
+
+    Targets: 0.5x at ~1%, 1.5x at 50%, 1.0x at 100%.
+    """
+    ratio = max(0.0, min(1.0, employment_ratio))
+    # Quadratic fit through (0.01, 0.5), (0.5, 1.5), (1.0, 1.0)
+    a = -3.072
+    b = 3.608
+    c = 0.464
+    multiplier = a * ratio * ratio + b * ratio + c
+    return max(0.5, multiplier)
 
 
 def calculate_consumed_buildpoints(star):
@@ -1342,12 +1383,13 @@ class GameTurn():
         attacker_race = attacker.race_type
 
         fleet_losses_desc = "no fleet losses"
-        if star.defenses > 0:
+        effective_defenses = calculate_effective_defenses(star)
+        if effective_defenses > 0:
             attacker_strength = calculate_fleet_strength(
                 fleet,
                 defender_race.defence_multiplier if defender_race else 1.0
             )
-            defender_strength = normalize_ship_count(star.defenses)
+            defender_strength = normalize_ship_count(effective_defenses)
             strength_by_player = {
                 attacker: attacker_strength,
                 defender: defender_strength,
@@ -2131,7 +2173,11 @@ class GameTurn():
             if total_yield == 0:
                 continue
 
-            total_extraction = star.mines * KT_PER_MINE
+            staffing_ratio = calculate_staffing_ratio(star)
+            if staffing_ratio == 0:
+                continue
+            productivity = calculate_productivity_multiplier(staffing_ratio)
+            total_extraction = star.mines * KT_PER_MINE * productivity
 
             # Check if this is a homeworld (yields don't drop below minimum)
             is_homeworld = star.homeworld_of.exists()
