@@ -477,6 +477,11 @@ class ServerRace(UUIDMixin, HabitabilityMixin):
     plural_name = models.CharField(max_length=16)
     homeworld_name = models.CharField(max_length=30, blank=True, default='')
     starting_colonists = models.IntegerField(default=10)
+    starting_mines = models.IntegerField(default=4)
+    starting_factories = models.IntegerField(default=2)
+    starting_shipyards = models.IntegerField(default=1)
+    starting_fleets = models.IntegerField(default=2)
+    leftover_points = models.FloatField(default=0.0)
     public = models.BooleanField(default=False)
     owner = models.ForeignKey(Account, related_name="custom_races",
                                       null=True, default=None,
@@ -502,6 +507,11 @@ class Player(AbstractGameObject, HabitabilityMixin):
     description = models.TextField(blank=True, default='')
     race_type = models.ForeignKey(ServerRaceType)
     starting_colonists = models.IntegerField(default=10)
+    starting_mines = models.IntegerField(default=4)
+    starting_factories = models.IntegerField(default=2)
+    starting_shipyards = models.IntegerField(default=1)
+    starting_fleets = models.IntegerField(default=2)
+    leftover_points = models.FloatField(default=0.0)
     turned_in = models.BooleanField(default=False)
     last_seen_year = models.IntegerField(null=True, blank=True)
     messages_seen_year = models.IntegerField(null=True, blank=True)

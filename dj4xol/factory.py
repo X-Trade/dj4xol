@@ -219,10 +219,36 @@ class GameFactory():
         star.ironium_yield = max(50, star.ironium_yield)
         star.boranium_yield = max(50, star.boranium_yield)
         star.germanium_yield = max(50, star.germanium_yield)
+        # Apply starting infrastructure
+        star.mines = max(0, int(player.starting_mines or 0))
+        star.factories = max(0, int(player.starting_factories or 0))
+        star.shipyards = max(0, int(player.starting_shipyards or 0))
         # Ensure homeworld has minimum surface minerals (1000kt each)
         star.ironium_inventory = max(1000, star.ironium_inventory)
         star.boranium_inventory = max(1000, star.boranium_inventory)
         star.germanium_inventory = max(1000, star.germanium_inventory)
+        # Apply leftover points to surface minerals (10kt per point)
+        if player.leftover_points and player.leftover_points > 0:
+            total_kt = int(player.leftover_points * 10)
+            if total_kt > 0:
+                weights = [
+                    max(1, star.ironium_yield),
+                    max(1, star.boranium_yield),
+                    max(1, star.germanium_yield),
+                ]
+                total_weight = sum(weights)
+                base_alloc = [
+                    int(total_kt * weights[0] / total_weight),
+                    int(total_kt * weights[1] / total_weight),
+                    int(total_kt * weights[2] / total_weight),
+                ]
+                remainder = total_kt - sum(base_alloc)
+                for _ in range(remainder):
+                    pick = random.choices([0, 1, 2], weights=weights, k=1)[0]
+                    base_alloc[pick] += 1
+                star.ironium_inventory += base_alloc[0]
+                star.boranium_inventory += base_alloc[1]
+                star.germanium_inventory += base_alloc[2]
         # Override star name if player has a homeworld name set
         if player.homeworld_name:
             star.name = player.homeworld_name
@@ -260,10 +286,29 @@ class GameFactory():
             race_type=race.race_type,
         )
         player.starting_colonists = race.starting_colonists
+        player.starting_mines = race.starting_mines
+        player.starting_factories = race.starting_factories
+        player.starting_shipyards = race.starting_shipyards
+        player.starting_fleets = race.starting_fleets
+        player.leftover_points = race.leftover_points
         player.copy_habitability_from(race)
         player.save()
         self._assign_homeworld_to_player(player, self._find_homeworld_star(available_stars))
+        self._create_starting_fleets(player)
         return player
+
+    def _create_starting_fleets(self, player):
+        count = max(0, int(player.starting_fleets or 0))
+        if count <= 0:
+            return
+        for _ in range(count):
+            Fleet.objects.create(
+                game=self.game,
+                player=player,
+                name=self.starnamer.get_unique(),
+                x=player.homeworld.x,
+                y=player.homeworld.y,
+            )
     
     def _create_random_fleets(self, count_per_player):
         """Create fleets for each player. Game must be saved first. For testing."""

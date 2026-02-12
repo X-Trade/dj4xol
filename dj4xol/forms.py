@@ -6,11 +6,16 @@ from .models import ServerRace, ServerRaceType, Game, Account
 
 class ServerRaceForm(forms.ModelForm):
     """Form for creating a custom race template."""
+    spend_leftover_on_minerals = forms.BooleanField(
+        required=False,
+        label="Spend leftover points on surface minerals"
+    )
     class Meta:
         model = ServerRace
         fields = [
             'name', 'plural_name', 'homeworld_name', 'race_type', 'description',
             'starting_colonists',
+            'starting_mines', 'starting_factories', 'starting_shipyards', 'starting_fleets',
             'gravity_center', 'gravity_width',
             'temperature_center', 'temperature_width',
             'radiation_center', 'radiation_width',
@@ -18,11 +23,15 @@ class ServerRaceForm(forms.ModelForm):
         widgets = {
             'description': forms.Textarea(attrs={'rows': 3}),
             'starting_colonists': forms.NumberInput(attrs={'step': '1', 'min': '1'}),
-            'gravity_center': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
+            'starting_mines': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
+            'starting_factories': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
+            'starting_shipyards': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
+            'starting_fleets': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
+            'gravity_center': forms.NumberInput(attrs={'step': '0.05', 'min': '0', 'max': '2'}),
             'gravity_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0.1', 'max': '2'}),
-            'temperature_center': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
+            'temperature_center': forms.NumberInput(attrs={'step': '0.05', 'min': '0', 'max': '2'}),
             'temperature_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0.1', 'max': '2'}),
-            'radiation_center': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
+            'radiation_center': forms.NumberInput(attrs={'step': '0.05', 'min': '0', 'max': '2'}),
             'radiation_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0.1', 'max': '2'}),
         }
 
@@ -54,11 +63,27 @@ class ServerRaceForm(forms.ModelForm):
                 'radiation': cleaned_data.get('radiation_width', 1.0),
             },
             starting_colonists=cleaned_data.get('starting_colonists', 10),
+            starting_mines=cleaned_data.get('starting_mines', 4),
+            starting_factories=cleaned_data.get('starting_factories', 2),
+            starting_shipyards=cleaned_data.get('starting_shipyards', 1),
+            starting_fleets=cleaned_data.get('starting_fleets', 2),
         )
         errors = rules.validate()
         if errors:
             raise forms.ValidationError(errors)
+        cleaned_data['__rules__'] = rules
         return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        rules = self.cleaned_data.get('__rules__')
+        if rules and self.cleaned_data.get('spend_leftover_on_minerals'):
+            instance.leftover_points = max(0.0, rules.budget - rules.total_cost())
+        else:
+            instance.leftover_points = 0.0
+        if commit:
+            instance.save()
+        return instance
 
 
 class NewGameForm(forms.Form):
