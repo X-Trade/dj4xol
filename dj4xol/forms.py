@@ -10,18 +10,20 @@ class ServerRaceForm(forms.ModelForm):
         model = ServerRace
         fields = [
             'name', 'plural_name', 'homeworld_name', 'race_type', 'description',
+            'starting_colonists',
             'gravity_center', 'gravity_width',
             'temperature_center', 'temperature_width',
             'radiation_center', 'radiation_width',
         ]
         widgets = {
             'description': forms.Textarea(attrs={'rows': 3}),
+            'starting_colonists': forms.NumberInput(attrs={'step': '1', 'min': '1'}),
             'gravity_center': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
-            'gravity_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
+            'gravity_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0.1', 'max': '2'}),
             'temperature_center': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
-            'temperature_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
+            'temperature_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0.1', 'max': '2'}),
             'radiation_center': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
-            'radiation_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0', 'max': '2'}),
+            'radiation_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0.1', 'max': '2'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -38,13 +40,22 @@ class ServerRaceForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        # Build a temporary instance to use validation methods
-        instance = ServerRace(**{k: v for k, v in cleaned_data.items() if k in [
-            'gravity_center', 'gravity_width',
-            'temperature_center', 'temperature_width',
-            'radiation_center', 'radiation_width',
-        ]})
-        errors = instance.validate_habitability()
+        from .habitability_rules import RaceCreationRules
+
+        rules = RaceCreationRules(
+            centers={
+                'gravity': cleaned_data.get('gravity_center', 1.0),
+                'temperature': cleaned_data.get('temperature_center', 1.0),
+                'radiation': cleaned_data.get('radiation_center', 1.0),
+            },
+            widths={
+                'gravity': cleaned_data.get('gravity_width', 1.0),
+                'temperature': cleaned_data.get('temperature_width', 1.0),
+                'radiation': cleaned_data.get('radiation_width', 1.0),
+            },
+            starting_colonists=cleaned_data.get('starting_colonists', 10),
+        )
+        errors = rules.validate()
         if errors:
             raise forms.ValidationError(errors)
         return cleaned_data

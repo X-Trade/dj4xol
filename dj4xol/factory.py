@@ -207,7 +207,10 @@ class GameFactory():
         Sets star environmentals to player's habitable centers and optionally renames.
         Ensures resource yields are at least 50% and surface minerals at least 1000kt."""
         star.player = player
-        star.colonists = player.race_type.starting_population
+        if player.starting_colonists is not None:
+            star.colonists = player.starting_colonists * 1000
+        else:
+            star.colonists = player.race_type.starting_population
         # Set environmentals to player's ideal (center) values
         star.gravity = player.gravity_center
         star.temperature = player.temperature_center
@@ -256,6 +259,7 @@ class GameFactory():
             homeworld_name=race.homeworld_name,
             race_type=race.race_type,
         )
+        player.starting_colonists = race.starting_colonists
         player.copy_habitability_from(race)
         player.save()
         self._assign_homeworld_to_player(player, self._find_homeworld_star(available_stars))

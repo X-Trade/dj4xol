@@ -1,5 +1,5 @@
 from browser import document, html
-from habitability_rules import HabitabilityRules
+from habitability_rules import RaceCreationRules
 
 STEP = 0.1
 
@@ -130,15 +130,22 @@ def _apply_bar(ui, rules):
 def _update_all(ui_rows, summary_value, error_box):
     centers = {ui['env']: _read_float(ui['center']) for ui in ui_rows}
     widths = {ui['env']: _read_float(ui['width']) for ui in ui_rows}
+    starting_input = document.getElementById('id_starting_colonists')
+    starting_colonists = 0
+    if starting_input:
+        try:
+            starting_colonists = int(starting_input.value or 0)
+        except ValueError:
+            starting_colonists = 0
     for ui in ui_rows:
         env = ui['env']
-        widths[env] = _clamp(widths[env], 0.0, 2.0)
+        widths[env] = _clamp(widths[env], 0.1, 2.0)
         min_center = widths[env] / 2.0
         max_center = 2.0 - widths[env] / 2.0
         centers[env] = _clamp(centers[env], min_center, max_center)
         _set_input(ui['width'], widths[env])
         _set_input(ui['center'], centers[env])
-    rules = HabitabilityRules(centers, widths)
+    rules = RaceCreationRules(centers, widths, starting_colonists=starting_colonists)
 
     for ui in ui_rows:
         _apply_bar(ui, rules)
@@ -149,11 +156,14 @@ def _update_all(ui_rows, summary_value, error_box):
         ui['center_value'].text = f"{rules.centers[ui['env']]:.2f}"
 
     total = rules.total_cost()
-    summary_value.text = f"{total:.2f} / {rules.budget:.1f} pts"
+    summary_value.text = f"{total:.2f}"
+    summary_value.attrs['data-budget'] = f"{rules.budget:.1f} pts"
     if total > rules.budget:
         summary_value.classList.add('over-budget')
+        summary_value.classList.remove('under-budget')
     else:
         summary_value.classList.remove('over-budget')
+        summary_value.classList.add('under-budget')
 
     errors = rules.validate()
     error_box.text = ''
@@ -162,6 +172,12 @@ def _update_all(ui_rows, summary_value, error_box):
         for msg in errors:
             err_list <= html.LI(msg)
         error_box <= err_list
+
+    colonist_row = document.select_one('tr[data-colonist-row=\"1\"]')
+    if colonist_row:
+        points_target = colonist_row.select_one('.colonist-points')
+        if points_target:
+            points_target.text = f"{rules.colonist_cost():.2f} pts"
 
 
 
@@ -271,6 +287,18 @@ def init_habitability_form():
     if not ui_rows:
         return
 
+    colonist_row = None
+    starting_input = document.getElementById('id_starting_colonists')
+    if starting_input:
+        colonist_row = starting_input.closest('tr')
+        if colonist_row:
+            cells = colonist_row.getElementsByTagName('td')
+            if len(cells) >= 2:
+                hint_cell = cells[1]
+                hint_cell.textContent = ''
+                points = html.DIV(Class='habitability-points colonist-points')
+                hint_cell <= points
+                colonist_row.attrs['data-colonist-row'] = '1'
     existing_summary = document.select_one('.habitability-summary')
     if existing_summary:
         summary_row = existing_summary
@@ -306,6 +334,8 @@ def init_habitability_form():
         table <= summary_row
 
     _wire_controls(ui_rows, summary_value, error_box)
+    if starting_input:
+        starting_input.bind('input', lambda ev: _update_all(ui_rows, summary_value, error_box))
     _update_all(ui_rows, summary_value, error_box)
 
 
