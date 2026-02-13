@@ -301,11 +301,11 @@ class GameFactory():
         count = max(0, int(player.starting_fleets or 0))
         if count <= 0:
             return
-        for _ in range(count):
+        for i in range(count):
             Fleet.objects.create(
                 game=self.game,
                 player=player,
-                name=self.starnamer.get_unique(),
+                name=f"{player.name} Fleet {player.fleets.count() + i + 1}",
                 x=player.homeworld.x,
                 y=player.homeworld.y,
             )

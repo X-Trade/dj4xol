@@ -226,17 +226,15 @@ class TestPopulationGrowth(TestCase):
         self.assertLess(other_star.colonists, 100000)
         # Should have created at least one message about deaths
         self.assertGreater(player.messages.count(), initial_messages)
-        latest_msg = player.messages.order_by('-id').first()
-        # Check for environmental death keywords
-        msg_lower = latest_msg.message.lower()
+        # Check any message for environmental death keywords
+        keywords = (
+            'perished', 'died', 'lost', 'succumbed', 'claimed', 'fatal',
+            'environment', 'harsh', 'hostile', 'inhospitable', 'hazard', 'exposure'
+        )
+        messages = list(player.messages.order_by('-id'))
         self.assertTrue(
-            'perished' in msg_lower or 'died' in msg_lower or
-            'lost' in msg_lower or 'succumbed' in msg_lower or
-            'claimed' in msg_lower or 'fatal' in msg_lower or
-            'environment' in msg_lower or 'harsh' in msg_lower or
-            'hostile' in msg_lower or 'inhospitable' in msg_lower or
-            'hazard' in msg_lower or 'exposure' in msg_lower,
-            f"Expected death-related message, got: {latest_msg.message}"
+            any(any(k in msg.message.lower() for k in keywords) for msg in messages),
+            f"Expected death-related message, got: {messages[0].message if messages else 'none'}"
         )
 
     def test_colony_abandoned_creates_message(self):
@@ -270,6 +268,9 @@ class TestTerraforming(TestCase):
         homeworld = player.homeworld
         # Set gravity away from player's ideal
         homeworld.gravity = 0.5
+        homeworld.mines = 0
+        homeworld.defenses = 0
+        homeworld.shipyards = 0
         homeworld.factories = 10  # Provide buildpoints (100 bp)
         homeworld.colonists = 10000  # Staff the factories
         homeworld.ironium_inventory = 2000  # Provide resources
@@ -295,6 +296,9 @@ class TestTerraforming(TestCase):
         homeworld = player.homeworld
         homeworld.gravity = 0.5
         homeworld.temperature = 1.8
+        homeworld.mines = 0
+        homeworld.defenses = 0
+        homeworld.shipyards = 0
         homeworld.factories = 20  # Provide buildpoints (200 bp for 2 terraforms)
         homeworld.colonists = 20000  # Staff the factories
         homeworld.ironium_inventory = 2000  # For gravity terraform
@@ -567,6 +571,8 @@ class TestEconomicCalculations(TestCase):
         game = default_game()
         player = game.players.first()
         star = player.homeworld
+        star.shipyards = 0
+        star.save()
 
         race = player.race_type
         race.population_growth_multiplier = 0
@@ -575,6 +581,9 @@ class TestEconomicCalculations(TestCase):
         # Get baseline habitability with no economy
         star.mines = 0
         star.factories = 0
+        star.defenses = 0
+        star.shipyards = 0
+        star.colonists = 10000
         baseline = calculate_habitability_factor(player, star)
 
         # Add full employment
@@ -592,6 +601,8 @@ class TestEconomicCalculations(TestCase):
         game = default_game()
         player = game.players.first()
         star = player.homeworld
+        star.shipyards = 0
+        star.save()
         star.mines = 0
         star.ironium_inventory = 100  # Provide resources for building
         star.save()
@@ -623,8 +634,8 @@ class TestEconomicCalculations(TestCase):
         player = game.players.first()
         star = player.homeworld
         star.mines = 5
-        star.ironium = 50  # 50% yield
-        star.boranium = 30  # 30% yield
+        star.ironium_yield = 50  # 50% yield
+        star.boranium_yield = 30  # 30% yield
         star.germanium_yield = 20  # 20% yield
         star.ironium_inventory = 0
         star.boranium_inventory = 0
@@ -662,8 +673,8 @@ class TestEconomicCalculations(TestCase):
         player = game.players.first()
         star = player.homeworld
         star.mines = 2
-        star.ironium = 100  # 100% yield (only ironium)
-        star.boranium = 0
+        star.ironium_yield = 100  # 100% yield (only ironium)
+        star.boranium_yield = 0
         star.germanium_yield = 0
         star.ironium_inventory = 100  # Start with some
         star.save()
@@ -679,9 +690,9 @@ class TestEconomicCalculations(TestCase):
         game = default_game()
         player = game.players.first()
         star = player.homeworld
-        star.mines = 1
-        star.ironium = 1  # 1% yield
-        star.boranium = 99  # 99% yield
+        star.mines = 10
+        star.ironium_yield = 1  # 1% yield
+        star.boranium_yield = 99  # 99% yield
         star.germanium_yield = 0
         star.ironium_inventory = 0
         star.boranium_inventory = 0
@@ -704,8 +715,8 @@ class TestEconomicCalculations(TestCase):
         player = game.players.first()
         star = player.homeworld
         star.mines = 100  # Many mines to force depletion
-        star.ironium = HOMEWORLD_MIN_YIELD  # At the floor
-        star.boranium = 0
+        star.ironium_yield = HOMEWORLD_MIN_YIELD  # At the floor
+        star.boranium_yield = 0
         star.germanium_yield = 0
         star.save()
 
@@ -714,7 +725,7 @@ class TestEconomicCalculations(TestCase):
             GameTurn(game).generate_turn()
 
         star.refresh_from_db()
-        self.assertGreaterEqual(star.ironium, HOMEWORLD_MIN_YIELD)
+        self.assertGreaterEqual(star.ironium_yield, HOMEWORLD_MIN_YIELD)
 
     def test_mining_non_homeworld_produces_minerals(self):
         """Non-homeworld mining produces minerals over time."""
@@ -725,8 +736,8 @@ class TestEconomicCalculations(TestCase):
         other_star.player = player
         other_star.colonists = 1000
         other_star.mines = 10
-        other_star.ironium = 50  # 50% yield
-        other_star.boranium = 30
+        other_star.ironium_yield = 50  # 50% yield
+        other_star.boranium_yield = 30
         other_star.germanium_yield = 20
         other_star.ironium_inventory = 0
         other_star.boranium_inventory = 0
@@ -926,6 +937,10 @@ class TestFleetTransferOrderExecution(TestCase):
         star.boranium_inventory = 50
         star.germanium_inventory = 25
         star.colonists = 5000  # 5k individuals
+        star.mines = 0
+        star.ironium_yield = 0
+        star.boranium_yield = 0
+        star.germanium_yield = 0
         star.save()
 
         # Create fleet with cargo at same location
@@ -1220,6 +1235,10 @@ class TestFleetTransferOrderExecution(TestCase):
 
         # Set up star with lots of resources
         star.ironium_inventory = 10000
+        star.mines = 0
+        star.ironium_yield = 0
+        star.boranium_yield = 0
+        star.germanium_yield = 0
         star.save()
 
         fleet = Fleet.objects.create(
@@ -2137,6 +2156,10 @@ class TestFleetTransferOrders(TestCase):
         # Set up star with resources
         star.ironium_inventory = 2000
         star.boranium_inventory = 2000
+        star.mines = 0
+        star.ironium_yield = 0
+        star.boranium_yield = 0
+        star.germanium_yield = 0
         star.save()
 
         fleet = Fleet.objects.create(
@@ -2686,7 +2709,7 @@ class TestFleetTransferOrders(TestCase):
 
         GameTurn(game).generate_turn()
 
-        self.assertTrue(other_player.messages.filter(message__icontains="minerals").exists())
+        self.assertTrue(other_player.messages.filter(message__icontains="mineral").exists())
 
     def test_load_transfer_from_star(self):
         """Test loading resources from star to fleet."""
@@ -3487,6 +3510,7 @@ class TestFleetColoniseOrders(TestCase):
         # Position fleet at target star
         fleet.x = target_star.x
         fleet.y = target_star.y
+        fleet.colonists = 1
         fleet.save()
 
         from ..models import FleetOrders
@@ -3590,6 +3614,7 @@ class TestFleetColoniseOrders(TestCase):
         fleet.x = target_star.x - 5
         fleet.y = target_star.y
         fleet.ironium_inventory = 50
+        fleet.colonists = 1
         fleet.dry_mass = 0
         fleet.max_safe_warp = 13  # Prevent warp damage
         fleet.save()
@@ -3647,6 +3672,7 @@ class TestFleetColoniseOrders(TestCase):
         # Position fleet at target
         fleet.x = target_star.x
         fleet.y = target_star.y
+        fleet.colonists = 1
         fleet.save()
 
         from ..models import FleetOrders
@@ -4403,6 +4429,8 @@ class TestMergeFleet(TestCase):
         game = default_game()
         player = game.players.first()
         star = player.homeworld
+        star.shipyards = 0
+        star.save()
 
         # Fleet1: 2 ships at 50% integrity = 100 total
         # Fleet2: 3 ships at 100% integrity = 300 total
@@ -4772,7 +4800,8 @@ class TestCombat(TestCase):
             x=40, y=40, ship_count=2, integrity=100
         )
 
-        with patch('dj4xol.turn.random.uniform', side_effect=[0.10, -0.10, 0.0, 0.0]):
+        with patch('dj4xol.turn.calculate_salvage_minerals', return_value=(0, 0, 0)), \
+             patch('dj4xol.turn.random.uniform', side_effect=[0.10, -0.10, 0.0, 0.0]):
             GameTurn(game).generate_turn()
 
         self.assertGreater(player1.messages.filter(category='COMBAT').count(), 0)

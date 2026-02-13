@@ -579,6 +579,179 @@ class DetailBuilder():
                 pass
         
         return current_x, current_y
+
+    def get_destination_targets(self, x, y, selected_target=None, exclude_fleet_id=None):
+        """Get available destination targets for Move/Intercept selection."""
+        targets = self._build_location_targets(
+            x,
+            y,
+            include_stars=True,
+            include_fleets=True,
+            include_salvage=True,
+            include_empty=True,
+            include_future_fleets=False,
+            exclude_fleet_id=exclude_fleet_id,
+            include_order_types=['MOVE', 'INTERCEPT', 'PATROL'],
+        )
+
+        if not targets:
+            return {
+                'targets': [],
+                'location': (x, y),
+                'display_mode': 'empty',
+                'default_target': None,
+                'selected_target': None,
+            }
+
+        if len(targets) == 1 and targets[0].get('type') == 'space':
+            empty_space_name = DetailBuilder.format_empty_space(x, y)
+            return {
+                'targets': targets,
+                'location': (x, y),
+                'display_mode': 'empty',
+                'default_target': empty_space_name,
+                'selected_target': 'space',
+            }
+
+        selected = selected_target
+        if selected:
+            match = False
+            for target in targets:
+                target_key = f"{target['type']}:{target.get('short_id', '')}"
+                if target['type'] == 'space':
+                    target_key = 'space'
+                if target_key == selected:
+                    match = True
+                    break
+            if not match:
+                selected = None
+
+        if len(targets) == 1:
+            target = targets[0]
+            display_name = f"{target['name']} ({target['type'].title()})"
+            return {
+                'targets': targets,
+                'location': (x, y),
+                'display_mode': 'single',
+                'default_target': display_name,
+                'selected_target': selected or f"{target['type']}:{target.get('short_id', '')}",
+            }
+
+        return {
+            'targets': targets,
+            'location': (x, y),
+            'display_mode': 'multiple',
+            'default_target': targets[0],
+            'selected_target': selected,
+        }
+
+    def _build_location_targets(
+        self,
+        x,
+        y,
+        include_stars=True,
+        include_fleets=True,
+        include_salvage=False,
+        include_empty=False,
+        include_future_fleets=False,
+        fleet_player=None,
+        exclude_fleet_id=None,
+        include_order_types=None,
+    ):
+        """Collect target objects at a location with flexible filters.
+
+        include_future_fleets adds fleets that have orders targeting this
+        location or a star at this location.
+        """
+        targets = []
+        seen = set()
+
+        def add_target(target):
+            key = (target.get('type'), target.get('short_id'))
+            if key in seen:
+                return
+            seen.add(key)
+            targets.append(target)
+
+        stars_at_location = []
+        if include_stars:
+            stars_at_location = list(self.game.stars.filter(x=x, y=y))
+            for star in stars_at_location:
+                add_target({
+                    'name': star.name,
+                    'short_id': star.short_id,
+                    'type': 'star',
+                })
+
+        if include_fleets:
+            fleets_qs = self.game.fleets.filter(x=x, y=y)
+            if fleet_player is not None:
+                fleets_qs = fleets_qs.filter(player=fleet_player)
+            if exclude_fleet_id is not None:
+                fleets_qs = fleets_qs.exclude(id=exclude_fleet_id)
+            for fleet in fleets_qs:
+                add_target({
+                    'name': fleet.name,
+                    'short_id': fleet.short_id,
+                    'type': 'fleet',
+                })
+
+        if include_future_fleets:
+            from .models import FleetOrders
+
+            order_types = include_order_types or ['MOVE']
+            orders_qs = FleetOrders.objects.filter(
+                game=self.game,
+                order_type__in=order_types,
+            )
+            if fleet_player is not None:
+                orders_qs = orders_qs.filter(fleet__player=fleet_player)
+
+            target_star_filter = None
+            if stars_at_location:
+                target_star_filter = models.Q(target_star__in=stars_at_location)
+
+            location_filter = models.Q(x=x, y=y)
+            if target_star_filter is not None:
+                orders_qs = orders_qs.filter(location_filter | target_star_filter)
+            else:
+                orders_qs = orders_qs.filter(location_filter)
+
+            if exclude_fleet_id is not None:
+                orders_qs = orders_qs.exclude(fleet_id=exclude_fleet_id)
+
+            fleet_ids = {order.fleet_id for order in orders_qs}
+            if fleet_ids:
+                fleets_qs = self.game.fleets.filter(id__in=fleet_ids)
+                if fleet_player is not None:
+                    fleets_qs = fleets_qs.filter(player=fleet_player)
+                for fleet in fleets_qs:
+                    if exclude_fleet_id is not None and fleet.id == exclude_fleet_id:
+                        continue
+                    add_target({
+                        'name': fleet.name,
+                        'short_id': fleet.short_id,
+                        'type': 'fleet',
+                    })
+
+        if include_salvage:
+            for salvage in self.game.salvages.filter(x=x, y=y):
+                add_target({
+                    'name': salvage.name,
+                    'short_id': salvage.short_id,
+                    'type': 'salvage',
+                    'total_minerals': salvage.total_minerals,
+                })
+
+        if include_empty and not targets:
+            empty_space_name = self.format_empty_space(x, y)
+            targets.append({
+                'name': empty_space_name,
+                'short_id': '',
+                'type': 'space',
+            })
+
+        return targets
     
     def get_transfer_targets(self):
         """Get available transfer targets at the fleet's effective location.
@@ -600,81 +773,46 @@ class DetailBuilder():
         # Get the location where the fleet will be when the transfer executes
         effective_x, effective_y = self.get_fleet_effective_location()
         
-        targets = []
-        
-        # Add stars at the effective location
-        stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
-        for star in stars_at_location:
-            targets.append({
-                'name': star.name,
-                'short_id': star.short_id,
-                'type': 'star'
-            })
-        
-        # Find fleets that will be at the effective location
-        # This includes fleets with orders targeting these coordinates or these stars
-        from .models import FleetOrders
-        
-        # Query for orders that will end up at the effective location:
-        # 1. Orders with direct x,y coordinates
-        # 2. Orders with target_star at those coordinates
-        target_orders = FleetOrders.objects.filter(
-            game=self.game,
-            order_type='MOVE'
-        ).filter(
-            models.Q(x=effective_x, y=effective_y) |
-            models.Q(target_star__in=stars_at_location)
-        ).select_related('fleet')
-        
-        # Get unique fleets from these orders (excluding the current fleet)
-        fleet_ids_at_location = set()
-        for order in target_orders:
-            if order.fleet.short_id != self.selected_obj.short_id:
-                fleet_ids_at_location.add(order.fleet.id)
-        
-        # Also include fleets currently at the location
-        current_fleets = self.game.fleets.filter(
-            x=effective_x, 
-            y=effective_y
-        ).exclude(id=self.selected_obj.id)
-        
-        for fleet in current_fleets:
-            fleet_ids_at_location.add(fleet.id)
-        
-        # Get fleet objects and add to targets
-        if fleet_ids_at_location:
-            fleets_at_location = self.game.fleets.filter(id__in=fleet_ids_at_location)
-            for fleet in fleets_at_location:
-                targets.append({
-                    'name': fleet.name,
-                    'short_id': fleet.short_id,
-                    'type': 'fleet'
+        targets = self._build_location_targets(
+            effective_x,
+            effective_y,
+            include_stars=True,
+            include_fleets=True,
+            include_salvage=True,
+            include_empty=True,
+            include_future_fleets=True,
+            fleet_player=self.player,
+            exclude_fleet_id=self.selected_obj.id,
+            include_order_types=['MOVE', 'INTERCEPT', 'PATROL'],
+        )
+        has_star = self.game.stars.filter(x=effective_x, y=effective_y).exists()
+        has_salvage = self.game.salvages.filter(x=effective_x, y=effective_y).exists()
+        if not has_star and not has_salvage:
+            if not any(target.get('type') == 'space' for target in targets):
+                empty_space_name = DetailBuilder.format_empty_space(effective_x, effective_y)
+                targets.insert(0, {
+                    'name': empty_space_name,
+                    'short_id': '',
+                    'type': 'space',
                 })
-
-        # Add salvage at the effective location
-        salvages_at_location = self.game.salvages.filter(
-            x=effective_x, y=effective_y
-        ).all()
-        for salvage in salvages_at_location:
-            targets.append({
-                'name': salvage.name,
-                'short_id': salvage.short_id,
-                'type': 'salvage',
-                'total_minerals': salvage.total_minerals,
-            })
 
         # Determine display mode and default target
         if not targets:
-            # Empty space
+            return {
+                'targets': [],
+                'location': (effective_x, effective_y),
+                'display_mode': 'empty',
+                'default_target': None
+            }
+        if len(targets) == 1 and targets[0].get('type') == 'space':
             empty_space_name = DetailBuilder.format_empty_space(effective_x, effective_y)
             return {
-                'targets': [{'name': empty_space_name, 'short_id': '', 'type': 'space'}],
+                'targets': targets,
                 'location': (effective_x, effective_y),
                 'display_mode': 'empty',
                 'default_target': empty_space_name
             }
-        elif len(targets) == 1:
-            # Single target
+        if len(targets) == 1:
             target = targets[0]
             display_name = f"{target['name']} ({target['type'].title()})"
             return {
@@ -683,14 +821,12 @@ class DetailBuilder():
                 'display_mode': 'single',
                 'default_target': display_name
             }
-        else:
-            # Multiple targets
-            return {
-                'targets': targets,
-                'location': (effective_x, effective_y),
-                'display_mode': 'multiple',
-                'default_target': targets[0]  # First target as default
-            }
+        return {
+            'targets': targets,
+            'location': (effective_x, effective_y),
+            'display_mode': 'multiple',
+            'default_target': targets[0]
+        }
 
     def get_colonise_targets(self):
         """Get available colonise targets at the fleet's effective location.
@@ -775,49 +911,25 @@ class DetailBuilder():
         # Get the location where the fleet will be when the merge executes
         effective_x, effective_y = self.get_fleet_effective_location()
 
-        # Collect fleet IDs that will be at the effective location
-        fleet_ids_at_location = set()
-
-        # Find fleets currently at the effective location (same player only)
-        current_fleets = self.game.fleets.filter(
-            x=effective_x, y=effective_y, player=self.player
-        ).exclude(id=self.selected_obj.id)
-
-        for fleet in current_fleets:
-            fleet_ids_at_location.add(fleet.id)
-
-        # Find fleets with orders targeting the effective location
-        from .models import FleetOrders
-
-        # Get stars at the effective location for order matching
-        stars_at_location = self.game.stars.filter(
-            x=effective_x, y=effective_y
+        targets = self._build_location_targets(
+            effective_x,
+            effective_y,
+            include_stars=True,
+            include_fleets=True,
+            include_salvage=False,
+            include_empty=False,
+            include_future_fleets=True,
+            fleet_player=self.player,
+            exclude_fleet_id=self.selected_obj.id,
+            include_order_types=['MOVE', 'INTERCEPT', 'PATROL'],
         )
-
-        # Query for MOVE orders targeting the effective location
-        target_orders = FleetOrders.objects.filter(
-            game=self.game,
-            fleet__player=self.player,  # Same player only
-            order_type='MOVE'
-        ).filter(
-            models.Q(x=effective_x, y=effective_y) |
-            models.Q(target_star__in=stars_at_location)
-        ).exclude(fleet_id=self.selected_obj.id).select_related('fleet')
-
-        for order in target_orders:
-            fleet_ids_at_location.add(order.fleet.id)
-
-        # Build targets list from collected fleet IDs
-        targets = []
-        if fleet_ids_at_location:
-            fleets = self.game.fleets.filter(id__in=fleet_ids_at_location)
-            for fleet in fleets:
-                targets.append({
-                    'name': fleet.name,
-                    'short_id': fleet.short_id,
-                    'type': 'fleet',
-                    'ship_count': fleet.ship_count,
-                })
+        # Merge targets should mirror transfer target logic but restricted to fleets.
+        targets = [target for target in targets if target.get('type') == 'fleet']
+        for target in targets:
+            if target['type'] == 'fleet':
+                fleet = self.game.fleets.filter(short_id=target['short_id']).first()
+                if fleet:
+                    target['ship_count'] = fleet.ship_count
 
         # Determine display mode and default target
         if not targets:
@@ -856,22 +968,16 @@ class DetailBuilder():
 
         effective_x, effective_y = self.get_fleet_effective_location()
 
-        targets = []
-        stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
-        for star in stars_at_location:
-            targets.append({
-                'name': star.name,
-                'short_id': star.short_id,
-                'type': 'star'
-            })
-
-        fleets_at_location = self.game.fleets.filter(x=effective_x, y=effective_y).exclude(id=self.selected_obj.id)
-        for fleet in fleets_at_location:
-            targets.append({
-                'name': fleet.name,
-                'short_id': fleet.short_id,
-                'type': 'fleet',
-            })
+        targets = self._build_location_targets(
+            effective_x,
+            effective_y,
+            include_stars=True,
+            include_fleets=True,
+            include_salvage=False,
+            include_empty=True,
+            include_future_fleets=False,
+            exclude_fleet_id=self.selected_obj.id,
+        )
 
         if not targets:
             empty_space_name = self.format_empty_space(effective_x, effective_y)
@@ -881,7 +987,15 @@ class DetailBuilder():
                 'display_mode': 'empty',
                 'default_target': empty_space_name
             }
-        elif len(targets) == 1:
+        if len(targets) == 1 and targets[0].get('type') == 'space':
+            empty_space_name = self.format_empty_space(effective_x, effective_y)
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'empty',
+                'default_target': empty_space_name
+            }
+        if len(targets) == 1:
             target = targets[0]
             display_name = f"{target['name']} ({target['type'].title()})"
             return {
@@ -890,10 +1004,9 @@ class DetailBuilder():
                 'display_mode': 'single',
                 'default_target': display_name
             }
-        else:
-            return {
-                'targets': targets,
-                'location': (effective_x, effective_y),
-                'display_mode': 'multiple',
-                'default_target': targets[0]
-            }
+        return {
+            'targets': targets,
+            'location': (effective_x, effective_y),
+            'display_mode': 'multiple',
+            'default_target': targets[0]
+        }
