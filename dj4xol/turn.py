@@ -37,6 +37,9 @@ from .colony_rules import (
     BILLION,
     MILLION,
     DEFAULT_SOFT_CAP,
+    KT_PER_MINE,
+    YIELD_DEPLETION_RATE,
+    HOMEWORLD_MIN_YIELD,
     capacity_modifier,
     effective_capacity,
     habitability_proportion,
@@ -52,6 +55,7 @@ from .colony_rules import (
     calculate_economy_factor,
     calculate_habitability_factor,
     calculate_growth_factor,
+    calculate_effective_defenses,
 )
 
 # Population carrying capacity constants now live in colony_rules.py
@@ -67,6 +71,10 @@ TURN_INTERVALS = {
 
 # Random event probability per colonized star per turn
 RANDOM_EVENT_CHANCE = 0.01  # 1%
+
+# Mining constants
+KT_PER_MINE = 1  # kt per mine per turn
+HOMEWORLD_MIN_YIELD = 30  # minimum yield percent for homeworlds
 
 # Warp damage constants
 WARP_DESTRUCTION_THRESHOLD = 10  # Warp speed at which destruction becomes possible
@@ -249,7 +257,7 @@ class GameTurn():
         report.set_report_data(report_data)
         report.save()
 
-        if created and target_type == 'star' and player.is_habitable(obj):
+        if created and target_type == 'star' and player.is_habitable(obj) and obj.player != player:
             fleet = Fleet.objects.filter(game=self.game, player=player, x=obj.x, y=obj.y).first()
             if fleet:
                 factory = HabitableWorldMessageFactory(self.game, player, fleet, obj)

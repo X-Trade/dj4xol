@@ -111,7 +111,8 @@ def starmap(request, game_short_id):
     y = request.GET.get('y', None)
 
     selected = request.GET.get('sel', None)
-    detail = DetailBuilder(game, x, y, selected, player=player).build_detail()
+    detail_builder = DetailBuilder(game, x, y, selected, player=player)
+    detail = detail_builder.build_detail()
 
     # Check for destination selection mode
     dest_mode = request.GET.get('mode') == 'select_destination'
@@ -127,20 +128,47 @@ def starmap(request, game_short_id):
 
     # Look up destination name if specified
     dest_name = None
+    dest_location = None
+    dest_selected_target = None
     if dest_star_id:
         dest_star = Star.objects.filter(short_id=dest_star_id, game=game).first()
         if dest_star:
             dest_name = dest_star.name
+            dest_location = (dest_star.x, dest_star.y)
+            dest_selected_target = f'star:{dest_star.short_id}'
     elif dest_fleet_id:
         from .models import Salvage
         dest_obj = Fleet.objects.filter(short_id=dest_fleet_id, game=game).first()
         if dest_obj:
             dest_name = dest_obj.name
+            dest_location = (dest_obj.x, dest_obj.y)
+            dest_selected_target = f'fleet:{dest_obj.short_id}'
     elif dest_salvage_id:
         from .models import Salvage
         dest_obj = Salvage.objects.filter(short_id=dest_salvage_id, game=game).first()
         if dest_obj:
             dest_name = dest_obj.name
+            dest_location = (dest_obj.x, dest_obj.y)
+            dest_selected_target = f'salvage:{dest_obj.short_id}'
+    elif dest_x and dest_y:
+        try:
+            dest_location = (int(dest_x), int(dest_y))
+            dest_selected_target = 'space'
+        except (TypeError, ValueError):
+            dest_location = None
+            dest_selected_target = None
+
+    destination_targets = None
+    if dest_location:
+        exclude_fleet_id = None
+        if detail_builder.selected_obj and isinstance(detail_builder.selected_obj, Fleet):
+            exclude_fleet_id = detail_builder.selected_obj.id
+        destination_targets = detail_builder.get_destination_targets(
+            dest_location[0],
+            dest_location[1],
+            selected_target=dest_selected_target,
+            exclude_fleet_id=exclude_fleet_id,
+        )
 
     # Pass dest_mode to StarMap for modified link rendering
     starmap_obj = StarMap(game, player, dest_mode=dest_mode)
@@ -179,6 +207,7 @@ def starmap(request, game_short_id):
         'dest_name': dest_name,
         'dest_x': dest_x,
         'dest_y': dest_y,
+        'destination_targets': destination_targets,
     })
 
 

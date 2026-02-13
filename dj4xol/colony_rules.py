@@ -3,31 +3,31 @@ import math
 BILLION = 1_000_000_000
 MILLION = 1_000_000
 DEFAULT_SOFT_CAP = 10 * BILLION   # Fallback if no star capacity
+CAPACITY_SCALE_RATIO = 0.5        # Scale is this fraction of soft cap
 
 # Economic constants
 COLONISTS_PER_JOB = 1000  # Each mine/factory employs this many colonists
 COLONISTS_PER_SHIPYARD = 10000  # Shipyards employ 10x more colonists
 BUILDPOINTS_PER_FACTORY = 10  # Each factory produces this many buildpoints per turn
+KT_PER_MINE = 10  # Each mine extracts this many kt of minerals per turn
+YIELD_DEPLETION_RATE = 0.00001  # Yield drops by this % per kt extracted (0.001% per kt)
+HOMEWORLD_MIN_YIELD = 30  # Homeworld yields never drop below this percentage
 
 
 def capacity_modifier(population, soft_cap):
     """Returns a modifier that reduces growth at high populations.
 
+    Uses tanh curve centered at soft_cap:
     - At 10% of cap: ~95% of normal growth
     - At 50% of cap: ~76% of normal growth
     - At soft_cap: 0% growth
     - Above soft_cap: negative growth (population decline)
+    - At 200% of cap: ~-96% (rapid decline)
     """
     if soft_cap <= 0:
         return 1.0
-    # Convert to ratio of soft cap
-    ratio = population / soft_cap
-    # Use a tanh curve for smooth transition
-    # Shifted and scaled so that:
-    # - ratio 1.0 -> 0
-    # - ratio < 1 -> positive
-    # - ratio > 1 -> negative
-    return 1 - math.tanh((ratio - 1) * 2)
+    scale = soft_cap * CAPACITY_SCALE_RATIO
+    return -math.tanh((population - soft_cap) / scale)
 
 
 def effective_capacity(player, star):
@@ -43,7 +43,7 @@ def effective_capacity(player, star):
             getattr(player, f'{env}_center'),
             getattr(star, env)
         )
-        hab_factor += proportion
+        hab_factor += max(0, proportion)
     hab_factor = hab_factor / 3.0
 
     # base_capacity is in millions, convert to actual colonists
@@ -75,6 +75,25 @@ def calculate_employment_percent(star):
     return min(100, jobs / star.colonists * 100)
 
 
+def calculate_effective_defenses(star):
+    """Calculate effective defenses based on staffing levels.
+
+    Employment ratio uses all jobs. If employment exceeds 100%,
+    defenses are reduced by the reciprocal of employment.
+    """
+    if star.defenses <= 0:
+        return 0.0
+    if star.colonists <= 0:
+        return 0.0
+    jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
+            + star.shipyards * COLONISTS_PER_SHIPYARD)
+    if jobs <= 0:
+        return 0.0
+    employment_ratio = jobs / star.colonists
+    effectiveness = 1.0 if employment_ratio <= 1.0 else (1.0 / employment_ratio)
+    return star.defenses * effectiveness
+
+
 def calculate_available_buildpoints(star):
     """Calculate buildpoints available this turn from factories.
 
@@ -84,34 +103,42 @@ def calculate_available_buildpoints(star):
     """
     if star.factories == 0:
         return 0
-    staffing_ratio = calculate_staffing_ratio(star)
-    if staffing_ratio == 0:
+    employment_ratio = calculate_staffing_ratio(star)
+    if employment_ratio <= 0:
         return 0
-    productivity = calculate_productivity_multiplier(staffing_ratio)
+    productivity = calculate_productivity_multiplier(employment_ratio)
     return int(star.factories * BUILDPOINTS_PER_FACTORY * productivity)
 
 
 def calculate_staffing_ratio(star):
-    """Calculate staffing ratio (0-1) based on colonists and infrastructure jobs."""
+    """Calculate employment ratio (jobs/colonists)."""
     jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
             + star.shipyards * COLONISTS_PER_SHIPYARD)
     if jobs <= 0 or star.colonists <= 0:
         return 0
-    return min(1.0, star.colonists / jobs)
+    return jobs / star.colonists
 
 
 def calculate_productivity_multiplier(employment_ratio):
     """Bell-curve productivity based on employment ratio.
 
-    Targets: 0.5x at ~1%, 1.5x at 50%, 1.0x at 100%.
+    Targets: 0.5x at 10%, 1.5x at 50%, 1.0x at 100%.
+    Above 100% employment, productivity declines as 1/employment.
     """
+    if employment_ratio <= 0:
+        return 0.0
+    if employment_ratio >= 1.0:
+        return 1.0 / employment_ratio
+
     ratio = max(0.0, min(1.0, employment_ratio))
-    # Quadratic fit through (0.01, 0.5), (0.5, 1.5), (1.0, 1.0)
-    a = -3.072
-    b = 3.608
-    c = 0.464
-    multiplier = a * ratio * ratio + b * ratio + c
-    return max(0.5, multiplier)
+    if ratio <= 0.1:
+        return ratio * 5.0
+
+    # Quadratic fit through (0.1, 0.5), (0.5, 1.5), (1.0, 1.0)
+    a = -3.8888888889
+    b = 4.8333333333
+    c = 0.0555555556
+    return a * ratio * ratio + b * ratio + c
 
 
 def calculate_productivity_percent(star):

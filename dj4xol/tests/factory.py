@@ -56,7 +56,7 @@ class testGameFactory(TestCase):
         self.assertEqual(game.map_size_x, 150)
         self.assertEqual(game.stars.count(), 5)
         self.assertEqual(game.players.count(), 2)
-        self.assertEqual(game.fleets.count(), 6)
+        self.assertEqual(game.fleets.count(), 10)
         self.assertEqual(game.owner, self.accounts[0])
 
     def test_join_player_sets_homeworld_population(self):

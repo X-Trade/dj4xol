@@ -93,15 +93,33 @@
                 <div class="order-param-row" id="destination-row">
                     <label id="dest-target-label">Destination</label>
                     <div class="dest-display-row" id="move-destination">
-                        <span id="dest-display" class="dest-display" data-effective-x="{% if detail.effective_location %}{{ detail.effective_location.0 }}{% endif %}" data-effective-y="{% if detail.effective_location %}{{ detail.effective_location.1 }}{% endif %}">
-                            {% if dest_name %}
-                                {{ dest_name }}
-                            {% elif dest_x and dest_y %}
-                                Empty Space ({{ dest_x }}, {{ dest_y }})
-                            {% else %}
-                                <em>None selected</em>
-                            {% endif %}
-                        </span>
+                        {% if destination_targets and destination_targets.display_mode == 'multiple' %}
+                            <select id="move-target" class="transfer-target-select">
+                                {% for obj in destination_targets.targets %}
+                                    {% if obj.type == 'space' %}
+                                        <option value="space" data-x="{{ destination_targets.location.0 }}" data-y="{{ destination_targets.location.1 }}"{% if destination_targets.selected_target == 'space' %} selected{% endif %}>{{ obj.name }} (Space)</option>
+                                    {% elif obj.type == 'star' %}
+                                        <option value="star:{{ obj.short_id }}"{% if destination_targets.selected_target == "star:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }} (Star)</option>
+                                    {% elif obj.type == 'fleet' %}
+                                        <option value="fleet:{{ obj.short_id }}"{% if destination_targets.selected_target == "fleet:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
+                                    {% elif obj.type == 'salvage' %}
+                                        <option value="salvage:{{ obj.short_id }}"{% if destination_targets.selected_target == "salvage:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }} (Salvage)</option>
+                                    {% endif %}
+                                {% endfor %}
+                            </select>
+                        {% else %}
+                            <span id="dest-display" class="dest-display" data-effective-x="{% if detail.effective_location %}{{ detail.effective_location.0 }}{% endif %}" data-effective-y="{% if detail.effective_location %}{{ detail.effective_location.1 }}{% endif %}">
+                                {% if destination_targets and destination_targets.display_mode == 'single' %}
+                                    {{ destination_targets.default_target }}
+                                {% elif dest_name %}
+                                    {{ dest_name }}
+                                {% elif dest_x and dest_y %}
+                                    Empty Space ({{ dest_x }}, {{ dest_y }})
+                                {% else %}
+                                    <em>None selected</em>
+                                {% endif %}
+                            </span>
+                        {% endif %}
                         <a href="?mode=select_destination&fleet={{ detail.fleet_short_id }}&x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&order_type=MOVE" class="dest-set-btn" id="dest-set-link">Set</a>
                     </div>
                 <div class="dest-display-row" id="transfer-destination" style="display: none;">
@@ -319,6 +337,7 @@
     var interceptSpeedDisplay = document.getElementById('intercept-speed-value');
     var interceptSpeedInput = document.getElementById('intercept-speed-input');
     var destDisplay = document.getElementById('dest-display');
+    var moveTargetSelect = document.getElementById('move-target');
     var targetXInput = document.querySelector('input[name="target_x"]');
     var targetYInput = document.querySelector('input[name="target_y"]');
     var patrolTargetInput = document.getElementById('patrol-target-input');
@@ -334,6 +353,41 @@
         var destX = document.querySelector('input[name="target_x"]').value;
 
         addBtn.disabled = !destStar && !destFleet && !destSalvage && !destX;
+    }
+
+    function setMoveTargetInputs(targetValue, optionEl) {
+        var starInput = document.querySelector('input[name="target_star"]');
+        var fleetInput = document.querySelector('input[name="target_fleet"]');
+        var salvageInput = document.querySelector('input[name="target_salvage"]');
+        if (starInput) starInput.value = '';
+        if (fleetInput) fleetInput.value = '';
+        if (salvageInput) salvageInput.value = '';
+        if (targetXInput) targetXInput.value = '';
+        if (targetYInput) targetYInput.value = '';
+
+        if (!targetValue) {
+            return;
+        }
+
+        if (targetValue === 'space') {
+            if (optionEl && targetXInput && targetYInput) {
+                targetXInput.value = optionEl.getAttribute('data-x') || '';
+                targetYInput.value = optionEl.getAttribute('data-y') || '';
+            }
+            return;
+        }
+
+        var parts = targetValue.split(':');
+        if (parts.length !== 2) return;
+        var targetType = parts[0];
+        var targetId = parts[1];
+        if (targetType === 'star' && starInput) {
+            starInput.value = targetId;
+        } else if (targetType === 'fleet' && fleetInput) {
+            fleetInput.value = targetId;
+        } else if (targetType === 'salvage' && salvageInput) {
+            salvageInput.value = targetId;
+        }
     }
     
     function updateAddButtonStateTransfer() {
@@ -632,6 +686,9 @@
             if (mergeDestination) mergeDestination.style.display = 'none';
             if (patrolDestination) patrolDestination.style.display = 'none';
 
+            if (moveTargetSelect) {
+                setMoveTargetInputs(moveTargetSelect.value, moveTargetSelect.options[moveTargetSelect.selectedIndex]);
+            }
             updateAddButtonState();
         } else {
             moveParams.style.display = 'block';
@@ -653,6 +710,9 @@
             if (mergeDestination) mergeDestination.style.display = 'none';
             if (patrolDestination) patrolDestination.style.display = 'none';
 
+            if (moveTargetSelect) {
+                setMoveTargetInputs(moveTargetSelect.value, moveTargetSelect.options[moveTargetSelect.selectedIndex]);
+            }
             updateAddButtonState();
         }
 
@@ -696,6 +756,9 @@
                 if (mergeDestination) mergeDestination.style.display = 'none';
                 if (patrolDestination) patrolDestination.style.display = 'none';
 
+                if (moveTargetSelect) {
+                    setMoveTargetInputs(moveTargetSelect.value, moveTargetSelect.options[moveTargetSelect.selectedIndex]);
+                }
                 updateAddButtonState();
             } else if (type === 'INTERCEPT') {
                 moveParams.style.display = 'block';
@@ -714,6 +777,9 @@
                 if (mergeDestination) mergeDestination.style.display = 'none';
                 if (patrolDestination) patrolDestination.style.display = 'none';
 
+                if (moveTargetSelect) {
+                    setMoveTargetInputs(moveTargetSelect.value, moveTargetSelect.options[moveTargetSelect.selectedIndex]);
+                }
                 updateAddButtonState();
             } else if (type === 'TRANSFER') {
                 moveParams.style.display = 'none';
@@ -841,6 +907,16 @@
         });
     });
     
+    if (moveTargetSelect) {
+        moveTargetSelect.addEventListener('change', function() {
+            var selected = moveTargetSelect.options[moveTargetSelect.selectedIndex];
+            setMoveTargetInputs(moveTargetSelect.value, selected);
+            updateAddButtonState();
+        });
+        var initialSelected = moveTargetSelect.options[moveTargetSelect.selectedIndex];
+        setMoveTargetInputs(moveTargetSelect.value, initialSelected);
+    }
+
     // Transfer target dropdown (only exists in multiple targets mode)
     var transferTargetSelect = document.getElementById('transfer-target');
     var transferTargetInput = document.getElementById('transfer-target-input');
