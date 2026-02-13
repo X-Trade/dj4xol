@@ -83,6 +83,7 @@ a:hover {
 
 .title-bar .turn-status {
     flex: 1;
+    white-space: nowrap;
 }
 
 .title-bar a {
@@ -328,6 +329,114 @@ a:hover {
     grid-template-columns: minmax(auto, 600px) minmax(324px, 1fr);
 }
 
+@media (max-width: 900px), (max-width: 1200px) and (orientation: portrait), (hover: none) and (pointer: coarse) {
+    html, body {
+        font-size: 20px;
+        overflow-x: hidden;
+        touch-action: manipulation;
+        -webkit-touch-callout: none;
+    }
+
+    .columns {
+        display: flex;
+        flex-direction: column;
+        grid-template-columns: 1fr;
+        gap: 0;
+        padding: 0 0 12px 0;
+        max-width: 100%;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .columns.single-column,
+    .columns.two-column {
+        grid-template-columns: 1fr !important;
+        justify-content: stretch;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .column,
+    .panel,
+    .panel-content,
+    .panel-content > div {
+        max-width: 100%;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .panel {
+        margin: 6px 0;
+    }
+
+    .column {
+        height: fit-content;
+        align-self: stretch;
+    }
+
+    .column-left,
+    .column-right {
+        min-width: 0;
+        max-width: 100%;
+        height: fit-content;
+        align-self: stretch;
+    }
+
+    .title-bar {
+        font-size: 1.1em;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+    }
+
+    .title-bar .turn-status {
+        flex: 1 1 100%;
+        white-space: normal;
+    }
+
+    .nav-menu {
+        position: relative;
+        margin-left: auto;
+    }
+
+    body,
+    .title-bar,
+    .panel,
+    .columns,
+    .column {
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    input,
+    textarea,
+    select,
+    option {
+        -webkit-user-select: text;
+        user-select: text;
+    }
+
+    .panel-content,
+    .panel-content * {
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    .panel-content input,
+    .panel-content textarea,
+    .panel-content select,
+    .panel-content option {
+        -webkit-user-select: text;
+        user-select: text;
+    }
+}
+
+@media (min-width: 641px) and (max-width: 900px) {
+    .columns {
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+}
+
 /* Flex column container */
 .column {
     display: flex;
@@ -519,8 +628,11 @@ a:hover {
 .theme-selector {
     display: flex;
     gap: 15px;
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 6px;
 }
 
 .theme-option {
@@ -534,6 +646,7 @@ a:hover {
     cursor: pointer;
     transition: border-color 0.2s, background-color 0.2s;
     background: #fafafa;
+    flex: 0 0 auto;
 }
 
 .theme-option:hover {

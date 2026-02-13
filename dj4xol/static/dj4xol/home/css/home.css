@@ -17,6 +17,7 @@ body {
 /* Override flex layout for home/profile - panels stack naturally, columns scroll */
 .column {
     overflow: visible;
+    height: fit-content;
 }
 
 .column > .panel {
@@ -25,12 +26,22 @@ body {
 
 .panel-content {
     flex: 0 0 auto;
-    overflow: visible;
+    overflow: hidden;
 }
 
 .panel-content > div {
     flex: 0 0 auto;
-    min-height: 25vh;
+    min-height: 0;
+}
+
+.panel:not(.open) .panel-content {
+    display: none;
+}
+
+.panel.open .panel-content > div {
+    max-height: 25vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* Remove default paragraph margin */
@@ -52,7 +63,7 @@ body {
 .columns.single-column {
     max-width: 600px;
     margin: 0 auto;
-    padding-top: 10px;
+    padding: 10px;
     width: 100%;
 }
 
@@ -62,14 +73,19 @@ body {
     margin: 0 auto;
     grid-template-columns: minmax(324px, 1fr);
     justify-content: stretch;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .onboarding .column {
     width: 100%;
+    height: fit-content;
 }
 
 .onboarding .panel-content > div {
     padding-top: 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .onboarding .profile-table {
@@ -125,7 +141,7 @@ body {
     grid-template-columns: 1fr 1fr;
     max-width: 1000px;
     margin: 0 auto;
-    padding-top: 10px;
+    padding: 10px;
     width: 100%;
 }
 
@@ -253,15 +269,71 @@ body {
 }
 
 /* Mobile adjustments */
-@media (max-width: 800px) {
+@media (max-width: 900px), (max-width: 1200px) and (orientation: portrait) {
+    html, body {
+        height: auto;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
     /* Stack columns on smaller screens */
     .columns.two-column {
-        grid-template-columns: 1fr;
+        display: block !important;
+        flex-direction: column !important;
+        grid-template-columns: 1fr !important;
+        max-width: 100%;
+        margin: 0;
+        padding-top: 6px;
+        padding-left: 0;
+        padding-right: 0;
+        width: 100%;
+        box-sizing: border-box;
+        overflow: visible;
+    }
+
+    .onboarding .columns.single-column {
+        padding-left: 0;
+        padding-right: 0;
     }
 
     .columns.two-column .column-left,
     .columns.two-column .column-right {
         max-width: none;
+        width: 100% !important;
+        min-width: 0;
+        flex: 0 0 auto;
+        position: static;
+        height: fit-content;
+    }
+
+    .columns.two-column .column {
+        display: block;
+        width: 100%;
+        height: fit-content;
+    }
+
+    .column,
+    .column > .panel,
+    .panel,
+    .panel-content,
+    .panel-content > div {
+        max-width: 100%;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .panel.open .panel-content > div {
+        max-height: 50vh;
+    }
+
+    .panel {
+        overflow: hidden;
+    }
+
+    .column {
+        flex: 0 0 auto;
+        overflow: visible;
+        height: fit-content;
     }
 }
 

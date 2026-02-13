@@ -155,7 +155,16 @@ body {
 }
 
 /* Mobile responsive - stack columns */
-@media (max-width: 1000px) {
+@media (max-width: 900px), (max-width: 1200px) and (orientation: portrait), (hover: none) and (pointer: coarse) {
+    html, body {
+        font-size: 20px;
+        overflow-x: hidden;
+    }
+
+    body {
+        touch-action: pan-y;
+    }
+
     html, body {
         height: auto;
         overflow-y: auto;
@@ -206,8 +215,10 @@ body {
 
     #detail,
     .orders-panel {
-        overflow: visible;
-        max-height: none;
+        overflow-y: auto;
+        max-height: 50vh;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
     }
 
     /* Reset panel flex rules for mobile - content-based height */
@@ -247,6 +258,14 @@ body {
         height: 60vh;
         max-height: 60vh;
         min-height: 150px;
+    }
+
+    .messages-section .panel-content > div,
+    .orders-section .panel-content > div,
+    .detail-section .panel-content > div {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
     }
 }
 
