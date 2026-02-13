@@ -703,6 +703,7 @@ input[type="range"]::-webkit-slider-thumb {
 .env-bar {
     background: linear-gradient(to right, #660000 0%, #66cc66 50%, #660000 100%);
     border-color: #666;
+    height: 12px;
     margin-left: 12px;
 }
 

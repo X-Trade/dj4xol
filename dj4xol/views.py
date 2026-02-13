@@ -530,6 +530,14 @@ def create_game(request):
     return render(request, 'dj4xol/create_game.html', {'form': form})
 
 
+@registration_required()
+def help_colony(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_colony.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
 def _create_invitations(game, invitations):
     """Create GameInvitation records from parsed invitation list."""
     for inv_type, value in invitations:

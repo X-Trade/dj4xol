@@ -1,8 +1,12 @@
 from django.db import models
 from dj4xol.models import Fleet, Star, Salvage, Report
-from dj4xol.turn import (
-    calculate_growth_factor, apply_population_change, effective_capacity,
-    calculate_employment_percent, COLONISTS_PER_JOB, COLONISTS_PER_SHIPYARD
+from dj4xol.turn import apply_population_change
+from dj4xol.colony_rules import (
+    calculate_growth_factor,
+    effective_capacity,
+    calculate_employment_percent,
+    COLONISTS_PER_JOB,
+    COLONISTS_PER_SHIPYARD,
 )
 
 from itertools import chain

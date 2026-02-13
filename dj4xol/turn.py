@@ -1,5 +1,5 @@
 from datetime import timedelta
-from math import tanh, atan2, degrees
+from math import atan2, degrees
 from numpy import array as nparray, linalg
 from django.db import models
 from django.utils import timezone
@@ -33,11 +33,28 @@ from .messages import (
 )
 import random
 
-# Population carrying capacity constants
-BILLION = 1_000_000_000
-MILLION = 1_000_000
-DEFAULT_SOFT_CAP = 10 * BILLION   # Fallback if no star capacity
-CAPACITY_SCALE_RATIO = 0.5        # Scale is this fraction of soft cap
+from .colony_rules import (
+    BILLION,
+    MILLION,
+    DEFAULT_SOFT_CAP,
+    capacity_modifier,
+    effective_capacity,
+    habitability_proportion,
+    calculate_employment_percent,
+    COLONISTS_PER_JOB,
+    COLONISTS_PER_SHIPYARD,
+    calculate_available_buildpoints,
+    calculate_staffing_ratio,
+    calculate_productivity_multiplier,
+    calculate_consumed_buildpoints,
+    calculate_productivity_percent,
+    calculate_economy_percent,
+    calculate_economy_factor,
+    calculate_habitability_factor,
+    calculate_growth_factor,
+)
+
+# Population carrying capacity constants now live in colony_rules.py
 
 # Fleet movement behavior constants
 ALLOW_MULTIPLE_ORDERS_PER_TURN = False  # Set to True to allow processing multiple orders per turn
@@ -86,222 +103,6 @@ def calculate_cargo_loss_percent(excess_warp):
     """Calculate cargo loss percentage from warp damage (2-10% per excess warp)."""
     return sum(random.randint(2, 10) for _ in range(excess_warp)) / 100.0
 
-
-def capacity_modifier(population, soft_cap):
-    """Returns a modifier that reduces growth at high populations.
-
-    Uses tanh curve centered at soft_cap:
-    - At 10% of cap: ~95% of normal growth
-    - At 50% of cap: ~76% of normal growth
-    - At soft_cap: 0% growth
-    - Above soft_cap: negative growth (population decline)
-    - At 200% of cap: ~-96% (rapid decline)
-    """
-    scale = soft_cap * CAPACITY_SCALE_RATIO
-    return -tanh((population - soft_cap) / scale)
-
-
-def effective_capacity(player, star):
-    """Calculate effective carrying capacity for a star based on habitability.
-
-    Returns capacity in colonists (not millions).
-    Habitability factor ranges from 0 (uninhabitable) to 1 (perfect).
-    """
-    # Calculate habitability factor (average of 3 environmental proportions, clamped 0-1)
-    hab_factor = 0
-    for env in ['gravity', 'temperature', 'radiation']:
-        proportion = habitability_proportion(
-            player.hab_min(env),
-            player.hab_max(env),
-            getattr(player, f'{env}_center'),
-            getattr(star, env)
-        )
-        hab_factor += max(0, proportion)  # Clamp negative to 0
-    hab_factor = hab_factor / 3.0
-
-    # base_capacity is in millions, convert to actual colonists
-    base = star.base_capacity * MILLION
-    return int(base * hab_factor) if hab_factor > 0 else MILLION  # Minimum 1m capacity
-
-
-def habitability_proportion(hab_min, hab_max, centre, value):
-    """Returns 1 at centre, 0 at min/max edges, negative outside range."""
-    if value == centre:
-        return 1.0
-    elif value > centre:
-        return 1.0 - (value - centre) / (hab_max - centre)
-    else:
-        return 1.0 - (centre - value) / (centre - hab_min)
-
-
-# Economic constants
-COLONISTS_PER_JOB = 1000  # Each mine/factory employs this many colonists
-COLONISTS_PER_SHIPYARD = 10000  # Shipyards employ 10x more colonists
-BUILDPOINTS_PER_FACTORY = 10  # Each factory produces this many buildpoints per turn
-KT_PER_MINE = 10  # Each mine extracts this many kt of minerals per turn
-YIELD_DEPLETION_RATE = 0.00001  # Yield drops by this % per kt extracted (0.001% per kt)
-HOMEWORLD_MIN_YIELD = 30  # Homeworld yields never drop below this percentage
-
-
-def calculate_employment_percent(star):
-    """Calculate employment percentage based on infrastructure.
-
-    Each mine, factory, and defense employs COLONISTS_PER_JOB colonists.
-    Each shipyard employs COLONISTS_PER_SHIPYARD colonists (10x more).
-    Returns 0-100, capped at 100%.
-    """
-    if star.colonists == 0:
-        return 0
-    jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
-            + star.shipyards * COLONISTS_PER_SHIPYARD)
-    return min(100, jobs / star.colonists * 100)
-
-
-def calculate_effective_defenses(star):
-    """Calculate effective defenses based on staffing levels.
-
-    If employment exceeds 100%, defenses are reduced proportionally
-    by the reciprocal of the employment ratio.
-    """
-    if star.defenses <= 0:
-        return 0.0
-    if star.colonists <= 0:
-        return 0.0
-    jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
-            + star.shipyards * COLONISTS_PER_SHIPYARD)
-    if jobs <= 0:
-        return 0.0
-    employment_ratio = jobs / star.colonists
-    staffing_ratio = 1.0 if employment_ratio <= 1.0 else (1.0 / employment_ratio)
-    return star.defenses * staffing_ratio
-
-
-def calculate_available_buildpoints(star):
-    """Calculate buildpoints available this turn from factories.
-
-    Buildpoints represent factory labour capacity and do not accumulate.
-    Only fully staffed factories produce buildpoints - if there aren't
-    enough colonists to staff all infrastructure, output is proportionally reduced.
-    """
-    if star.factories == 0:
-        return 0
-    staffing_ratio = calculate_staffing_ratio(star)
-    if staffing_ratio == 0:
-        return 0
-    productivity = calculate_productivity_multiplier(staffing_ratio)
-    return int(star.factories * BUILDPOINTS_PER_FACTORY * productivity)
-
-
-def calculate_staffing_ratio(star):
-    """Calculate staffing ratio (0-1) based on colonists and infrastructure jobs."""
-    jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
-            + star.shipyards * COLONISTS_PER_SHIPYARD)
-    if jobs <= 0 or star.colonists <= 0:
-        return 0
-    return min(1.0, star.colonists / jobs)
-
-
-def calculate_productivity_multiplier(employment_ratio):
-    """Bell-curve productivity based on employment ratio.
-
-    Targets: 0.5x at ~1%, 1.5x at 50%, 1.0x at 100%.
-    """
-    ratio = max(0.0, min(1.0, employment_ratio))
-    # Quadratic fit through (0.01, 0.5), (0.5, 1.5), (1.0, 1.0)
-    a = -3.072
-    b = 3.608
-    c = 0.464
-    multiplier = a * ratio * ratio + b * ratio + c
-    return max(0.5, multiplier)
-
-
-def calculate_consumed_buildpoints(star):
-    """Calculate buildpoints consumed by production this turn."""
-    return star.buildpoints_consumed
-
-
-def calculate_productivity_percent(star):
-    """Calculate productivity percentage based on buildpoints consumed.
-
-    Productivity is the percentage of available buildpoints that were
-    consumed this turn. Capped at 100%.
-    """
-    available = calculate_available_buildpoints(star)
-    if available == 0:
-        return 0
-    consumed = calculate_consumed_buildpoints(star)
-    return min(100, consumed / available * 100)
-
-
-def calculate_economy_percent(star):
-    """Calculate economy percentage from employment and productivity.
-
-    economy% = employment%/2 + productivity%/2
-    Returns 0-100, minimum 0%.
-    """
-    employment = calculate_employment_percent(star)
-    productivity = calculate_productivity_percent(star)
-    return (employment - 50) + (productivity - 25) / 2
-
-
-def calculate_economy_factor(star):
-    """Calculate economy factor as a coefficient (0-1 range).
-
-    Converts economy percentage to the same scale as environmental factors.
-    """
-    return calculate_economy_percent(star) / 100
-
-
-def calculate_habitability_factor(player, star):
-    """Calculate raw habitability factor without capacity modifier.
-
-    Returns a factor where:
-    - Perfect habitability (all envs at center): 1.0
-    - Edge habitability (all envs at min/max): 0.0
-    - Outside range: negative
-
-    Economy factor is added to environmental factors before averaging,
-    but the /3 divisor is kept. This allows economic activity to
-    temporarily boost growth beyond what environment alone would allow.
-    """
-    factor = 0
-    for env in ['gravity', 'temperature', 'radiation']:
-        factor += habitability_proportion(
-            player.hab_min(env),
-            player.hab_max(env),
-            getattr(player, f'{env}_center'),
-            getattr(star, env)
-        )
-    # Add economy factor before averaging
-    factor += calculate_economy_factor(star)
-    # Average using the original /3 divisor (economy is a bonus)
-    return factor / 6.0 # changed to nerf growth
-
-
-def calculate_growth_factor(player, star):
-    """Calculate population growth factor based on habitability and carrying capacity.
-
-    Returns a factor where:
-    - Perfect habitability (all envs at center): ~0.25 (25% growth) at low pop
-    - Edge habitability (all envs at min/max): 0 (no growth)
-    - Outside range: negative (linear decline)
-    - High population: reduced by carrying capacity (tanh curve)
-
-    The returned factor should be multiplied by race_type.population_growth_multiplier
-    before being passed to apply_population_change().
-    """
-    hab_factor = calculate_habitability_factor(player, star)
-
-    if hab_factor >= 0:
-        # Dampen growth: max ~0.5 at perfect habitability
-        factor = (hab_factor ** 2) / 2
-        # Apply carrying capacity modifier (reduces growth at high populations)
-        cap = effective_capacity(player, star)
-        factor *= capacity_modifier(star.colonists, cap)
-        return factor
-    else:
-        # Negative factor for environmental deaths
-        return hab_factor
 
 def calculate_salvage_minerals(dry_mass, cargo_iron, cargo_bor, cargo_germ):
     """Calculate salvage minerals from a destroyed/scuttled fleet.

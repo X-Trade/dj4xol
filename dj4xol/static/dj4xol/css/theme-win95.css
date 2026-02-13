@@ -649,6 +649,7 @@ input[type="range"]::-webkit-slider-thumb {
 /* Environmental bars */
 .env-bar {
     background: linear-gradient(to right, #800000 0%, #008000 50%, #800000 100%);
+    height: 12px;
     box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #808080;
 }
 
