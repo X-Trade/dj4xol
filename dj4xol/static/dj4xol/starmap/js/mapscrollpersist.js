@@ -185,6 +185,90 @@ $("document").ready(function() {
         $starmap.scrollTop(scrollTop - walkY);
     });
 
+    var touchDragging = false;
+    var touchStartX = 0;
+    var touchStartY = 0;
+    var touchScrollLeft = 0;
+    var touchScrollTop = 0;
+    var pinchStartDist = null;
+    var pinchStartZoom = null;
+
+    function getTouchDistance(touches) {
+        var dx = touches[0].pageX - touches[1].pageX;
+        var dy = touches[0].pageY - touches[1].pageY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function getTouchMidpoint(touches) {
+        return {
+            x: (touches[0].pageX + touches[1].pageX) / 2,
+            y: (touches[0].pageY + touches[1].pageY) / 2
+        };
+    }
+
+    var starmapEl = $starmap.get(0);
+    if (starmapEl) {
+        // Disable native pinch-zoom gestures so our custom zoom works.
+        document.addEventListener('gesturestart', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+        document.addEventListener('gesturechange', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+        document.addEventListener('gestureend', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+
+        starmapEl.addEventListener('touchstart', function(e) {
+            if ($(e.target).closest('.starmap-controls, a').length) return;
+            if (e.touches.length === 1) {
+                touchDragging = true;
+                pinchStartDist = null;
+                pinchStartZoom = null;
+                touchStartX = e.touches[0].pageX;
+                touchStartY = e.touches[0].pageY;
+                touchScrollLeft = $starmap.scrollLeft();
+                touchScrollTop = $starmap.scrollTop();
+            } else if (e.touches.length === 2) {
+                touchDragging = false;
+                pinchStartDist = getTouchDistance(e.touches);
+                pinchStartZoom = zoomLevel;
+            }
+        }, { passive: false });
+
+        starmapEl.addEventListener('touchmove', function(e) {
+            if (e.touches.length === 1 && touchDragging) {
+                e.preventDefault();
+                var dx = e.touches[0].pageX - touchStartX;
+                var dy = e.touches[0].pageY - touchStartY;
+                $starmap.scrollLeft(touchScrollLeft - dx);
+                $starmap.scrollTop(touchScrollTop - dy);
+            } else if (e.touches.length === 2 && pinchStartDist && pinchStartZoom) {
+                e.preventDefault();
+                var currentDist = getTouchDistance(e.touches);
+                var scale = currentDist / pinchStartDist;
+                var newZoom = pinchStartZoom * scale;
+                var midpoint = getTouchMidpoint(e.touches);
+                var offset = $starmap.offset();
+                var viewportX = midpoint.x - offset.left;
+                var viewportY = midpoint.y - offset.top;
+                zoomTo(newZoom, viewportX, viewportY);
+            }
+        }, { passive: false });
+
+        starmapEl.addEventListener('touchend', function() {
+            touchDragging = false;
+            pinchStartDist = null;
+            pinchStartZoom = null;
+        }, { passive: false });
+
+        starmapEl.addEventListener('touchcancel', function() {
+            touchDragging = false;
+            pinchStartDist = null;
+            pinchStartZoom = null;
+        }, { passive: false });
+    }
+
     // Zoom functions
     function applyZoom() {
         $maparea.css('transform', 'scale(' + zoomLevel + ')');

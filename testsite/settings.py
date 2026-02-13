@@ -121,5 +121,15 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 
+# Cachebusting: use hashed static file names in production.
+if not DEBUG:
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
+
 # Auth redirects
 LOGOUT_REDIRECT_URL = '/4x/'
+
+# Local overrides (local dev)
+try:
+    from .local_settings import *  # noqa: F401,F403
+except ImportError:
+    pass
