@@ -97,6 +97,11 @@
     cursor: grab;
 }
 
+.habitability-ui .env-bar {
+    flex: 0 0 auto;
+    width: 100%;
+}
+
 .env-bar.dragging {
     cursor: grabbing;
 }
@@ -124,6 +129,10 @@
     background-color: #00ff00;
 }
 
+.env-marker.uninhabitable {
+    background-color: #ff3333;
+}
+
 .brython .habitability-field {
     display: none;
 }
@@ -139,6 +148,13 @@
     width: 100%;
 }
 
+.colony-help .columns.single-column {
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+    grid-template-columns: minmax(324px, 1fr);
+}
+
 .create-race .column {
     width: 100%;
 }
@@ -151,6 +167,40 @@
 .create-race .hint {
     padding-left: 16px;
     color: #666;
+}
+
+.help-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.help-slider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.help-label {
+    min-width: 140px;
+    font-weight: bold;
+}
+
+.help-value {
+    min-width: 90px;
+    text-align: right;
+}
+
+.help-results p {
+    margin: 0 0 6px 0;
+}
+
+.growth-graph {
+    width: 100%;
+    max-width: 420px;
+    height: 140px;
+    margin-top: 8px;
+    color: #66aa66;
 }
 
 .env-inputs {

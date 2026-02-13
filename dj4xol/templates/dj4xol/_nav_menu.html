@@ -14,6 +14,9 @@
         {% if current_page != 'profile' %}
         <a href="{% url 'dj4xol:profile' %}">Profile</a>
         {% endif %}
+        {% if current_page != 'help_colony' %}
+        <a href="{% url 'dj4xol:help_colony' %}">Help</a>
+        {% endif %}
         <a href="{% url 'logout' %}">Logout</a>
     </div>
 </div>

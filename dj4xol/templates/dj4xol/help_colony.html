@@ -1,0 +1,107 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Colony Help</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/habitability.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} colony-help">
+        <div class="title-bar">
+            <span class="title">Colony Help</span>
+            <span class="tagline">Productivity & Growth</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_colony' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help">
+                    <h2><span>Colony Calculator</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <form class="race-form" id="colony-help-form">
+                            <table class="profile-table">
+                                <tr>
+                                    <th>Habitability:</th>
+                                    <td colspan="2">
+                                        <div class="help-section" id="race-ranges"></div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Planet:</th>
+                                    <td colspan="2">
+                                        <div class="help-section" id="planet-env"></div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Population:</th>
+                                    <td>
+                                        <div class="help-section" id="population-slider"></div>
+                                    </td>
+                                    <td class="hint">Colonists on the planet.</td>
+                                </tr>
+                                <tr>
+                                    <th>Infrastructure:</th>
+                                    <td>
+                                        <div class="help-section" id="infra-sliders"></div>
+                                    </td>
+                                    <td class="hint">Mines, factories, defenses, shipyards.</td>
+                                </tr>
+                                <tr>
+                                    <th>Results:</th>
+                                    <td colspan="2">
+                                        <div class="help-results" id="colony-results"></div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </form>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython_stdlib.js"></script>
+        <script type="text/python" src="{% static 'dj4xol/brython/colony_rules.py' %}"></script>
+        <script type="text/python" src="{% static 'dj4xol/brython/colony_help.py' %}"></script>
+        <script>
+            window.addEventListener('load', function() {
+                if (window.brython) {
+                    brython();
+                }
+            });
+        </script>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (header) {
+                        header.addEventListener('click', function() {
+                            panel.classList.remove('no-transition');
+                            panel.classList.toggle('open');
+                        });
+                    }
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+    </body>
+</html>

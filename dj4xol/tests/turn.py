@@ -1,9 +1,17 @@
-from ..turn import (
-    GameTurn, habitability_proportion, calculate_growth_factor, capacity_modifier,
-    effective_capacity, BILLION, calculate_employment_percent, calculate_economy_percent,
-    calculate_available_buildpoints, calculate_productivity_percent, calculate_economy_factor,
-    COLONISTS_PER_JOB, BUILDPOINTS_PER_FACTORY, KT_PER_MINE, HOMEWORLD_MIN_YIELD,
-    calculate_fleet_strength
+from ..turn import GameTurn, KT_PER_MINE, HOMEWORLD_MIN_YIELD, calculate_fleet_strength
+from ..colony_rules import (
+    habitability_proportion,
+    calculate_growth_factor,
+    capacity_modifier,
+    effective_capacity,
+    BILLION,
+    calculate_employment_percent,
+    calculate_economy_percent,
+    calculate_available_buildpoints,
+    calculate_productivity_percent,
+    calculate_economy_factor,
+    COLONISTS_PER_JOB,
+    BUILDPOINTS_PER_FACTORY,
 )
 from ..models import ProductionOrder, GameMessage, Fleet, Star, Salvage, Account, Player
 from ..factory import GameFactory
