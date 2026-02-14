@@ -422,7 +422,7 @@ input:focus {
 }
 
 .profile-table tr {
-    border-bottom-color: #333;
+    border-bottom: none;
 }
 
 /* ============================================
