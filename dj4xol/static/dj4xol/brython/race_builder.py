@@ -219,6 +219,16 @@ def _wire_controls(ui_rows, summary_value, error_box):
     def refresh(ev=None):
         _update_all(ui_rows, summary_value, error_box)
 
+    def _event_point(ev):
+        touch = None
+        if hasattr(ev, 'touches') and ev.touches:
+            touch = ev.touches[0]
+        elif hasattr(ev, 'changedTouches') and ev.changedTouches:
+            touch = ev.changedTouches[0]
+        if touch:
+            return touch.clientX, touch.clientY
+        return ev.clientX, ev.clientY
+
     for ui in ui_rows:
         def shrink(ev, ui=ui):
             value = _read_float(ui['width']) - WIDTH_STEP
@@ -247,22 +257,25 @@ def _wire_controls(ui_rows, summary_value, error_box):
         ui['center'].bind('input', refresh)
         ui['width'].bind('input', refresh)
 
-        def drag_start(ev, ui=ui):
+        def _start_drag(ev, ui=ui, is_touch=False):
             ev.preventDefault()
             bar = ui['bar']
             rect = bar.getBoundingClientRect()
             bar.classList.add('dragging')
+            start_x, start_y = _event_point(ev)
             state = {
-                'start_x': ev.clientX,
-                'start_y': ev.clientY,
+                'start_x': start_x,
+                'start_y': start_y,
                 'start_center': _read_float(ui['center']),
                 'start_width': _read_float(ui['width']),
                 'rect_width': rect.width if rect.width else 1,
             }
 
             def on_move(move_ev):
-                dx = move_ev.clientX - state['start_x']
-                dy = move_ev.clientY - state['start_y']
+                move_ev.preventDefault()
+                move_x, move_y = _event_point(move_ev)
+                dx = move_x - state['start_x']
+                dy = move_y - state['start_y']
                 unit_per_px = 2.0 / state['rect_width']
                 center_delta = dx * unit_per_px
                 width_delta = -dy * unit_per_px
@@ -275,14 +288,29 @@ def _wire_controls(ui_rows, summary_value, error_box):
                 refresh()
 
             def on_up(up_ev):
-                document.unbind('mousemove', on_move)
-                document.unbind('mouseup', on_up)
+                if is_touch:
+                    document.unbind('touchmove', on_move)
+                    document.unbind('touchend', on_up)
+                else:
+                    document.unbind('mousemove', on_move)
+                    document.unbind('mouseup', on_up)
                 bar.classList.remove('dragging')
 
-            document.bind('mousemove', on_move)
-            document.bind('mouseup', on_up)
+            if is_touch:
+                document.bind('touchmove', on_move)
+                document.bind('touchend', on_up)
+            else:
+                document.bind('mousemove', on_move)
+                document.bind('mouseup', on_up)
+
+        def drag_start(ev, ui=ui):
+            _start_drag(ev, ui=ui, is_touch=False)
+
+        def drag_start_touch(ev, ui=ui):
+            _start_drag(ev, ui=ui, is_touch=True)
 
         ui['bar'].bind('mousedown', drag_start)
+        ui['bar'].bind('touchstart', drag_start_touch)
 
 
 def init_habitability_form():

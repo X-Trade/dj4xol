@@ -95,6 +95,7 @@
     position: relative;
     margin: 0 8px 0 0;
     cursor: grab;
+    touch-action: none;
 }
 
 .habitability-ui .env-bar {
@@ -131,6 +132,76 @@
 
 .env-marker.uninhabitable {
     background-color: #ff3333;
+}
+
+@media (pointer: coarse) {
+    .env-bar {
+        height: 24px;
+        border-width: 2px;
+    }
+
+    .env-range {
+        top: 2px;
+        bottom: 2px;
+        border-width: 2px;
+    }
+
+    .env-marker {
+        width: 16px;
+        height: 16px;
+        border-width: 2px;
+    }
+}
+
+@media (max-width: 900px), (hover: none) and (pointer: coarse) {
+    .create-race,
+    .onboarding {
+        font-size: 15px;
+    }
+
+    .create-race .columns,
+    .onboarding .columns {
+        padding: 0 6px 10px 6px;
+    }
+
+    .create-race .panel-content > div,
+    .onboarding .panel-content > div {
+        padding: 8px 10px;
+    }
+
+    .create-race .profile-table th,
+    .onboarding .profile-table th {
+        width: 100%;
+        display: block;
+        text-align: left !important;
+        padding: 6px 0 2px 0;
+    }
+
+    .create-race .profile-table td,
+    .onboarding .profile-table td {
+        width: 100%;
+        display: block;
+        padding: 0 0 8px 0;
+    }
+
+    .habitability-ui {
+        gap: 4px;
+    }
+
+    .habitability-controls {
+        gap: 6px;
+        font-size: 0.85em;
+        flex-wrap: wrap;
+    }
+
+    .habitability-group {
+        padding-right: 8px;
+    }
+
+    .create-race .panel.open .panel-content > div,
+    .onboarding .panel.open .panel-content > div {
+        max-height: calc(100vh - 180px);
+    }
 }
 
 .brython .habitability-field {
@@ -214,9 +285,4 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-}
-
-.create-race .profile-table th,
-.onboarding .profile-table th {
-    text-align: right;
 }
