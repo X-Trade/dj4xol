@@ -147,18 +147,22 @@ $("document").ready(function() {
     var posY = localStorage.getItem(storageKey + ':posY');
     var hasSavedPos = posX !== null && posY !== null;
 
-    if (locateEnabled && urlX !== null && urlY !== null && !destMode && !hasSavedPos) {
+    if ((locateEnabled && urlX !== null && urlY !== null && !destMode) || (urlLocate === '1' && urlX !== null && urlY !== null)) {
         // Center on selected coordinates (multiply by MAP_SCALE=6, add border offset)
         var targetX = (parseInt(urlX) * mapScale + borderOffset) * zoomLevel;
         var targetY = (parseInt(urlY) * mapScale + borderOffset) * zoomLevel;
-        $starmap.scrollLeft(targetX - $starmap.width() / 2);
-        $starmap.scrollTop(targetY - $starmap.height() / 2);
+        var centeredLeft = targetX - $starmap.width() / 2;
+        var centeredTop = targetY - $starmap.height() / 2;
+        var maxLeft = Math.max(0, (baseWidth * zoomLevel) - $starmap.width());
+        var maxTop = Math.max(0, (baseHeight * zoomLevel) - $starmap.height());
+        $starmap.scrollLeft(Math.max(0, Math.min(maxLeft, centeredLeft)));
+        $starmap.scrollTop(Math.max(0, Math.min(maxTop, centeredTop)));
 
         // Show locate animation if requested
         if (urlLocate === '1') {
             showLocateAnimation(urlX, urlY);
         }
-    } else {
+    } else if (hasSavedPos) {
         // Restore scroll position from localStorage
         $starmap.scrollLeft(posX);
         $starmap.scrollTop(posY);
@@ -325,8 +329,12 @@ $("document").ready(function() {
         // Calculate new content position and adjust scroll to keep point under mouse
         var newContentX = unscaledX * zoomLevel;
         var newContentY = unscaledY * zoomLevel;
-        $starmap.scrollLeft(newContentX - viewportX);
-        $starmap.scrollTop(newContentY - viewportY);
+        var nextLeft = newContentX - viewportX;
+        var nextTop = newContentY - viewportY;
+        var maxLeft = Math.max(0, (baseWidth * zoomLevel) - $starmap.width());
+        var maxTop = Math.max(0, (baseHeight * zoomLevel) - $starmap.height());
+        $starmap.scrollLeft(Math.max(0, Math.min(maxLeft, nextLeft)));
+        $starmap.scrollTop(Math.max(0, Math.min(maxTop, nextTop)));
         persistMapState();
     }
 
