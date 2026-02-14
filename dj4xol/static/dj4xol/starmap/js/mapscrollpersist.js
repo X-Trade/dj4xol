@@ -3,6 +3,15 @@ function submitDestination(objectId, x, y, objectType) {
     if (window.playerTurnedIn) {
         return;
     }
+    // Persist current map position before navigating
+    try {
+        var $starmap = $("#starmap");
+        if ($starmap.length) {
+            var storageKey = 'starmap:' + window.location.pathname;
+            localStorage.setItem(storageKey + ':posX', $starmap.scrollLeft());
+            localStorage.setItem(storageKey + ':posY', $starmap.scrollTop());
+        }
+    } catch (e) {}
     // Get current URL params and update with destination
     var params = new URLSearchParams(window.location.search);
     params.delete('mode');  // Exit destination mode
@@ -29,6 +38,15 @@ function submitCoordinateDestination(x, y) {
     if (window.playerTurnedIn) {
         return;
     }
+    // Persist current map position before navigating
+    try {
+        var $starmap = $("#starmap");
+        if ($starmap.length) {
+            var storageKey = 'starmap:' + window.location.pathname;
+            localStorage.setItem(storageKey + ':posX', $starmap.scrollLeft());
+            localStorage.setItem(storageKey + ':posY', $starmap.scrollTop());
+        }
+    } catch (e) {}
     var params = new URLSearchParams(window.location.search);
     params.delete('mode');  // Exit destination mode
     params.delete('dest_star');
@@ -125,7 +143,11 @@ $("document").ready(function() {
     // Check if in destination selection mode
     var destMode = $maparea.data('dest-mode') === true || $maparea.data('dest-mode') === 'true';
 
-    if (locateEnabled && urlX !== null && urlY !== null && !destMode) {
+    var posX = localStorage.getItem(storageKey + ':posX');
+    var posY = localStorage.getItem(storageKey + ':posY');
+    var hasSavedPos = posX !== null && posY !== null;
+
+    if (locateEnabled && urlX !== null && urlY !== null && !destMode && !hasSavedPos) {
         // Center on selected coordinates (multiply by MAP_SCALE=6, add border offset)
         var targetX = (parseInt(urlX) * mapScale + borderOffset) * zoomLevel;
         var targetY = (parseInt(urlY) * mapScale + borderOffset) * zoomLevel;
@@ -138,18 +160,19 @@ $("document").ready(function() {
         }
     } else {
         // Restore scroll position from localStorage
-        var posX = localStorage.getItem(storageKey + ':posX');
-        var posY = localStorage.getItem(storageKey + ':posY');
         $starmap.scrollLeft(posX);
         $starmap.scrollTop(posY);
     }
 
-    // Save scroll position and zoom before page unload
-    $(window).bind('beforeunload', function() {
+    function persistMapState() {
         localStorage.setItem(storageKey + ':posX', $starmap.scrollLeft());
         localStorage.setItem(storageKey + ':posY', $starmap.scrollTop());
         localStorage.setItem(storageKey + ':zoom', zoomLevel);
-    });
+    }
+
+    // Save scroll position and zoom before page unload
+    $(window).bind('beforeunload', persistMapState);
+    $starmap.on('scroll', persistMapState);
 
     // Click+drag scrolling
     var isDragging = false;
@@ -249,9 +272,9 @@ $("document").ready(function() {
                 var scale = currentDist / pinchStartDist;
                 var newZoom = pinchStartZoom * scale;
                 var midpoint = getTouchMidpoint(e.touches);
-                var offset = $starmap.offset();
-                var viewportX = midpoint.x - offset.left;
-                var viewportY = midpoint.y - offset.top;
+                var rect = starmapEl.getBoundingClientRect();
+                var viewportX = midpoint.x - rect.left;
+                var viewportY = midpoint.y - rect.top;
                 zoomTo(newZoom, viewportX, viewportY);
             }
         }, { passive: false });
@@ -304,6 +327,7 @@ $("document").ready(function() {
         var newContentY = unscaledY * zoomLevel;
         $starmap.scrollLeft(newContentX - viewportX);
         $starmap.scrollTop(newContentY - viewportY);
+        persistMapState();
     }
 
     // Zoom controls
