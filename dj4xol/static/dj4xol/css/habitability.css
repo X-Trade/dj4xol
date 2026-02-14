@@ -184,6 +184,19 @@
         padding: 0 0 8px 0;
     }
 
+    .create-game .profile-table th {
+        width: 100%;
+        display: block;
+        text-align: left !important;
+        padding: 6px 0 2px 0;
+    }
+
+    .create-game .profile-table td {
+        width: 100%;
+        display: block;
+        padding: 0 0 8px 0;
+    }
+
     .habitability-ui {
         gap: 4px;
     }
