@@ -203,6 +203,12 @@
         border-bottom: none !important;
     }
 
+    .create-race .profile-table tr + tr th,
+    .onboarding .profile-table tr + tr th,
+    .create-game .profile-table tr + tr th {
+        border-top: 1px solid #eee !important;
+    }
+
     .habitability-ui {
         gap: 4px;
     }
