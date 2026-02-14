@@ -206,6 +206,29 @@
 
             setTimeout(function() { scheduleNext(firstDelay); }, firstDelay);
         })();
+        (function() {
+            var isMobile = window.matchMedia &&
+                window.matchMedia('(max-width: 900px), (max-width: 1200px) and (orientation: portrait), (hover: none) and (pointer: coarse)').matches;
+            if (!isMobile) {
+                return;
+            }
+
+            var storageKey = 'pageScroll:' + window.location.pathname;
+            var savedScroll = localStorage.getItem(storageKey);
+            if (savedScroll) {
+                requestAnimationFrame(function() {
+                    window.scrollTo(0, parseInt(savedScroll, 10) || 0);
+                });
+            }
+
+            window.addEventListener('scroll', function() {
+                localStorage.setItem(storageKey, window.scrollY);
+            }, { passive: true });
+
+            window.addEventListener('beforeunload', function() {
+                localStorage.setItem(storageKey, window.scrollY);
+            });
+        })();
         </script>
     </body>
 </html>
