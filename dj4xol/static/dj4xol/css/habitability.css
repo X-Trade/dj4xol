@@ -197,6 +197,12 @@
         padding: 0 0 8px 0;
     }
 
+    .create-race .profile-table tr,
+    .onboarding .profile-table tr,
+    .create-game .profile-table tr {
+        border-bottom: none !important;
+    }
+
     .habitability-ui {
         gap: 4px;
     }
@@ -212,7 +218,8 @@
     }
 
     .create-race .panel.open .panel-content > div,
-    .onboarding .panel.open .panel-content > div {
+    .onboarding .panel.open .panel-content > div,
+    .create-game .panel.open .panel-content > div {
         max-height: calc(100vh - 180px);
     }
 }
@@ -251,6 +258,22 @@
 .create-race .hint {
     padding-left: 16px;
     color: #666;
+}
+
+.create-race .panel.open .panel-content > div,
+.onboarding .panel.open .panel-content > div,
+.create-game .panel.open .panel-content > div {
+    min-height: 25vh;
+    max-height: calc(100vh - 180px) !important;
+}
+
+.create-race .profile-table th,
+.create-race .profile-table td,
+.onboarding .profile-table th,
+.onboarding .profile-table td,
+.create-game .profile-table th,
+.create-game .profile-table td {
+    border-bottom: none !important;
 }
 
 .help-section {

@@ -39,6 +39,7 @@ body {
 }
 
 .panel.open .panel-content > div {
+    min-height: 25vh;
     max-height: 25vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -331,6 +332,7 @@ body {
     }
 
     .panel.open .panel-content > div {
+        min-height: 50vh;
         max-height: 50vh;
     }
 

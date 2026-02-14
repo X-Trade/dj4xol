@@ -8,6 +8,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
         {% if selected_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
         {% if selected_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/habitability.css' %}">
     </head>
     <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} create-game">
         <div class="title-bar">
