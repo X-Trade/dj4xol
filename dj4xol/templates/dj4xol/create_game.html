@@ -2,18 +2,72 @@
 <html>
     <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
         <title>Create Game</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        {% if selected_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if selected_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
     </head>
-    <body>
-        <h1>Create New Game</h1>
-        <form method="post">
-            {% csrf_token %}
-            <table>
-                {{ form.as_table }}
-            </table>
-            <p><button type="submit">Create Game</button></p>
-        </form>
-        <p><a href="{% url 'dj4xol:index' %}">Back to Games</a></p>
-        <p><a href="{% url 'dj4xol:create_race' %}">Create a new race first</a></p>
+    <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} create-game">
+        <div class="title-bar">
+            <span class="title">Create Game</span>
+            <span class="tagline">New game setup</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='create_game' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="game">
+                    <h2><span>Create New Game</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <form method="post" class="game-form">
+                            {% csrf_token %}
+                            <table class="profile-table">
+                                {{ form.as_table }}
+                            </table>
+                            <div class="form-nav">
+                                <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:index' %}'">Back to Games</button>
+                                <button type="submit" class="nav-button primary">Create Game</button>
+                            </div>
+                            <div class="panel-footer">
+                                <a class="action-link" href="{% url 'dj4xol:create_race' %}">Create a new race first</a>
+                            </div>
+                        </form>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (header) {
+                        header.addEventListener('click', function() {
+                            panel.classList.remove('no-transition');
+                            panel.classList.toggle('open');
+                        });
+                    }
+                });
+            })();
+        </script>
     </body>
 </html>

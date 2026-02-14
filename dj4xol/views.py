@@ -531,6 +531,7 @@ def create_race(request):
 def create_game(request):
     """Create a new game."""
     account = request.user.dj4xol_account
+    selected_theme = account.theme if account else 'classic'
     if request.method == 'POST':
         form = NewGameForm(account, request.POST)
         if form.is_valid():
@@ -556,7 +557,10 @@ def create_game(request):
             return redirect('dj4xol:game', game_short_id=game.short_id)
     else:
         form = NewGameForm(account)
-    return render(request, 'dj4xol/create_game.html', {'form': form})
+    return render(request, 'dj4xol/create_game.html', {
+        'form': form,
+        'selected_theme': selected_theme,
+    })
 
 
 @registration_required()
