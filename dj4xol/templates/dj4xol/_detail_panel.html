@@ -60,7 +60,12 @@
         <div class="collapsible-content">
             <ul>
                 {% for key, data in detail.resources.items %}
-                <li>{{ key }}: {{ data.yield }}% / {{ data.surface }}kt</li>
+                <li>
+                    {{ key }}: {{ data.yield }}% / {{ data.surface }}kt
+                    {% if detail.is_owned and data.mining_rate > 0 %}
+                    <span class="resource-mining-rate">+{{ data.mining_rate }}kt</span>
+                    {% endif %}
+                </li>
                 {% endfor %}
             </ul>
         </div>

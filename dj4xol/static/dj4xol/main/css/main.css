@@ -507,6 +507,12 @@ body.turned-in.lcars .order-params::after {
     margin-top: 4px;
 }
 
+.resource-mining-rate {
+    color: #55cc55;
+    font-weight: bold;
+    margin-left: 4px;
+}
+
 /* Report age indicator */
 .report-age {
     font-size: 0.9em;
