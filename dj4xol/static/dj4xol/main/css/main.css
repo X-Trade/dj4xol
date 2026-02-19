@@ -548,12 +548,14 @@ body.turned-in.lcars .order-params::after {
 .env-row {
     display: flex;
     align-items: center;
+    gap: 6px;
     margin: 4px 0;
 }
 
 .detail-row {
     display: flex;
     align-items: center;
+    gap: 6px;
     margin: 4px 0;
 }
 
@@ -606,6 +608,12 @@ body.turned-in.lcars .order-params::after {
 .env-value {
     width: 60px;
     text-align: right;
+}
+
+.env-support {
+    margin: 8px 0 2px 0;
+    font-size: 0.9em;
+    color: #888;
 }
 
 /* Fleet inventory bars */

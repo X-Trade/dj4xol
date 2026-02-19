@@ -1923,12 +1923,16 @@ class GameTurn():
             change = star.colonists - old_pop
 
             if change < 0 and star.colonists > 0:
-                if hab_factor < 0:
+                cap = effective_capacity(player, star)
+                if old_pop > cap:
+                    # Deaths due to overcrowding
+                    self._create_overcrowding_death_message(player, star, -change)
+                elif hab_factor < 0:
                     # Environmental deaths - uninhabitable world
                     self._create_environmental_death_message(player, star, -change)
                 else:
-                    # Deaths due to overcrowding
-                    self._create_overcrowding_death_message(player, star, -change)
+                    # Fallback: classify remaining decline as environmental stress.
+                    self._create_environmental_death_message(player, star, -change)
 
             star.save()
 
