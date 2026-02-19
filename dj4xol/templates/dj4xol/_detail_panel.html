@@ -63,7 +63,7 @@
                 <li>
                     {{ key }}: {{ data.yield }}% / {{ data.surface }}kt
                     {% if detail.is_owned and data.mining_rate > 0 %}
-                    <span class="resource-mining-rate">+{{ data.mining_rate }}kt</span>
+                    <span class="pop-change positive">(+{{ data.mining_rate }}kt)</span>
                     {% endif %}
                 </li>
                 {% endfor %}
@@ -129,7 +129,13 @@
         <div class="collapsible-content">
             <ul>
                 <li>Mines: {{ detail.infrastructure.Mines }}</li>
-                <li>Factories: {{ detail.infrastructure.Factories }}</li>
+                <li>
+                    Factories:
+                    <span class="has-tooltip"
+                          data-tooltip="[{{ detail.infrastructure.FactoriesBP }}]BP/Year">
+                        {{ detail.infrastructure.Factories }}
+                    </span>
+                </li>
                 <li>Defenses: {{ detail.infrastructure.Defenses }}</li>
                 <li>Shipyards: {{ detail.infrastructure.Shipyards }}</li>
                 <li>Jobs: <span class="has-tooltip" data-tooltip="{{ detail.infrastructure.Jobs.count|exact_pop }} ({{ detail.infrastructure.Jobs.employment|floatformat:1 }}% employment)">{{ detail.infrastructure.Jobs.count|humanize_pop }}</span></li>

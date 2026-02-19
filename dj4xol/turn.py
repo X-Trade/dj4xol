@@ -37,7 +37,6 @@ from .colony_rules import (
     BILLION,
     MILLION,
     DEFAULT_SOFT_CAP,
-    KT_PER_MINE,
     YIELD_DEPLETION_RATE,
     HOMEWORLD_MIN_YIELD,
     capacity_modifier,
@@ -73,8 +72,7 @@ TURN_INTERVALS = {
 RANDOM_EVENT_CHANCE = 0.01  # 1%
 
 # Mining constants
-KT_PER_MINE = 1  # kt per mine per turn
-HOMEWORLD_MIN_YIELD = 30  # minimum yield percent for homeworlds
+KT_PER_MINE = 10  # kt per mine per turn
 
 # Warp damage constants
 WARP_DESTRUCTION_THRESHOLD = 10  # Warp speed at which destruction becomes possible
