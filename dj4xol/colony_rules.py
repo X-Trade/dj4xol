@@ -122,7 +122,8 @@ def calculate_staffing_ratio(star):
 def calculate_productivity_multiplier(employment_ratio):
     """Bell-curve productivity based on employment ratio.
 
-    Targets: 0.5x at 10%, 1.5x at 50%, 1.0x at 100%.
+    Targets: 0.25x at 1%, 0.5x at 10%, 1.5x at 50%, 1.0x at 100%.
+    Productivity never drops below 0.2x once any staffing exists.
     Above 100% employment, productivity declines as 1/employment.
     """
     if employment_ratio <= 0:
@@ -131,8 +132,10 @@ def calculate_productivity_multiplier(employment_ratio):
         return 1.0 / employment_ratio
 
     ratio = max(0.0, min(1.0, employment_ratio))
+    if ratio < 0.01:
+        return 0.2 + (ratio / 0.01) * 0.05
     if ratio <= 0.1:
-        return ratio * 5.0
+        return 0.25 + ((ratio - 0.01) / 0.09) * 0.25
 
     # Quadratic fit through (0.1, 0.5), (0.5, 1.5), (1.0, 1.0)
     a = -3.8888888889

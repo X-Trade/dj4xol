@@ -9,6 +9,7 @@ from ..colony_rules import (
     calculate_economy_percent,
     calculate_available_buildpoints,
     calculate_productivity_percent,
+    calculate_productivity_multiplier,
     calculate_economy_factor,
     COLONISTS_PER_JOB,
     BUILDPOINTS_PER_FACTORY,
@@ -532,6 +533,25 @@ class TestEconomicCalculations(TestCase):
         star.factories = 10
         # No buildpoints consumed yet (not implemented)
         self.assertEqual(calculate_productivity_percent(star), 0)
+
+    def test_productivity_multiplier_key_points(self):
+        """Productivity curve should match key design points."""
+        self.assertAlmostEqual(
+            calculate_productivity_multiplier(1.0), 1.0, places=3
+        )
+        self.assertAlmostEqual(
+            calculate_productivity_multiplier(0.5), 1.5, places=3
+        )
+        self.assertAlmostEqual(
+            calculate_productivity_multiplier(0.1), 0.5, places=3
+        )
+        self.assertAlmostEqual(
+            calculate_productivity_multiplier(0.01), 0.25, places=3
+        )
+
+    def test_productivity_multiplier_has_minimum_floor(self):
+        """Any non-zero staffing should keep at least 20% productivity."""
+        self.assertGreaterEqual(calculate_productivity_multiplier(0.001), 0.2)
 
     def test_economy_percent_employment_only(self):
         """With full employment, economy should be positive."""
