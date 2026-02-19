@@ -260,6 +260,32 @@ class TestPopulationGrowth(TestCase):
                           'no more' in m.message.lower()]
         self.assertGreater(len(abandon_msgs), 0)
 
+    def test_overcrowding_death_uses_overcrowding_message(self):
+        """Overcrowding deaths on habitable worlds should not be environmental."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+
+        # Keep world habitable, but force severe over-capacity.
+        homeworld.gravity = player.gravity_center
+        homeworld.temperature = player.temperature_center
+        homeworld.radiation = player.radiation_center
+        cap = effective_capacity(player, homeworld)
+        homeworld.colonists = cap * 2
+        homeworld.save()
+
+        initial_env = player.messages.filter(category='ENVIRONMENTAL').count()
+        initial_pop = player.messages.filter(category='POPULATION').count()
+
+        GameTurn(game).generate_turn()
+
+        self.assertEqual(
+            player.messages.filter(category='ENVIRONMENTAL').count(), initial_env
+        )
+        self.assertGreater(
+            player.messages.filter(category='POPULATION').count(), initial_pop
+        )
+
 
 class TestTerraforming(TestCase):
     def test_terraforming_moves_toward_ideal(self):
