@@ -1915,6 +1915,7 @@ class GameTurn():
         for star in self.game.stars.filter(colonists__gt=0, player__isnull=False):
             player = star.player
             old_pop = star.colonists
+            hab_factor = calculate_habitability_factor(player, star)
 
             factor = calculate_growth_factor(player, star)
             factor *= player.race_type.population_growth_multiplier
@@ -1922,7 +1923,7 @@ class GameTurn():
             change = star.colonists - old_pop
 
             if change < 0 and star.colonists > 0:
-                if factor < 0:
+                if hab_factor < 0:
                     # Environmental deaths - uninhabitable world
                     self._create_environmental_death_message(player, star, -change)
                 else:
