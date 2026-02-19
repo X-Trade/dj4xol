@@ -21,11 +21,10 @@ def random_resource_init():
 
 
 def random_ironium_yield():
-    """Random ironium yield biased toward higher values. Average ~45%."""
-    # Use a distribution that favours higher yields: 10-80% range, biased high
+    """Random ironium yield with a stronger high-end bias."""
+    # 20-95% range with stronger weighting toward rich ironium worlds.
     base = random.random()
-    # Shift the distribution toward higher values
-    biased = 0.1 + (base ** 0.6) * 0.7  # Range 0.1-0.8, biased high
+    biased = 0.2 + (base ** 0.5) * 0.75
     return int(biased * 100)
 
 
@@ -49,6 +48,11 @@ def random_capacity_init():
 def random_surface_mineral_init():
     """Random surface minerals 0-1Mkt with exponential distribution (heavily biased toward lower values)."""
     return int((random.random() ** 50) * 1_000_000)
+
+
+def random_surface_ironium_init():
+    """Random ironium stockpile with a less severe low-end bias."""
+    return int((random.random() ** 20) * 1_000_000)
 
 
 class HabitabilityMixin(models.Model):
@@ -456,7 +460,7 @@ class Star(AbstractMapObject):
                                           validators=[MinValueValidator(0), MaxValueValidator(100)])
 
     # Surface mineral inventory (kt)
-    ironium_inventory = models.IntegerField(default=random_surface_mineral_init)
+    ironium_inventory = models.IntegerField(default=random_surface_ironium_init)
     boranium_inventory = models.IntegerField(default=random_surface_mineral_init)
     germanium_inventory = models.IntegerField(default=random_surface_mineral_init)
 

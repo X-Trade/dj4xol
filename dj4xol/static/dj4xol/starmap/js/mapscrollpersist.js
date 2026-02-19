@@ -219,6 +219,12 @@ $("document").ready(function() {
     var touchScrollTop = 0;
     var pinchStartDist = null;
     var pinchStartZoom = null;
+    var touchPinching = false;
+    var lastTouchPinchAt = 0;
+    var isCoarsePointer = window.matchMedia &&
+        window.matchMedia('(pointer: coarse)').matches;
+    var isFinePointer = window.matchMedia &&
+        window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
     function getTouchDistance(touches) {
         var dx = touches[0].pageX - touches[1].pageX;
@@ -236,15 +242,11 @@ $("document").ready(function() {
     var starmapEl = $starmap.get(0);
     if (starmapEl) {
         // Disable native pinch-zoom gestures so our custom zoom works.
-        document.addEventListener('gesturestart', function(e) {
-            e.preventDefault();
-        }, { passive: false });
-        document.addEventListener('gesturechange', function(e) {
-            e.preventDefault();
-        }, { passive: false });
-        document.addEventListener('gestureend', function(e) {
-            e.preventDefault();
-        }, { passive: false });
+        ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(evt) {
+            starmapEl.addEventListener(evt, function(e) {
+                e.preventDefault();
+            }, { passive: false });
+        });
 
         starmapEl.addEventListener('touchstart', function(e) {
             if ($(e.target).closest('.starmap-controls, a').length) return;
@@ -258,6 +260,7 @@ $("document").ready(function() {
                 touchScrollTop = $starmap.scrollTop();
             } else if (e.touches.length === 2) {
                 touchDragging = false;
+                touchPinching = true;
                 pinchStartDist = getTouchDistance(e.touches);
                 pinchStartZoom = zoomLevel;
             }
@@ -283,14 +286,20 @@ $("document").ready(function() {
             }
         }, { passive: false });
 
-        starmapEl.addEventListener('touchend', function() {
+        starmapEl.addEventListener('touchend', function(e) {
             touchDragging = false;
+            if (!e.touches || e.touches.length < 2) {
+                touchPinching = false;
+                lastTouchPinchAt = Date.now();
+            }
             pinchStartDist = null;
             pinchStartZoom = null;
         }, { passive: false });
 
         starmapEl.addEventListener('touchcancel', function() {
             touchDragging = false;
+            touchPinching = false;
+            lastTouchPinchAt = Date.now();
             pinchStartDist = null;
             pinchStartZoom = null;
         }, { passive: false });
@@ -353,6 +362,14 @@ $("document").ready(function() {
 
     // Mousewheel zoom - zooms toward mouse position
     $starmap.on('wheel', function(e) {
+        // iPhone Safari can emit wheel-like events during pinch gestures.
+        // Ignore wheel zoom on coarse touch devices to avoid double-zoom.
+        if (!isFinePointer || isCoarsePointer) {
+            return;
+        }
+        if (touchPinching || (Date.now() - lastTouchPinchAt) < 300) {
+            return;
+        }
         e.preventDefault();
         var delta = e.originalEvent.deltaY > 0 ? -zoomStep : zoomStep;
 

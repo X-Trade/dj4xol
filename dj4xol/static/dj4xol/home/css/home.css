@@ -278,7 +278,9 @@ body {
 }
 
 /* Mobile adjustments */
-@media (max-width: 900px), (max-width: 1200px) and (orientation: portrait) {
+@media (max-width: 900px),
+       ((max-width: 1200px) and (orientation: portrait) and
+        (hover: none) and (pointer: coarse)) {
     html, body {
         height: auto;
         overflow-y: auto;
@@ -292,9 +294,6 @@ body {
         grid-template-columns: 1fr !important;
         max-width: 100%;
         margin: 0;
-        padding-top: 6px;
-        padding-left: 0;
-        padding-right: 0;
         width: 100%;
         box-sizing: border-box;
         overflow: visible;
