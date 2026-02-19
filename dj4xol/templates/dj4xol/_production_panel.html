@@ -17,12 +17,12 @@
                     <div class="order-tooltip">
                         <div class="tooltip-header">{{ order.display }} - {{ order.progress_percent }}%</div>
                         <table class="tooltip-table">
-                            <tr><th></th><th>Reqd</th><th>Remain</th></tr>
-                            {% if order.cost.colonists %}<tr class="res-col"><td>Colonists</td><td colspan="2">{{ order.cost.colonists }} required</td></tr>{% endif %}
-                            {% if order.cost.bp %}<tr><td>BP</td><td>{{ order.cost.bp }}</td><td>{{ order.remaining.bp }}</td></tr>{% endif %}
+                            <tr><th></th><th>Req'd</th><th>Remain</th></tr>
                             {% if order.cost.ironium %}<tr class="res-iron"><td>Ironium</td><td>{{ order.cost.ironium }}kt</td><td>{{ order.remaining.ironium }}</td></tr>{% endif %}
                             {% if order.cost.boranium %}<tr class="res-bor"><td>Boranium</td><td>{{ order.cost.boranium }}kt</td><td>{{ order.remaining.boranium }}</td></tr>{% endif %}
                             {% if order.cost.germanium %}<tr class="res-germ"><td>Germanium</td><td>{{ order.cost.germanium }}kt</td><td>{{ order.remaining.germanium }}</td></tr>{% endif %}
+                            {% if order.cost.colonists %}<tr class="res-col"><td>Colonists</td><td colspan="2">{{ order.cost.colonists }} required</td></tr>{% endif %}
+                            {% if order.cost.bp %}<tr><td>BP</td><td>{{ order.cost.bp }}</td><td>{{ order.remaining.bp }}</td></tr>{% endif %}
                         </table>
                     </div>
                     <form method="post" action="{% url 'dj4xol:remove_production' game.short_id order.short_id %}" style="display:inline">
