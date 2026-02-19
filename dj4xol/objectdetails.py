@@ -5,6 +5,9 @@ from dj4xol.colony_rules import (
     calculate_growth_factor,
     effective_capacity,
     calculate_employment_percent,
+    calculate_staffing_ratio,
+    calculate_productivity_multiplier,
+    KT_PER_MINE,
     COLONISTS_PER_JOB,
     COLONISTS_PER_SHIPYARD,
 )
@@ -364,21 +367,54 @@ class DetailBuilder():
     def build_resource_detail(self):
         resources = None
         if self.selected_obj and isinstance(self.selected_obj, Star):
+            mining_rates = self._build_resource_mining_rates()
             resources = {
                 'Ironium': {
                     'yield': self.selected_obj.ironium_yield,
                     'surface': self.selected_obj.ironium_inventory,
+                    'mining_rate': mining_rates['ironium'],
                 },
                 'Boranium': {
                     'yield': self.selected_obj.boranium_yield,
                     'surface': self.selected_obj.boranium_inventory,
+                    'mining_rate': mining_rates['boranium'],
                 },
                 'Germanium': {
                     'yield': self.selected_obj.germanium_yield,
                     'surface': self.selected_obj.germanium_inventory,
+                    'mining_rate': mining_rates['germanium'],
                 },
             }
         return resources
+
+    def _build_resource_mining_rates(self):
+        """Build per-resource expected mining output for one year."""
+        rates = {'ironium': 0, 'boranium': 0, 'germanium': 0}
+        if not self.selected_obj or not isinstance(self.selected_obj, Star):
+            return rates
+        if not self.player or self.selected_obj.player != self.player:
+            return rates
+
+        star = self.selected_obj
+        total_yield = (
+            star.ironium_yield + star.boranium_yield + star.germanium_yield
+        )
+        if total_yield <= 0 or star.mines <= 0:
+            return rates
+
+        staffing_ratio = calculate_staffing_ratio(star)
+        if staffing_ratio <= 0:
+            return rates
+
+        productivity = calculate_productivity_multiplier(staffing_ratio)
+        total_extraction = star.mines * KT_PER_MINE * productivity
+
+        rates['ironium'] = int(total_extraction * star.ironium_yield / total_yield)
+        rates['boranium'] = int(total_extraction * star.boranium_yield / total_yield)
+        rates['germanium'] = int(
+            total_extraction * star.germanium_yield / total_yield
+        )
+        return rates
 
     def build_infrastructure_detail(self):
         infrastructure = None

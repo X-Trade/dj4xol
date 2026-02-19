@@ -2000,6 +2000,38 @@ class TestFleetCargo(TestCase):
         self.assertEqual(inventory['Colonists']['percent'], 5.0)  # 50/1000 = 5%
         self.assertEqual(inventory['Colonists']['display'], '50k')
 
+    def test_object_details_includes_star_mining_rates_for_owned_colony(self):
+        """Owned colonies should include per-resource mining rates."""
+        from ..objectdetails import DetailBuilder
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        star.mines = 10
+        star.factories = 0
+        star.defenses = 0
+        star.shipyards = 0
+        star.colonists = 10000
+        star.ironium_yield = 50
+        star.boranium_yield = 30
+        star.germanium_yield = 20
+        star.save()
+
+        detail_builder = DetailBuilder(
+            game,
+            x=star.x,
+            y=star.y,
+            selected=star.short_id.lower(),
+            player=player,
+        )
+        details = detail_builder.build_detail()
+        resources = details['resources']
+
+        self.assertEqual(resources['Ironium']['mining_rate'], 50)
+        self.assertEqual(resources['Boranium']['mining_rate'], 30)
+        self.assertEqual(resources['Germanium']['mining_rate'], 20)
+
 
 class TestProductionProgress(TestCase):
     """Test production order progress calculations."""
