@@ -1,13 +1,13 @@
 from django.db import models
 from dj4xol.models import Fleet, Star, Salvage, Report
-from dj4xol.turn import apply_population_change
+from dj4xol.turn import apply_population_change, KT_PER_MINE
 from dj4xol.colony_rules import (
     calculate_growth_factor,
     effective_capacity,
     calculate_employment_percent,
+    calculate_available_buildpoints,
     calculate_staffing_ratio,
     calculate_productivity_multiplier,
-    KT_PER_MINE,
     COLONISTS_PER_JOB,
     COLONISTS_PER_SHIPYARD,
 )
@@ -426,6 +426,7 @@ class DetailBuilder():
             infrastructure = {
                 'Mines': self.selected_obj.mines,
                 'Factories': self.selected_obj.factories,
+                'FactoriesBP': calculate_available_buildpoints(self.selected_obj),
                 'Defenses': self.selected_obj.defenses,
                 'Shipyards': self.selected_obj.shipyards,
                 'Jobs': {'count': jobs, 'employment': employment},
