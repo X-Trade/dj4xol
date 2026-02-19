@@ -58,16 +58,17 @@
     <div class="collapsible-section" data-section="resources">
         <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Resources</h4>
         <div class="collapsible-content">
-            <ul>
-                {% for key, data in detail.resources.items %}
-                <li>
-                    {{ key }}: {{ data.yield }}% / {{ data.surface }}kt
+            {% for key, data in detail.resources.items %}
+            <div class="detail-row">
+                <span class="detail-label">{{ key }}</span>
+                <span class="detail-value">
+                    {{ data.yield }}% / {{ data.surface }}kt
                     {% if detail.is_owned and data.mining_rate > 0 %}
-                    <span class="pop-change positive">(+{{ data.mining_rate }}kt)</span>
+                    <span class="pop-change positive">[+{{ data.mining_rate }}kt]</span>
                     {% endif %}
-                </li>
-                {% endfor %}
-            </ul>
+                </span>
+            </div>
+            {% endfor %}
         </div>
     </div>
     {% endif %}
@@ -115,11 +116,18 @@
             <span class="capacity-display">total: {{ detail.salvage_inventory.total|floatformat:0 }}kt</span>
         </div>
         <div class="collapsible-content">
-            <ul>
-                <li>Ironium: {{ detail.salvage_inventory.ironium|floatformat:0 }}kt</li>
-                <li>Boranium: {{ detail.salvage_inventory.boranium|floatformat:0 }}kt</li>
-                <li>Germanium: {{ detail.salvage_inventory.germanium|floatformat:0 }}kt</li>
-            </ul>
+            <div class="detail-row">
+                <span class="detail-label">Ironium</span>
+                <span class="detail-value">{{ detail.salvage_inventory.ironium|floatformat:0 }}kt</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Boranium</span>
+                <span class="detail-value">{{ detail.salvage_inventory.boranium|floatformat:0 }}kt</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Germanium</span>
+                <span class="detail-value">{{ detail.salvage_inventory.germanium|floatformat:0 }}kt</span>
+            </div>
         </div>
     </div>
     {% endif %}
@@ -127,19 +135,36 @@
     <div class="collapsible-section" data-section="infrastructure">
         <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Infrastructure</h4>
         <div class="collapsible-content">
-            <ul>
-                <li>Mines: {{ detail.infrastructure.Mines }}</li>
-                <li>
-                    Factories:
+            <div class="detail-row">
+                <span class="detail-label">Mines</span>
+                <span class="detail-value">{{ detail.infrastructure.Mines }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Factories</span>
+                <span class="detail-value">
                     <span class="has-tooltip"
-                          data-tooltip="{{ detail.infrastructure.FactoriesBP }}BP/Year">
+                          data-tooltip="[{{ detail.infrastructure.FactoriesBP }}]BP/Year">
                         {{ detail.infrastructure.Factories }}
                     </span>
-                </li>
-                <li>Defenses: {{ detail.infrastructure.Defenses }}</li>
-                <li>Shipyards: {{ detail.infrastructure.Shipyards }}</li>
-                <li>Jobs: <span class="has-tooltip" data-tooltip="{{ detail.infrastructure.Jobs.count|exact_pop }} ({{ detail.infrastructure.Jobs.employment|floatformat:1 }}% employment)">{{ detail.infrastructure.Jobs.count|humanize_pop }}</span></li>
-            </ul>
+                </span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Defenses</span>
+                <span class="detail-value">{{ detail.infrastructure.Defenses }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Shipyards</span>
+                <span class="detail-value">{{ detail.infrastructure.Shipyards }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Jobs</span>
+                <span class="detail-value">
+                    <span class="has-tooltip"
+                          data-tooltip="{{ detail.infrastructure.Jobs.count|exact_pop }} ({{ detail.infrastructure.Jobs.employment|floatformat:1 }}% employment)">
+                        {{ detail.infrastructure.Jobs.count|humanize_pop }}
+                    </span>
+                </span>
+            </div>
         </div>
     </div>
     {% endif %}

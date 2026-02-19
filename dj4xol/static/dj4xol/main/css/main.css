@@ -551,6 +551,22 @@ body.turned-in.lcars .order-params::after {
     margin: 4px 0;
 }
 
+.detail-row {
+    display: flex;
+    align-items: center;
+    margin: 4px 0;
+}
+
+.detail-label {
+    width: 90px;
+    flex-shrink: 0;
+}
+
+.detail-value {
+    flex: 1;
+    min-width: 0;
+}
+
 .env-label {
     width: 90px;
 }
