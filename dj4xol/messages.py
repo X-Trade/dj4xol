@@ -861,6 +861,23 @@ class FleetMergedMessageFactory(MessageFactory):
         )
 
 
+class FleetOrdersCompletedMessageFactory(MessageFactory):
+    """Message when a fleet has no remaining assigned orders."""
+    category = 'GENERAL'
+    templates = [
+        "{fleet} has completed its assigned orders. No further orders are queued.",
+    ]
+
+    def __init__(self, game, player, fleet, message=None):
+        super().__init__(game, player, message, intensity=0.0)
+        self.fleet = fleet
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=format_map_object(self.fleet)
+        )
+
+
 class FleetScuttledMessageFactory(MessageFactory):
     """Messages for fleet scuttling."""
     category = 'GENERAL'

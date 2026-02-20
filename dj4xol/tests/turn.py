@@ -4979,3 +4979,30 @@ class TestInterceptPatrolOrders(TestCase):
         patrol_order = detail['fleet_orders'][0]
         self.assertEqual(patrol_order['order_type'], 'PATROL')
         self.assertEqual(patrol_order['patrol_radius'], 10)
+
+    def test_fleet_orders_completed_message_when_queue_empties(self):
+        """Fleet should get a message when it completes all assigned orders."""
+        from ..models import FleetOrders
+
+        game, player1, _ = self._create_two_player_game()
+        fleet = Fleet.objects.create(
+            game=game, player=player1, name="Mission Fleet",
+            x=10, y=10, ship_count=1, integrity=100
+        )
+
+        # Reach destination in a single turn so the queue becomes empty.
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=11, y=10, warpfactor=5
+        )
+
+        initial_count = player1.messages.count()
+        GameTurn(game).generate_turn()
+
+        self.assertEqual(fleet.orders.count(), 0)
+        self.assertGreater(player1.messages.count(), initial_count)
+        self.assertTrue(
+            player1.messages.filter(
+                message__icontains="No further orders are queued"
+            ).exists()
+        )
