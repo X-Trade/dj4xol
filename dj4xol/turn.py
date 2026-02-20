@@ -241,7 +241,7 @@ class GameTurn():
         from .models import Report, Fleet
         from .messages import HabitableWorldMessageFactory
 
-        report_data = self._build_report_data(obj, target_type)
+        report_data = self._build_report_data(player, obj, target_type)
 
         report, created = Report.objects.update_or_create(
             player=player,
@@ -263,7 +263,7 @@ class GameTurn():
                 msg.year = self.game.year
                 msg.save()
 
-    def _build_report_data(self, obj, target_type):
+    def _build_report_data(self, player, obj, target_type):
         """Build the data dict to cache in a report."""
         if target_type == 'star':
             return {
@@ -271,6 +271,7 @@ class GameTurn():
                 'x': obj.x,
                 'y': obj.y,
                 'colonists': obj.colonists,
+                'capacity': effective_capacity(player, obj),
                 'player_name': obj.player.name if obj.player else None,
                 'gravity': obj.gravity,
                 'temperature': obj.temperature,

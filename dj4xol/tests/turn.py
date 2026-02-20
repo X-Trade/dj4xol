@@ -4945,3 +4945,37 @@ class TestInterceptPatrolOrders(TestCase):
         GameTurn(game).generate_turn()
         fleet.refresh_from_db()
         self.assertNotEqual((fleet.x, fleet.y), (10, 10))
+
+    def test_patrol_order_detail_includes_patrol_radius(self):
+        """Detail payload should include patrol radius for PATROL orders."""
+        from ..models import FleetOrders
+        from ..objectdetails import DetailBuilder
+
+        game, player1, _ = self._create_two_player_game()
+        fleet = Fleet.objects.create(
+            game=game, player=player1, name="Patrol Fleet",
+            x=5, y=5, ship_count=2, integrity=100
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='PATROL',
+            repeat=True,
+            x=50,
+            y=50,
+            patrol_radius=10,
+            intercept_speed=3,
+        )
+
+        detail = DetailBuilder(
+            game,
+            x=fleet.x,
+            y=fleet.y,
+            selected=fleet.short_id.lower(),
+            player=player1,
+        ).build_detail()
+
+        patrol_order = detail['fleet_orders'][0]
+        self.assertEqual(patrol_order['order_type'], 'PATROL')
+        self.assertEqual(patrol_order['patrol_radius'], 10)
