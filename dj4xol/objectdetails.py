@@ -152,6 +152,7 @@ class DetailBuilder():
         if target_type == 'star':
             detail['star_short_id'] = self.selected_obj.short_id
             detail['population'] = data.get('colonists')
+            detail['capacity'] = data.get('capacity')
             # Build environmental detail from cached data
             if all(k in data for k in ['gravity', 'temperature', 'radiation']):
                 detail['environmentals'] = self._build_env_from_report(data)
@@ -524,6 +525,7 @@ class DetailBuilder():
                 'warpfactor': o.warpfactor,
                 'repeat': o.repeat,
                 'order_type': o.order_type,
+                'patrol_radius': o.patrol_radius,
                 'transfer_type': o.transfer_type,
                 'transfer_ironium': o.transfer_ironium,
                 'transfer_boranium': o.transfer_boranium,
