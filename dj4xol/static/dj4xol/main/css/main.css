@@ -637,6 +637,10 @@ body.turned-in.lcars .order-params::after {
     color: #888;
 }
 
+.env-support-warning {
+    color: #cc6666;
+}
+
 /* Fleet inventory bars */
 .inventory-bar {
     flex: 1;

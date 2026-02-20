@@ -510,6 +510,30 @@ class CachedReportDisplayTest(TestCase):
         self.assertFalse(detail['is_current'])
         self.assertEqual(detail['capacity'], 123456)
 
+    def test_cached_report_includes_survivability_flag(self):
+        """Cached star reports should preserve survivability status."""
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=2400,
+            target_type='star',
+            target_id=self.star.id,
+            cached_report='{"name": "Old Name", "colonists": 1000, '
+                         '"is_survivable": false, '
+                         '"gravity": 1.0, "temperature": 1.0, "radiation": 1.0}'
+        )
+
+        builder = DetailBuilder(
+            self.game,
+            x=self.star.x,
+            y=self.star.y,
+            player=self.player
+        )
+        detail = builder.build_detail()
+
+        self.assertFalse(detail['is_current'])
+        self.assertFalse(detail['is_survivable'])
+
     def test_report_age_calculated_correctly(self):
         """Report age shows years since report was generated."""
         # Game starts at year 2400, advance to 2405

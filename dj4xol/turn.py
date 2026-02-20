@@ -272,6 +272,7 @@ class GameTurn():
                 'y': obj.y,
                 'colonists': obj.colonists,
                 'capacity': effective_capacity(player, obj),
+                'is_survivable': player.is_habitable(obj),
                 'player_name': obj.player.name if obj.player else None,
                 'gravity': obj.gravity,
                 'temperature': obj.temperature,
