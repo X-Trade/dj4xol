@@ -28,6 +28,7 @@ from .messages import (
     FleetWarpDamageMessageFactory,
     FleetWarpDestroyedMessageFactory,
     FleetMergedMessageFactory,
+    FleetOrdersCompletedMessageFactory,
     FleetBuildBlockedNoShipyardMessageFactory,
     FleetRepairedMessageFactory,
 )
@@ -616,13 +617,26 @@ class GameTurn():
 
     def move_fleet(self, fleet):
         """Process fleet orders, with configurable behavior for multiple orders per turn."""
+        had_orders = fleet.orders.exists()
 
         if ALLOW_MULTIPLE_ORDERS_PER_TURN:
             # Legacy behavior: process multiple orders per turn (old system)
-            return self._move_fleet_legacy(fleet)
+            result = self._move_fleet_legacy(fleet)
         else:
             # New behavior: process only one order per turn (more realistic)
-            return self._move_fleet_single_order(fleet)
+            result = self._move_fleet_single_order(fleet)
+
+        if result is not None and had_orders and not result.orders.exists():
+            self._create_fleet_orders_completed_message(result)
+
+        return result
+
+    def _create_fleet_orders_completed_message(self, fleet):
+        """Create a message when a fleet's order queue is exhausted."""
+        factory = FleetOrdersCompletedMessageFactory(self.game, fleet.player, fleet)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
 
     def _move_fleet_single_order(self, fleet):
         """Process fleet orders: no order executes twice per turn, transfers passthrough, moves block."""
