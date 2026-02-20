@@ -51,7 +51,11 @@
                 <span class="env-value">{{ data.display }}</span>
             </div>
             {% endfor %}
-            {% if detail.capacity %}
+            {% if detail.is_survivable == False %}
+            <p class="env-support env-support-warning">
+                Colonists will not survive here.
+            </p>
+            {% elif detail.capacity %}
             <p class="env-support">
                 Supports up to
                 <span class="has-tooltip" data-tooltip="{{ detail.capacity|exact_pop }}">

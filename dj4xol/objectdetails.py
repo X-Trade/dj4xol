@@ -84,6 +84,7 @@ class DetailBuilder():
                      'objects_here': self.get_objects_here(),
                      'player': self.get_object_player(),
                      'is_owned': self.selected_obj.player == self.player if self.player else False,
+                     'is_survivable': self.get_survivability(),
                      'population': self.get_population(),
                      'population_change': self.get_population_change(),
                      'capacity': self.get_effective_capacity(),
@@ -153,9 +154,12 @@ class DetailBuilder():
             detail['star_short_id'] = self.selected_obj.short_id
             detail['population'] = data.get('colonists')
             detail['capacity'] = data.get('capacity')
+            detail['is_survivable'] = data.get('is_survivable')
             # Build environmental detail from cached data
             if all(k in data for k in ['gravity', 'temperature', 'radiation']):
                 detail['environmentals'] = self._build_env_from_report(data)
+                if detail['is_survivable'] is None:
+                    detail['is_survivable'] = self._is_survivable_from_report(data)
         elif target_type == 'fleet':
             detail['fleet_short_id'] = self.selected_obj.short_id
             if 'ship_count' in data:
@@ -229,6 +233,26 @@ class DetailBuilder():
         if not self.player:
             return None
         return effective_capacity(self.player, self.selected_obj)
+
+    def get_survivability(self):
+        """Return whether colonists can survive on this star for this player."""
+        if not self.selected_obj or not isinstance(self.selected_obj, Star):
+            return None
+        if not self.player:
+            return None
+        return self.player.is_habitable(self.selected_obj)
+
+    def _is_survivable_from_report(self, data):
+        """Return survivability from cached environmental report data."""
+        if not self.player:
+            return None
+        for env in ['gravity', 'temperature', 'radiation']:
+            if env not in data:
+                return None
+            value = data[env]
+            if value < self.player.hab_min(env) or value > self.player.hab_max(env):
+                return False
+        return True
 
     def get_object_name(self):
         if self.selected_obj.name is None or len(self.selected_obj.name) == 0:
