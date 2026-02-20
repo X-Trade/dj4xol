@@ -570,7 +570,28 @@ body.turned-in.lcars .order-params::after {
 }
 
 .env-label {
-    width: 90px;
+    width: 100px;
+    min-width: 100px;
+    flex: 0 0 100px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    padding-right: 2px;
+}
+
+@media (max-width: 900px),
+       ((max-width: 1200px) and (orientation: portrait) and
+        (hover: none) and (pointer: coarse)) {
+    .env-row,
+    .detail-row {
+        gap: 6px;
+    }
+
+    .env-label {
+        width: 120px;
+        min-width: 120px;
+        flex-basis: 120px;
+    }
 }
 
 .env-bar {
