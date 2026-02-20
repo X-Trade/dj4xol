@@ -232,6 +232,15 @@
             window.addEventListener('beforeunload', function() {
                 localStorage.setItem(storageKey, window.scrollY);
             });
+
+            var destSetLink = document.getElementById('dest-set-link');
+            if (destSetLink) {
+                destSetLink.addEventListener('click', function() {
+                    localStorage.setItem(storageKey, 0);
+                    localStorage.setItem('starmap:' + window.location.pathname + ':panel:starmap', 'true');
+                    window.scrollTo(0, 0);
+                });
+            }
         })();
         </script>
     </body>
