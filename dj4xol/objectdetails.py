@@ -3,6 +3,7 @@ from dj4xol.models import Fleet, Star, Salvage, Report
 from dj4xol.turn import apply_population_change, KT_PER_MINE
 from dj4xol.colony_rules import (
     calculate_growth_factor,
+    calculate_habitability_factor,
     effective_capacity,
     calculate_employment_percent,
     calculate_available_buildpoints,
@@ -240,7 +241,7 @@ class DetailBuilder():
             return None
         if not self.player:
             return None
-        return self.player.is_habitable(self.selected_obj)
+        return calculate_habitability_factor(self.player, self.selected_obj) >= 0
 
     def _is_survivable_from_report(self, data):
         """Return survivability from cached environmental report data."""
@@ -249,10 +250,20 @@ class DetailBuilder():
         for env in ['gravity', 'temperature', 'radiation']:
             if env not in data:
                 return None
-            value = data[env]
-            if value < self.player.hab_min(env) or value > self.player.hab_max(env):
-                return False
-        return True
+
+        report_star = type('ReportStar', (), {
+            'gravity': data['gravity'],
+            'temperature': data['temperature'],
+            'radiation': data['radiation'],
+            # Cached reports do not include infrastructure economy context.
+            'colonists': data.get('colonists', 0),
+            'mines': data.get('mines', 0),
+            'factories': data.get('factories', 0),
+            'defenses': data.get('defenses', 0),
+            'shipyards': data.get('shipyards', 0),
+            'buildpoints_consumed': data.get('buildpoints_consumed', 0),
+        })()
+        return calculate_habitability_factor(self.player, report_star) >= 0
 
     def get_object_name(self):
         if self.selected_obj.name is None or len(self.selected_obj.name) == 0:
