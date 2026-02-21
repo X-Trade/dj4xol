@@ -256,7 +256,7 @@ class GameTurn():
         report.set_report_data(report_data)
         report.save()
 
-        if created and target_type == 'star' and player.is_habitable(obj) and obj.player != player:
+        if created and target_type == 'star' and calculate_habitability_factor(player, obj) >= 0 and obj.player != player:
             fleet = Fleet.objects.filter(game=self.game, player=player, x=obj.x, y=obj.y).first()
             if fleet:
                 factory = HabitableWorldMessageFactory(self.game, player, fleet, obj)
@@ -273,7 +273,7 @@ class GameTurn():
                 'y': obj.y,
                 'colonists': obj.colonists,
                 'capacity': effective_capacity(player, obj),
-                'is_survivable': player.is_habitable(obj),
+                'is_survivable': calculate_habitability_factor(player, obj) >= 0,
                 'player_name': obj.player.name if obj.player else None,
                 'gravity': obj.gravity,
                 'temperature': obj.temperature,
