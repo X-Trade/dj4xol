@@ -20,6 +20,7 @@
     flex: 1;
     min-height: 150px;
     touch-action: none;
+    overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
 }
 

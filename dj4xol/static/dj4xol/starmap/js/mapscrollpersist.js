@@ -219,6 +219,7 @@ $("document").ready(function() {
     var touchScrollTop = 0;
     var pinchStartDist = null;
     var pinchStartZoom = null;
+    var gestureStartZoom = null;
     var touchPinching = false;
     var lastTouchPinchAt = 0;
     var isCoarsePointer = window.matchMedia &&
@@ -241,13 +242,6 @@ $("document").ready(function() {
 
     var starmapEl = $starmap.get(0);
     if (starmapEl) {
-        // Disable native pinch-zoom gestures so our custom zoom works.
-        ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(evt) {
-            starmapEl.addEventListener(evt, function(e) {
-                e.preventDefault();
-            }, { passive: false });
-        });
-
         starmapEl.addEventListener('touchstart', function(e) {
             if ($(e.target).closest('.starmap-controls, a').length) return;
             if (e.touches.length === 1) {
@@ -303,6 +297,31 @@ $("document").ready(function() {
             pinchStartDist = null;
             pinchStartZoom = null;
         }, { passive: false });
+
+        // Safari macOS trackpad pinch emits non-standard gesture events.
+        // Use them on fine-pointer devices to support smooth pinch zoom.
+        if (isFinePointer) {
+            starmapEl.addEventListener('gesturestart', function(e) {
+                e.preventDefault();
+                gestureStartZoom = zoomLevel;
+            }, { passive: false });
+
+            starmapEl.addEventListener('gesturechange', function(e) {
+                e.preventDefault();
+                if (gestureStartZoom === null || typeof e.scale !== 'number') {
+                    return;
+                }
+                var rect = starmapEl.getBoundingClientRect();
+                var viewportX = e.clientX - rect.left;
+                var viewportY = e.clientY - rect.top;
+                zoomTo(gestureStartZoom * e.scale, viewportX, viewportY);
+            }, { passive: false });
+
+            starmapEl.addEventListener('gestureend', function(e) {
+                e.preventDefault();
+                gestureStartZoom = null;
+            }, { passive: false });
+        }
     }
 
     // Zoom functions
@@ -362,23 +381,39 @@ $("document").ready(function() {
 
     // Mousewheel zoom - zooms toward mouse position
     $starmap.on('wheel', function(e) {
-        // iPhone Safari can emit wheel-like events during pinch gestures.
-        // Ignore wheel zoom on coarse touch devices to avoid double-zoom.
-        if (!isFinePointer || isCoarsePointer) {
+        // Never wheel-zoom on coarse-pointer devices (phones/tablets).
+        if (isCoarsePointer) {
             return;
         }
         if (touchPinching || (Date.now() - lastTouchPinchAt) < 300) {
             return;
         }
+        var original = e.originalEvent;
+        var isPinchWheel = !!original.ctrlKey;
+        var likelyTrackpadPan = original.deltaMode === 0 &&
+            (Math.abs(original.deltaY) < 40 || Math.abs(original.deltaX) > 0);
+
+        // Allow normal scroll/pan for trackpad movement unless it's pinch-zoom.
+        if (!isPinchWheel && likelyTrackpadPan) {
+            return;
+        }
+
         e.preventDefault();
-        var delta = e.originalEvent.deltaY > 0 ? -zoomStep : zoomStep;
 
         // Get mouse position relative to starmap viewport
         var offset = $starmap.offset();
-        var viewportX = (e.originalEvent.pageX || e.pageX) - offset.left;
-        var viewportY = (e.originalEvent.pageY || e.pageY) - offset.top;
+        var viewportX = (original.pageX || e.pageX) - offset.left;
+        var viewportY = (original.pageY || e.pageY) - offset.top;
 
-        zoomTo(zoomLevel + delta, viewportX, viewportY);
+        if (isPinchWheel) {
+            // Continuous zoom for trackpad pinch wheel events.
+            var scale = Math.exp(-original.deltaY * 0.002);
+            zoomTo(zoomLevel * scale, viewportX, viewportY);
+        } else {
+            // Stepped zoom for traditional mouse wheel input.
+            var delta = original.deltaY > 0 ? -zoomStep : zoomStep;
+            zoomTo(zoomLevel + delta, viewportX, viewportY);
+        }
     });
 
     // Destination mode: click on empty space to set coordinates
