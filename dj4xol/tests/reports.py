@@ -258,6 +258,12 @@ class ReportGenerationTest(TestCase):
         self.star1.gravity = 1.5
         self.star1.temperature = 0.8
         self.star1.radiation = 1.2
+        self.star1.ironium_yield = 55
+        self.star1.boranium_yield = 45
+        self.star1.germanium_yield = 35
+        self.star1.ironium_inventory = 1200
+        self.star1.boranium_inventory = 800
+        self.star1.germanium_inventory = 600
         self.star1.save()
 
         Fleet.objects.create(
@@ -283,6 +289,12 @@ class ReportGenerationTest(TestCase):
         self.assertEqual(data['gravity'], 1.5)
         self.assertEqual(data['temperature'], 0.8)
         self.assertEqual(data['radiation'], 1.2)
+        self.assertEqual(data['ironium_yield'], 55)
+        self.assertEqual(data['boranium_yield'], 45)
+        self.assertEqual(data['germanium_yield'], 35)
+        self.assertEqual(data['ironium_inventory'], 1200)
+        self.assertEqual(data['boranium_inventory'], 800)
+        self.assertEqual(data['germanium_inventory'], 600)
 
     def test_report_overwrites_previous(self):
         """New reports overwrite previous ones for the same target."""
@@ -315,6 +327,42 @@ class ReportGenerationTest(TestCase):
         )
         self.assertEqual(reports.count(), 1)
         self.assertEqual(reports.first().year, first_year + 1)
+
+    def test_cached_star_detail_includes_resource_yields(self):
+        """Cached star detail should include resource yields and surfaces."""
+        self.star1.ironium_yield = 61
+        self.star1.boranium_yield = 42
+        self.star1.germanium_yield = 27
+        self.star1.ironium_inventory = 1500
+        self.star1.boranium_inventory = 900
+        self.star1.germanium_inventory = 400
+        self.star1.save()
+
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Explorer',
+            x=self.star1.x,
+            y=self.star1.y
+        )
+        GameTurn(self.game).generate_reports()
+
+        # Move fleet away so detail renders from cached report instead of current data.
+        fleet = Fleet.objects.filter(game=self.game, player=self.player).first()
+        fleet.x = 1 if self.star1.x != 1 else 2
+        fleet.y = 1 if self.star1.y != 1 else 2
+        fleet.save()
+
+        detail = DetailBuilder(
+            self.game, x=self.star1.x, y=self.star1.y,
+            selected=self.star1.short_id.lower(), player=self.player
+        ).build_detail()
+
+        self.assertIn('resources', detail)
+        self.assertEqual(detail['resources']['Ironium']['yield'], 61)
+        self.assertEqual(detail['resources']['Ironium']['surface'], 1500)
+        self.assertEqual(detail['resources']['Boranium']['yield'], 42)
+        self.assertEqual(detail['resources']['Germanium']['yield'], 27)
 
     def test_reports_generated_for_all_objects_at_location(self):
         """Reports generated for multiple objects at the same location."""

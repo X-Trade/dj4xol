@@ -157,6 +157,27 @@ class DetailBuilder():
             detail['population'] = data.get('colonists')
             detail['capacity'] = data.get('capacity')
             detail['is_survivable'] = data.get('is_survivable')
+            if all(k in data for k in [
+                'ironium_yield', 'boranium_yield', 'germanium_yield',
+                'ironium_inventory', 'boranium_inventory', 'germanium_inventory',
+            ]):
+                detail['resources'] = {
+                    'Ironium': {
+                        'yield': data['ironium_yield'],
+                        'surface': data['ironium_inventory'],
+                        'mining_rate': 0,
+                    },
+                    'Boranium': {
+                        'yield': data['boranium_yield'],
+                        'surface': data['boranium_inventory'],
+                        'mining_rate': 0,
+                    },
+                    'Germanium': {
+                        'yield': data['germanium_yield'],
+                        'surface': data['germanium_inventory'],
+                        'mining_rate': 0,
+                    },
+                }
             # Build environmental detail from cached data
             if all(k in data for k in ['gravity', 'temperature', 'radiation']):
                 detail['environmentals'] = self._build_env_from_report(data)

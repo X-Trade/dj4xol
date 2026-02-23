@@ -307,6 +307,12 @@ class GameTurn():
                 'gravity': obj.gravity,
                 'temperature': obj.temperature,
                 'radiation': obj.radiation,
+                'ironium_yield': obj.ironium_yield,
+                'boranium_yield': obj.boranium_yield,
+                'germanium_yield': obj.germanium_yield,
+                'ironium_inventory': obj.ironium_inventory,
+                'boranium_inventory': obj.boranium_inventory,
+                'germanium_inventory': obj.germanium_inventory,
             }
         elif target_type == 'fleet':
             return {
