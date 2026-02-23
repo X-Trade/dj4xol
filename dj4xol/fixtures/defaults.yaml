@@ -401,7 +401,7 @@
     name: 'Mark III Laser'
     description: 'High-output laser arrays provide stronger opening volleys.'
     tech_type: 'ENERGY_WEAPON'
-    params_json: '{"offense_level": 0.45}'
+    params_json: '{"offense_level": 0.5}'
     display_order: 60
     enabled: True
 
@@ -414,7 +414,7 @@
     name: 'Beam Focuser'
     description: 'Precision focusing assemblies tighten beam spread at range.'
     tech_type: 'ENERGY_WEAPON'
-    params_json: '{"offense_level": 0.35}'
+    params_json: '{"offense_level": 0.4}'
     display_order: 65
     enabled: True
 
@@ -539,12 +539,12 @@
   pk: "00000000-0000-0000-0000-000000000301"
   fields:
     short_id: "tech00000301"
-    category: 1
+    category: 3
     level: 1
     name: 'Advanced Alloys'
     description: 'Improved metallurgical composites strengthen baseline protection.'
     tech_type: 'ARMOUR'
-    params_json: '{"defense_level": 0.25, "offense_level": -0.05}'
+    params_json: '{"defense_level": 0.3}'
     display_order: 120
     enabled: True
 
@@ -552,7 +552,7 @@
   pk: "00000000-0000-0000-0000-000000000302"
   fields:
     short_id: "tech00000302"
-    category: 2
+    category: 4
     level: 1
     name: 'Magnetic Shield'
     description: 'Magnetically stabilized fields improve resistance to beam impacts.'
@@ -570,7 +570,7 @@
     name: 'Deflector Shield'
     description: 'Deflection harmonics reduce incoming weapon penetration.'
     tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.45, "offense_level": -0.05}'
+    params_json: '{"defense_level": 0.5}'
     display_order: 130
     enabled: True
 
@@ -583,7 +583,7 @@
     name: 'Maneuvering Jets'
     description: 'Fine-control thrusters improve evasive survivability under fire.'
     tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.35, "offense_level": 0.10}'
+    params_json: '{"defense_level": 0.4, "offense_level": 0.1}'
     display_order: 135
     enabled: True
 
@@ -596,7 +596,7 @@
     name: 'Protonium Armour'
     description: 'Dense protonium plating increases structural resilience.'
     tech_type: 'ARMOUR'
-    params_json: '{"defense_level": 0.80, "offense_level": -0.10}'
+    params_json: '{"defense_level": 0.8}'
     display_order: 140
     enabled: True
 
@@ -635,7 +635,7 @@
     name: 'Phased Shield Array'
     description: 'Phased shield synchronization broadens defensive coverage.'
     tech_type: 'SHIELD'
-    params_json: '{"defense_level": 1.60, "offense_level": -0.10}'
+    params_json: '{"defense_level": 1.6}'
     display_order: 155
     enabled: True
 
@@ -661,7 +661,7 @@
     name: 'Organic Armour'
     description: 'Self-healing bio-structural material improves damage tolerance.'
     tech_type: 'ARMOUR'
-    params_json: '{"defense_level": 2.10, "offense_level": -0.25}'
+    params_json: '{"defense_level": 2.1, "offense_level": -0.3}'
     display_order: 165
     enabled: True
 
@@ -674,7 +674,7 @@
     name: 'Trans-Spatial Shielding'
     description: 'Exotic field geometry mitigates multi-spectrum weapon hits.'
     tech_type: 'SHIELD'
-    params_json: '{"defense_level": 2.80, "offense_level": -0.15}'
+    params_json: '{"defense_level": 2.8}'
     display_order: 170
     enabled: True
 
