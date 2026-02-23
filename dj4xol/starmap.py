@@ -1,5 +1,5 @@
 from math import cos, sin, radians
-from .models import Game, Player, Fleet, Star, Salvage
+from .models import Game, Player, Fleet, Star, Salvage, Report
 
 class StarMap():
     MAP_SCALE = 6
@@ -33,6 +33,13 @@ class StarMap():
         self.stars = game.stars.all()
         self.fleets = game.fleets.all()
         self.salvages = game.salvages.all()
+        self.explored_star_ids = set(
+            Report.objects.filter(
+                game=self.game,
+                player=self.player,
+                target_type='star',
+            ).values_list('target_id', flat=True)
+        )
         self.map = self.render_map()
 
     @property
@@ -95,22 +102,27 @@ class StarMap():
     def render_star_group(self, stars):
         """Render stars at the same position with offsets for multiples."""
         html = ""
+        anchor_star = next(
+            (s for s in stars if self._get_exploration_class(s) == "mapstar-explored"),
+            stars[0],
+        )
         if len(stars) == 1:
-            html += self.render_star(stars[0])
+            html += self.render_star(anchor_star)
         else:
             # Determine group ownership for main dot color
             group_class = self._resolve_group_class(stars)
             # First star at center (shows group ownership)
-            html += self.render_star(stars[0], class_override=group_class)
+            html += self.render_star(anchor_star, class_override=group_class)
             # Additional stars spaced evenly around center (smaller, show individual ownership)
             offset_distance = self.MAP_SCALE * self.MULTI_STAR_OFFSET
             angle_start = 45  # degrees
-            num_satellites = len(stars) - 1
+            satellites = [star for star in stars if star != anchor_star]
+            num_satellites = len(satellites)
             angle_step = 360 / num_satellites if num_satellites > 1 else 0
             # Center offset: main star is 5px, satellite is 2px
             # To center satellite around main star's center: (5/2 - 2/2) = 1.5px
             center_adjust = 1.5
-            for i, star in enumerate(stars[1:]):
+            for i, star in enumerate(satellites):
                 angle = radians(angle_start + i * angle_step)
                 offset_x = center_adjust + offset_distance * cos(angle)
                 offset_y = center_adjust + offset_distance * sin(angle)
@@ -153,39 +165,66 @@ class StarMap():
 
         return f'{html_class}{class_additional}'
 
-    def render_object(self, object, extra_style="", offset_x=0, offset_y=0, class_override=None):
+    def render_object(self, object, extra_style="", offset_x=0, offset_y=0, class_override=None, extra_classes=""):
         """Render a game object on map using HTML"""
         x = object.x * self.MAP_SCALE + offset_x + self.border_offset
         y = object.y * self.MAP_SCALE + offset_y + self.border_offset
         html_class = class_override or self.resolve_html_class(object)
+        if extra_classes:
+            html_class = f"{html_class} {extra_classes}"
         name = object.name
         style = f"left:{x}px; top:{y}px;{extra_style}"
+        if isinstance(object, Fleet):
+            object_type = 'fleet'
+        elif isinstance(object, Salvage):
+            object_type = 'salvage'
+        else:
+            object_type = 'star'
+        data_attrs = (
+            f'data-map-object="1" data-object-type="{object_type}" '
+            f'data-object-id="{object.short_id}" data-x="{object.x}" data-y="{object.y}"'
+        )
 
         # In destination mode, clicks call JavaScript instead of navigating
         if self.dest_mode and isinstance(object, (Star, Fleet, Salvage)):
-            if isinstance(object, Fleet):
-                obj_type = 'fleet'
-            elif isinstance(object, Salvage):
-                obj_type = 'salvage'
-            else:
-                obj_type = 'star'
             url = (f"javascript:submitDestination('{object.short_id}', "
-                   f"{object.x}, {object.y}, '{obj_type}')")
+                   f"{object.x}, {object.y}, '{object_type}')")
         else:
             url = "?x=%i&y=%i&sel=%s" % (object.x, object.y, object.short_id)
 
-        return f'<a href="{url}" title="{name}"><div class="{html_class}" style="{style}"></div></a>'
+        return f'<a href="{url}" title="{name}"><div class="{html_class}" {data_attrs} style="{style}"></div></a>'
 
     def render_star(self, star, offset_x=0, offset_y=0, satellite=False, class_override=None):
         """Render a star object on map using HTML"""
+        explored_class = self._get_exploration_class(star)
         if satellite:
             # Satellite stars use dedicated CSS classes
             satellite_class = self._get_satellite_class(star)
-            return self.render_object(star, extra_style="", offset_x=offset_x, offset_y=offset_y, class_override=satellite_class)
+            return self.render_object(
+                star,
+                extra_style="",
+                offset_x=offset_x,
+                offset_y=offset_y,
+                class_override=satellite_class,
+                extra_classes=explored_class,
+            )
         else:
             # Main star renders on top
             extra_style = " z-index:2;"
-            return self.render_object(star, extra_style=extra_style, offset_x=offset_x, offset_y=offset_y, class_override=class_override)
+            return self.render_object(
+                star,
+                extra_style=extra_style,
+                offset_x=offset_x,
+                offset_y=offset_y,
+                class_override=class_override,
+                extra_classes=explored_class,
+            )
+
+    def _get_exploration_class(self, star):
+        """Return star exploration visibility class for current player."""
+        if star.player == self.player or star.id in self.explored_star_ids:
+            return "mapstar-explored"
+        return "mapstar-unexplored"
 
     def _get_satellite_class(self, star):
         """Get CSS class for satellite star based on ownership."""

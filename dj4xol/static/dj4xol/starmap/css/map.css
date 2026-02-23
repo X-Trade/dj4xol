@@ -59,6 +59,15 @@
     background-color: #000;
 }
 
+/* Keep map object visuals stable; no generic link hover styling on stars/fleets. */
+.maparea a,
+.maparea a:hover,
+.maparea a:active,
+.maparea a:focus {
+    text-decoration: none !important;
+    color: inherit !important;
+}
+
 .mapstar {
     height: 5px;
     width: 5px;
@@ -150,6 +159,32 @@
     border-radius: 50%;
     position: absolute;
     z-index: 1;
+}
+
+/* Exploration state visibility */
+.mapstar-explored {
+    opacity: 1;
+    filter: brightness(1.35);
+}
+
+.mapstar-unexplored {
+    opacity: 0.82;
+    filter: none;
+}
+
+/* Force stable star brightness even when parent links are hovered/focused. */
+.maparea a:hover .mapstar-explored,
+.maparea a:focus .mapstar-explored,
+.maparea a:active .mapstar-explored {
+    opacity: 1 !important;
+    filter: brightness(1.35) !important;
+}
+
+.maparea a:hover .mapstar-unexplored,
+.maparea a:focus .mapstar-unexplored,
+.maparea a:active .mapstar-unexplored {
+    opacity: 0.82 !important;
+    filter: none !important;
 }
 
 /* Starmap controls overlay */
