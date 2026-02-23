@@ -44,6 +44,22 @@ class OnboardingRegistrationTest(TestCase):
         user = User.objects.get(username='newpilot')
         self.assertTrue(Account.objects.filter(django_user=user).exists())
 
+    def test_register_shows_email_and_password_help_in_login_section(self):
+        ServerSettings.objects.update_or_create(
+            key='allow_self_signup',
+            defaults={
+                'value': 'True',
+                'description': 'Allow self-sign-up',
+            }
+        )
+        response = self.client.get(reverse('dj4xol:register'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Create Login')
+        self.assertContains(response, 'Email')
+        self.assertContains(response, 'Password')
+        self.assertContains(response, 'Confirm Password')
+        self.assertContains(response, 'Your password')
+
     def test_register_hides_user_fields_for_logged_in_user(self):
         user = User.objects.create_user('existing', 'existing@example.com', 'pass1234')
         self.client.force_login(user)

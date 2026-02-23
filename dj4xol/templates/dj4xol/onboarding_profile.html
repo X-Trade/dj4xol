@@ -33,6 +33,10 @@
                                     <td>{{ form.username }}{{ form.username.errors }}</td>
                                 </tr>
                                 <tr>
+                                    <th>{{ form.email.label_tag }}</th>
+                                    <td>{{ form.email }}{{ form.email.errors }}</td>
+                                </tr>
+                                <tr>
                                     <th>{{ form.password1.label_tag }}</th>
                                     <td>{{ form.password1 }}{{ form.password1.errors }}</td>
                                 </tr>
@@ -40,6 +44,12 @@
                                     <th>{{ form.password2.label_tag }}</th>
                                     <td>{{ form.password2 }}{{ form.password2.errors }}</td>
                                 </tr>
+                                {% if form.password1.help_text %}
+                                <tr>
+                                    <th></th>
+                                    <td>{{ form.password1.help_text|safe }}</td>
+                                </tr>
+                                {% endif %}
                             </table>
                         </div></div>
                     </div>
@@ -52,10 +62,12 @@
                                 <th>{{ form.alias.label_tag }}</th>
                                 <td>{{ form.alias }}{{ form.alias.errors }}</td>
                             </tr>
+                            {% if not show_user_form %}
                             <tr>
                                 <th>{{ form.email.label_tag }}</th>
                                 <td>{{ form.email }}{{ form.email.errors }}</td>
                             </tr>
+                            {% endif %}
                             <tr>
                                 <th>{{ form.full_name.label_tag }}</th>
                                 <td>{{ form.full_name }}{{ form.full_name.errors }}</td>
