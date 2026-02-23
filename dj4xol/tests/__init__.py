@@ -13,3 +13,4 @@ from .research_views import *
 from .research_requirements import *
 from .research_events import *
 from .resource_generation import *
+from .onboarding import *

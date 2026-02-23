@@ -371,8 +371,6 @@ def get_player_tech_effects(player):
         if int(tech.level) == max_level_by_type.get(tech.tech_type, int(tech.level))
     ]
 
-    offense_multiplier = 1.0
-    defense_multiplier = 1.0
     for tech in selected:
         params = _safe_params(tech)
         max_warp = params.get('max_warp_speed')
@@ -386,19 +384,15 @@ def get_player_tech_effects(player):
         offense_level = params.get('offense_level')
         if offense_level is not None:
             try:
-                offense_multiplier *= (2.0 ** float(offense_level))
+                effects['offense_level'] += float(offense_level)
             except (TypeError, ValueError):
                 pass
         defense_level = params.get('defense_level')
         if defense_level is not None:
             try:
-                defense_multiplier *= (2.0 ** float(defense_level))
+                effects['defense_level'] += float(defense_level)
             except (TypeError, ValueError):
                 pass
-    if offense_multiplier > 0:
-        effects['offense_level'] = math.log(offense_multiplier, 2)
-    if defense_multiplier > 0:
-        effects['defense_level'] = math.log(defense_multiplier, 2)
     return effects
 
 

@@ -218,25 +218,75 @@ class SignupForm(UserCreationForm):
 
 
 class RegistrationForm(forms.ModelForm):
-    """Form for completing dj4xol registration with existing Django user."""
+    """Registration form for account profile, with optional Django user creation."""
+    username = forms.CharField(
+        required=False,
+        max_length=150,
+        help_text='Required when creating a new login.',
+    )
+    password1 = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(),
+    )
+    password2 = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(),
+    )
+
     class Meta:
         model = Account
         fields = ['alias', 'email', 'full_name', 'website_url']
 
     def __init__(self, user, *args, **kwargs):
+        self.user = user if user and user.is_authenticated else None
         super().__init__(*args, **kwargs)
-        self.user = user
-        # Pre-fill email from Django user
-        if user.email:
-            self.fields['email'].initial = user.email
-        # Pre-fill alias from username
-        self.fields['alias'].initial = user.username
+        self.create_user = self.user is None
+        if not self.create_user:
+            # Hide Django user-creation fields for existing authenticated users.
+            self.fields.pop('username')
+            self.fields.pop('password1')
+            self.fields.pop('password2')
+            if self.user.email:
+                self.fields['email'].initial = self.user.email
+            self.fields['alias'].initial = self.user.username
+
+    def clean_username(self):
+        username = self.cleaned_data.get('username', '').strip()
+        if not self.create_user:
+            return username
+        if not username:
+            raise forms.ValidationError('This field is required.')
+        if User.objects.filter(username=username).exists():
+            raise forms.ValidationError('A user with that username already exists.')
+        return username
+
+    def clean(self):
+        cleaned = super().clean()
+        if not self.create_user:
+            return cleaned
+        password1 = cleaned.get('password1')
+        password2 = cleaned.get('password2')
+        if not password1:
+            self.add_error('password1', 'This field is required.')
+        if not password2:
+            self.add_error('password2', 'This field is required.')
+        if password1 and password2 and password1 != password2:
+            self.add_error('password2', 'The two password fields did not match.')
+        return cleaned
 
     def save(self, commit=True):
+        user = self.user
+        if self.create_user:
+            user = User.objects.create_user(
+                username=self.cleaned_data['username'],
+                email=self.cleaned_data.get('email', ''),
+                password=self.cleaned_data['password1'],
+            )
         account = super().save(commit=False)
-        account.django_user = self.user
+        account.django_user = user
         if commit:
             account.save()
+        self.user = user
         return account
 
 

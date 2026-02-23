@@ -41,6 +41,11 @@
     value: 'True'
 - model: dj4xol.ServerSettings
   fields:
+    key: 'allow_self_signup'
+    description: 'Allow self-sign-up'
+    value: 'True'
+- model: dj4xol.ServerSettings
+  fields:
     key: 'enable_email'
     description: 'Enable email'
     value: 'False'
