@@ -59,6 +59,7 @@ class OnboardingRegistrationTest(TestCase):
         self.assertContains(response, 'Password')
         self.assertContains(response, 'Confirm Password')
         self.assertContains(response, 'Your password')
+        self.assertContains(response, 'onboarding_profile.py')
 
     def test_register_hides_user_fields_for_logged_in_user(self):
         user = User.objects.create_user('existing', 'existing@example.com', 'pass1234')

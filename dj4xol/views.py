@@ -1,5 +1,5 @@
 from django.db import models
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect
 from django.urls import resolve
 from django.contrib.auth import login
@@ -604,12 +604,73 @@ def _create_invitations(game, invitations):
             except Account.DoesNotExist:
                 GameInvitation.objects.get_or_create(game=game, email=value)
         else:
-            # Username lookup
+            # Alias/username lookup
             try:
-                acct = Account.objects.get(django_user__username=value)
+                acct = Account.objects.get(alias__iexact=value)
+                GameInvitation.objects.get_or_create(game=game, account=acct)
+                continue
+            except Account.DoesNotExist:
+                pass
+            try:
+                acct = Account.objects.get(django_user__username__iexact=value)
                 GameInvitation.objects.get_or_create(game=game, account=acct)
             except Account.DoesNotExist:
-                pass  # Silently ignore invalid usernames
+                pass  # Silently ignore invalid aliases/usernames
+
+
+@registration_required()
+def account_lookup(request):
+    """Lookup account aliases/usernames for invite suggestions.
+
+    Security: never return or echo email addresses.
+    """
+    if request.method != 'GET':
+        return JsonResponse({'results': []})
+
+    query = (request.GET.get('q') or '').strip()
+    if not query:
+        return JsonResponse({'results': []})
+
+    is_email_query = '@' in query
+    if not is_email_query and len(query) < 2:
+        return JsonResponse({'results': []})
+
+    results = []
+    seen_aliases = set()
+
+    if is_email_query:
+        # Exact email match only; do not support partial email search.
+        acct = Account.objects.select_related('django_user').filter(email__iexact=query).first()
+        if acct:
+            results.append({
+                'alias': acct.alias,
+                'username': acct.django_user.username,
+                'value': acct.alias,
+                'label': f'{acct.alias} ({acct.django_user.username})',
+                'match': 'email',
+            })
+            seen_aliases.add(acct.alias.lower())
+
+    accounts = Account.objects.select_related('django_user').filter(
+        models.Q(alias__icontains=query) | models.Q(django_user__username__icontains=query)
+    ).order_by('alias')[:10]
+
+    for acct in accounts:
+        alias_key = (acct.alias or '').lower()
+        if alias_key in seen_aliases:
+            continue
+        username = acct.django_user.username
+        label = acct.alias if acct.alias == username else f'{acct.alias} ({username})'
+        results.append({
+            'alias': acct.alias,
+            'username': username,
+            'value': acct.alias,
+            'label': label,
+            'match': 'alias_or_username',
+        })
+        seen_aliases.add(alias_key)
+
+    return JsonResponse({'results': results})
 
 
 @player_only_view()

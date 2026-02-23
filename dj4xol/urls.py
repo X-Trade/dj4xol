@@ -18,6 +18,7 @@ urlpatterns = [
     url(r'^profile/theme/$', views.update_theme, name='update_theme'),
     url(r'^create-race/$', views.create_race, name='create_race'),
     url(r'^create-game/$', views.create_game, name='create_game'),
+    url(r'^api/account-lookup/$', views.account_lookup, name='account_lookup'),
     url(r'^help/colony/$', views.help_colony, name='help_colony'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/$', views.starmap, name='game'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/join/$', views.join_game, name='join_game'),

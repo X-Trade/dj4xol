@@ -210,6 +210,14 @@ class SignupForm(UserCreationForm):
         model = User
         fields = ['username', 'email', 'password1', 'password2']
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['username'].widget.attrs.update({
+            'spellcheck': 'false',
+            'autocorrect': 'off',
+            'autocapitalize': 'none',
+        })
+
     def save(self, commit=True):
         user = super().save(commit=False)
         user.email = self.cleaned_data['email']
@@ -244,6 +252,16 @@ class RegistrationForm(forms.ModelForm):
     def __init__(self, user, *args, **kwargs):
         self.user = user if user and user.is_authenticated else None
         super().__init__(*args, **kwargs)
+        self.fields['alias'].widget.attrs.update({
+            'spellcheck': 'false',
+            'autocorrect': 'off',
+            'autocapitalize': 'none',
+        })
+        self.fields['username'].widget.attrs.update({
+            'spellcheck': 'false',
+            'autocorrect': 'off',
+            'autocapitalize': 'none',
+        })
         self.create_user = self.user is None
         if not self.create_user:
             # Hide Django user-creation fields for existing authenticated users.

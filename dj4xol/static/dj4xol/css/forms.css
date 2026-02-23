@@ -355,3 +355,74 @@
     align-items: center;
     gap: 6px;
 }
+
+.invite-token-widget {
+    min-height: 38px;
+    border: 1px solid var(--panel-content-border);
+    padding: 4px 6px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    background: var(--panel-content-bg);
+    color: var(--theme-text);
+}
+
+.invite-token-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.invite-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-header-bg);
+    color: var(--panel-header-text);
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 0.9em;
+}
+
+.invite-chip-remove {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--theme-accent);
+    font-size: 0.85em;
+    line-height: 1;
+    padding: 0;
+}
+
+.invite-token-input {
+    min-width: 180px;
+    flex: 1;
+    border: none !important;
+    outline: none;
+    background: transparent;
+    color: var(--theme-text);
+}
+
+.invite-suggestions {
+    display: none;
+    position: relative;
+    margin-top: 4px;
+    border: 1px solid var(--panel-content-border);
+    background: var(--panel-content-bg);
+    color: var(--theme-text);
+    max-height: 180px;
+    overflow-y: auto;
+    z-index: 30;
+}
+
+.invite-suggestion {
+    padding: 6px 8px;
+    cursor: pointer;
+}
+
+.invite-suggestion:hover {
+    background: var(--panel-header-bg);
+    color: var(--panel-header-text);
+}
