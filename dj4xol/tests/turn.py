@@ -2116,14 +2116,14 @@ class TestProductionProgress(TestCase):
             colonists=10000,
         )
 
-        # Create production order for BUILD_DEFENSE (bp: 20, resources: 300kt total)
-        # During turn generation, 10 BP has been allocated
+        # Create production order for BUILD_DEFENSE.
+        # During turn generation, 10 BP has been allocated.
         order = ProductionOrder.objects.create(
             game=game,
             star=star,
             order_type='BUILD_DEFENSE',
             quantity=1,
-            spent_bp=10,  # 50% of BP requirement (10/20)
+            spent_bp=10,
             spent_ironium=100,  # Full ironium (simulates turn generation)
             spent_boranium=50,  # Full boranium
             spent_germanium=50  # Full germanium (total 200/200 = 100% of resources)
@@ -2134,11 +2134,12 @@ class TestProductionProgress(TestCase):
 
         production_order = details['production_orders'][0]
 
-        # Should have dual progress: resources 50% + labor 25% = 75%
+        # Should have dual progress: resources 50% + labor contribution based on BP cost.
+        labor_expected = int((10.0 / 50.0) * 50.0)
         self.assertEqual(production_order['has_labor'], True)
         self.assertEqual(production_order['resource_progress'], 50)  # All resources complete = 50%
-        self.assertEqual(production_order['labor_progress'], 25)     # 10/20 BP = 25% of 50%
-        self.assertEqual(production_order['progress_percent'], 75)   # 50% + 25%
+        self.assertEqual(production_order['labor_progress'], labor_expected)
+        self.assertEqual(production_order['progress_percent'], 50 + labor_expected)
 
     def test_resource_only_progress(self):
         """Test progress for items that require both BP and resources."""
@@ -5004,5 +5005,58 @@ class TestInterceptPatrolOrders(TestCase):
         self.assertTrue(
             player1.messages.filter(
                 message__icontains="No further orders are queued"
+            ).exists()
+        )
+
+    def test_no_orders_completed_message_after_scuttle(self):
+        """Scuttled fleets should not emit an orders-completed message."""
+        from ..models import FleetOrders
+
+        game, player1, _ = self._create_two_player_game()
+        fleet = Fleet.objects.create(
+            game=game, player=player1, name="Disposable Fleet",
+            x=10, y=10, ship_count=1, integrity=100
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='SCUTTLE',
+        )
+
+        GameTurn(game).generate_turn()
+
+        self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
+        self.assertFalse(
+            player1.messages.filter(
+                message__icontains="No further orders are queued",
+            ).filter(
+                message__icontains="Disposable Fleet",
+            ).exists()
+        )
+
+    def test_no_orders_completed_message_after_merge(self):
+        """Merged source fleets should not emit orders-completed messages."""
+        from ..models import FleetOrders
+
+        game, player1, _ = self._create_two_player_game()
+        source = Fleet.objects.create(
+            game=game, player=player1, name="Merge Source",
+            x=10, y=10, ship_count=1, integrity=100
+        )
+        target = Fleet.objects.create(
+            game=game, player=player1, name="Merge Target",
+            x=10, y=10, ship_count=1, integrity=100
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=source, order_type='MERGE', target_fleet=target
+        )
+
+        GameTurn(game).generate_turn()
+
+        self.assertFalse(Fleet.objects.filter(id=source.id).exists())
+        self.assertTrue(Fleet.objects.filter(id=target.id).exists())
+        self.assertFalse(
+            player1.messages.filter(
+                message__icontains="No further orders are queued",
+            ).filter(
+                message__icontains="Merge Source",
             ).exists()
         )

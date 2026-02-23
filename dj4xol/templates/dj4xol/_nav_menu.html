@@ -9,7 +9,13 @@
         <a href="{% url 'dj4xol:index' %}">Home</a>
         {% endif %}
         {% if game and current_page != 'game' %}
-        <a href="{% url 'dj4xol:game' game.short_id %}">Back to Game</a>
+        <a class="nav-link-game" href="{% url 'dj4xol:game' game.short_id %}">Back to Game</a>
+        {% endif %}
+        {% if game and current_page != 'message_history' %}
+        <a class="nav-link-game" href="{% url 'dj4xol:message_history' game.short_id %}">Messages</a>
+        {% endif %}
+        {% if game and current_page != 'research' %}
+        <a class="nav-link-game" href="{% url 'dj4xol:research' game.short_id %}">Research</a>
         {% endif %}
         {% if current_page != 'profile' %}
         <a href="{% url 'dj4xol:profile' %}">Profile</a>

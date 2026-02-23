@@ -222,6 +222,7 @@ class GameFactory():
         # Apply starting infrastructure
         star.mines = max(0, int(player.starting_mines or 0))
         star.factories = max(0, int(player.starting_factories or 0))
+        star.labs = max(0, int(player.starting_labs or 0))
         star.shipyards = max(0, int(player.starting_shipyards or 0))
         # Ensure homeworld has minimum surface minerals (1000kt each)
         star.ironium_inventory = max(1000, star.ironium_inventory)
@@ -288,6 +289,7 @@ class GameFactory():
         player.starting_colonists = race.starting_colonists
         player.starting_mines = race.starting_mines
         player.starting_factories = race.starting_factories
+        player.starting_labs = race.starting_labs
         player.starting_shipyards = race.starting_shipyards
         player.starting_fleets = race.starting_fleets
         player.leftover_points = race.leftover_points

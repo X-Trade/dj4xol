@@ -1,0 +1,133 @@
+from django.test import TestCase
+
+from ..models import (
+    ProductionOrder,
+    ResearchCategory,
+    ResearchLevelRequirement,
+    Technology,
+)
+from ..research import copy_default_requirements_to_category, ensure_player_research_rows
+from ..turn import GameTurn
+from ._util import default_game
+
+
+class ResearchRequirementsTest(TestCase):
+    def setUp(self):
+        self.game = default_game(stars=5)
+        self.player = self.game.players.first()
+        self.star = self.player.homeworld
+
+    def test_copy_default_requirements_to_category(self):
+        category = ResearchCategory.objects.create(
+            code='ENERGY', name='Energy', enabled=True
+        )
+        copy_default_requirements_to_category(category)
+        self.assertTrue(
+            ResearchLevelRequirement.objects.filter(
+                category=category, level=1, rp_cost=50
+            ).exists()
+        )
+        self.assertGreaterEqual(
+            ResearchLevelRequirement.objects.filter(category=category).count(),
+            26
+        )
+
+    def test_research_level_blocked_when_minerals_missing(self):
+        category = ResearchCategory.objects.create(
+            code='ENERGY', name='Energy', enabled=True
+        )
+        Technology.objects.create(
+            category=category,
+            level=1,
+            name='Warp 3',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 3}',
+            enabled=True,
+        )
+        copy_default_requirements_to_category(category)
+        requirement = ResearchLevelRequirement.objects.get(
+            category=category,
+            level=1
+        )
+        requirement.rp_cost = 50
+        requirement.ironium_cost = 100
+        requirement.boranium_cost = 0
+        requirement.germanium_cost = 0
+        requirement.save()
+
+        self.star.labs = 10
+        self.star.factories = 0
+        self.star.mines = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.colonists = 10000
+        self.star.ironium_inventory = 90
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.save()
+
+        row = ensure_player_research_rows(self.player)[0]
+        row.allocation_percent = 100
+        row.save(update_fields=['allocation_percent'])
+
+        GameTurn(self.game).research()
+        row.refresh_from_db()
+        self.star.refresh_from_db()
+        self.assertEqual(row.current_level, 0.0)
+        self.assertEqual(int(row.stored_rp), 200)
+        self.assertEqual(self.star.ironium_inventory, 90)
+
+    def test_research_minerals_consumed_after_production(self):
+        category = ResearchCategory.objects.create(
+            code='ENERGY', name='Energy', enabled=True
+        )
+        Technology.objects.create(
+            category=category,
+            level=1,
+            name='Warp 3',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 3}',
+            enabled=True,
+        )
+        copy_default_requirements_to_category(category)
+        requirement = ResearchLevelRequirement.objects.get(
+            category=category,
+            level=1
+        )
+        requirement.rp_cost = 50
+        requirement.ironium_cost = 100
+        requirement.boranium_cost = 0
+        requirement.germanium_cost = 0
+        requirement.save()
+
+        self.star.labs = 10
+        self.star.factories = 0
+        self.star.mines = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.colonists = 10000
+        self.star.ironium_inventory = 120
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.save()
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_MINE',
+            quantity=1,
+        )
+
+        row = ensure_player_research_rows(self.player)[0]
+        row.allocation_percent = 100
+        row.save(update_fields=['allocation_percent'])
+
+        turn = GameTurn(self.game)
+        turn.production()
+        turn.research()
+
+        row.refresh_from_db()
+        self.star.refresh_from_db()
+        self.assertEqual(row.current_level, 2.0)
+        self.assertEqual(int(row.stored_rp), 51)
+        self.assertEqual(self.star.ironium_inventory, 10)

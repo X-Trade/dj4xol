@@ -6,6 +6,7 @@
         <title>Create 4x Profile</title>
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
     </head>
     <body class="classic onboarding">
         <div class="title-bar">
@@ -23,7 +24,7 @@
                                 {{ form.as_table }}
                             </table>
                             <p class="help-text">Social links are optional. You can edit your 4x Profile later.</p>
-                            <div class="form-nav">
+                            <div class="form-nav single-action">
                                 <button type="submit" class="nav-button primary">Next &raquo;</button>
                             </div>
                         </form>

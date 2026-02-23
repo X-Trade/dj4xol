@@ -6,3 +6,7 @@ from .habitability import *
 from .numbers import *
 from .views import *
 from .reports import *
+from .research_rules import *
+from .research_models import *
+from .research_turn import *
+from .research_views import *

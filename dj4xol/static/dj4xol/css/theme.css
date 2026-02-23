@@ -216,6 +216,13 @@ a:hover {
     border-bottom: 1px solid var(--panel-border);
 }
 
+.panel .research-detail-body hr.detail-divider {
+    border: none;
+    height: 1px;
+    background: var(--panel-border);
+    margin: 10px 0;
+}
+
 /* ============================================
    Hamburger Menu
    ============================================ */
@@ -303,6 +310,11 @@ a:hover {
 
 .nav-dropdown a:hover {
     background: #555;
+}
+
+.nav-dropdown a.nav-link-game {
+    color: #9fe3ff;
+    font-weight: 600;
 }
 
 /* ============================================

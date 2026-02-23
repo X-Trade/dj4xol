@@ -9,6 +9,7 @@ CAPACITY_SCALE_RATIO = 0.5        # Scale is this fraction of soft cap
 COLONISTS_PER_JOB = 1000  # Each mine/factory employs this many colonists
 COLONISTS_PER_SHIPYARD = 10000  # Shipyards employ 10x more colonists
 BUILDPOINTS_PER_FACTORY = 10  # Each factory produces this many buildpoints per turn
+RESEARCHPOINTS_PER_LAB = 20  # Each lab produces this many research points per turn
 KT_PER_MINE = 10  # Each mine extracts this many kt of minerals per turn
 YIELD_DEPLETION_RATE = 0.00001  # Yield drops by this % per kt extracted (0.001% per kt)
 HOMEWORLD_MIN_YIELD = 30  # Homeworld yields never drop below this percentage
@@ -70,7 +71,8 @@ def calculate_employment_percent(star):
     """
     if star.colonists == 0:
         return 0
-    jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
+    jobs = ((star.mines + star.factories + star.labs + star.defenses) *
+            COLONISTS_PER_JOB
             + star.shipyards * COLONISTS_PER_SHIPYARD)
     return min(100, jobs / star.colonists * 100)
 
@@ -85,7 +87,8 @@ def calculate_effective_defenses(star):
         return 0.0
     if star.colonists <= 0:
         return 0.0
-    jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
+    jobs = ((star.mines + star.factories + star.labs + star.defenses) *
+            COLONISTS_PER_JOB
             + star.shipyards * COLONISTS_PER_SHIPYARD)
     if jobs <= 0:
         return 0.0
@@ -110,9 +113,21 @@ def calculate_available_buildpoints(star):
     return int(star.factories * BUILDPOINTS_PER_FACTORY * productivity)
 
 
+def calculate_available_researchpoints(star):
+    """Calculate research points available this turn from labs."""
+    if star.labs == 0:
+        return 0
+    employment_ratio = calculate_staffing_ratio(star)
+    if employment_ratio <= 0:
+        return 0
+    productivity = calculate_productivity_multiplier(employment_ratio)
+    return int(star.labs * RESEARCHPOINTS_PER_LAB * productivity)
+
+
 def calculate_staffing_ratio(star):
     """Calculate employment ratio (jobs/colonists)."""
-    jobs = ((star.mines + star.factories + star.defenses) * COLONISTS_PER_JOB
+    jobs = ((star.mines + star.factories + star.labs + star.defenses) *
+            COLONISTS_PER_JOB
             + star.shipyards * COLONISTS_PER_SHIPYARD)
     if jobs <= 0 or star.colonists <= 0:
         return 0

@@ -424,7 +424,9 @@ class Fleet(AbstractMapObject):
     germanium_inventory = models.IntegerField(default=0)  # Current germanium cargo in kt
     colonists = models.IntegerField(default=0)  # Current colonist cargo in thousands
     dry_mass = models.IntegerField(default=100)  # Dry mass in kt for colonise bonus
-    max_safe_warp = models.IntegerField(default=5)
+    max_safe_warp = models.IntegerField(default=2)
+    offense_level = models.FloatField(default=0.0)
+    defense_level = models.FloatField(default=0.0)
     integrity = models.IntegerField(default=100,
             validators=[MinValueValidator(0), MaxValueValidator(100)])
 
@@ -471,6 +473,7 @@ class Star(AbstractMapObject):
     # Economic infrastructure
     mines = models.IntegerField(default=0)
     factories = models.IntegerField(default=0)
+    labs = models.IntegerField(default=0)
     defenses = models.IntegerField(default=0)
     shipyards = models.IntegerField(default=0)
     buildpoints_consumed = models.IntegerField(default=0)  # Reset each turn
@@ -483,6 +486,7 @@ class ServerRace(UUIDMixin, HabitabilityMixin):
     starting_colonists = models.IntegerField(default=10)
     starting_mines = models.IntegerField(default=4)
     starting_factories = models.IntegerField(default=2)
+    starting_labs = models.IntegerField(default=0)
     starting_shipyards = models.IntegerField(default=1)
     starting_fleets = models.IntegerField(default=2)
     leftover_points = models.FloatField(default=0.0)
@@ -513,6 +517,7 @@ class Player(AbstractGameObject, HabitabilityMixin):
     starting_colonists = models.IntegerField(default=10)
     starting_mines = models.IntegerField(default=4)
     starting_factories = models.IntegerField(default=2)
+    starting_labs = models.IntegerField(default=0)
     starting_shipyards = models.IntegerField(default=1)
     starting_fleets = models.IntegerField(default=2)
     leftover_points = models.FloatField(default=0.0)
@@ -659,6 +664,107 @@ class FleetOrders(AbstractGameObject):
         super(FleetOrders, self).save(*args, **kwargs)
 
 
+class ResearchCategory(models.Model):
+    """Research category with configurable display order."""
+    code = models.CharField(max_length=16, unique=True)
+    name = models.CharField(max_length=32)
+    description = models.TextField(blank=True, default='')
+    display_order = models.IntegerField(default=0)
+    enabled = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+        verbose_name_plural = 'Research categories'
+
+    def __str__(self):
+        return self.name
+
+
+class Technology(UUIDMixin):
+    """A research unlock associated with category + level."""
+    TECH_TYPE_CHOICES = [
+        ('PROPULSION', 'Propulsion'),
+        ('WEAPON', 'Weapon'),
+        ('SHIELD', 'Shield'),
+        ('OTHER', 'Other'),
+    ]
+
+    category = models.ForeignKey(
+        ResearchCategory, related_name='technologies', on_delete=models.CASCADE
+    )
+    level = models.IntegerField(default=0)
+    name = models.CharField(max_length=64)
+    description = models.TextField(blank=True, default='')
+    tech_type = models.CharField(
+        max_length=16, choices=TECH_TYPE_CHOICES, default='OTHER'
+    )
+    params_json = models.TextField(default='{}')
+    display_order = models.IntegerField(default=0)
+    enabled = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['category', 'level', 'display_order', 'name']
+        unique_together = [['category', 'level', 'name']]
+
+    def __str__(self):
+        return '%s L%s: %s' % (self.category.name, self.level, self.name)
+
+
+class PlayerResearch(models.Model):
+    """Per-player progress and allocation for each research category."""
+    player = models.ForeignKey(
+        Player, related_name='research_progress', on_delete=models.CASCADE
+    )
+    category = models.ForeignKey(
+        ResearchCategory, related_name='player_progress', on_delete=models.CASCADE
+    )
+    current_level = models.FloatField(default=0.0)
+    stored_rp = models.FloatField(default=0.0)
+    allocation_percent = models.FloatField(default=25.0)
+
+    class Meta:
+        unique_together = [['player', 'category']]
+        ordering = ['category', 'player']
+
+    def __str__(self):
+        return '%s %s' % (self.player.name, self.category.name)
+
+
+class DefaultResearchLevelRequirement(models.Model):
+    """Default per-level research requirements used to seed categories."""
+    level = models.IntegerField(unique=True)
+    rp_cost = models.IntegerField(default=0)
+    ironium_cost = models.IntegerField(default=0)
+    boranium_cost = models.IntegerField(default=0)
+    germanium_cost = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['level']
+
+    def __str__(self):
+        return 'L%s default' % self.level
+
+
+class ResearchLevelRequirement(models.Model):
+    """Per-category per-level research requirements."""
+    category = models.ForeignKey(
+        ResearchCategory, related_name='level_requirements',
+        on_delete=models.CASCADE
+    )
+    level = models.IntegerField()
+    rp_cost = models.IntegerField(default=0)
+    ironium_cost = models.IntegerField(default=0)
+    boranium_cost = models.IntegerField(default=0)
+    germanium_cost = models.IntegerField(default=0)
+
+    class Meta:
+        unique_together = [['category', 'level']]
+        ordering = ['category', 'level']
+
+    def __str__(self):
+        return '%s L%s' % (self.category.name, self.level)
+
+
 class GameMessage(AbstractGameObject):
     CATEGORY_CHOICES = [
         ('GENERAL', 'General'),
@@ -703,7 +809,8 @@ class GameInvitation(UUIDMixin):
 PRODUCTION_COSTS = {
     'BUILD_MINE': {'bp': 0, 'ironium': 10, 'boranium': 0, 'germanium': 0, 'colonists': 1000},
     'BUILD_FACTORY': {'bp': 0, 'ironium': 20, 'boranium': 0, 'germanium': 0, 'colonists': 1000},
-    'BUILD_DEFENSE': {'bp': 20, 'ironium': 100, 'boranium': 50, 'germanium': 50, 'colonists': 0},
+    'BUILD_LAB': {'bp': 20, 'ironium': 50, 'boranium': 20, 'germanium': 20, 'colonists': 0},
+    'BUILD_DEFENSE': {'bp': 50, 'ironium': 100, 'boranium': 50, 'germanium': 50, 'colonists': 0},
     'BUILD_SHIPYARD': {'bp': 100, 'ironium': 250, 'boranium': 50, 'germanium': 100,
                        'colonists': 0},
     'BUILD_FLEET': {'bp': 50, 'ironium': 100, 'boranium': 200, 'germanium': 200, 'colonists': 0},
@@ -722,6 +829,7 @@ class ProductionOrder(AbstractGameObject):
         ('BUILD_FLEET', 'Build Fleet'),
         ('BUILD_MINE', 'Build Mine'),
         ('BUILD_FACTORY', 'Build Factory'),
+        ('BUILD_LAB', 'Build Lab'),
         ('BUILD_DEFENSE', 'Build Defense'),
         ('BUILD_SHIPYARD', 'Build Shipyard'),
     ]

@@ -31,6 +31,8 @@ from .messages import (
     FleetOrdersCompletedMessageFactory,
     FleetBuildBlockedNoShipyardMessageFactory,
     FleetRepairedMessageFactory,
+    ResearchLevelUnlockedMessageFactory,
+    ResearchBreakthroughMessageFactory,
 )
 import random
 
@@ -57,11 +59,13 @@ from .colony_rules import (
     calculate_growth_factor,
     calculate_effective_defenses,
 )
+from .research import (
+    process_player_research_for_year,
+    get_player_tech_effects,
+    apply_research_bonus_rp,
+)
 
 # Population carrying capacity constants now live in colony_rules.py
-
-# Fleet movement behavior constants
-ALLOW_MULTIPLE_ORDERS_PER_TURN = False  # Set to True to allow processing multiple orders per turn
 
 TURN_INTERVALS = {
     'HOURLY': timedelta(hours=1),
@@ -71,6 +75,7 @@ TURN_INTERVALS = {
 
 # Random event probability per colonized star per turn
 RANDOM_EVENT_CHANCE = 0.01  # 1%
+RESEARCH_BREAKTHROUGH_CHANCE = 0.08  # 8% per player-year with active labs
 
 # Mining constants
 KT_PER_MINE = 10  # kt per mine per turn
@@ -190,6 +195,7 @@ class GameTurn():
         self.resolve_combat()
         self.mining()
         self.production()
+        self.research()
         self.population_growth()
         self.random_events()
         self.clear_empty_planets()
@@ -616,15 +622,13 @@ class GameTurn():
         return salvage
 
     def move_fleet(self, fleet):
-        """Process fleet orders, with configurable behavior for multiple orders per turn."""
-        had_orders = fleet.orders.exists()
+        """Process fleet orders.
 
-        if ALLOW_MULTIPLE_ORDERS_PER_TURN:
-            # Legacy behavior: process multiple orders per turn (old system)
-            result = self._move_fleet_legacy(fleet)
-        else:
-            # New behavior: process only one order per turn (more realistic)
-            result = self._move_fleet_single_order(fleet)
+        Allows passthrough of non-move orders in a single turn, but only one
+        move-type order (MOVE/INTERCEPT/PATROL) may execute per turn.
+        """
+        had_orders = fleet.orders.exists()
+        result = self._move_fleet_single_order(fleet)
 
         if result is not None and had_orders and not result.orders.exists():
             self._create_fleet_orders_completed_message(result)
@@ -710,53 +714,6 @@ class GameTurn():
             else:
                 # Unknown order type, just remove it
                 order.delete()
-                continue
-
-        return fleet
-
-    def _move_fleet_legacy(self, fleet):
-        """Legacy fleet processing: multiple orders per turn (potentially problematic)."""
-        processed_orders = 0
-        max_orders_per_turn = 10  # Prevent infinite loops
-
-        while processed_orders < max_orders_per_turn:
-            order = fleet.orders.order_by('position', 'id').first()
-            if not order:
-                break
-
-            if order.order_type == 'TRANSFER':
-                # Try to execute transfer immediately
-                transfer_result = self._try_execute_transfer(fleet, order)
-                if transfer_result == 'executed':
-                    # Transfer completed, delete order and continue
-                    self._handle_repeating_order(order)
-                    order.delete()
-                    processed_orders += 1
-                    continue
-                elif transfer_result == 'waiting':
-                    # Transfer blocked waiting for conditions, stop processing
-                    break
-
-            elif order.order_type == 'MOVE':
-                # Regular move order
-                move_result = self._move_toward_destination(fleet, order)
-                if move_result == 'destroyed':
-                    # Fleet destroyed by warp damage
-                    return None
-                if move_result is True:
-                    # Reached destination
-                    self._handle_repeating_order(order)
-                    order.delete()
-                    processed_orders += 1
-                    # Continue to next order (might be a transfer)
-                    continue
-                else:
-                    # Still moving, stop processing
-                    break
-            else:
-                # Unknown order type
-                order.delete()
-                processed_orders += 1
                 continue
 
         return fleet
@@ -1752,6 +1709,14 @@ class GameTurn():
             (source_fleet.integrity * source_fleet.ship_count) +
             (target_fleet.integrity * target_fleet.ship_count)
         ) // total_ships
+        weighted_offense_level = (
+            (source_fleet.offense_level * source_fleet.ship_count) +
+            (target_fleet.offense_level * target_fleet.ship_count)
+        ) / float(total_ships)
+        weighted_defense_level = (
+            (source_fleet.defense_level * source_fleet.ship_count) +
+            (target_fleet.defense_level * target_fleet.ship_count)
+        ) / float(total_ships)
 
         # Merge attributes into target fleet
         target_fleet.ship_count = total_ships
@@ -1760,6 +1725,8 @@ class GameTurn():
         target_fleet.max_safe_warp = min(
             target_fleet.max_safe_warp, source_fleet.max_safe_warp
         )
+        target_fleet.offense_level = weighted_offense_level
+        target_fleet.defense_level = weighted_defense_level
         target_fleet.integrity = avg_integrity
 
         # Transfer cargo (may exceed capacity - intentional for merge)
@@ -2066,7 +2033,9 @@ class GameTurn():
             shipyard_blocked_message_sent = False  # Only send once per star
 
             # Track production counts for aggregate messages
-            production_counts = {'mine': 0, 'factory': 0, 'defense': 0, 'shipyard': 0}
+            production_counts = {
+                'mine': 0, 'factory': 0, 'lab': 0, 'defense': 0, 'shipyard': 0
+            }
 
             for order in list(star.production_orders.order_by('position')):
                 if blocked:
@@ -2200,6 +2169,9 @@ class GameTurn():
         elif order.order_type == 'BUILD_FACTORY':
             self._build_factory(star)
             production_counts['factory'] += 1
+        elif order.order_type == 'BUILD_LAB':
+            self._build_lab(star)
+            production_counts['lab'] += 1
         elif order.order_type == 'BUILD_DEFENSE':
             self._build_defense(star)
             production_counts['defense'] += 1
@@ -2219,12 +2191,16 @@ class GameTurn():
         fleet_count = player.fleets.count() + 1
         fleet_name = f"{player.name} Fleet {fleet_count}"
 
+        tech_effects = get_player_tech_effects(player)
         fleet = Fleet.objects.create(
             game=self.game,
             player=player,
             name=fleet_name,
             x=star.x,
             y=star.y,
+            max_safe_warp=tech_effects['max_warp_speed'],
+            offense_level=tech_effects['offense_level'],
+            defense_level=tech_effects['defense_level'],
         )
 
         # Create notification message
@@ -2240,6 +2216,10 @@ class GameTurn():
     def _build_factory(self, star):
         """Build a factory at the given star."""
         star.factories += 1
+
+    def _build_lab(self, star):
+        """Build a lab at the given star."""
+        star.labs += 1
 
     def _build_defense(self, star):
         """Build a defense at the given star."""
@@ -2355,6 +2335,61 @@ class GameTurn():
                 msg = factory.new_message()
                 msg.year = self.game.year
                 msg.save()
+
+    def research(self):
+        """Process one year of research progression for each player."""
+        for player in self.game.players.all():
+            unlocks = process_player_research_for_year(player) or []
+            self._create_research_unlock_messages(player, unlocks)
+            if self.game.random_events:
+                self._trigger_research_breakthrough_event(player)
+
+    def _create_research_unlock_messages(self, player, unlocks):
+        """Emit messages for research levels unlocked this year."""
+        for unlock in unlocks:
+            factory = ResearchLevelUnlockedMessageFactory(
+                self.game,
+                player,
+                unlock['category'].name,
+                unlock['new_level'],
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
+    def _roll_research_breakthrough_rp(self):
+        """Return a skewed RP bonus in the 10-300 range."""
+        power = 2 if random.random() < 0.5 else 3
+        skew = random.random() ** power
+        return 10 + int(skew * 290)
+
+    def _trigger_research_breakthrough_event(self, player):
+        """Apply an occasional research breakthrough from a lab colony."""
+        if random.random() >= RESEARCH_BREAKTHROUGH_CHANCE:
+            return
+        lab_stars = list(player.stars.filter(colonists__gt=0, labs__gt=0))
+        if not lab_stars:
+            return
+        research_rows = list(player.research_progress.select_related('category'))
+        if not research_rows:
+            return
+
+        star = random.choice(lab_stars)
+        row = random.choice(research_rows)
+        bonus_rp = self._roll_research_breakthrough_rp()
+        result = apply_research_bonus_rp(player, row.category_id, bonus_rp)
+        if not result:
+            return
+
+        factory = ResearchBreakthroughMessageFactory(
+            self.game, player, star, row.category.name, bonus_rp
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+        if result['new_level'] > result['old_level']:
+            self._create_research_unlock_messages(player, [result])
 
     def random_events(self):
         """Process random events for colonized planets."""

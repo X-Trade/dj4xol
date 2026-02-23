@@ -570,9 +570,11 @@ body.turned-in.lcars .order-params::after {
 }
 
 .env-label {
+    display: block;
     width: 100px;
     min-width: 100px;
     flex: 0 0 100px;
+    max-width: 100px;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -590,7 +592,8 @@ body.turned-in.lcars .order-params::after {
     .env-label {
         width: 120px;
         min-width: 120px;
-        flex-basis: 120px;
+        max-width: 120px;
+        flex: 0 0 120px;
     }
 }
 
