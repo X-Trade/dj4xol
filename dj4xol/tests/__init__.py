@@ -10,3 +10,6 @@ from .research_rules import *
 from .research_models import *
 from .research_turn import *
 from .research_views import *
+from .research_requirements import *
+from .research_events import *
+from .resource_generation import *

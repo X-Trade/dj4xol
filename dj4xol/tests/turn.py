@@ -4820,6 +4820,32 @@ class TestCombat(TestCase):
         strength2 = calculate_fleet_strength(fleet2, opponent_defence_multiplier=1.0)
         self.assertEqual(strength1, strength2)
 
+    def test_offense_level_increases_combat_strength(self):
+        """Higher offense level should increase fleet strength."""
+        game, player1, _ = self._create_two_player_game()
+        fleet1 = Fleet.objects.create(
+            game=game, player=player1, name="Offense 0",
+            x=10, y=10, ship_count=2, integrity=100, offense_level=0.0
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player1, name="Offense 1",
+            x=10, y=10, ship_count=2, integrity=100, offense_level=1.0
+        )
+        strength1 = calculate_fleet_strength(fleet1, opponent_defence_multiplier=1.0)
+        strength2 = calculate_fleet_strength(fleet2, opponent_defence_multiplier=1.0)
+        self.assertGreater(strength2, strength1)
+
+    def test_higher_opponent_defense_reduces_combat_strength(self):
+        """Opponent defense multipliers should reduce attacker strength."""
+        game, player1, _ = self._create_two_player_game()
+        fleet = Fleet.objects.create(
+            game=game, player=player1, name="Attacker",
+            x=10, y=10, ship_count=2, integrity=100, offense_level=1.0
+        )
+        low_def = calculate_fleet_strength(fleet, opponent_defence_multiplier=1.0)
+        high_def = calculate_fleet_strength(fleet, opponent_defence_multiplier=2.0)
+        self.assertGreater(low_def, high_def)
+
     def test_combat_destruction_creates_salvage_and_messages(self):
         """Combat destroys fleets, creates salvage, and sends combat messages."""
         game, player1, player2 = self._create_two_player_game()

@@ -153,13 +153,36 @@ def normalize_ship_count(ship_count):
     return min(ship_count, COMBAT_COUNT_CAP) / float(COMBAT_COUNT_CAP)
 
 
+def tech_level_to_multiplier(level):
+    """Convert log2 tech level to linear multiplier."""
+    try:
+        value = float(level)
+    except (TypeError, ValueError):
+        value = 0.0
+    return 2.0 ** max(0.0, value)
+
+
+def calculate_fleet_attack_multiplier(fleet):
+    """Return combined attack multiplier from race + fleet tech."""
+    race_mult = fleet.player.race_type.combat_multiplier
+    return race_mult * tech_level_to_multiplier(fleet.offense_level)
+
+
+def calculate_fleet_defense_multiplier(fleet):
+    """Return combined defense multiplier from race + fleet tech."""
+    race_mult = fleet.player.race_type.defence_multiplier
+    return race_mult * tech_level_to_multiplier(fleet.defense_level)
+
+
 def calculate_fleet_strength(fleet, opponent_defence_multiplier):
-    """Calculate fleet combat strength (0-1-ish) against a given opponent defence."""
+    """Calculate fleet combat strength against opponent defenses."""
     count_norm = normalize_ship_count(fleet.ship_count)
     integrity_norm = max(0.0, min(1.0, fleet.integrity / 100.0))
-    combat_mult = fleet.player.race_type.combat_multiplier
+    attack_mult = calculate_fleet_attack_multiplier(fleet)
     defence_factor = 1.0 / opponent_defence_multiplier if opponent_defence_multiplier else 1.0
-    strength = count_norm - ((1.0 - integrity_norm) ** 2) * combat_mult * defence_factor
+    base = count_norm * attack_mult * defence_factor
+    integrity_factor = (2.0 * integrity_norm) - (integrity_norm ** 2)
+    strength = base * integrity_factor
     return max(0.0, strength)
 
 
@@ -440,9 +463,18 @@ class GameTurn():
 
         strength_by_player = {}
         for player in players:
-            opponents = [p for p in players if p != player]
-            if opponents:
-                opponent_defence = sum(p.race_type.defence_multiplier for p in opponents) / len(opponents)
+            opponent_fleets = []
+            for opponent in players:
+                if opponent == player:
+                    continue
+                opponent_fleets.extend(fleets_by_player[opponent])
+            if opponent_fleets:
+                total_enemy_ships = sum(max(1, f.ship_count) for f in opponent_fleets)
+                weighted_enemy_def = sum(
+                    calculate_fleet_defense_multiplier(f) * max(1, f.ship_count)
+                    for f in opponent_fleets
+                ) / float(total_enemy_ships)
+                opponent_defence = weighted_enemy_def
             else:
                 opponent_defence = 1.0
             strength_by_player[player] = sum(
@@ -1165,9 +1197,17 @@ class GameTurn():
         fleet_losses_desc = "no fleet losses"
         effective_defenses = calculate_effective_defenses(star)
         if effective_defenses > 0:
+            defender_defence_mult = 1.0
+            if defender_race:
+                defender_defence_mult = defender_race.defence_multiplier
+            if defender:
+                defender_effects = get_player_tech_effects(defender)
+                defender_defence_mult *= tech_level_to_multiplier(
+                    defender_effects.get('defense_level', 0.0)
+                )
             attacker_strength = calculate_fleet_strength(
                 fleet,
-                defender_race.defence_multiplier if defender_race else 1.0
+                defender_defence_mult
             )
             defender_strength = normalize_ship_count(effective_defenses)
             strength_by_player = {

@@ -205,7 +205,8 @@ class GameFactory():
     def _assign_homeworld_to_player(self, player, star):
         """Assign a specific star as homeworld to a player with starting population.
         Sets star environmentals to player's habitable centers and optionally renames.
-        Ensures resource yields are at least 50% and surface minerals at least 1000kt."""
+        Transposes resource yields from 0-100% into 50-100%, and ensures
+        surface minerals are at least 1000kt."""
         star.player = player
         if player.starting_colonists is not None:
             star.colonists = player.starting_colonists * 1000
@@ -215,10 +216,10 @@ class GameFactory():
         star.gravity = player.gravity_center
         star.temperature = player.temperature_center
         star.radiation = player.radiation_center
-        # Ensure homeworld has good resource yields (at least 50%)
-        star.ironium_yield = max(50, star.ironium_yield)
-        star.boranium_yield = max(50, star.boranium_yield)
-        star.germanium_yield = max(50, star.germanium_yield)
+        # Transpose homeworld yields from 0-100 into 50-100.
+        star.ironium_yield = int(star.ironium_yield / 2.0 + 50)
+        star.boranium_yield = int(star.boranium_yield / 2.0 + 50)
+        star.germanium_yield = int(star.germanium_yield / 2.0 + 50)
         # Apply starting infrastructure
         star.mines = max(0, int(player.starting_mines or 0))
         star.factories = max(0, int(player.starting_factories or 0))

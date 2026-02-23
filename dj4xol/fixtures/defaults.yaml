@@ -360,3 +360,55 @@
     params_json: '{"max_warp_speed": 6}'
     display_order: 40
     enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000201"
+  fields:
+    short_id: "tech00000201"
+    category: 1
+    level: 2
+    name: 'Targeting Algorithms I'
+    description: 'Improved fire-control routines raise coordinated strike efficiency.'
+    tech_type: 'WEAPON'
+    params_json: '{"offense_level": 0.5}'
+    display_order: 50
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000202"
+  fields:
+    short_id: "tech00000202"
+    category: 2
+    level: 4
+    name: 'Targeting Algorithms II'
+    description: 'Refined predictive gunnery increases offensive coordination.'
+    tech_type: 'WEAPON'
+    params_json: '{"offense_level": 1.0}'
+    display_order: 60
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000203"
+  fields:
+    short_id: "tech00000203"
+    category: 3
+    level: 2
+    name: 'Barrier Field Theory I'
+    description: 'Basic defensive fields improve fleet survivability.'
+    tech_type: 'SHIELD'
+    params_json: '{"defense_level": 0.5}'
+    display_order: 70
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000204"
+  fields:
+    short_id: "tech00000204"
+    category: 4
+    level: 4
+    name: 'Barrier Field Theory II'
+    description: 'Advanced shielding harmonics provide stronger defense coverage.'
+    tech_type: 'SHIELD'
+    params_json: '{"defense_level": 1.0}'
+    display_order: 80
+    enabled: True
