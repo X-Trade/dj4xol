@@ -9,6 +9,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
     </head>
     <body class="classic onboarding">
+        <div id="onboarding-profile-meta" data-django-username="{% if user.is_authenticated %}{{ user.username }}{% endif %}" style="display:none;"></div>
         <div class="title-bar">
             <span class="title">4x Profile</span>
             <span class="tagline">Step 1 of 3</span>
@@ -99,6 +100,14 @@
                     }
                 });
             })();
+        </script>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython_stdlib.js"></script>
+        <script type="text/python" src="{% static 'dj4xol/brython/onboarding_profile.py' %}"></script>
+        <script>
+            if (window.brython) {
+                brython();
+            }
         </script>
     </body>
 </html>
