@@ -18,7 +18,23 @@ from .research import (
 )
 from .starmap import StarMap
 from .factory import GameFactory
-from .forms import ServerRaceForm, NewGameForm, SignupForm, RegistrationForm, JoinGameForm
+from .forms import ServerRaceForm, NewGameForm, RegistrationForm, JoinGameForm
+
+
+def _setting_enabled(value, default=True):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _allow_self_signup():
+    value = ServerSettings.get('allow_self_signup', None)
+    if value is None:
+        # Backward-compatible fallback.
+        value = ServerSettings.get('server_allow_registration', 'True')
+    return _setting_enabled(value, default=True)
 
 
 @registration_required()
@@ -709,34 +725,36 @@ def research(request, game_short_id):
 
 
 def signup(request):
-    """Create a new Django user and dj4xol Account together."""
-    if request.user.is_authenticated:
-        return redirect('dj4xol:index')
-    if request.method == 'POST':
-        form = SignupForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            login(request, user)
-            return redirect('dj4xol:register')
-    else:
-        form = SignupForm()
-    return render(request, 'dj4xol/signup.html', {'form': form})
+    """Legacy signup endpoint; onboarding registration is now unified."""
+    return redirect('dj4xol:register')
 
 
-@login_required
 def register(request):
-    """Complete dj4xol registration for existing Django user."""
+    """Complete 4x profile registration, optionally creating Django user."""
+    allow_self_signup = _allow_self_signup()
+
+    # Anonymous users may only proceed when self-sign-up is enabled.
+    if not request.user.is_authenticated and not allow_self_signup:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Self-sign-up is disabled on this server.'
+        })
+
     # Check if already registered
-    if hasattr(request.user, 'dj4xol_account'):
+    if request.user.is_authenticated and hasattr(request.user, 'dj4xol_account'):
         return redirect('dj4xol:onboarding_theme')
     if request.method == 'POST':
         form = RegistrationForm(request.user, request.POST)
         if form.is_valid():
             form.save()
+            if not request.user.is_authenticated and form.user:
+                login(request, form.user)
             return redirect('dj4xol:onboarding_theme')
     else:
         form = RegistrationForm(request.user)
-    return render(request, 'dj4xol/onboarding_profile.html', {'form': form})
+    return render(request, 'dj4xol/onboarding_profile.html', {
+        'form': form,
+        'show_user_form': not request.user.is_authenticated,
+    })
 
 
 @login_required

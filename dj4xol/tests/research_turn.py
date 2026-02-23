@@ -191,3 +191,45 @@ class ResearchTurnTest(TestCase):
         self.assertAlmostEqual(effects['offense_level'], 1.5, places=4)
         self.assertAlmostEqual(effects['defense_level'], 1.0, places=4)
         self.assertEqual(effects['max_warp_speed'], 4)
+
+    def test_tech_effects_stack_log_levels_additively(self):
+        energy = ResearchCategory.objects.create(
+            code='ENER2', name='Energy2', enabled=True
+        )
+        materials = ResearchCategory.objects.create(
+            code='MAT2', name='Materials2', enabled=True
+        )
+
+        Technology.objects.create(
+            category=energy,
+            level=1,
+            name='Weapon Core',
+            tech_type='WEAPON',
+            params_json='{"offense_level": 1.25}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=materials,
+            level=1,
+            name='Shield Core',
+            tech_type='SHIELD',
+            params_json='{"defense_level": 0.75}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=materials,
+            level=1,
+            name='Hybrid Core',
+            tech_type='SHIELD',
+            params_json='{"offense_level": 0.5, "defense_level": 0.5}',
+            enabled=True,
+        )
+
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 1.0
+            row.save(update_fields=['current_level'])
+
+        effects = get_player_tech_effects(self.player)
+        self.assertAlmostEqual(effects['offense_level'], 1.75, places=4)
+        self.assertAlmostEqual(effects['defense_level'], 1.25, places=4)
