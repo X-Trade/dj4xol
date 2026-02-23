@@ -7,9 +7,15 @@ from django.contrib.auth.decorators import login_required
 
 from dj4xol.objectdetails import DetailBuilder
 
-from .models import Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet, FleetOrders, Star
+from .models import (
+    Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
+    FleetOrders, Star,
+)
 from .decorators import registration_required, player_only_view
 from .turn import GameTurn
+from .research import (
+    build_research_screen_data, update_player_allocations, set_even_allocations
+)
 from .starmap import StarMap
 from .factory import GameFactory
 from .forms import ServerRaceForm, NewGameForm, SignupForm, RegistrationForm, JoinGameForm
@@ -651,6 +657,53 @@ def message_history(request, game_short_id):
         'current_year': year_filter,
         'current_category': category_filter,
         'priority_only': priority_only,
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@player_only_view()
+def research(request, game_short_id):
+    """Research budget and allocation view."""
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+
+    if not player:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'You are not a player in this game.'
+        })
+
+    selected_category = (
+        request.POST.get('category') or request.GET.get('category')
+    )
+    if request.method == 'POST' and not player.turned_in:
+        if request.POST.get('alloc_action') == 'even':
+            set_even_allocations(player)
+        else:
+            requested = {}
+            for key in request.POST:
+                if key.startswith('alloc_'):
+                    requested[key[6:]] = request.POST.get(key)
+            update_player_allocations(player, requested)
+
+    data = build_research_screen_data(player, selected_category)
+    return render(request, 'dj4xol/research.html', {
+        'game': game,
+        'player': player,
+        'is_owner': account == game.owner,
+        'budget': data['budget'],
+        'research_rows': data['rows'],
+        'selected_category': data['selected_category'],
+        'selected_research': data['selected_research'],
+        'next_level_number': data['next_level_number'],
+        'next_level_cost': data['next_level_cost'],
+        'next_level_rp_current': data['next_level_rp_current'],
+        'next_level_progress_percent': data['next_level_progress_percent'],
+        'next_level_rp_per_year': data['next_level_rp_per_year'],
+        'next_level_eta_years': data['next_level_eta_years'],
+        'next_level_requirements': data['next_level_requirements'],
+        'next_level_resource_rows': data['next_level_resource_rows'],
+        'next_level_items': data['next_level_items'],
         'user_theme': account.theme if account else 'classic',
     })
 

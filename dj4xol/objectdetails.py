@@ -7,6 +7,7 @@ from dj4xol.colony_rules import (
     effective_capacity,
     calculate_employment_percent,
     calculate_available_buildpoints,
+    calculate_available_researchpoints,
     calculate_staffing_ratio,
     calculate_productivity_multiplier,
     COLONISTS_PER_JOB,
@@ -259,6 +260,7 @@ class DetailBuilder():
             'colonists': data.get('colonists', 0),
             'mines': data.get('mines', 0),
             'factories': data.get('factories', 0),
+            'labs': data.get('labs', 0),
             'defenses': data.get('defenses', 0),
             'shipyards': data.get('shipyards', 0),
             'buildpoints_consumed': data.get('buildpoints_consumed', 0),
@@ -456,6 +458,7 @@ class DetailBuilder():
         infrastructure = None
         if self.selected_obj and isinstance(self.selected_obj, Star):
             jobs = ((self.selected_obj.mines + self.selected_obj.factories
+                     + self.selected_obj.labs
                      + self.selected_obj.defenses) * COLONISTS_PER_JOB
                     + self.selected_obj.shipyards * COLONISTS_PER_SHIPYARD)
             employment = calculate_employment_percent(self.selected_obj)
@@ -463,6 +466,8 @@ class DetailBuilder():
                 'Mines': self.selected_obj.mines,
                 'Factories': self.selected_obj.factories,
                 'FactoriesBP': calculate_available_buildpoints(self.selected_obj),
+                'Labs': self.selected_obj.labs,
+                'LabsRP': calculate_available_researchpoints(self.selected_obj),
                 'Defenses': self.selected_obj.defenses,
                 'Shipyards': self.selected_obj.shipyards,
                 'Jobs': {'count': jobs, 'employment': employment},

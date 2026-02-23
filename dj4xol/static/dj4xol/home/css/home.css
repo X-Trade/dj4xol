@@ -133,6 +133,10 @@ body {
     gap: 8px;
 }
 
+.form-nav.single-action {
+    justify-content: center;
+}
+
 .form-nav .nav-button,
 .form-nav .button-link {
     display: inline-block;

@@ -2,11 +2,15 @@ from browser import document, html, svg
 from colony_rules import (
     calculate_growth_factor,
     calculate_habitability_factor,
+    effective_capacity,
     calculate_staffing_ratio,
     calculate_productivity_multiplier,
     calculate_available_buildpoints,
+    calculate_available_researchpoints,
     calculate_economy_percent,
     calculate_economy_factor,
+    COLONISTS_PER_JOB,
+    COLONISTS_PER_SHIPYARD,
 )
 
 CENTER_STEP = 0.05
@@ -24,11 +28,28 @@ def _clamp(value, min_value, max_value):
 
 
 def _log_slider_to_value(value, min_value, max_value):
+    # Support zero-capable sliders by reserving 0 as an explicit zero value.
+    if min_value <= 0:
+        if value <= 0:
+            return 0
+        effective_min = 1.0
+        t = (value - 1.0) / 99.0
+        return effective_min * ((max_value / effective_min) ** t)
     t = value / 100.0
     return min_value * ((max_value / min_value) ** t)
 
 
 def _value_to_log_slider(value, min_value, max_value):
+    if min_value <= 0:
+        if value <= 0:
+            return 0
+        effective_min = 1.0
+        return int(round(
+            1 + (
+                math.log(value / effective_min) /
+                math.log(max_value / effective_min)
+            ) * 99
+        ))
     if value <= 0:
         return 0
     return int(round((math.log(value / min_value) / math.log(max_value / min_value)) * 100))
@@ -91,7 +112,7 @@ def _build_slider(label, min_value, max_value, step, value, on_change, log=False
         slider.min = 0
         slider.max = 100
         slider.step = 1
-        slider.value = 50
+        slider.value = _value_to_log_slider(value, min_value, max_value)
     else:
         slider.min = min_value
         slider.max = max_value
@@ -102,8 +123,10 @@ def _build_slider(label, min_value, max_value, step, value, on_change, log=False
 
     def update_value(ev=None):
         if log:
-            actual = _log_slider_to_value(float(slider.value), min_value, max_value)
-            display.text = f"{actual:,.0f}"
+            actual = int(round(
+                _log_slider_to_value(float(slider.value), min_value, max_value)
+            ))
+            display.text = f"{actual:,}"
         else:
             actual = float(slider.value)
             if step == CENTER_STEP:
@@ -146,6 +169,7 @@ def init():
         'population': 1000000,
         'mines': 10,
         'factories': 10,
+        'labs': 10,
         'defenses': 0,
         'shipyards': 0,
     }
@@ -196,6 +220,7 @@ def init():
         star.colonists = int(state['population'])
         star.mines = int(state['mines'])
         star.factories = int(state['factories'])
+        star.labs = int(state['labs'])
         star.defenses = int(state['defenses'])
         star.shipyards = int(state['shipyards'])
         star.buildpoints_consumed = int(state['factories'] * 10)
@@ -219,11 +244,26 @@ def init():
         player.hab_max = hab_max
 
         growth = calculate_growth_factor(player, star)
+        capacity = effective_capacity(player, star)
         staffing = calculate_staffing_ratio(star)
         productivity = calculate_productivity_multiplier(staffing)
         economy = calculate_economy_percent(star)
         bp = calculate_available_buildpoints(star)
+        rp = calculate_available_researchpoints(star)
         hab = calculate_habitability_factor(player, star)
+        jobs = (
+            (star.mines + star.factories + star.labs + star.defenses) *
+            COLONISTS_PER_JOB
+            + star.shipyards * COLONISTS_PER_SHIPYARD
+        )
+
+        table = html.TABLE(Class='help-results-table')
+
+        def add_result(label, value):
+            row = html.TR()
+            row <= html.TH(label, Class='env-label')
+            row <= html.TD(value, Class='detail-value')
+            table <= row
 
         def proj(years):
             pop = star.colonists
@@ -235,16 +275,22 @@ def init():
             return pop
 
         results_container.text = ''
-        results_container <= html.P(f"Habitability factor: {hab:.3f}")
-        results_container <= html.P(f"Employment ratio: {staffing * 100:.1f}%")
-        results_container <= html.P(f"Productivity multiplier: {productivity * 100:.1f}%")
-        results_container <= html.P(f"Economy %: {economy:.1f}%")
-        results_container <= html.P(f"Buildpoints/turn: {bp}")
-        results_container <= html.P(f"Growth/turn: {growth * 100:.2f}%")
-        results_container <= html.P(f"Projected pop 1y: {proj(1):,}")
-        results_container <= html.P(f"Projected pop 10y: {proj(10):,}")
-        results_container <= html.P(f"Projected pop 50y: {proj(50):,}")
-        results_container <= html.P(f"Projected pop 100y: {proj(100):,}")
+        add_result("Habitability", f"{hab:.3f}")
+        add_result("Capacity", f"{capacity:,}")
+        if capacity > 0:
+            add_result("Pop/Capacity", f"{(star.colonists / float(capacity)) * 100:.1f}%")
+        add_result("Jobs", f"{jobs:,}")
+        add_result("Employment", f"{staffing * 100:.1f}%")
+        add_result("Productivity", f"{productivity * 100:.1f}%")
+        add_result("Economy", f"{economy:.1f}%")
+        add_result("Buildpoints/Turn", f"{bp:,}")
+        add_result("Research/Turn", f"{rp:,}")
+        add_result("Growth/Turn", f"{growth * 100:.2f}%")
+        add_result("Pop (1y)", f"{proj(1):,}")
+        add_result("Pop (10y)", f"{proj(10):,}")
+        add_result("Pop (50y)", f"{proj(50):,}")
+        add_result("Pop (100y)", f"{proj(100):,}")
+        results_container <= table
 
         # Simple projection graph (0-100 years)
         years = list(range(0, 101, 5))
@@ -378,10 +424,11 @@ def init():
         state[key] = value
         refresh()
 
-    infra_container <= _build_slider("Mines", 0, 2000, 1, state['mines'], lambda v: set_infra('mines', v))
-    infra_container <= _build_slider("Factories", 0, 2000, 1, state['factories'], lambda v: set_infra('factories', v))
-    infra_container <= _build_slider("Defenses", 0, 2000, 1, state['defenses'], lambda v: set_infra('defenses', v))
-    infra_container <= _build_slider("Shipyards", 0, 200, 1, state['shipyards'], lambda v: set_infra('shipyards', v))
+    infra_container <= _build_slider("Mines", 0, 2000, 1, state['mines'], lambda v: set_infra('mines', v), log=True)
+    infra_container <= _build_slider("Factories", 0, 2000, 1, state['factories'], lambda v: set_infra('factories', v), log=True)
+    infra_container <= _build_slider("Labs", 0, 2000, 1, state['labs'], lambda v: set_infra('labs', v), log=True)
+    infra_container <= _build_slider("Defenses", 0, 2000, 1, state['defenses'], lambda v: set_infra('defenses', v), log=True)
+    infra_container <= _build_slider("Shipyards", 0, 200, 1, state['shipyards'], lambda v: set_infra('shipyards', v), log=True)
 
     refresh()
 

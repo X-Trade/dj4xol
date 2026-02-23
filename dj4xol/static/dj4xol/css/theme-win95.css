@@ -185,6 +185,11 @@ body {
     border-bottom: none;
 }
 
+.nav-dropdown a.nav-link-game {
+    color: #000080;
+    font-weight: bold;
+}
+
 .nav-dropdown a:hover {
     background: #000080;
     color: #ffffff;
@@ -969,6 +974,14 @@ input[type="range"]::-webkit-slider-thumb {
    Win95 Detail Panel HR
    ============================================ */
 .panel #detail hr {
+    border: none;
+    height: 2px;
+    background: #808080;
+    box-shadow: 0 1px 0 #ffffff;
+    margin: 8px 0;
+}
+
+.panel .research-detail-body hr.detail-divider {
     border: none;
     height: 2px;
     background: #808080;

@@ -272,3 +272,91 @@
     has_metalurgy: False
     ignores_radiation: True
     initiative_multiplier: 0.8
+
+- model: dj4xol.ResearchCategory
+  pk: 1
+  fields:
+    code: 'ENERGY'
+    name: 'Energy'
+    description: 'Energy generation and propulsion fundamentals.'
+    display_order: 10
+    enabled: True
+
+- model: dj4xol.ResearchCategory
+  pk: 2
+  fields:
+    code: 'ELECTRONICS'
+    name: 'Electronics'
+    description: 'Sensors, guidance, and command systems.'
+    display_order: 20
+    enabled: True
+
+- model: dj4xol.ResearchCategory
+  pk: 3
+  fields:
+    code: 'MATERIALS'
+    name: 'Materials'
+    description: 'Hull and structural engineering advances.'
+    display_order: 30
+    enabled: True
+
+- model: dj4xol.ResearchCategory
+  pk: 4
+  fields:
+    code: 'METAPHYSICS'
+    name: 'Metaphysics'
+    description: 'Exotic theories and unconventional breakthroughs.'
+    display_order: 40
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000101"
+  fields:
+    short_id: "tech00000101"
+    category: 1
+    level: 1
+    name: 'Improved Warp Coils'
+    description: 'Refined coil harmonics permit safer high-speed transit.'
+    tech_type: 'PROPULSION'
+    params_json: '{"max_warp_speed": 3}'
+    display_order: 10
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000102"
+  fields:
+    short_id: "tech00000102"
+    category: 2
+    level: 2
+    name: 'Adaptive Navigation Computers'
+    description: 'Advanced guidance packages support tighter warp tolerances.'
+    tech_type: 'PROPULSION'
+    params_json: '{"max_warp_speed": 4}'
+    display_order: 20
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000103"
+  fields:
+    short_id: "tech00000103"
+    category: 3
+    level: 3
+    name: 'Reinforced Field Lattices'
+    description: 'Improved stress management allows sustained higher warp.'
+    tech_type: 'PROPULSION'
+    params_json: '{"max_warp_speed": 5}'
+    display_order: 30
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000104"
+  fields:
+    short_id: "tech00000104"
+    category: 4
+    level: 5
+    name: 'Phase-Coupled Warp Frames'
+    description: 'Experimental frame coupling pushes safe warp limits further.'
+    tech_type: 'PROPULSION'
+    params_json: '{"max_warp_speed": 6}'
+    display_order: 40
+    enabled: True

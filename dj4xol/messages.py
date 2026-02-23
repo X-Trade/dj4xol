@@ -384,7 +384,7 @@ class FleetBuiltMessageFactory(MessageFactory):
 
 
 class ProductionSummaryMessageFactory(MessageFactory):
-    """Messages for summarized production completion (mines, factories, defenses)."""
+    """Messages for summarized production completion."""
     category = 'PRODUCTION'
 
     # Templates for different quantities - {count} and {star} placeholders
@@ -411,6 +411,13 @@ class ProductionSummaryMessageFactory(MessageFactory):
                 "{count} new defenses constructed at {star}.",
             ],
         },
+        'lab': {
+            'plural': [
+                "{count} laboratories were constructed at {star}.",
+                "Research capacity at {star} expanded with {count} new labs.",
+                "{count} new labs completed at {star}.",
+            ],
+        },
     }
 
     def __init__(self, game, player, star, production_type, count, message=None):
@@ -426,6 +433,50 @@ class ProductionSummaryMessageFactory(MessageFactory):
         return random.choice(templates).format(
             count=self.count,
             star=format_map_object(self.star)
+        )
+
+
+class ResearchLevelUnlockedMessageFactory(MessageFactory):
+    """Message when a research category advances one or more levels."""
+    category = 'GENERAL'
+    templates = [
+        "Research in {category} has advanced to level {level}.",
+        "{category} research has reached level {level}.",
+        "Our {category} programme has progressed to level {level}.",
+    ]
+
+    def __init__(self, game, player, category_name, level, message=None):
+        super().__init__(game, player, message, intensity=0.3)
+        self.category_name = category_name
+        self.level = level
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            category=self.category_name,
+            level=self.level,
+        )
+
+
+class ResearchBreakthroughMessageFactory(MessageFactory):
+    """Message for random research breakthroughs from lab colonies."""
+    category = 'RANDOM'
+    templates = [
+        "Excavation of ancient ruins at {star} has contributed {rp} RP to our {category} research.",
+        "Scientists at {star} recovered a buried device, advancing our {category} programme by {rp} RP.",
+        "Anomalous findings at {star} have yielded {rp} RP for {category} research.",
+    ]
+
+    def __init__(self, game, player, star, category_name, rp, message=None):
+        super().__init__(game, player, message, intensity=0.4)
+        self.star = star
+        self.category_name = category_name
+        self.rp = rp
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=format_map_object(self.star),
+            category=self.category_name,
+            rp=self.rp,
         )
 
 

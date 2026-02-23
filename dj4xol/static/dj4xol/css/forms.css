@@ -225,7 +225,8 @@
 
     .create-race .panel.open .panel-content > div,
     .onboarding .panel.open .panel-content > div,
-    .create-game .panel.open .panel-content > div {
+    .create-game .panel.open .panel-content > div,
+    .colony-help .panel.open .panel-content > div {
         max-height: calc(100vh - 180px);
     }
 }
@@ -268,7 +269,8 @@
 
 .create-race .panel.open .panel-content > div,
 .onboarding .panel.open .panel-content > div,
-.create-game .panel.open .panel-content > div {
+.create-game .panel.open .panel-content > div,
+.colony-help .panel.open .panel-content > div {
     min-height: 25vh;
     max-height: calc(100vh - 180px) !important;
 }
@@ -306,6 +308,31 @@
 
 .help-results p {
     margin: 0 0 6px 0;
+}
+
+.help-results .help-results-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.help-results .help-results-table th,
+.help-results .help-results-table td {
+    padding: 2px 0;
+}
+
+.help-results .help-results-table th.env-label {
+    width: 180px;
+    min-width: 180px;
+    max-width: 180px;
+    text-align: left;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.help-results .help-results-table td.detail-value {
+    text-align: right;
 }
 
 .growth-graph {

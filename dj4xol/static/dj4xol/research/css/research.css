@@ -1,0 +1,119 @@
+.research-columns {
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) 1fr;
+    gap: 12px;
+    padding: 12px;
+    height: calc(100vh - 56px);
+    box-sizing: border-box;
+}
+
+.research-left,
+.research-right {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+}
+
+.research-right .panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.research-panel-body {
+    padding: 8px;
+}
+
+.research-detail-body {
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.allocation-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto 90px auto;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+    padding: 3px 6px;
+    overflow: hidden;
+    border-radius: 3px;
+}
+
+.allocation-progress-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background: rgba(80, 80, 80, 0.12);
+    z-index: 0;
+}
+
+.allocation-progress-fill {
+    height: 100%;
+    background: rgba(100, 170, 240, 0.28);
+}
+
+.allocation-row > *:not(.allocation-progress-bar) {
+    position: relative;
+    z-index: 1;
+}
+
+.allocation-name {
+    text-decoration: none;
+}
+
+.allocation-name.selected {
+    font-weight: bold;
+}
+
+.allocation-level {
+    min-width: 44px;
+    text-align: right;
+}
+
+.allocation-input {
+    width: 90px;
+}
+
+.allocation-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
+}
+
+.tech-item {
+    border-bottom: 1px solid #444;
+    padding: 8px 0;
+}
+
+.tech-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.tech-params {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.tech-params td {
+    padding: 2px 6px 2px 0;
+}
+
+@media (max-width: 900px) {
+    .research-columns {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+
+    .research-detail-body {
+        max-height: 50vh;
+    }
+}

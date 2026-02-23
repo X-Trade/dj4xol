@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.html import format_html
 from django.core.urlresolvers import reverse
 from django.http import HttpResponseRedirect
@@ -8,7 +8,12 @@ try:
 except ImportError:
     from django.urls import re_path as url
 
-from .models import Account, Player, Game, ServerSettings, ServerRaceType
+from .models import (
+    Account, Player, Game, ServerSettings, ServerRaceType,
+    DefaultResearchLevelRequirement, ResearchCategory, ResearchLevelRequirement,
+    Technology, PlayerResearch,
+)
+from .research import copy_default_requirements_to_category, ensure_default_level_requirements
 from .turn import GameTurn
 
 @admin.register(ServerRaceType)
@@ -65,3 +70,79 @@ class GameAdmin(admin.ModelAdmin):
         url = reverse('admin:dj4xol_game_change', args=[game_id],
             current_app=self.admin_site.name)
         return HttpResponseRedirect(url)
+
+
+class TechnologyInline(admin.TabularInline):
+    model = Technology
+    extra = 0
+    fields = (
+        'level', 'name', 'tech_type', 'enabled', 'display_order', 'params_json'
+    )
+
+
+class ResearchLevelRequirementInline(admin.TabularInline):
+    model = ResearchLevelRequirement
+    extra = 0
+    fields = (
+        'level', 'rp_cost', 'ironium_cost', 'boranium_cost', 'germanium_cost'
+    )
+    ordering = ('level',)
+
+
+@admin.register(ResearchCategory)
+class ResearchCategoryAdmin(admin.ModelAdmin):
+    list_display = ('code', 'name', 'display_order', 'enabled')
+    list_filter = ('enabled',)
+    search_fields = ('code', 'name')
+    inlines = [TechnologyInline, ResearchLevelRequirementInline]
+    actions = ['sync_requirements_from_defaults']
+
+    def save_model(self, request, obj, form, change):
+        super(ResearchCategoryAdmin, self).save_model(request, obj, form, change)
+        ensure_default_level_requirements()
+        copy_default_requirements_to_category(obj)
+
+    def sync_requirements_from_defaults(self, request, queryset):
+        ensure_default_level_requirements()
+        count = 0
+        for category in queryset:
+            copy_default_requirements_to_category(
+                category, ensure_defaults=False, overwrite_existing=True
+            )
+            count += 1
+        self.message_user(
+            request,
+            'Synced research level requirements from defaults for %s categor%s.' % (
+                count, 'y' if count == 1 else 'ies'
+            ),
+            level=messages.SUCCESS
+        )
+    sync_requirements_from_defaults.short_description = (
+        'Sync selected category requirements from default table'
+    )
+
+
+@admin.register(Technology)
+class TechnologyAdmin(admin.ModelAdmin):
+    list_display = (
+        'name', 'category', 'level', 'tech_type', 'enabled', 'display_order'
+    )
+    list_filter = ('category', 'tech_type', 'enabled')
+    search_fields = ('name', 'description')
+
+
+@admin.register(PlayerResearch)
+class PlayerResearchAdmin(admin.ModelAdmin):
+    list_display = (
+        'player', 'category', 'current_level', 'stored_rp', 'allocation_percent'
+    )
+    list_filter = ('category', 'player__game')
+    search_fields = ('player__name', 'category__name')
+
+
+@admin.register(DefaultResearchLevelRequirement)
+class DefaultResearchLevelRequirementAdmin(admin.ModelAdmin):
+    list_display = (
+        'level', 'rp_cost', 'ironium_cost', 'boranium_cost', 'germanium_cost'
+    )
+    ordering = ('level',)
