@@ -317,6 +317,14 @@ a:hover {
     font-weight: 600;
 }
 
+/* Subtle label emphasis for Classic theme detail rows. */
+.classic .env-label,
+body:not(.lcars):not(.win95) .env-label {
+    color: #5f6d7a;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
 /* ============================================
    Column Layout System
    ============================================ */

@@ -4,12 +4,13 @@ from django.shortcuts import render, redirect
 from django.urls import resolve
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
+import json
 
 from dj4xol.objectdetails import DetailBuilder
 
 from .models import (
     Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
-    FleetOrders, Star,
+    FleetOrders, Star, ResearchCategory, Technology,
 )
 from .decorators import registration_required, player_only_view
 from .turn import GameTurn
@@ -590,6 +591,140 @@ def help_colony(request):
     account = request.user.dj4xol_account
     return render(request, 'dj4xol/help_colony.html', {
         'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
+def help_index(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_index.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+def _format_tech_param_key(key):
+    labels = {
+        'max_warp_speed': 'Maximum Warp',
+        'offense_level': 'Offense Level',
+        'defense_level': 'Defense Level',
+    }
+    return labels.get(key, key.replace('_', ' ').title())
+
+
+def _format_tech_param_value(key, value):
+    if key in ('offense_level', 'defense_level'):
+        try:
+            return int(round(float(value) * 10))
+        except (TypeError, ValueError):
+            return value
+    return value
+
+
+def _safe_tech_params(tech):
+    try:
+        data = json.loads(tech.params_json or '{}')
+    except (TypeError, ValueError):
+        return {}
+    if isinstance(data, dict):
+        return data
+    return {}
+
+
+@registration_required()
+def help_technology(request):
+    """Browse technology unlocks by category and level."""
+    account = request.user.dj4xol_account
+    categories = list(
+        ResearchCategory.objects.filter(enabled=True).order_by('display_order', 'name')
+    )
+    selected_category = None
+    selected_category_id = request.GET.get('category')
+    if selected_category_id:
+        try:
+            selected_category = next(
+                c for c in categories if c.id == int(selected_category_id)
+            )
+        except (StopIteration, TypeError, ValueError):
+            selected_category = None
+
+    min_level = None
+    min_level_raw = request.GET.get('min_level')
+    if min_level_raw:
+        try:
+            min_level = max(0, int(min_level_raw))
+        except (TypeError, ValueError):
+            min_level = None
+
+    max_level = None
+    max_level_raw = request.GET.get('max_level')
+    if max_level_raw:
+        try:
+            max_level = max(0, int(max_level_raw))
+        except (TypeError, ValueError):
+            max_level = None
+
+    tech_type = (request.GET.get('tech_type') or '').strip().upper()
+    valid_types = {code for code, _ in Technology.TECH_TYPE_CHOICES}
+    if tech_type not in valid_types:
+        tech_type = ''
+
+    q = (request.GET.get('q') or '').strip()
+
+    filter_qs = Technology.objects.filter(enabled=True).select_related('category')
+    if min_level is not None:
+        filter_qs = filter_qs.filter(level__gte=min_level)
+    if max_level is not None:
+        filter_qs = filter_qs.filter(level__lte=max_level)
+    if tech_type:
+        filter_qs = filter_qs.filter(tech_type=tech_type)
+    if q:
+        filter_qs = filter_qs.filter(
+            models.Q(name__icontains=q) |
+            models.Q(description__icontains=q)
+        )
+
+    category_counts = {
+        row['category']: row['count']
+        for row in filter_qs.values('category').annotate(count=models.Count('id'))
+    }
+    for category in categories:
+        category.tech_count = category_counts.get(category.id, 0)
+    all_count = filter_qs.count()
+
+    tech_qs = filter_qs
+    if selected_category is not None:
+        tech_qs = tech_qs.filter(category=selected_category)
+    tech_rows = list(
+        tech_qs.order_by(
+            'category__display_order',
+            'category__name',
+            'level',
+            'display_order',
+            'name',
+        )
+    )
+    for tech in tech_rows:
+        params = _safe_tech_params(tech)
+        tech.params_display = [
+            {
+                'label': _format_tech_param_key(key),
+                'value': _format_tech_param_value(key, value),
+            }
+            for key, value in params.items()
+        ]
+
+    return render(request, 'dj4xol/help_technology.html', {
+        'user_theme': account.theme if account else 'classic',
+        'categories': categories,
+        'selected_category': selected_category,
+        'selected_category_id': selected_category.id if selected_category else None,
+        'min_level': min_level,
+        'max_level': max_level,
+        'selected_tech_type': tech_type,
+        'tech_type_choices': Technology.TECH_TYPE_CHOICES,
+        'search_query': q,
+        'all_count': all_count,
+        'tech_rows': tech_rows,
     })
 
 

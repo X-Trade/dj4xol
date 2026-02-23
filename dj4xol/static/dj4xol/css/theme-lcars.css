@@ -712,6 +712,10 @@ input[type="range"]::-webkit-slider-thumb {
     margin: 12px 0;
 }
 
+.panel .research-detail-body .tech-item {
+    border-bottom: 2px solid #cc6633;
+}
+
 /* Environmental bars */
 .env-bar {
     background: linear-gradient(to right, #660000 0%, #66cc66 50%, #660000 100%);

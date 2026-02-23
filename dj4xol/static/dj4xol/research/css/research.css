@@ -84,11 +84,12 @@
 .allocation-actions {
     display: flex;
     justify-content: flex-end;
+    gap: 8px;
     margin-top: 10px;
 }
 
 .tech-item {
-    border-bottom: 1px solid #444;
+    border-bottom: 1px solid var(--panel-border);
     padding: 8px 0;
 }
 
