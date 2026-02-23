@@ -139,19 +139,19 @@ class ResearchTurnTest(TestCase):
         self.assertAlmostEqual(fleet_b.offense_level, 10.0 / 11.0, places=4)
         self.assertAlmostEqual(fleet_b.defense_level, 10.0 / 11.0, places=4)
 
-    def test_tech_effects_use_latest_per_type_and_multiply_properties(self):
+    def test_tech_effects_use_latest_per_type_and_sum_properties(self):
         energy = ResearchCategory.objects.create(
             code='ENERGY', name='Energy', enabled=True
         )
         electronics = ResearchCategory.objects.create(
             code='ELEC', name='Electronics', enabled=True
         )
-        # WEAPON: latest level should win for this tech_type selection (L2).
+        # ENERGY_WEAPON: latest level should win for this tech_type selection (L2).
         Technology.objects.create(
             category=energy,
             level=1,
             name='Mass Drivers I',
-            tech_type='WEAPON',
+            tech_type='ENERGY_WEAPON',
             params_json='{"offense_level": 1}',
             enabled=True,
         )
@@ -159,7 +159,7 @@ class ResearchTurnTest(TestCase):
             category=energy,
             level=2,
             name='Mass Drivers II',
-            tech_type='WEAPON',
+            tech_type='ENERGY_WEAPON',
             params_json='{"offense_level": 0.5}',
             enabled=True,
         )
@@ -204,7 +204,7 @@ class ResearchTurnTest(TestCase):
             category=energy,
             level=1,
             name='Weapon Core',
-            tech_type='WEAPON',
+            tech_type='ENERGY_WEAPON',
             params_json='{"offense_level": 1.25}',
             enabled=True,
         )

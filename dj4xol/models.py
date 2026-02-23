@@ -730,8 +730,10 @@ class Technology(UUIDMixin):
     """A research unlock associated with category + level."""
     TECH_TYPE_CHOICES = [
         ('PROPULSION', 'Propulsion'),
-        ('WEAPON', 'Weapon'),
+        ('ENERGY_WEAPON', 'Energy Weapon'),
+        ('TORPEDO', 'Torpedo'),
         ('SHIELD', 'Shield'),
+        ('ARMOUR', 'Armour'),
         ('OTHER', 'Other'),
     ]
 
