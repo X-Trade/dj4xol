@@ -1,0 +1,165 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Technology Directory</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/research/css/research.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+    </head>
+    <body{% if user_theme %} class="{{ user_theme }}"{% endif %}>
+        <div class="title-bar">
+            <span class="title">Technology Directory</span>
+            <span class="tagline">Browse by category and level</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_technology' %}
+        </div>
+        <div class="research-columns">
+            <div class="research-left">
+                <div class="panel no-transition open" data-panel="search">
+                    <h2><span>Search</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div class="research-panel-body">
+                        <form method="get">
+                            {% if selected_category_id %}
+                            <input type="hidden" name="category" value="{{ selected_category_id }}">
+                            {% endif %}
+                            <div class="detail-row">
+                                <span class="env-label">Search</span>
+                                <input type="text" name="q" value="{{ search_query }}" autocomplete="off">
+                            </div>
+                            <div class="detail-row">
+                                <span class="env-label">Type</span>
+                                <select name="tech_type" onchange="this.form.submit()">
+                                    <option value="">All</option>
+                                    {% for code,label in tech_type_choices %}
+                                    <option value="{{ code }}"{% if selected_tech_type == code %} selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="detail-row">
+                                <span class="env-label">Min Level</span>
+                                <input type="number" name="min_level" min="0" step="1" value="{% if min_level != None %}{{ min_level }}{% endif %}">
+                            </div>
+                            <div class="detail-row">
+                                <span class="env-label">Max Level</span>
+                                <input type="number" name="max_level" min="0" step="1" value="{% if max_level != None %}{{ max_level }}{% endif %}">
+                            </div>
+                            <div class="allocation-actions">
+                                <button type="submit" class="nav-button primary">Search</button>
+                                <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:help_technology' %}'">Reset</button>
+                            </div>
+                        </form>
+                    </div></div>
+                </div>
+                <div class="panel no-transition open" data-panel="categories">
+                    <h2><span>Categories</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div class="research-panel-body">
+                        <div class="detail-row">
+                            <span class="env-label">
+                                <a href="{% url 'dj4xol:help_technology' %}{% if search_query or min_level != None or max_level != None or selected_tech_type %}?{% endif %}{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if min_level != None %}min_level={{ min_level }}&{% endif %}{% if max_level != None %}max_level={{ max_level }}&{% endif %}{% if selected_tech_type %}tech_type={{ selected_tech_type|urlencode }}{% endif %}">All</a>
+                            </span>
+                            <span class="detail-value">{{ all_count }}</span>
+                        </div>
+                        {% for category in categories %}
+                        <div class="detail-row">
+                            <span class="env-label">
+                                <a href="{% url 'dj4xol:help_technology' %}?category={{ category.id }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if min_level != None %}&min_level={{ min_level }}{% endif %}{% if max_level != None %}&max_level={{ max_level }}{% endif %}{% if selected_tech_type %}&tech_type={{ selected_tech_type|urlencode }}{% endif %}">
+                                    {{ category.name }}
+                                </a>
+                            </span>
+                            <span class="detail-value">{{ category.tech_count }}</span>
+                        </div>
+                        {% endfor %}
+                    </div></div>
+                </div>
+            </div>
+            <div class="research-right">
+                <div class="panel no-transition open" data-panel="detail">
+                    <h2><span>Detail{% if selected_category %} - {{ selected_category.name }}{% endif %}</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div class="research-panel-body research-detail-body">
+                        {% if tech_rows %}
+                        {% regroup tech_rows by category as category_groups %}
+                        {% for cat_group in category_groups %}
+                        {% regroup cat_group.list by level as level_groups %}
+                        {% for level_group in level_groups %}
+                        <div class="detail-row">
+                            <span class="env-label">{{ cat_group.grouper.name }} L{{ level_group.grouper }}</span>
+                            <span class="detail-value"></span>
+                        </div>
+                        {% for tech in level_group.list %}
+                        <div class="tech-item">
+                            <div class="tech-head">
+                                <strong>{{ tech.name }}</strong>
+                                <span>{{ tech.tech_type }}</span>
+                            </div>
+                            {% if tech.description %}
+                            <p>{{ tech.description }}</p>
+                            {% endif %}
+                            {% if tech.params_display %}
+                            <table class="tech-params">
+                                {% for entry in tech.params_display %}
+                                <tr>
+                                    <td>{{ entry.label }}</td>
+                                    <td>{{ entry.value }}</td>
+                                </tr>
+                                {% endfor %}
+                            </table>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% endfor %}
+                        {% endfor %}
+                        {% else %}
+                        <p>No technologies match the current filters.</p>
+                        {% endif %}
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                        </div>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+        <script>
+        (function() {
+            var hamburger = document.getElementById('hamburger-btn');
+            var dropdown = document.getElementById('nav-dropdown');
+            if (hamburger && dropdown) {
+                hamburger.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    dropdown.classList.toggle('open');
+                    hamburger.classList.toggle('open');
+                });
+                document.addEventListener('click', function(e) {
+                    if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                        dropdown.classList.remove('open');
+                        hamburger.classList.remove('open');
+                    }
+                });
+            }
+        })();
+        (function() {
+            var panels = document.querySelectorAll('.panel');
+            panels.forEach(function(panel) {
+                var header = panel.querySelector('h2');
+                if (!header) return;
+                header.addEventListener('click', function() {
+                    panel.classList.remove('no-transition');
+                    panel.classList.toggle('open');
+                });
+            });
+        })();
+        (function() {
+            var columns = document.querySelector('.research-columns');
+            if (!columns) return;
+            var variants = ['lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3'];
+            var panels = columns.querySelectorAll('.panel');
+            Array.prototype.forEach.call(panels, function(panel, index) {
+                panel.classList.remove('lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3');
+                panel.classList.add(variants[index % variants.length]);
+            });
+        })();
+        </script>
+    </body>
+</html>
