@@ -374,8 +374,8 @@
     level: 1
     name: 'Mark I Laser'
     description: 'First-generation coherent beam emitters improve offensive capability.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.10}'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 0.20}'
     display_order: 50
     enabled: True
 
@@ -387,8 +387,8 @@
     level: 1
     name: 'Mark II Laser'
     description: 'Improved beam coherence increases energy weapon effectiveness.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.10}'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 0.30}'
     display_order: 55
     enabled: True
 
@@ -400,8 +400,8 @@
     level: 2
     name: 'Mark III Laser'
     description: 'High-output laser arrays provide stronger opening volleys.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.15}'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 0.45}'
     display_order: 60
     enabled: True
 
@@ -413,8 +413,8 @@
     level: 2
     name: 'Beam Focuser'
     description: 'Precision focusing assemblies tighten beam spread at range.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.10}'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 0.35}'
     display_order: 65
     enabled: True
 
@@ -426,8 +426,8 @@
     level: 3
     name: 'Mark I Disruptor'
     description: 'Early disruptor emitters destabilize target shielding.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.15}'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 0.70}'
     display_order: 70
     enabled: True
 
@@ -439,8 +439,8 @@
     level: 3
     name: 'Phased Disruptor'
     description: 'Phase modulation improves disruptor coupling against defenses.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.15}'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 0.90}'
     display_order: 75
     enabled: True
 
@@ -452,8 +452,8 @@
     level: 4
     name: 'Mark II Disruptor'
     description: 'Second-generation disruptors deliver improved energy transfer.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.20}'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 1.20}'
     display_order: 80
     enabled: True
 
@@ -465,8 +465,8 @@
     level: 4
     name: 'Phaser Array'
     description: 'Arrayed emitters improve target tracking and sustained fire.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.20}'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 1.50}'
     display_order: 85
     enabled: True
 
@@ -478,8 +478,8 @@
     level: 5
     name: 'Plasma Caster'
     description: 'Dense plasma projection significantly raises strike lethality.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.20}'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 1.80}'
     display_order: 90
     enabled: True
 
@@ -491,8 +491,8 @@
     level: 6
     name: 'Anti-Matter Torpedo'
     description: 'Antimatter warheads provide high burst damage potential.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.25}'
+    tech_type: 'TORPEDO'
+    params_json: '{"offense_level": 2.60}'
     display_order: 95
     enabled: True
 
@@ -504,8 +504,8 @@
     level: 7
     name: 'Homing Torpedo'
     description: 'Guided torpedoes increase hit probability on maneuvering targets.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.20}'
+    tech_type: 'TORPEDO'
+    params_json: '{"offense_level": 3.00}'
     display_order: 100
     enabled: True
 
@@ -517,8 +517,8 @@
     level: 8
     name: 'Targeting Computer'
     description: 'Advanced fire-control logic optimizes fleet-wide target assignment.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.15}'
+    tech_type: 'TORPEDO'
+    params_json: '{"offense_level": 1.60}'
     display_order: 105
     enabled: True
 
@@ -530,8 +530,8 @@
     level: 9
     name: 'Mark IV Disruptor'
     description: 'Mature disruptor architecture delivers superior offensive throughput.'
-    tech_type: 'WEAPON'
-    params_json: '{"offense_level": 0.25}'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 2.40}'
     display_order: 110
     enabled: True
 
@@ -543,8 +543,8 @@
     level: 1
     name: 'Advanced Alloys'
     description: 'Improved metallurgical composites strengthen baseline protection.'
-    tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.10}'
+    tech_type: 'ARMOUR'
+    params_json: '{"defense_level": 0.25, "offense_level": -0.05}'
     display_order: 120
     enabled: True
 
@@ -557,7 +557,7 @@
     name: 'Magnetic Shield'
     description: 'Magnetically stabilized fields improve resistance to beam impacts.'
     tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.10}'
+    params_json: '{"defense_level": 0.30}'
     display_order: 125
     enabled: True
 
@@ -570,7 +570,7 @@
     name: 'Deflector Shield'
     description: 'Deflection harmonics reduce incoming weapon penetration.'
     tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.15}'
+    params_json: '{"defense_level": 0.45, "offense_level": -0.05}'
     display_order: 130
     enabled: True
 
@@ -583,7 +583,7 @@
     name: 'Maneuvering Jets'
     description: 'Fine-control thrusters improve evasive survivability under fire.'
     tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.10}'
+    params_json: '{"defense_level": 0.35, "offense_level": 0.10}'
     display_order: 135
     enabled: True
 
@@ -595,8 +595,8 @@
     level: 3
     name: 'Protonium Armour'
     description: 'Dense protonium plating increases structural resilience.'
-    tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.20}'
+    tech_type: 'ARMOUR'
+    params_json: '{"defense_level": 0.80, "offense_level": -0.10}'
     display_order: 140
     enabled: True
 
@@ -609,7 +609,7 @@
     name: 'Cellular Shield Grid'
     description: 'Distributed emitters improve shield continuity after impacts.'
     tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.20}'
+    params_json: '{"defense_level": 1.00}'
     display_order: 145
     enabled: True
 
@@ -621,8 +621,8 @@
     level: 5
     name: 'Ablative Armour'
     description: 'Sacrificial outer layers absorb high-energy weapon strikes.'
-    tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.20}'
+    tech_type: 'ARMOUR'
+    params_json: '{"defense_level": 1.30, "offense_level": -0.20}'
     display_order: 150
     enabled: True
 
@@ -635,7 +635,7 @@
     name: 'Phased Shield Array'
     description: 'Phased shield synchronization broadens defensive coverage.'
     tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.25}'
+    params_json: '{"defense_level": 1.60, "offense_level": -0.10}'
     display_order: 155
     enabled: True
 
@@ -648,7 +648,7 @@
     name: 'Tractor Beam'
     description: 'Field projection can disrupt attacker approach vectors.'
     tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.15}'
+    params_json: '{"defense_level": 1.10, "offense_level": 0.20}'
     display_order: 160
     enabled: True
 
@@ -660,8 +660,8 @@
     level: 7
     name: 'Organic Armour'
     description: 'Self-healing bio-structural material improves damage tolerance.'
-    tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.20}'
+    tech_type: 'ARMOUR'
+    params_json: '{"defense_level": 2.10, "offense_level": -0.25}'
     display_order: 165
     enabled: True
 
@@ -674,7 +674,7 @@
     name: 'Trans-Spatial Shielding'
     description: 'Exotic field geometry mitigates multi-spectrum weapon hits.'
     tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.25}'
+    params_json: '{"defense_level": 2.80, "offense_level": -0.15}'
     display_order: 170
     enabled: True
 
@@ -686,7 +686,7 @@
     level: 9
     name: 'Neutronium Armor'
     description: 'Ultra-dense neutronium reinforcement maximizes defensive endurance.'
-    tech_type: 'SHIELD'
-    params_json: '{"defense_level": 0.25}'
+    tech_type: 'ARMOUR'
+    params_json: '{"defense_level": 3.60, "offense_level": -0.40}'
     display_order: 175
     enabled: True
