@@ -346,42 +346,59 @@ def get_player_unlocked_technologies(player):
 
 
 def get_player_tech_effects(player):
-    """Return current research effects for fleet commissioning."""
+    """Return current research effects for fleet commissioning/combat.
+
+    For MVP, effects come from the highest unlocked level in each tech_type.
+    """
     effects = {
         'max_warp_speed': 2,
         'offense_level': 0.0,
         'defense_level': 0.0,
     }
-    unlocked = get_player_unlocked_technologies(player)
+    unlocked = list(get_player_unlocked_technologies(player))
+    if not unlocked:
+        return effects
+
+    max_level_by_type = {}
     for tech in unlocked:
+        max_level_by_type[tech.tech_type] = max(
+            max_level_by_type.get(tech.tech_type, -1),
+            int(tech.level)
+        )
+
+    selected = [
+        tech for tech in unlocked
+        if int(tech.level) == max_level_by_type.get(tech.tech_type, int(tech.level))
+    ]
+
+    offense_multiplier = 1.0
+    defense_multiplier = 1.0
+    for tech in selected:
         params = _safe_params(tech)
-        if tech.tech_type == 'PROPULSION':
-            max_warp = params.get('max_warp_speed')
-            if max_warp is not None:
-                try:
-                    effects['max_warp_speed'] = max(
-                        effects['max_warp_speed'], int(max_warp)
-                    )
-                except (TypeError, ValueError):
-                    pass
-        elif tech.tech_type == 'WEAPON':
-            level = params.get('offense_level')
-            if level is not None:
-                try:
-                    effects['offense_level'] = max(
-                        effects['offense_level'], float(level)
-                    )
-                except (TypeError, ValueError):
-                    pass
-        elif tech.tech_type == 'SHIELD':
-            level = params.get('defense_level')
-            if level is not None:
-                try:
-                    effects['defense_level'] = max(
-                        effects['defense_level'], float(level)
-                    )
-                except (TypeError, ValueError):
-                    pass
+        max_warp = params.get('max_warp_speed')
+        if max_warp is not None:
+            try:
+                effects['max_warp_speed'] = max(
+                    effects['max_warp_speed'], int(max_warp)
+                )
+            except (TypeError, ValueError):
+                pass
+        offense_level = params.get('offense_level')
+        if offense_level is not None:
+            try:
+                offense_multiplier *= (2.0 ** float(offense_level))
+            except (TypeError, ValueError):
+                pass
+        defense_level = params.get('defense_level')
+        if defense_level is not None:
+            try:
+                defense_multiplier *= (2.0 ** float(defense_level))
+            except (TypeError, ValueError):
+                pass
+    if offense_multiplier > 0:
+        effects['offense_level'] = math.log(offense_multiplier, 2)
+    if defense_multiplier > 0:
+        effects['defense_level'] = math.log(defense_multiplier, 2)
     return effects
 
 

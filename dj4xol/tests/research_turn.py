@@ -1,7 +1,7 @@
 from django.test import TestCase
 
 from ..models import Fleet, FleetOrders, ProductionOrder, ResearchCategory, Technology
-from ..research import ensure_player_research_rows
+from ..research import ensure_player_research_rows, get_player_tech_effects
 from ..turn import GameTurn
 from ._util import default_game
 
@@ -138,3 +138,56 @@ class ResearchTurnTest(TestCase):
         fleet_b.refresh_from_db()
         self.assertAlmostEqual(fleet_b.offense_level, 10.0 / 11.0, places=4)
         self.assertAlmostEqual(fleet_b.defense_level, 10.0 / 11.0, places=4)
+
+    def test_tech_effects_use_latest_per_type_and_multiply_properties(self):
+        energy = ResearchCategory.objects.create(
+            code='ENERGY', name='Energy', enabled=True
+        )
+        electronics = ResearchCategory.objects.create(
+            code='ELEC', name='Electronics', enabled=True
+        )
+        # WEAPON: latest level should win for this tech_type selection (L2).
+        Technology.objects.create(
+            category=energy,
+            level=1,
+            name='Mass Drivers I',
+            tech_type='WEAPON',
+            params_json='{"offense_level": 1}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=energy,
+            level=2,
+            name='Mass Drivers II',
+            tech_type='WEAPON',
+            params_json='{"offense_level": 0.5}',
+            enabled=True,
+        )
+        # SHIELD highest contributes its own properties, including offense bonus.
+        Technology.objects.create(
+            category=electronics,
+            level=1,
+            name='Field Couplers',
+            tech_type='SHIELD',
+            params_json='{"defense_level": 1, "offense_level": 1}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=electronics,
+            level=1,
+            name='Warp Theory',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 4}',
+            enabled=True,
+        )
+
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 2.0
+            row.save(update_fields=['current_level'])
+
+        effects = get_player_tech_effects(self.player)
+        # offense: 2^0.5 * 2^1 => 2^1.5, represented back as level 1.5
+        self.assertAlmostEqual(effects['offense_level'], 1.5, places=4)
+        self.assertAlmostEqual(effects['defense_level'], 1.0, places=4)
+        self.assertEqual(effects['max_warp_speed'], 4)
