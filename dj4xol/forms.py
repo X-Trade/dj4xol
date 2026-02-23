@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.password_validation import password_validators_help_text_html
 from .models import ServerRace, ServerRaceType, Game, Account
 
 
@@ -226,10 +227,13 @@ class RegistrationForm(forms.ModelForm):
     )
     password1 = forms.CharField(
         required=False,
+        label='Password',
         widget=forms.PasswordInput(),
+        help_text=password_validators_help_text_html(),
     )
     password2 = forms.CharField(
         required=False,
+        label='Confirm Password',
         widget=forms.PasswordInput(),
     )
 

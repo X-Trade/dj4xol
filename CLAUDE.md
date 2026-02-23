@@ -37,7 +37,9 @@ A Django-based 4X space strategy game inspired by Stars!
 ## Development Environment
 
 - Uses **pyenv-virtualenv** for Python version and virtual environment management
-- Run commands directly (e.g., `python manage.py migrate`) - pyenv handles the environment automatically
+- Preferred command pattern: `pyenv exec python ...` (for example: `pyenv exec python manage.py test`)
+- Project env name is `dj4xol`; one-shot alternative: `PYENV_VERSION=dj4xol python ...`
+- If `python` is not on PATH in a shell session, still use `pyenv exec python ...`
 - Do not try to source `.venv/bin/activate` or similar
 
 ## Game Rules
