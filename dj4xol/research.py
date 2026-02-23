@@ -42,6 +42,16 @@ def _format_param_key(key):
     return key.replace('_', ' ').title()
 
 
+def _format_param_value(key, value):
+    """Return player-facing display value for technology parameter values."""
+    if key in ('offense_level', 'defense_level'):
+        try:
+            return int(round(float(value) * 10))
+        except (TypeError, ValueError):
+            return value
+    return value
+
+
 def _whole_percentages(values):
     """Normalise to whole-number percentages summing to 100."""
     norm = normalise_percentages(values)
@@ -584,7 +594,7 @@ def build_research_screen_data(player, selected_category_id=None):
                     'tech_type': item.tech_type,
                     'params': params,
                     'params_display': [
-                        {'label': _format_param_key(key), 'value': value}
+                        {'label': _format_param_key(key), 'value': _format_param_value(key, value)}
                         for key, value in params.items()
                     ],
                 })
