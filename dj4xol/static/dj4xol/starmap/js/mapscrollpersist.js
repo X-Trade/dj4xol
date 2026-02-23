@@ -226,6 +226,55 @@ $("document").ready(function() {
         window.matchMedia('(pointer: coarse)').matches;
     var isFinePointer = window.matchMedia &&
         window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    var mobileDestinationTargeting = isCoarsePointer &&
+        window.matchMedia &&
+        window.matchMedia('(max-width: 900px)').matches;
+
+    function getMobileTouchRadiusPx(objectType) {
+        if (objectType === 'fleet') {
+            return 22;
+        }
+        if (objectType === 'salvage') {
+            return 20;
+        }
+        return 22; // stars
+    }
+
+    function findNearestSelectableMapObject(unscaledX, unscaledY) {
+        if (!mobileDestinationTargeting) {
+            return null;
+        }
+
+        var nearest = null;
+        var nearestDistSq = Infinity;
+        $maparea.find('[data-map-object="1"]').each(function() {
+            var el = this;
+            var objectType = el.getAttribute('data-object-type') || 'star';
+            var radiusUnscaled = getMobileTouchRadiusPx(objectType) / zoomLevel;
+            var maxDistSq = radiusUnscaled * radiusUnscaled;
+
+            var left = parseFloat(el.style.left) || 0;
+            var top = parseFloat(el.style.top) || 0;
+            var width = el.offsetWidth || 5;
+            var height = el.offsetHeight || 5;
+            var centerX = left + (width / 2);
+            var centerY = top + (height / 2);
+
+            var dx = centerX - unscaledX;
+            var dy = centerY - unscaledY;
+            var distSq = dx * dx + dy * dy;
+            if (distSq <= maxDistSq && distSq < nearestDistSq) {
+                nearestDistSq = distSq;
+                nearest = {
+                    id: el.getAttribute('data-object-id'),
+                    type: objectType,
+                    x: parseInt(el.getAttribute('data-x'), 10),
+                    y: parseInt(el.getAttribute('data-y'), 10)
+                };
+            }
+        });
+        return nearest;
+    }
 
     function getTouchDistance(touches) {
         var dx = touches[0].pageX - touches[1].pageX;
@@ -433,6 +482,14 @@ $("document").ready(function() {
             // Divide by zoom to get unscaled pixel position
             var unscaledX = clickX / zoomLevel;
             var unscaledY = clickY / zoomLevel;
+
+            // On mobile, prefer nearby stars/fleets/salvage with a fixed
+            // screen-space touch radius so selection remains usable at any zoom.
+            var nearestObject = findNearestSelectableMapObject(unscaledX, unscaledY);
+            if (nearestObject && nearestObject.id) {
+                submitDestination(nearestObject.id, nearestObject.x, nearestObject.y, nearestObject.type);
+                return;
+            }
 
             // Reverse the coordinate transformation: pixel -> map coordinate
             // pixel = mapCoord * MAP_SCALE + borderOffset
