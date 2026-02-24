@@ -31,6 +31,7 @@ from .messages import (
     FleetOrdersCompletedMessageFactory,
     FleetBuildBlockedNoShipyardMessageFactory,
     FleetRepairedMessageFactory,
+    OrbitalDefenseHitMessageFactory,
     ResearchLevelUnlockedMessageFactory,
     ResearchBreakthroughMessageFactory,
 )
@@ -99,6 +100,10 @@ COMBAT_SALVAGE_DAMAGE_CHANCE = 0.25
 COMBAT_SALVAGE_DAMAGE_FACTOR = 0.20
 COMBAT_SHIP_LOSS_MAX_CHANCE = 0.50
 COMBAT_LUCK_JITTER = 0.12
+ORBITAL_DEFENSE_HAZARD_BASE_CHANCE = 0.15
+ORBITAL_DEFENSE_HAZARD_MIN_CHANCE = 0.10
+ORBITAL_DEFENSE_HAZARD_MAX_CHANCE = 0.20
+ORBITAL_DEFENSE_HAZARD_DAMAGE_FACTOR = 0.25
 
 
 # Chance calculation functions (separated for testability)
@@ -222,6 +227,7 @@ class GameTurn():
         self.check_damaged_fleets()
         self.first_contact_checks()
         self.resolve_combat()
+        self.resolve_orbital_defense_hazards()
         self.mining()
         self.production()
         self.research()
@@ -1298,6 +1304,91 @@ class GameTurn():
             ).new_message()
             defender_msg.year = self.game.year
             defender_msg.save()
+
+    def resolve_orbital_defense_hazards(self):
+        """Resolve occasional defensive fire against hostile fleets in orbit.
+
+        Applies only when a hostile fleet is co-located with an enemy defended colony,
+        no active fleet-vs-fleet combat occurred there this step, and a luck-adjusted
+        trigger roll succeeds.
+        """
+        from .models import Fleet, Star
+
+        defended_stars = Star.objects.filter(
+            game=self.game,
+            player__isnull=False,
+            defenses__gt=0,
+        ).select_related('player', 'player__race_type')
+
+        for star in defended_stars:
+            defender = star.player
+            if defender is None:
+                continue
+
+            hostile_fleets = Fleet.objects.filter(
+                game=self.game,
+                x=star.x,
+                y=star.y,
+            ).exclude(player=defender)
+
+            for fleet in hostile_fleets:
+                self._resolve_orbital_defense_hazard(star, fleet)
+
+    def _resolve_orbital_defense_hazard(self, star, fleet):
+        """Attempt one defensive hazard hit on a hostile fleet."""
+        defender = star.player
+        attacker = fleet.player
+        if defender is None or attacker is None:
+            return
+        if fleet.integrity <= 0 or fleet.ship_count <= 0:
+            return
+
+        effective_defenses = calculate_effective_defenses(star)
+        if effective_defenses <= 0:
+            return
+
+        attacker_luck = max(0.1, float(getattr(attacker.race_type, 'luck_multiplier', 1.0) or 1.0))
+        defender_luck = max(0.1, float(getattr(defender.race_type, 'luck_multiplier', 1.0) or 1.0))
+        chance = ORBITAL_DEFENSE_HAZARD_BASE_CHANCE * (defender_luck / attacker_luck)
+        chance = max(ORBITAL_DEFENSE_HAZARD_MIN_CHANCE, min(ORBITAL_DEFENSE_HAZARD_MAX_CHANCE, chance))
+        if not roll_chance(chance):
+            return
+
+        defender_defence_mult = float(getattr(defender.race_type, 'defence_multiplier', 1.0) or 1.0)
+        colony_defense_level = get_player_colony_defense_level(defender)
+        defender_defence_mult *= tech_level_to_multiplier(colony_defense_level)
+
+        attacker_strength = calculate_fleet_strength(fleet, defender_defence_mult)
+        defender_strength = normalize_ship_count(effective_defenses)
+        strength_by_player = {
+            attacker: attacker_strength,
+            defender: defender_strength,
+        }
+        damage_taken = self._calculate_combat_damage(strength_by_player)
+        hazard_damage = max(0.0, float(damage_taken.get(attacker, 0.0)) * ORBITAL_DEFENSE_HAZARD_DAMAGE_FACTOR)
+        if hazard_damage <= 0:
+            return
+
+        results = self._apply_combat_damage(
+            {attacker: [fleet], defender: []},
+            {attacker: hazard_damage, defender: 0.0}
+        )
+        result = results.get(attacker, {}) or {}
+        integrity_lost = int(result.get('integrity_lost', 0) or 0)
+        if integrity_lost <= 0:
+            return
+
+        attacker_msg = OrbitalDefenseHitMessageFactory(
+            self.game, attacker, star, fleet.name, integrity_lost, perspective='attacker'
+        ).new_message()
+        attacker_msg.year = self.game.year
+        attacker_msg.save()
+
+        defender_msg = OrbitalDefenseHitMessageFactory(
+            self.game, defender, star, fleet.name, integrity_lost, perspective='defender'
+        ).new_message()
+        defender_msg.year = self.game.year
+        defender_msg.save()
 
     def _transfer_with_star(self, fleet, order, star):
         """Execute transfer between fleet and star."""
