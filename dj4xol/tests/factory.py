@@ -70,6 +70,27 @@ class testGameFactory(TestCase):
         player = gf.join_player(self.accounts[0], self.races[0])
         self.assertEqual(player.homeworld.colonists, 5000)
 
+    def test_leftover_points_for_research_do_not_increase_homeworld_minerals(self):
+        self.races[0].leftover_points = 20.0
+        self.races[0].spend_leftover_points_on_research = True
+        self.races[0].save(update_fields=['leftover_points', 'spend_leftover_points_on_research'])
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(5)
+        gf.save()
+        for star in gf.game.stars.all():
+            star.ironium_inventory = 1000
+            star.boranium_inventory = 1000
+            star.germanium_inventory = 1000
+            star.save(update_fields=['ironium_inventory', 'boranium_inventory', 'germanium_inventory'])
+        player = gf.join_player(self.accounts[0], self.races[0])
+        homeworld = player.homeworld
+        self.assertTrue(player.spend_leftover_points_on_research)
+        self.assertEqual(homeworld.ironium_inventory, 1000)
+        self.assertEqual(homeworld.boranium_inventory, 1000)
+        self.assertEqual(homeworld.germanium_inventory, 1000)
+
     def test_homeworlds_are_spaced_apart(self):
         gf = GameFactory()
         gf.set_map_size(200, 200)  # min distance = min(250, 50) = 50

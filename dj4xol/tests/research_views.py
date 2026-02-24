@@ -39,3 +39,32 @@ class ResearchViewTest(TestCase):
         rows = PlayerResearch.objects.filter(player=self.player)
         total = sum(row.allocation_percent for row in rows)
         self.assertAlmostEqual(total, 100.0, places=5)
+
+    def test_singular_research_focuses_one_category(self):
+        self.player.singular_research = True
+        self.player.save(update_fields=['singular_research'])
+        response = self.client.post(
+            reverse('dj4xol:research', args=[self.game.short_id]),
+            {
+                'focus_category': str(self.electronics.id),
+                'alloc_action': 'focus',
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        rows = {
+            row.category_id: row.allocation_percent
+            for row in PlayerResearch.objects.filter(player=self.player)
+        }
+        self.assertEqual(rows[self.electronics.id], 100.0)
+        self.assertEqual(rows[self.energy.id], 0.0)
+
+    def test_turn_in_from_research_redirects_back_to_research(self):
+        response = self.client.post(
+            reverse('dj4xol:turn_in', args=[self.game.short_id]),
+            {'return_to': 'research'}
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.url,
+            reverse('dj4xol:research', args=[self.game.short_id]),
+        )

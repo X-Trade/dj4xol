@@ -2,6 +2,7 @@ from django.test import TestCase
 
 from ..models import Fleet, FleetOrders, ProductionOrder, ResearchCategory, Technology
 from ..research import (
+    build_research_budget,
     ensure_player_research_rows,
     get_player_tech_effects,
     get_player_colony_defense_level,
@@ -17,6 +18,7 @@ class ResearchTurnTest(TestCase):
         self.star = self.player.homeworld
 
     def test_build_lab_production_order(self):
+        self.star.labs = 0
         self.star.factories = 10
         self.star.ironium_inventory = 1000
         self.star.boranium_inventory = 1000
@@ -69,6 +71,57 @@ class ResearchTurnTest(TestCase):
         row.refresh_from_db()
         self.assertEqual(row.current_level, 2.0)
         self.assertEqual(int(row.stored_rp), 70)
+
+    def test_research_budget_can_include_unused_buildpoints(self):
+        self.player.convert_unused_buildpoints_to_research = True
+        self.player.save(update_fields=['convert_unused_buildpoints_to_research'])
+        self.star.mines = 0
+        self.star.factories = 10
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.labs = 0
+        self.star.colonists = 10000
+        self.star.buildpoints_consumed = 30
+        self.star.save()
+
+        budget = build_research_budget(self.player)
+        self.assertEqual(budget['lab_generated_rp'], 0)
+        self.assertEqual(budget['converted_rp'], 35)
+        self.assertEqual(budget['generated_rp'], 35)
+
+    def test_leftover_balance_points_convert_to_one_time_research_bonus(self):
+        category = ResearchCategory.objects.create(
+            code='LEFT', name='Leftover', enabled=True
+        )
+        Technology.objects.create(
+            category=category,
+            level=1,
+            name='Primer',
+            tech_type='GENERAL',
+            params_json='{}',
+        )
+        self.player.spend_leftover_points_on_research = True
+        self.player.leftover_points = 3.0
+        self.player.save(update_fields=['spend_leftover_points_on_research', 'leftover_points'])
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.labs = 0
+        self.star.colonists = 10000
+        self.star.buildpoints_consumed = 0
+        self.star.save()
+
+        budget_before = build_research_budget(self.player)
+        self.assertEqual(budget_before['leftover_bonus_rp'], 30)
+        self.assertEqual(budget_before['generated_rp'], 30)
+
+        GameTurn(self.game).research()
+        self.player.refresh_from_db()
+        self.assertEqual(self.player.leftover_points, 0.0)
+
+        budget_after = build_research_budget(self.player)
+        self.assertEqual(budget_after['leftover_bonus_rp'], 0)
 
     def test_new_fleet_uses_unlocked_propulsion(self):
         category = ResearchCategory.objects.create(
