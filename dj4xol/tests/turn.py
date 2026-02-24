@@ -2971,6 +2971,36 @@ class TestFleetTransferOrders(TestCase):
         ).build_detail()
         self.assertEqual(detail['infrastructure']['DefensesTooltip'], '5(+0)')
 
+    def test_new_fleet_gets_thumbnail_path(self):
+        game = default_game(stars=2)
+        player = game.players.first()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Thumbnail Test",
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+        )
+        self.assertTrue(fleet.thumbnail_path)
+        self.assertTrue(fleet.thumbnail_path.endswith('.png'))
+
+    def test_selected_fleet_detail_includes_thumbnail(self):
+        from ..objectdetails import DetailBuilder
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Detail Thumb",
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+        )
+        detail = DetailBuilder(
+            game, x=fleet.x, y=fleet.y, selected=fleet.short_id, player=player
+        ).build_detail()
+        self.assertEqual(detail.get('fleet_thumbnail'), fleet.thumbnail_path)
+
     def test_transfer_colonists_to_unowned_star_random_failure(self):
         """Colonists transferred to unowned star usually fail to colonise."""
         from ..models import FleetOrders
