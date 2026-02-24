@@ -225,8 +225,7 @@
 
     .create-race .panel.open .panel-content > div,
     .onboarding .panel.open .panel-content > div,
-    .create-game .panel.open .panel-content > div,
-    .colony-help .panel.open .panel-content > div {
+    .create-game .panel.open .panel-content > div {
         max-height: calc(100vh - 180px);
     }
 }
@@ -269,8 +268,7 @@
 
 .create-race .panel.open .panel-content > div,
 .onboarding .panel.open .panel-content > div,
-.create-game .panel.open .panel-content > div,
-.colony-help .panel.open .panel-content > div {
+.create-game .panel.open .panel-content > div {
     min-height: 25vh;
     max-height: calc(100vh - 180px) !important;
 }
