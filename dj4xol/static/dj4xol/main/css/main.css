@@ -315,6 +315,14 @@ body {
     gap: 8px;
 }
 
+.fleet-thumbnail {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    flex: 0 0 64px;
+    image-rendering: auto;
+}
+
 .detail-header h3 {
     margin: 0;
     flex: 1;

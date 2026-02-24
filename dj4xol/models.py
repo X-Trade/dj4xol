@@ -6,6 +6,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from itertools import chain
 from .starnamer import StarNamer
 from .habitability_rules import HabitabilityRules
+from .fleet_thumbnails import choose_fleet_thumbnail
 import random
 import uuid
 from uuid_extensions import uuid7 as _uuid7
@@ -473,8 +474,20 @@ class Fleet(AbstractMapObject):
     max_safe_warp = models.IntegerField(default=2)
     offense_level = models.FloatField(default=0.0)
     defense_level = models.FloatField(default=0.0)
+    thumbnail_path = models.CharField(max_length=255, blank=True, default='')
     integrity = models.IntegerField(default=100,
             validators=[MinValueValidator(0), MaxValueValidator(100)])
+
+    def save(self, *args, **kwargs):
+        if not self.thumbnail_path:
+            self.thumbnail_path = choose_fleet_thumbnail(self.id or self.short_id or self.name)
+        super(Fleet, self).save(*args, **kwargs)
+
+    @property
+    def effective_thumbnail_path(self):
+        if self.thumbnail_path:
+            return self.thumbnail_path
+        return choose_fleet_thumbnail(self.id or self.short_id or self.name)
 
     @property
     def cargo_used(self):
