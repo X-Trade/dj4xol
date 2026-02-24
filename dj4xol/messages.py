@@ -1042,6 +1042,36 @@ class CombatMessageFactory(MessageFactory):
         )
 
 
+class OrbitalDefenseHitMessageFactory(MessageFactory):
+    """Messages when hostile orbital fleets are hit by colony defenses."""
+    category = 'COMBAT'
+    priority = True
+    templates_attacker = [
+        "{fleet} was struck by defensive fire from {star}. {damage}% integrity lost.",
+        "Hazardous orbit at {star}: {fleet} took {damage}% integrity damage from planetary defenses.",
+        "Defenses on {star} scored a hit on {fleet}. Integrity reduced by {damage}%.",
+    ]
+    templates_defender = [
+        "Planetary defenses at {star} hit an orbiting hostile fleet ({fleet}) for {damage}% damage.",
+        "A lucky defensive shot from {star} damaged enemy fleet {fleet} ({damage}% integrity loss).",
+    ]
+
+    def __init__(self, game, player, star, fleet_name, damage, perspective='attacker', message=None):
+        super().__init__(game, player, message, intensity=-0.3)
+        self.star = star
+        self.fleet_name = fleet_name
+        self.damage = int(damage)
+        self.perspective = perspective
+
+    def format_message(self):
+        templates = self.templates_attacker if self.perspective == 'attacker' else self.templates_defender
+        return random.choice(templates).format(
+            star=format_map_object(self.star),
+            fleet=self.fleet_name,
+            damage=self.damage,
+        )
+
+
 class SalvageCollectedMessageFactory(MessageFactory):
     """Messages for salvage collection via Transfer."""
     category = 'GENERAL'

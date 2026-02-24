@@ -2735,6 +2735,162 @@ class TestFleetTransferOrders(TestCase):
         tech_integrity = _run_invasion(with_colony_tech=True)
         self.assertLess(tech_integrity, base_integrity)
 
+    def test_hostile_orbit_can_take_defense_hazard_damage(self):
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = Player.objects.exclude(id=attacker.id).first()
+        if not defender:
+            other_user = User.objects.create_user('orb_def1', 'orbdef1@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(
+                game=game,
+                account=other_account,
+                race_type=attacker.race_type,
+            )
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10000
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.defenses = 12
+        star.save(update_fields=[
+            'player', 'colonists', 'mines', 'factories', 'labs', 'shipyards', 'defenses'
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name="Raider",
+            x=star.x,
+            y=star.y,
+            integrity=100,
+            ship_count=2,
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=True):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertLess(fleet.integrity, 100)
+        self.assertGreater(
+            attacker.messages.filter(category='COMBAT').count(), 0
+        )
+        self.assertGreater(
+            defender.messages.filter(category='COMBAT').count(), 0
+        )
+
+    def test_hostile_orbit_hazard_respects_trigger_roll(self):
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = Player.objects.exclude(id=attacker.id).first()
+        if not defender:
+            other_user = User.objects.create_user('orb_def2', 'orbdef2@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(
+                game=game,
+                account=other_account,
+                race_type=attacker.race_type,
+            )
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10000
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.defenses = 12
+        star.save(update_fields=[
+            'player', 'colonists', 'mines', 'factories', 'labs', 'shipyards', 'defenses'
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name="Scout",
+            x=star.x,
+            y=star.y,
+            integrity=100,
+            ship_count=1,
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=False):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 100)
+
+    def test_hostile_orbit_hazard_uses_colony_defense_technology(self):
+        from ..models import ResearchCategory, Technology
+        from ..research import ensure_player_research_rows
+
+        def _run_hazard(with_colony_tech):
+            game = default_game(stars=2)
+            attacker = game.players.first()
+            defender = Player.objects.exclude(id=attacker.id).first()
+            if not defender:
+                other_user = User.objects.create_user(
+                    f'orb_def3_{"tech" if with_colony_tech else "base"}',
+                    'orbdef3@test.com',
+                    'pass'
+                )
+                other_account = Account.objects.create(django_user=other_user)
+                defender = Player.objects.create(
+                    game=game,
+                    account=other_account,
+                    race_type=attacker.race_type,
+                )
+
+            star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+            star.player = defender
+            star.colonists = 10000
+            star.mines = 0
+            star.factories = 0
+            star.labs = 0
+            star.shipyards = 0
+            star.defenses = 12
+            star.save(update_fields=[
+                'player', 'colonists', 'mines', 'factories', 'labs', 'shipyards', 'defenses'
+            ])
+
+            if with_colony_tech:
+                category = ResearchCategory.objects.create(
+                    code='ORBITCONST', name='Orbit Construction', enabled=True
+                )
+                Technology.objects.create(
+                    category=category,
+                    level=2,
+                    name='Planetary Tracking Grid',
+                    tech_type='INFRASTRUCTURE',
+                    params_json='{"colony_defense_level": 1.0}',
+                    enabled=True,
+                )
+                for row in ensure_player_research_rows(defender):
+                    row.current_level = 2.0
+                    row.save(update_fields=['current_level'])
+
+            fleet = Fleet.objects.create(
+                game=game,
+                player=attacker,
+                name="Harrier",
+                x=star.x,
+                y=star.y,
+                integrity=100,
+                ship_count=2,
+            )
+
+            with patch('dj4xol.turn.roll_chance', return_value=True):
+                GameTurn(game).generate_turn()
+            fleet.refresh_from_db()
+            return fleet.integrity
+
+        base_integrity = _run_hazard(with_colony_tech=False)
+        tech_integrity = _run_hazard(with_colony_tech=True)
+        self.assertLess(tech_integrity, base_integrity)
+
     def test_owned_star_defenses_tooltip_shows_effective_and_modifier(self):
         from ..models import ResearchCategory, Technology
         from ..research import ensure_player_research_rows
