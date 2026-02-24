@@ -1,11 +1,13 @@
 from django.db import models
 from dj4xol.models import Fleet, Star, Salvage, Report
 from dj4xol.turn import apply_population_change, KT_PER_MINE
+from dj4xol.research import get_player_colony_defense_level
 from dj4xol.colony_rules import (
     calculate_growth_factor,
     calculate_habitability_factor,
     effective_capacity,
     calculate_employment_percent,
+    calculate_effective_defenses,
     calculate_available_buildpoints,
     calculate_available_researchpoints,
     calculate_staffing_ratio,
@@ -478,11 +480,26 @@ class DetailBuilder():
     def build_infrastructure_detail(self):
         infrastructure = None
         if self.selected_obj and isinstance(self.selected_obj, Star):
+            is_owned = (
+                self.player is not None and self.selected_obj.player == self.player
+            )
             jobs = ((self.selected_obj.mines + self.selected_obj.factories
                      + self.selected_obj.labs
                      + self.selected_obj.defenses) * COLONISTS_PER_JOB
                     + self.selected_obj.shipyards * COLONISTS_PER_SHIPYARD)
             employment = calculate_employment_percent(self.selected_obj)
+            defenses_tooltip = None
+            if is_owned:
+                colony_defense_level = get_player_colony_defense_level(self.player)
+                defense_multiplier = 2.0 ** max(0.0, colony_defense_level)
+                effective_base_defenses = calculate_effective_defenses(
+                    self.selected_obj
+                )
+                effective_defenses = int(
+                    effective_base_defenses * defense_multiplier
+                )
+                modifier = int(round(colony_defense_level * 10.0))
+                defenses_tooltip = f"{effective_defenses}({modifier:+d})"
             infrastructure = {
                 'Mines': self.selected_obj.mines,
                 'Factories': self.selected_obj.factories,
@@ -490,6 +507,7 @@ class DetailBuilder():
                 'Labs': self.selected_obj.labs,
                 'LabsRP': calculate_available_researchpoints(self.selected_obj),
                 'Defenses': self.selected_obj.defenses,
+                'DefensesTooltip': defenses_tooltip,
                 'Shipyards': self.selected_obj.shipyards,
                 'Jobs': {'count': jobs, 'employment': employment},
             }

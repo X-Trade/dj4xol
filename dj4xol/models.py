@@ -734,6 +734,7 @@ class Technology(UUIDMixin):
         ('TORPEDO', 'Torpedo'),
         ('SHIELD', 'Shield'),
         ('ARMOUR', 'Armour'),
+        ('INFRASTRUCTURE', 'Infrastructure'),
         ('OTHER', 'Other'),
     ]
 

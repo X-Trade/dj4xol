@@ -2661,6 +2661,160 @@ class TestFleetTransferOrders(TestCase):
         # Defenses should have reduced integrity
         self.assertLess(fleet.integrity, 100)
 
+    def test_transfer_invasion_uses_colony_defense_technology(self):
+        """Latest unlocked colony defense tech should strengthen defenses."""
+        from ..models import FleetOrders, ResearchCategory, Technology
+        from ..research import ensure_player_research_rows
+
+        def _run_invasion(with_colony_tech):
+            game = default_game(stars=2)
+            attacker = game.players.first()
+            defender = Player.objects.exclude(id=attacker.id).first()
+            if not defender:
+                other_user = User.objects.create_user(
+                    f'inv_def4_{"tech" if with_colony_tech else "base"}',
+                    'invdef4@test.com',
+                    'pass'
+                )
+                other_account = Account.objects.create(django_user=other_user)
+                defender = Player.objects.create(
+                    game=game,
+                    account=other_account,
+                    race_type=attacker.race_type,
+                )
+
+            star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+            star.player = defender
+            star.colonists = 1000
+            star.defenses = 5
+            star.save()
+
+            if with_colony_tech:
+                category = ResearchCategory.objects.create(
+                    code='CONSTRUCTION', name='Construction', enabled=True
+                )
+                Technology.objects.create(
+                    category=category,
+                    level=2,
+                    name='Planetary Bastion Grid',
+                    tech_type='INFRASTRUCTURE',
+                    params_json='{"colony_defense_level": 1.0}',
+                    enabled=True,
+                )
+                for row in ensure_player_research_rows(defender):
+                    row.current_level = 2.0
+                    row.save(update_fields=['current_level'])
+
+            fleet = Fleet.objects.create(
+                game=game,
+                player=attacker,
+                name="Invader",
+                x=star.x,
+                y=star.y,
+                colonists=2,
+                integrity=100,
+                ship_count=1
+            )
+
+            FleetOrders.objects.create(
+                game=game,
+                fleet=fleet,
+                order_type='TRANSFER',
+                target_star=star,
+                transfer_type='UNLOAD',
+                transfer_colonists=2
+            )
+
+            with patch('dj4xol.turn.roll_chance', return_value=False):
+                GameTurn(game).generate_turn()
+
+            fleet.refresh_from_db()
+            return fleet.integrity
+
+        base_integrity = _run_invasion(with_colony_tech=False)
+        tech_integrity = _run_invasion(with_colony_tech=True)
+        self.assertLess(tech_integrity, base_integrity)
+
+    def test_owned_star_defenses_tooltip_shows_effective_and_modifier(self):
+        from ..models import ResearchCategory, Technology
+        from ..research import ensure_player_research_rows
+        from ..objectdetails import DetailBuilder
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.defenses = 10
+        star.colonists = 10000
+        star.save(update_fields=[
+            'mines', 'factories', 'labs', 'shipyards', 'defenses', 'colonists'
+        ])
+
+        category = ResearchCategory.objects.create(
+            code='CONSTRUCTION', name='Construction', enabled=True
+        )
+        Technology.objects.create(
+            category=category,
+            level=2,
+            name='Planetary Bastion Grid',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"colony_defense_level": 1.1}',
+            enabled=True,
+        )
+        for row in ensure_player_research_rows(player):
+            row.current_level = 2.0
+            row.save(update_fields=['current_level'])
+
+        detail = DetailBuilder(
+            game, x=star.x, y=star.y, selected=star.short_id, player=player
+        ).build_detail()
+        self.assertEqual(
+            detail['infrastructure']['DefensesTooltip'],
+            '21(+11)'
+        )
+
+    def test_unowned_star_defenses_has_no_effective_tooltip(self):
+        from ..objectdetails import DetailBuilder
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        star = game.stars.exclude(pk=player.homeworld.pk).first()
+        star.player = None
+        star.defenses = 10
+        star.save(update_fields=['player', 'defenses'])
+        Fleet.objects.create(
+            game=game, player=player, name='Scout', x=star.x, y=star.y
+        )
+
+        detail = DetailBuilder(
+            game, x=star.x, y=star.y, selected=star.short_id, player=player
+        ).build_detail()
+        self.assertIsNone(detail['infrastructure']['DefensesTooltip'])
+
+    def test_owned_star_defenses_tooltip_includes_staffing_effect(self):
+        from ..objectdetails import DetailBuilder
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.defenses = 10
+        star.colonists = 5000
+        star.save(update_fields=[
+            'mines', 'factories', 'labs', 'shipyards', 'defenses', 'colonists'
+        ])
+
+        detail = DetailBuilder(
+            game, x=star.x, y=star.y, selected=star.short_id, player=player
+        ).build_detail()
+        self.assertEqual(detail['infrastructure']['DefensesTooltip'], '5(+0)')
+
     def test_transfer_colonists_to_unowned_star_random_failure(self):
         """Colonists transferred to unowned star usually fail to colonise."""
         from ..models import FleetOrders
@@ -4804,8 +4958,8 @@ class TestCombat(TestCase):
         player2 = factory.join_player(account2, get_default_race())
         return game, player1, player2
 
-    def test_combat_strength_caps_ship_count(self):
-        """Ship count cap makes 3 vs 2 strength equal at full integrity."""
+    def test_combat_strength_ship_count_has_diminishing_returns(self):
+        """More ships increase strength, but with diminishing returns."""
         game, player1, player2 = self._create_two_player_game()
         fleet1 = Fleet.objects.create(
             game=game, player=player1, name="Fleet 1",
@@ -4818,7 +4972,9 @@ class TestCombat(TestCase):
 
         strength1 = calculate_fleet_strength(fleet1, opponent_defence_multiplier=1.0)
         strength2 = calculate_fleet_strength(fleet2, opponent_defence_multiplier=1.0)
-        self.assertEqual(strength1, strength2)
+        self.assertGreater(strength1, strength2)
+        # 50% more ships should not yield 50% more strength.
+        self.assertLess(strength1 / strength2, 1.5)
 
     def test_offense_level_increases_combat_strength(self):
         """Higher offense level should increase fleet strength."""

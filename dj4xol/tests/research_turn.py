@@ -1,7 +1,11 @@
 from django.test import TestCase
 
 from ..models import Fleet, FleetOrders, ProductionOrder, ResearchCategory, Technology
-from ..research import ensure_player_research_rows, get_player_tech_effects
+from ..research import (
+    ensure_player_research_rows,
+    get_player_tech_effects,
+    get_player_colony_defense_level,
+)
 from ..turn import GameTurn
 from ._util import default_game
 
@@ -233,3 +237,47 @@ class ResearchTurnTest(TestCase):
         effects = get_player_tech_effects(self.player)
         self.assertAlmostEqual(effects['offense_level'], 1.75, places=4)
         self.assertAlmostEqual(effects['defense_level'], 1.25, places=4)
+
+    def test_colony_defense_uses_latest_unlocked_technology(self):
+        energy = ResearchCategory.objects.create(
+            code='ECOL', name='EcoLogistics', enabled=True
+        )
+        weapons = ResearchCategory.objects.create(
+            code='WCOL', name='War College', enabled=True
+        )
+        Technology.objects.create(
+            category=energy,
+            level=2,
+            name='Planetary Barrier I',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"colony_defense_level": 0.4}',
+            display_order=10,
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=weapons,
+            level=3,
+            name='Planetary Barrier II',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"colony_defense_level": 0.7}',
+            display_order=20,
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=weapons,
+            level=4,
+            name='Planetary Barrier III',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"colony_defense_level": 1.0}',
+            display_order=30,
+            enabled=True,
+        )
+
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 3.0
+            row.save(update_fields=['current_level'])
+
+        self.assertAlmostEqual(
+            get_player_colony_defense_level(self.player), 0.7, places=4
+        )
