@@ -229,8 +229,9 @@ class GameFactory():
         star.ironium_inventory = max(1000, star.ironium_inventory)
         star.boranium_inventory = max(1000, star.boranium_inventory)
         star.germanium_inventory = max(1000, star.germanium_inventory)
-        # Apply leftover points to surface minerals (10kt per point)
-        if player.leftover_points and player.leftover_points > 0:
+        # Apply leftover points to surface minerals (10kt per point) unless routed to research.
+        if (player.leftover_points and player.leftover_points > 0 and
+                not player.spend_leftover_points_on_research):
             total_kt = int(player.leftover_points * 10)
             if total_kt > 0:
                 weights = [
@@ -293,6 +294,11 @@ class GameFactory():
         player.starting_labs = race.starting_labs
         player.starting_shipyards = race.starting_shipyards
         player.starting_fleets = race.starting_fleets
+        player.convert_unused_buildpoints_to_research = (
+            race.convert_unused_buildpoints_to_research
+        )
+        player.singular_research = race.singular_research
+        player.spend_leftover_points_on_research = race.spend_leftover_points_on_research
         player.leftover_points = race.leftover_points
         player.copy_habitability_from(race)
         player.save()

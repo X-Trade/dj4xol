@@ -3,7 +3,7 @@ import math
 
 from django.db import models, transaction
 
-from .colony_rules import calculate_available_researchpoints
+from .colony_rules import calculate_available_buildpoints, calculate_available_researchpoints
 from .models import (
     DefaultResearchLevelRequirement,
     PlayerResearch,
@@ -296,13 +296,16 @@ def ensure_player_research_rows(player):
         .order_by('category__display_order', 'category__name')
     )
 
-    allocations = [row.allocation_percent for row in rows]
-    norm = _whole_percentages(allocations)
     changed = False
-    for idx, row in enumerate(rows):
-        if abs(row.allocation_percent - norm[idx]) > 0.001:
-            row.allocation_percent = norm[idx]
-            changed = True
+    if player.singular_research:
+        changed = _apply_singular_allocations(rows)
+    else:
+        allocations = [row.allocation_percent for row in rows]
+        norm = _whole_percentages(allocations)
+        for idx, row in enumerate(rows):
+            if abs(row.allocation_percent - norm[idx]) > 0.001:
+                row.allocation_percent = norm[idx]
+                changed = True
     if changed:
         for row in rows:
             row.save(update_fields=['allocation_percent'])
@@ -312,6 +315,8 @@ def ensure_player_research_rows(player):
 def update_player_allocations(player, requested_percentages):
     """Apply and normalise submitted allocation percentages."""
     rows = ensure_player_research_rows(player)
+    if player.singular_research:
+        return rows
     row_by_cat = {str(row.category_id): row for row in rows}
 
     for cat_id, raw in requested_percentages.items():
@@ -336,10 +341,50 @@ def set_even_allocations(player):
     rows = ensure_player_research_rows(player)
     if not rows:
         return rows
+    if player.singular_research:
+        _apply_singular_allocations(rows)
+        for row in rows:
+            row.save(update_fields=['allocation_percent'])
+        return rows
     norm = _whole_percentages([1.0 for _ in rows])
     for idx, row in enumerate(rows):
         row.allocation_percent = norm[idx]
         row.save(update_fields=['allocation_percent'])
+    return rows
+
+
+def _apply_singular_allocations(rows, focus_category_id=None):
+    """Ensure one research row has 100% and all others 0%."""
+    if not rows:
+        return False
+    selected = None
+    if focus_category_id is not None:
+        for row in rows:
+            if str(row.category_id) == str(focus_category_id):
+                selected = row
+                break
+    if selected is None:
+        selected = max(rows, key=lambda r: (float(r.allocation_percent or 0.0), -int(r.category_id)))
+        if float(selected.allocation_percent or 0.0) <= 0:
+            selected = rows[0]
+
+    changed = False
+    for row in rows:
+        target = 100.0 if row == selected else 0.0
+        if abs(float(row.allocation_percent or 0.0) - target) > 0.001:
+            row.allocation_percent = target
+            changed = True
+    return changed
+
+
+def set_singular_allocation(player, category_id):
+    """Set focused research category for singular-research races."""
+    rows = ensure_player_research_rows(player)
+    if not rows:
+        return rows
+    if _apply_singular_allocations(rows, focus_category_id=category_id):
+        for row in rows:
+            row.save(update_fields=['allocation_percent'])
     return rows
 
 
@@ -448,13 +493,25 @@ def build_research_budget(player):
     """Build a per-turn RP budget summary."""
     stars = player.stars.all()
     total_labs = 0
-    generated = 0
+    lab_generated = 0
+    converted_rp = 0
+    leftover_bonus_rp = 0
     for star in stars:
         total_labs += star.labs
-        generated += int(calculate_available_researchpoints(star))
-    generated = int(round(generated * player.race_type.research_multiplier))
+        lab_generated += int(calculate_available_researchpoints(star))
+        if player.convert_unused_buildpoints_to_research:
+            available_bp = int(calculate_available_buildpoints(star))
+            used_bp = int(star.buildpoints_consumed or 0)
+            converted_rp += max(0, (available_bp - used_bp) // 2)
+    if player.spend_leftover_points_on_research and (player.leftover_points or 0) > 0:
+        leftover_bonus_rp = int(round(float(player.leftover_points) * 10.0))
+    lab_generated = int(round(lab_generated * player.race_type.research_multiplier))
+    generated = int(lab_generated + converted_rp + leftover_bonus_rp)
     return {
         'total_labs': total_labs,
+        'lab_generated_rp': lab_generated,
+        'converted_rp': converted_rp,
+        'leftover_bonus_rp': leftover_bonus_rp,
         'generated_rp': generated,
     }
 
@@ -464,6 +521,9 @@ def process_player_research_for_year(player):
     """Apply one year of RP generation/allocation/level progression."""
     rows = ensure_player_research_rows(player)
     if not rows:
+        if player.spend_leftover_points_on_research and (player.leftover_points or 0) > 0:
+            player.leftover_points = 0.0
+            player.save(update_fields=['leftover_points'])
         return []
 
     budget = build_research_budget(player)
@@ -493,6 +553,9 @@ def process_player_research_for_year(player):
 
     for row in rows:
         row.save(update_fields=['stored_rp', 'current_level'])
+    if budget.get('leftover_bonus_rp', 0) > 0 and player.spend_leftover_points_on_research:
+        player.leftover_points = 0.0
+        player.save(update_fields=['leftover_points'])
     return unlocks
 
 

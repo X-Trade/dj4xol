@@ -62,13 +62,15 @@ class HabitabilityRules:
 
 
 class RaceCreationRules(HabitabilityRules):
-    HABITABILITY_BUDGET = 60.0
+    HABITABILITY_BUDGET = 90.0
     HABITABILITY_COST_MULTIPLIER = 4.0
+    WIDTH_COST_MULTIPLIER = 2.0
     MIN_WIDTH = 0.1
     CENTER_STEP = 0.05
-    DEFAULT_STARTING_COLONISTS = 10
+    DEFAULT_STARTING_COLONISTS = 20
     DEFAULT_STARTING_MINES = 4
     DEFAULT_STARTING_FACTORIES = 2
+    DEFAULT_STARTING_LABS = 1
     DEFAULT_STARTING_SHIPYARDS = 1
     DEFAULT_STARTING_FLEETS = 2
 
@@ -79,8 +81,11 @@ class RaceCreationRules(HabitabilityRules):
         starting_colonists=None,
         starting_mines=None,
         starting_factories=None,
+        starting_labs=None,
         starting_shipyards=None,
         starting_fleets=None,
+        convert_unused_buildpoints_to_research=False,
+        singular_research=False,
         budget=None,
         envs=None,
     ):
@@ -91,6 +96,8 @@ class RaceCreationRules(HabitabilityRules):
             starting_mines = self.DEFAULT_STARTING_MINES
         if starting_factories is None:
             starting_factories = self.DEFAULT_STARTING_FACTORIES
+        if starting_labs is None:
+            starting_labs = self.DEFAULT_STARTING_LABS
         if starting_shipyards is None:
             starting_shipyards = self.DEFAULT_STARTING_SHIPYARDS
         if starting_fleets is None:
@@ -98,8 +105,21 @@ class RaceCreationRules(HabitabilityRules):
         self.starting_colonists = int(starting_colonists)
         self.starting_mines = int(starting_mines)
         self.starting_factories = int(starting_factories)
+        self.starting_labs = int(starting_labs)
         self.starting_shipyards = int(starting_shipyards)
         self.starting_fleets = int(starting_fleets)
+        self.convert_unused_buildpoints_to_research = bool(convert_unused_buildpoints_to_research)
+        self.singular_research = bool(singular_research)
+
+    def width_cost(self):
+        return super().width_cost() * self.WIDTH_COST_MULTIPLIER
+
+    def per_env_cost(self, env):
+        base = (
+            self.widths[env] * self.WIDTH_COST_MULTIPLIER
+            + (1.0 - abs(self.centers[env] - 1.0))
+        )
+        return base * self.cost_multiplier
 
     def colonist_cost(self):
         return max(0, self.starting_colonists)
@@ -110,16 +130,26 @@ class RaceCreationRules(HabitabilityRules):
     def factories_cost(self):
         return max(0, self.starting_factories)
 
+    def labs_cost(self):
+        return max(0, self.starting_labs) * 8
+
     def shipyards_cost(self):
         return max(0, self.starting_shipyards) * 4
 
     def fleets_cost(self):
         return max(0, self.starting_fleets) * 8
 
+    def convert_unused_buildpoints_cost(self):
+        return 20 if self.convert_unused_buildpoints_to_research else 0
+
+    def singular_research_savings(self):
+        return 16 if self.singular_research else 0
+
     def total_cost(self):
         return (self.habitability_cost() + self.colonist_cost() +
                 self.mines_cost() + self.factories_cost() +
-                self.shipyards_cost() + self.fleets_cost())
+                self.labs_cost() + self.shipyards_cost() + self.fleets_cost() +
+                self.convert_unused_buildpoints_cost() - self.singular_research_savings())
 
     def validate(self):
         errors = []
@@ -139,6 +169,8 @@ class RaceCreationRules(HabitabilityRules):
             errors.append('Starting mines cannot be negative')
         if self.starting_factories < 0:
             errors.append('Starting factories cannot be negative')
+        if self.starting_labs < 0:
+            errors.append('Starting labs cannot be negative')
         if self.starting_shipyards < 0:
             errors.append('Starting shipyards cannot be negative')
         if self.starting_fleets < 0:

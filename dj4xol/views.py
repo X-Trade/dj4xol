@@ -15,7 +15,8 @@ from .models import (
 from .decorators import registration_required, player_only_view
 from .turn import GameTurn
 from .research import (
-    build_research_screen_data, update_player_allocations, set_even_allocations
+    build_research_screen_data, update_player_allocations, set_even_allocations,
+    set_singular_allocation,
 )
 from .starmap import StarMap
 from .factory import GameFactory
@@ -328,9 +329,14 @@ def debug_create_fleet(request, game_short_id):
 
 
 def _redirect_preserving_selection(request, game):
-    """Redirect to game view, preserving x, y, sel query params."""
+    """Redirect to game view (or explicit target), preserving game selection when relevant."""
     from django.urls import reverse
     from urllib.parse import urlencode
+    return_to = request.POST.get('return_to') or request.GET.get('return_to')
+    if return_to == 'research':
+        url = reverse('dj4xol:research', kwargs={'game_short_id': game.short_id})
+        return redirect(url)
+
     url = reverse('dj4xol:game', kwargs={'game_short_id': game.short_id})
     params = {k: request.POST.get(k) or request.GET.get(k)
               for k in ['x', 'y', 'sel'] if request.POST.get(k) or request.GET.get(k)}
@@ -906,7 +912,10 @@ def research(request, game_short_id):
         request.POST.get('category') or request.GET.get('category')
     )
     if request.method == 'POST' and not player.turned_in:
-        if request.POST.get('alloc_action') == 'even':
+        if player.singular_research:
+            focus_category = request.POST.get('focus_category') or selected_category
+            set_singular_allocation(player, focus_category)
+        elif request.POST.get('alloc_action') == 'even':
             set_even_allocations(player)
         else:
             requested = {}
@@ -933,6 +942,7 @@ def research(request, game_short_id):
         'next_level_requirements': data['next_level_requirements'],
         'next_level_resource_rows': data['next_level_resource_rows'],
         'next_level_items': data['next_level_items'],
+        'singular_research': player.singular_research,
         'user_theme': account.theme if account else 'classic',
     })
 

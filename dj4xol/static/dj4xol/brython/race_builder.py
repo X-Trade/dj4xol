@@ -154,8 +154,15 @@ def _update_all(ui_rows, summary_value, error_box):
 
     starting_mines = read_int('id_starting_mines', 4)
     starting_factories = read_int('id_starting_factories', 2)
+    starting_labs = read_int('id_starting_labs', 1)
     starting_shipyards = read_int('id_starting_shipyards', 1)
     starting_fleets = read_int('id_starting_fleets', 2)
+    convert_checkbox = document.getElementById('id_convert_unused_buildpoints_to_research')
+    singular_checkbox = document.getElementById('id_singular_research')
+    convert_unused_buildpoints_to_research = bool(
+        convert_checkbox and convert_checkbox.checked
+    )
+    singular_research = bool(singular_checkbox and singular_checkbox.checked)
     for ui in ui_rows:
         env = ui['env']
         widths[env] = _clamp(widths[env], 0.1, 2.0)
@@ -170,8 +177,11 @@ def _update_all(ui_rows, summary_value, error_box):
         starting_colonists=starting_colonists,
         starting_mines=starting_mines,
         starting_factories=starting_factories,
+        starting_labs=starting_labs,
         starting_shipyards=starting_shipyards,
         starting_fleets=starting_fleets,
+        convert_unused_buildpoints_to_research=convert_unused_buildpoints_to_research,
+        singular_research=singular_research,
     )
 
     for ui in ui_rows:
@@ -210,8 +220,11 @@ def _update_all(ui_rows, summary_value, error_box):
     set_points('colonist-row', rules.colonist_cost())
     set_points('mine-row', rules.mines_cost())
     set_points('factory-row', rules.factories_cost())
+    set_points('lab-row', rules.labs_cost())
     set_points('shipyard-row', rules.shipyards_cost())
     set_points('fleet-row', rules.fleets_cost())
+    set_points('convert-bp-row', rules.convert_unused_buildpoints_cost())
+    set_points('singular-row', -rules.singular_research_savings())
 
 
 
@@ -370,8 +383,15 @@ def init_habitability_form():
     attach_points('id_starting_colonists', 'colonist-row', 'colonist-row-points')
     attach_points('id_starting_mines', 'mine-row', 'mine-row-points')
     attach_points('id_starting_factories', 'factory-row', 'factory-row-points')
+    attach_points('id_starting_labs', 'lab-row', 'lab-row-points')
     attach_points('id_starting_shipyards', 'shipyard-row', 'shipyard-row-points')
     attach_points('id_starting_fleets', 'fleet-row', 'fleet-row-points')
+    attach_points(
+        'id_convert_unused_buildpoints_to_research',
+        'convert-bp-row',
+        'convert-bp-row-points',
+    )
+    attach_points('id_singular_research', 'singular-row', 'singular-row-points')
     existing_summary = document.select_one('.habitability-summary')
     if existing_summary:
         summary_row = existing_summary
@@ -397,6 +417,7 @@ def init_habitability_form():
         summary_row <= html.TD(error_box)
 
     leftover_checkbox = document.getElementById('id_spend_leftover_on_minerals')
+    leftover_research_checkbox = document.getElementById('id_spend_leftover_on_research')
     if existing_summary is None and leftover_checkbox:
         leftover_row = leftover_checkbox.closest('tr')
         if leftover_row and leftover_row.parentNode:
@@ -419,12 +440,38 @@ def init_habitability_form():
         'id_starting_colonists',
         'id_starting_mines',
         'id_starting_factories',
+        'id_starting_labs',
         'id_starting_shipyards',
         'id_starting_fleets',
     ]:
         input_el = document.getElementById(field_id)
         if input_el:
             input_el.bind('input', lambda ev: _update_all(ui_rows, summary_value, error_box))
+    for field_id in ['id_convert_unused_buildpoints_to_research', 'id_singular_research']:
+        checkbox = document.getElementById(field_id)
+        if checkbox:
+            checkbox.bind('change', lambda ev: _update_all(ui_rows, summary_value, error_box))
+
+    def _sync_leftover_options(ev=None):
+        if not leftover_checkbox or not leftover_research_checkbox:
+            return
+        if leftover_checkbox.checked:
+            leftover_research_checkbox.checked = False
+            leftover_research_checkbox.disabled = True
+            leftover_checkbox.disabled = False
+        elif leftover_research_checkbox.checked:
+            leftover_checkbox.checked = False
+            leftover_checkbox.disabled = True
+            leftover_research_checkbox.disabled = False
+        else:
+            leftover_checkbox.disabled = False
+            leftover_research_checkbox.disabled = False
+
+    if leftover_checkbox and leftover_research_checkbox:
+        leftover_checkbox.bind('change', _sync_leftover_options)
+        leftover_research_checkbox.bind('change', _sync_leftover_options)
+        _sync_leftover_options()
+
     _update_all(ui_rows, summary_value, error_box)
 
 

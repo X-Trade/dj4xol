@@ -11,12 +11,18 @@ class ServerRaceForm(forms.ModelForm):
         required=False,
         label="Spend leftover points on surface minerals"
     )
+    spend_leftover_on_research = forms.BooleanField(
+        required=False,
+        label="Spend leftover points on research"
+    )
     class Meta:
         model = ServerRace
         fields = [
             'name', 'plural_name', 'homeworld_name', 'race_type', 'description',
             'starting_colonists',
-            'starting_mines', 'starting_factories', 'starting_shipyards', 'starting_fleets',
+            'starting_mines', 'starting_factories', 'starting_labs',
+            'starting_shipyards', 'starting_fleets',
+            'convert_unused_buildpoints_to_research', 'singular_research',
             'gravity_center', 'gravity_width',
             'temperature_center', 'temperature_width',
             'radiation_center', 'radiation_width',
@@ -26,6 +32,7 @@ class ServerRaceForm(forms.ModelForm):
             'starting_colonists': forms.NumberInput(attrs={'step': '1', 'min': '1'}),
             'starting_mines': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
             'starting_factories': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
+            'starting_labs': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
             'starting_shipyards': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
             'starting_fleets': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
             'gravity_center': forms.NumberInput(attrs={'step': '0.05', 'min': '0', 'max': '2'}),
@@ -40,6 +47,13 @@ class ServerRaceForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['race_type'].queryset = ServerRaceType.objects.filter(enabled=True)
         self.fields['description'].required = False
+        if self.instance and self.instance.pk:
+            self.fields['spend_leftover_on_research'].initial = bool(
+                self.instance.spend_leftover_points_on_research
+            )
+            self.fields['spend_leftover_on_minerals'].initial = bool(
+                self.instance.leftover_points and not self.instance.spend_leftover_points_on_research
+            )
         for field in [
             'gravity_center', 'gravity_width',
             'temperature_center', 'temperature_width',
@@ -52,6 +66,13 @@ class ServerRaceForm(forms.ModelForm):
         cleaned_data = super().clean()
         from .habitability_rules import RaceCreationRules
 
+        spend_leftover_on_minerals = cleaned_data.get('spend_leftover_on_minerals', False)
+        spend_leftover_on_research = cleaned_data.get('spend_leftover_on_research', False)
+        if spend_leftover_on_minerals and spend_leftover_on_research:
+            raise forms.ValidationError(
+                'Choose only one leftover points option: minerals or research.'
+            )
+
         rules = RaceCreationRules(
             centers={
                 'gravity': cleaned_data.get('gravity_center', 1.0),
@@ -63,11 +84,16 @@ class ServerRaceForm(forms.ModelForm):
                 'temperature': cleaned_data.get('temperature_width', 1.0),
                 'radiation': cleaned_data.get('radiation_width', 1.0),
             },
-            starting_colonists=cleaned_data.get('starting_colonists', 10),
+            starting_colonists=cleaned_data.get('starting_colonists', 20),
             starting_mines=cleaned_data.get('starting_mines', 4),
             starting_factories=cleaned_data.get('starting_factories', 2),
+            starting_labs=cleaned_data.get('starting_labs', 1),
             starting_shipyards=cleaned_data.get('starting_shipyards', 1),
             starting_fleets=cleaned_data.get('starting_fleets', 2),
+            convert_unused_buildpoints_to_research=cleaned_data.get(
+                'convert_unused_buildpoints_to_research', False
+            ),
+            singular_research=cleaned_data.get('singular_research', False),
         )
         errors = rules.validate()
         if errors:
@@ -78,10 +104,13 @@ class ServerRaceForm(forms.ModelForm):
     def save(self, commit=True):
         instance = super().save(commit=False)
         rules = self.cleaned_data.get('__rules__')
-        if rules and self.cleaned_data.get('spend_leftover_on_minerals'):
+        spend_leftover_on_minerals = self.cleaned_data.get('spend_leftover_on_minerals')
+        spend_leftover_on_research = self.cleaned_data.get('spend_leftover_on_research')
+        if rules and (spend_leftover_on_minerals or spend_leftover_on_research):
             instance.leftover_points = max(0.0, rules.budget - rules.total_cost())
         else:
             instance.leftover_points = 0.0
+        instance.spend_leftover_points_on_research = bool(spend_leftover_on_research)
         if commit:
             instance.save()
         return instance

@@ -105,6 +105,14 @@
         <td class="hint">1 point per factory.</td>
     </tr>
     <tr>
+        <th>Starting Labs:</th>
+        <td>
+            {{ form.starting_labs }}
+            {{ form.starting_labs.errors }}
+        </td>
+        <td class="hint">8 points per lab.</td>
+    </tr>
+    <tr>
         <th>Starting Shipyards:</th>
         <td>
             {{ form.starting_shipyards }}
@@ -121,11 +129,36 @@
         <td class="hint">8 points per fleet.</td>
     </tr>
     <tr>
+        <th>Unused BP to RP:</th>
+        <td>
+            {{ form.convert_unused_buildpoints_to_research }}
+            <label for="id_convert_unused_buildpoints_to_research">
+                Convert unused Build Points to Research
+            </label>
+            {{ form.convert_unused_buildpoints_to_research.errors }}
+        </td>
+        <td class="hint">20 points. Conversion rate: 2 Build Points = 1 Research Point each turn.</td>
+    </tr>
+    <tr>
+        <th>Singular Research:</th>
+        <td>
+            {{ form.singular_research }}
+            <label for="id_singular_research">Research only one category at 100%</label>
+            {{ form.singular_research.errors }}
+        </td>
+        <td class="hint">-16 points. One category focus instead of percentage budgeting.</td>
+    </tr>
+    <tr>
         <th>Leftover Points:</th>
         <td>
             {{ form.spend_leftover_on_minerals }}
             <label for="id_spend_leftover_on_minerals">Spend leftover points on surface minerals</label>
+            {{ form.spend_leftover_on_minerals.errors }}
+            <br>
+            {{ form.spend_leftover_on_research }}
+            <label for="id_spend_leftover_on_research">Spend leftover points on research</label>
+            {{ form.spend_leftover_on_research.errors }}
         </td>
-        <td class="hint">Only applied if you have unused points.</td>
+        <td class="hint">Exclusive choice. Surface minerals convert at 10 kt per leftover Balance Point. Research conversion is 10 RP per leftover Balance Point.</td>
     </tr>
 </table>

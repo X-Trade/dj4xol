@@ -23,6 +23,7 @@
                     {% else %}
                         <form method="post" action="{% url 'dj4xol:turn_in' game.short_id %}" style="display:inline">
                             {% csrf_token %}
+                            <input type="hidden" name="return_to" value="research">
                             <button type="submit">Turn In</button>
                         </form>
                     {% endif %}
@@ -49,6 +50,18 @@
                             <span class="env-label">RP/Year</span>
                             <span class="detail-value">{{ budget.generated_rp|floatformat:0 }}</span>
                         </div>
+                        {% if budget.converted_rp %}
+                        <div class="detail-row">
+                            <span class="env-label">From BP</span>
+                            <span class="detail-value">{{ budget.converted_rp|floatformat:0 }}</span>
+                        </div>
+                        {% endif %}
+                        {% if budget.leftover_bonus_rp %}
+                        <div class="detail-row">
+                            <span class="env-label">From Pts</span>
+                            <span class="detail-value">{{ budget.leftover_bonus_rp|floatformat:0 }}</span>
+                        </div>
+                        {% endif %}
                     </div></div>
                 </div>
                 <div class="panel no-transition open" data-panel="allocations">
@@ -69,18 +82,28 @@
                                    {{ row.category.name }}
                                 </a>
                                 <span class="allocation-level">L{{ row.current_level|floatformat:0 }}</span>
+                                {% if singular_research %}
+                                <input type="radio" name="focus_category" value="{{ row.category.id }}"
+                                       {% if row.allocation_percent > 0 %}checked{% endif %}>
+                                <span class="allocation-suffix">Focus</span>
+                                {% else %}
                                 <input type="number" step="1" min="0" max="100"
                                        name="alloc_{{ row.category.id }}"
                                        value="{{ row.allocation_percent|floatformat:0 }}"
                                        class="allocation-input">
                                 <span class="allocation-suffix">%</span>
+                                {% endif %}
                             </div>
                             {% empty %}
                             <p>No research categories configured.</p>
                             {% endfor %}
                             <div class="allocation-actions">
+                                {% if singular_research %}
+                                <button type="submit" name="alloc_action" value="focus">Set Focus</button>
+                                {% else %}
                                 <button type="submit" name="alloc_action" value="even">Even Split</button>
                                 <button type="submit" name="alloc_action" value="update">Update Allocation</button>
+                                {% endif %}
                             </div>
                         </form>
                     </div></div>

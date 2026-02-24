@@ -79,7 +79,8 @@ class TestHabitabilityMixin(TestCase):
         rules = RaceCreationRules(
             centers={'gravity': 1.0, 'temperature': 1.0, 'radiation': 1.0},
             widths={'gravity': 1.0, 'temperature': 1.0, 'radiation': 1.0},
-            starting_colonists=10,
+            starting_colonists=20,
+            starting_labs=1,
         )
         self.assertAlmostEqual(rules.total_cost(), rules.budget)
 
