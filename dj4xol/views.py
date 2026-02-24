@@ -595,6 +595,22 @@ def help_colony(request):
 
 
 @registration_required()
+def help_space_combat(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_space_combat.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
+def help_invasion(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_invasion.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
 def help_index(request):
     account = request.user.dj4xol_account
     return render(request, 'dj4xol/help_index.html', {
@@ -607,12 +623,13 @@ def _format_tech_param_key(key):
         'max_warp_speed': 'Maximum Warp',
         'offense_level': 'Offense Level',
         'defense_level': 'Defense Level',
+        'colony_defense_level': 'Colony Defense Level',
     }
     return labels.get(key, key.replace('_', ' ').title())
 
 
 def _format_tech_param_value(key, value):
-    if key in ('offense_level', 'defense_level'):
+    if key in ('offense_level', 'defense_level', 'colony_defense_level'):
         try:
             return int(round(float(value) * 10))
         except (TypeError, ValueError):

@@ -1,0 +1,133 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Space Combat Help</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index">
+        <div class="title-bar">
+            <span class="title">Space Combat</span>
+            <span class="tagline">Fleet Engagement Basics</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_space_combat' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-space-combat">
+                    <h2><span>Space Combat</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <p>
+                            Space combat is resolved by location. If two or more players have fleets at the same coordinates,
+                            each side contributes a combat strength based on ships, integrity, race traits, and fleet combat levels.
+                        </p>
+                        <h4>How Combat Is Triggered</h4>
+                        <p>
+                            Space combat is automatic. You do not press a separate attack button.
+                            Combat triggers during turn processing whenever fleets from at least two different players
+                            occupy the same map coordinates after movement is resolved.
+                        </p>
+                        <p>
+                            To initiate combat, plan movement so your fleet arrives at an occupied location
+                            (or stays in place while another player moves in). Intercept and patrol orders can also
+                            create contact by steering fleets into enemy positions.
+                        </p>
+                        <p>
+                            To prepare for combat, players typically:
+                            build and commission newer fleets after key research unlocks,
+                            keep fleet integrity high before contact,
+                            and combine multiple fleets at likely engagement points.
+                        </p>
+                        <h4>How Fleet Strength Is Built</h4>
+                        <p>
+                            A fleet's strength starts from its ship count with diminishing returns. Larger fleets are stronger,
+                            but each additional ship adds less than the previous one.
+                        </p>
+                        <p>
+                            That base is then scaled by offensive power and reduced by the opponent's defensive power.
+                            Offensive and defensive power come from race multipliers and the fleet's stored combat levels.
+                            These stored levels are applied when the fleet is commissioned.
+                        </p>
+                        <p>
+                            Commissioning happens when a new fleet is produced at a colony with a shipyard.
+                            At that moment, your unlocked technologies are evaluated and converted into the fleet's permanent
+                            combat profile. The game takes the latest unlocked technology in each relevant technology type
+                            and combines the resulting offense and defence effects into the new fleet.
+                        </p>
+                        <p>
+                            This means two fleets built by the same empire at different times can have different stored
+                            combat levels if research progressed between build years. Existing fleets keep their stored
+                            combat levels until they are lost or merged; new breakthroughs mainly affect newly commissioned
+                            fleets.
+                        </p>
+                        <p>
+                            Fleet integrity then applies a survivability curve. A fully healthy fleet contributes full strength,
+                            while damaged fleets lose a disproportionately large share of effective power.
+                        </p>
+                        <h4>How Sides Are Compared</h4>
+                        <p>
+                            At each combat location, fleets are grouped by player. The side's total strength is the sum of its fleets.
+                            Enemy defence is weighted by enemy ship counts, so large enemy fleets influence the defensive profile more.
+                        </p>
+                        <p>
+                            The winner is selected with weighted probability from side strengths. Luck does not replace strength,
+                            but it adds a modest random jitter to each side's effective weight before the winner roll.
+                        </p>
+                        <h4>Damage Resolution</h4>
+                        <p>
+                            A fixed damage pool is divided between sides according to relative enemy strength.
+                            The side facing stronger opposition takes more total damage.
+                        </p>
+                        <p>
+                            Each side's damage is then distributed to its fleets by ship-count share.
+                            Fleets can lose integrity, lose ships when badly damaged, and be destroyed.
+                            Combat can also generate salvage when hulls are destroyed or heavily damaged.
+                        </p>
+                        <h4>Simple Example</h4>
+                        <p>
+                            If two sides are equal, each usually takes about half of the total damage pool.
+                            If one side is much stronger, that side tends to take much less damage, but it can still suffer losses,
+                            especially if luck and integrity effects move against it.
+                        </p>
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                        </div>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+    </body>
+</html>

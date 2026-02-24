@@ -22,6 +22,7 @@ TECH_PARAM_LABELS = {
     'max_warp_speed': 'Maximum Warp',
     'offense_level': 'Offense Level',
     'defense_level': 'Defense Level',
+    'colony_defense_level': 'Colony Defense Level',
 }
 
 
@@ -44,7 +45,7 @@ def _format_param_key(key):
 
 def _format_param_value(key, value):
     """Return player-facing display value for technology parameter values."""
-    if key in ('offense_level', 'defense_level'):
+    if key in ('offense_level', 'defense_level', 'colony_defense_level'):
         try:
             return int(round(float(value) * 10))
         except (TypeError, ValueError):
@@ -404,6 +405,43 @@ def get_player_tech_effects(player):
             except (TypeError, ValueError):
                 pass
     return effects
+
+
+def get_player_colony_defense_level(player):
+    """Return latest unlocked colony defense bonus for invasion defense.
+
+    Colony defense does not stack. It uses the single latest unlocked
+    technology that defines colony_defense_level.
+    """
+    unlocked = list(get_player_unlocked_technologies(player))
+    if not unlocked:
+        return 0.0
+
+    selected = None
+    selected_level = 0.0
+    selected_sort_key = None
+
+    for tech in unlocked:
+        params = _safe_params(tech)
+        raw_level = params.get('colony_defense_level')
+        if raw_level is None:
+            raw_level = params.get('colony_defence_level')
+        if raw_level is None:
+            continue
+        try:
+            level = float(raw_level)
+        except (TypeError, ValueError):
+            continue
+
+        sort_key = (int(tech.level), int(tech.display_order), str(tech.name))
+        if selected is None or sort_key > selected_sort_key:
+            selected = tech
+            selected_level = level
+            selected_sort_key = sort_key
+
+    if selected is None:
+        return 0.0
+    return selected_level
 
 
 def build_research_budget(player):

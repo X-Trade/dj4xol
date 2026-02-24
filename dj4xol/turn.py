@@ -62,6 +62,7 @@ from .colony_rules import (
 from .research import (
     process_player_research_for_year,
     get_player_tech_effects,
+    get_player_colony_defense_level,
     apply_research_bonus_rp,
 )
 
@@ -92,7 +93,7 @@ SALVAGE_DEGRADATION_MIN = 0.30  # Minimum 30% loss when creating salvage
 SALVAGE_DEGRADATION_MAX = 0.70  # Maximum 70% loss when creating salvage
 
 # Combat constants (MVP)
-COMBAT_COUNT_CAP = 2            # Cap for normalized ship count (2+ ships treated equally)
+COMBAT_COUNT_SOFTENING = 2.0    # Higher values mean stronger diminishing returns
 COMBAT_DAMAGE_SCALE = 60        # Total integrity points distributed across combatants
 COMBAT_SALVAGE_DAMAGE_CHANCE = 0.25
 COMBAT_SALVAGE_DAMAGE_FACTOR = 0.20
@@ -147,10 +148,15 @@ def calculate_salvage_minerals(dry_mass, cargo_iron, cargo_bor, cargo_germ):
 
 
 def normalize_ship_count(ship_count):
-    """Normalize ship count to 0-1 with a cap for MVP combat balance."""
+    """Normalize ship count with diminishing returns and no hard cap.
+
+    The curve is scaled so that 2 ships maps to 1.0:
+    f(n) = 2n / (n + COMBAT_COUNT_SOFTENING)
+    """
     if ship_count <= 0:
         return 0.0
-    return min(ship_count, COMBAT_COUNT_CAP) / float(COMBAT_COUNT_CAP)
+    n = float(ship_count)
+    return (2.0 * n) / (n + COMBAT_COUNT_SOFTENING)
 
 
 def tech_level_to_multiplier(level):
@@ -1207,9 +1213,9 @@ class GameTurn():
             if defender_race:
                 defender_defence_mult = defender_race.defence_multiplier
             if defender:
-                defender_effects = get_player_tech_effects(defender)
+                colony_defense_level = get_player_colony_defense_level(defender)
                 defender_defence_mult *= tech_level_to_multiplier(
-                    defender_effects.get('defense_level', 0.0)
+                    colony_defense_level
                 )
             attacker_strength = calculate_fleet_strength(
                 fleet,

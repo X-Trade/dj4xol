@@ -172,7 +172,16 @@
             </div>
             <div class="detail-row">
                 <span class="env-label">Defenses</span>
-                <span class="detail-value">{{ detail.infrastructure.Defenses }}</span>
+                <span class="detail-value">
+                    {% if detail.infrastructure.DefensesTooltip %}
+                    <span class="has-tooltip"
+                          data-tooltip="{{ detail.infrastructure.DefensesTooltip }}">
+                        {{ detail.infrastructure.Defenses }}
+                    </span>
+                    {% else %}
+                    {{ detail.infrastructure.Defenses }}
+                    {% endif %}
+                </span>
             </div>
             <div class="detail-row">
                 <span class="env-label">Shipyards</span>

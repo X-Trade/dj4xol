@@ -1,0 +1,126 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Invasion Help</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index">
+        <div class="title-bar">
+            <span class="title">Invasion</span>
+            <span class="tagline">Colony Assault Resolution</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_invasion' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-invasion">
+                    <h2><span>Invasion</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <p>
+                            Invasion occurs when a fleet unloads colonists onto an enemy-owned colony.
+                            Resolution happens in two stages: planetary defence fire first, then ground combat if invaders remain.
+                        </p>
+                        <h4>How Invasion Is Triggered</h4>
+                        <p>
+                            Invasion is initiated through fleet orders. Move a fleet carrying colonists to an enemy-owned star,
+                            then issue a transfer order that unloads colonists to that star.
+                            During turn processing, unloading colonists onto an enemy colony automatically triggers invasion
+                            resolution for that transfer.
+                        </p>
+                        <p>
+                            You can plan invasions by combining movement and transfer orders:
+                            first ensure the fleet reaches the target system, then unload the intended number of colonists.
+                            Larger invasion forces are stronger on the ground, but fleet survival still depends on
+                            planetary defence fire in Stage 1.
+                        </p>
+                        <p>
+                            Defenders can prepare by maintaining staffed defences, increasing population,
+                            and improving colony-defence technology, all of which raise resistance to invasion.
+                        </p>
+                        <h4>Stage 1: Planetary Defence Fire</h4>
+                        <p>
+                            Colony defences are converted to an effective defence force before firing.
+                            Employment is applied first: if your colony does not have enough population to staff
+                            all infrastructure jobs, effective defences are reduced below the raw defence count.
+                        </p>
+                        <p>
+                            The colony's defensive multiplier is then applied. This combines race defence traits with
+                            the defender's latest unlocked colony-defence technology.
+                        </p>
+                        <p>
+                            The invading fleet's strength is evaluated against that defence profile using the same core
+                            combat arithmetic as space engagements. This can damage or destroy the invading fleet
+                            before any troops reach the surface.
+                        </p>
+                        <h4>Stage 2: Ground Combat</h4>
+                        <p>
+                            If the fleet survives, troops and defenders fight on the ground.
+                            Invaders are the unloaded colonists converted to population units.
+                            Defenders are the colony's current population.
+                        </p>
+                        <p>
+                            Each side is scaled by race ground-force multipliers. The side with the larger ground force wins.
+                            Remaining population is calculated from the surviving force after subtracting the opponent's force.
+                        </p>
+                        <h4>Ownership and Losses</h4>
+                        <p>
+                            If invaders win, colony ownership changes immediately and surviving invaders become the new population.
+                            If defenders hold, ownership remains unchanged and surviving defenders stay on the world.
+                        </p>
+                        <p>
+                            In all cases, the unloaded colonists are removed from the invading fleet.
+                            Combat reports are sent to both sides describing losses and fleet damage.
+                        </p>
+                        <h4>Practical Notes</h4>
+                        <p>
+                            A high raw defence count is strongest when properly staffed.
+                            Understaffing can dramatically reduce effective defences,
+                            while colony-defence technology can significantly multiply them.
+                        </p>
+                        <p>
+                            Defences are unusual among infrastructure in that they are not penalised by overstaffing.
+                            The major labour risk is understaffing.
+                        </p>
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                        </div>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+    </body>
+</html>

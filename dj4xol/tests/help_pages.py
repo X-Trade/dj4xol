@@ -17,6 +17,20 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'Help Index')
         self.assertContains(response, 'Colony Calculator')
         self.assertContains(response, 'Technology Directory')
+        self.assertContains(response, 'Space Combat')
+        self.assertContains(response, 'Invasion')
+
+    def test_help_space_combat_renders(self):
+        response = self.client.get(reverse('dj4xol:help_space_combat'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Space Combat')
+        self.assertContains(response, 'Damage Resolution')
+
+    def test_help_invasion_renders(self):
+        response = self.client.get(reverse('dj4xol:help_invasion'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Invasion')
+        self.assertContains(response, 'Stage 1: Planetary Defence Fire')
 
     def test_help_technology_renders_and_filters(self):
         energy = ResearchCategory.objects.create(
