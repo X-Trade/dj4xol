@@ -1,9 +1,5 @@
 // Global function for destination selection mode (called from map object onclick)
-function submitDestination(objectId, x, y, objectType) {
-    if (window.playerTurnedIn) {
-        return;
-    }
-    // Persist current map position before navigating
+function persistStarmapScrollPosition() {
     try {
         var $starmap = $("#starmap");
         if ($starmap.length) {
@@ -12,6 +8,14 @@ function submitDestination(objectId, x, y, objectType) {
             localStorage.setItem(storageKey + ':posY', $starmap.scrollTop());
         }
     } catch (e) {}
+}
+
+function submitDestination(objectId, x, y, objectType) {
+    if (window.playerTurnedIn) {
+        return;
+    }
+    // Persist current map position before navigating
+    persistStarmapScrollPosition();
     // Get current URL params and update with destination
     var params = new URLSearchParams(window.location.search);
     params.delete('mode');  // Exit destination mode
@@ -39,14 +43,7 @@ function submitCoordinateDestination(x, y) {
         return;
     }
     // Persist current map position before navigating
-    try {
-        var $starmap = $("#starmap");
-        if ($starmap.length) {
-            var storageKey = 'starmap:' + window.location.pathname;
-            localStorage.setItem(storageKey + ':posX', $starmap.scrollLeft());
-            localStorage.setItem(storageKey + ':posY', $starmap.scrollTop());
-        }
-    } catch (e) {}
+    persistStarmapScrollPosition();
     var params = new URLSearchParams(window.location.search);
     params.delete('mode');  // Exit destination mode
     params.delete('dest_star');
@@ -55,7 +52,7 @@ function submitCoordinateDestination(x, y) {
     window.location.search = params.toString();
 }
 
-$("document").ready(function() {
+$(document).ready(function() {
     var $starmap = $("#starmap");
     var $maparea = $("#maparea");
     var $sizer = $("#maparea-sizer");
@@ -295,6 +292,9 @@ $("document").ready(function() {
 
     var starmapEl = $starmap.get(0);
     if (starmapEl) {
+        // iOS Safari can still emit native gesture zoom while touching the map.
+        // Block native multi-touch/gesture defaults inside starmap to keep
+        // one authoritative zoom path and avoid pinch jitter.
         var blockNativeMultiTouch = function(e) {
             var target = e.target;
             if (!target || !starmapEl.contains(target)) {
