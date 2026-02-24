@@ -1,0 +1,57 @@
+/* Help pages should not be constrained to home.css fixed 25vh panel height. */
+.help-index .panel-content,
+.colony-help .panel-content {
+    margin-bottom: 4px;
+}
+
+.help-index .columns,
+.colony-help .columns {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.help-index .column,
+.colony-help .column {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    overflow: hidden;
+    min-height: 0;
+    height: 100%;
+}
+
+.help-index .column > .panel,
+.colony-help .column > .panel {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+.help-index .panel > h2,
+.colony-help .panel > h2 {
+    flex: 0 0 auto;
+}
+
+.help-index .panel-content,
+.colony-help .panel-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.help-index .panel.open .panel-content > div,
+.colony-help .panel.open .panel-content > div {
+    flex: 1 1 auto;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
