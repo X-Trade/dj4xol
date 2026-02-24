@@ -222,6 +222,10 @@ $("document").ready(function() {
     var gestureStartZoom = null;
     var touchPinching = false;
     var lastTouchPinchAt = 0;
+    var pinchFramePending = false;
+    var pinchFrameZoom = null;
+    var pinchFrameX = 0;
+    var pinchFrameY = 0;
     var isCoarsePointer = window.matchMedia &&
         window.matchMedia('(pointer: coarse)').matches;
     var isFinePointer = window.matchMedia &&
@@ -277,31 +281,67 @@ $("document").ready(function() {
     }
 
     function getTouchDistance(touches) {
-        var dx = touches[0].pageX - touches[1].pageX;
-        var dy = touches[0].pageY - touches[1].pageY;
+        var dx = touches[0].clientX - touches[1].clientX;
+        var dy = touches[0].clientY - touches[1].clientY;
         return Math.sqrt(dx * dx + dy * dy);
     }
 
     function getTouchMidpoint(touches) {
         return {
-            x: (touches[0].pageX + touches[1].pageX) / 2,
-            y: (touches[0].pageY + touches[1].pageY) / 2
+            x: (touches[0].clientX + touches[1].clientX) / 2,
+            y: (touches[0].clientY + touches[1].clientY) / 2
         };
     }
 
     var starmapEl = $starmap.get(0);
     if (starmapEl) {
+        var blockNativeMultiTouch = function(e) {
+            var target = e.target;
+            if (!target || !starmapEl.contains(target)) {
+                return;
+            }
+            if (e.touches && e.touches.length > 1) {
+                e.preventDefault();
+                return;
+            }
+            if (e.type.indexOf('gesture') === 0) {
+                e.preventDefault();
+            }
+        };
+
+        document.addEventListener(
+            'touchmove',
+            blockNativeMultiTouch,
+            { passive: false }
+        );
+        document.addEventListener(
+            'gesturestart',
+            blockNativeMultiTouch,
+            { passive: false }
+        );
+        document.addEventListener(
+            'gesturechange',
+            blockNativeMultiTouch,
+            { passive: false }
+        );
+        document.addEventListener(
+            'gestureend',
+            blockNativeMultiTouch,
+            { passive: false }
+        );
+
         starmapEl.addEventListener('touchstart', function(e) {
             if ($(e.target).closest('.starmap-controls, a').length) return;
             if (e.touches.length === 1) {
                 touchDragging = true;
                 pinchStartDist = null;
                 pinchStartZoom = null;
-                touchStartX = e.touches[0].pageX;
-                touchStartY = e.touches[0].pageY;
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
                 touchScrollLeft = $starmap.scrollLeft();
                 touchScrollTop = $starmap.scrollTop();
             } else if (e.touches.length === 2) {
+                e.preventDefault();
                 touchDragging = false;
                 touchPinching = true;
                 pinchStartDist = getTouchDistance(e.touches);
@@ -312,20 +352,31 @@ $("document").ready(function() {
         starmapEl.addEventListener('touchmove', function(e) {
             if (e.touches.length === 1 && touchDragging) {
                 e.preventDefault();
-                var dx = e.touches[0].pageX - touchStartX;
-                var dy = e.touches[0].pageY - touchStartY;
+                var dx = e.touches[0].clientX - touchStartX;
+                var dy = e.touches[0].clientY - touchStartY;
                 $starmap.scrollLeft(touchScrollLeft - dx);
                 $starmap.scrollTop(touchScrollTop - dy);
             } else if (e.touches.length === 2 && pinchStartDist && pinchStartZoom) {
                 e.preventDefault();
+                lastTouchPinchAt = Date.now();
                 var currentDist = getTouchDistance(e.touches);
                 var scale = currentDist / pinchStartDist;
                 var newZoom = pinchStartZoom * scale;
                 var midpoint = getTouchMidpoint(e.touches);
                 var rect = starmapEl.getBoundingClientRect();
-                var viewportX = midpoint.x - rect.left;
-                var viewportY = midpoint.y - rect.top;
-                zoomTo(newZoom, viewportX, viewportY);
+                pinchFrameZoom = newZoom;
+                pinchFrameX = midpoint.x - rect.left;
+                pinchFrameY = midpoint.y - rect.top;
+                if (!pinchFramePending) {
+                    pinchFramePending = true;
+                    window.requestAnimationFrame(function() {
+                        pinchFramePending = false;
+                        if (pinchFrameZoom === null) {
+                            return;
+                        }
+                        zoomTo(pinchFrameZoom, pinchFrameX, pinchFrameY);
+                    });
+                }
             }
         }, { passive: false });
 
@@ -337,6 +388,7 @@ $("document").ready(function() {
             }
             pinchStartDist = null;
             pinchStartZoom = null;
+            pinchFrameZoom = null;
         }, { passive: false });
 
         starmapEl.addEventListener('touchcancel', function() {
@@ -345,18 +397,19 @@ $("document").ready(function() {
             lastTouchPinchAt = Date.now();
             pinchStartDist = null;
             pinchStartZoom = null;
+            pinchFrameZoom = null;
         }, { passive: false });
 
-        // Safari macOS trackpad pinch emits non-standard gesture events.
-        // Use them on fine-pointer devices to support smooth pinch zoom.
-        if (isFinePointer) {
-            starmapEl.addEventListener('gesturestart', function(e) {
-                e.preventDefault();
+        starmapEl.addEventListener('gesturestart', function(e) {
+            e.preventDefault();
+            if (isFinePointer) {
                 gestureStartZoom = zoomLevel;
-            }, { passive: false });
+            }
+        }, { passive: false });
 
-            starmapEl.addEventListener('gesturechange', function(e) {
-                e.preventDefault();
+        starmapEl.addEventListener('gesturechange', function(e) {
+            e.preventDefault();
+            if (isFinePointer) {
                 if (gestureStartZoom === null || typeof e.scale !== 'number') {
                     return;
                 }
@@ -364,13 +417,15 @@ $("document").ready(function() {
                 var viewportX = e.clientX - rect.left;
                 var viewportY = e.clientY - rect.top;
                 zoomTo(gestureStartZoom * e.scale, viewportX, viewportY);
-            }, { passive: false });
+            }
+        }, { passive: false });
 
-            starmapEl.addEventListener('gestureend', function(e) {
-                e.preventDefault();
+        starmapEl.addEventListener('gestureend', function(e) {
+            e.preventDefault();
+            if (isFinePointer) {
                 gestureStartZoom = null;
-            }, { passive: false });
-        }
+            }
+        }, { passive: false });
     }
 
     // Zoom functions

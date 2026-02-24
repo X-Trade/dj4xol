@@ -21,7 +21,7 @@
     min-height: 150px;
     touch-action: none;
     overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
+    -webkit-overflow-scrolling: auto;
 }
 
 .starmap:active {

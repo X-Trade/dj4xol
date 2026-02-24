@@ -66,6 +66,22 @@ body {
     position: relative;
 }
 
+/* Prevent accidental text highlight while dragging the starmap. */
+.columns:has(#starmap),
+.columns:has(#starmap) * {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Allow text selection in message and detail content areas only. */
+.columns:has(#starmap) #messages,
+.columns:has(#starmap) #messages *,
+.columns:has(#starmap) #detail,
+.columns:has(#starmap) #detail * {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
 .column-left {
     grid-column: 1;
     grid-row: 1;
