@@ -697,6 +697,10 @@ body.turned-in.lcars .order-params::after {
     background: linear-gradient(to right, #ff6b35, #f7931e); /* Ironium - orange */
 }
 
+.inventory-fill.inventory-fuel {
+    background: linear-gradient(to right, #d62828, #ff5a5f); /* Fuel - red */
+}
+
 .inventory-fill.inventory-boranium {
     background: linear-gradient(to right, #4ecdc4, #26a69a); /* Boranium - teal */
 }

@@ -116,6 +116,10 @@
                 <span class="env-value">{{ detail.fleet_cargo.ship_count }}</span>
             </div>
             <div class="env-row">
+                <span class="env-label">Max Warp</span>
+                <span class="env-value">{{ detail.fleet_cargo.max_safe_warp }}</span>
+            </div>
+            <div class="env-row">
                 <span class="env-label">Integrity</span>
                 <div class="integrity-bar">
                     <div class="integrity-fill {% if detail.fleet_cargo.integrity < 25 %}critical{% elif detail.fleet_cargo.integrity < 50 %}warning{% endif %}" style="width: {{ detail.fleet_cargo.integrity }}%;"></div>

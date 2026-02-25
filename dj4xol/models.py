@@ -472,6 +472,8 @@ class Fleet(AbstractMapObject):
     colonists = models.IntegerField(default=0)  # Current colonist cargo in thousands
     dry_mass = models.IntegerField(default=100)  # Dry mass in kt for colonise bonus
     max_safe_warp = models.IntegerField(default=2)
+    fuel = models.FloatField(default=50.0)  # Current fuel in mg
+    max_fuel = models.FloatField(default=50.0)  # Maximum fuel in mg
     offense_level = models.FloatField(default=0.0)
     defense_level = models.FloatField(default=0.0)
     thumbnail_path = models.CharField(max_length=255, blank=True, default='')
