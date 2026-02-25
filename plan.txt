@@ -1,8 +1,19 @@
 ======== Ideas ========
 *** unique ores ***
-* Uniquadium / Unobtainium?
+* Uniquadium?
+* Unobtainium?
+* Uniquium?
+* Reactium
+* Trilatinum
+* Ohnoium
+* Explodium
+* Refinium
+* Extractium
+* Quadinium
+* Exponentium
 * Khyberium
 * Ohmegium
+* Mysterium
 
 *** Stability ***
 * StabilityCoef = pow2(Employment - 0.5)

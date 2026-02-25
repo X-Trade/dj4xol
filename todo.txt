@@ -1,14 +1,18 @@
 ============= MAIN TODO =============
+1. Star names on starmap
+2. show move orders as dotted line
+3. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
 4. Secret resources
-5. show move orders as dotted line
-6. Colony Micromanager
-8. show unexplored stars darker on the map
-9. Star names on starmap
-10. radar system (ties to #10). Players cannot see ships beyond their ships or planets sensor range
+5. fleet-to-fleet Refuelling
+6. Ship Design (Basic)
+7. Instant merge/split fleets (dedicated interactive screen)
+8. Custom server help pages (wiki/cms)
+10. radar system (ties to #11). Players cannot see ships beyond their ships or planets sensor range
 11. protect unnecessary/unsporting information from being delivered to the wrong owner-player
    for example, a player cannot see the orders of another player's vessel
-12. Fleet thumbnails
-13. star thumbnails
+12. Diplomacy
+13. Trade Contracts/Negotiation
+14. Ship Design (Advanced)
 
 =============== GUI =================
 9. Brython expansion/refactor
