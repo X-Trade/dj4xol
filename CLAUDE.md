@@ -29,6 +29,15 @@ A Django-based 4X space strategy game inspired by Stars!
 - **Sensible defaults**: Models and test fixtures should have sensible defaults so you don't spell out every field.
 - **Single responsibility**: One function, one job. Compose small functions rather than large monolithic ones.
 
+### `_rules` Pattern (Important)
+
+- Put core game arithmetic/probability logic in small pure-Python `*_rules.py` modules.
+- Keep `models.py`, `views.py`, `turn.py`, and frontend-adjacent Python code (for example Brython) as thin callers of these shared rules.
+- Primary goal: share identical gameplay logic between backend and frontend so UI previews and server outcomes match.
+- Secondary benefit: migrations and scripts can reuse the same rules, reducing drift between historical/data-update paths and live runtime behavior.
+- This also makes rules easy to unit test without ORM/database setup.
+- If model field defaults or older migrations reference model-level helper functions, keep lightweight compatibility wrappers in `models.py` that delegate to the shared rules module.
+
 ## Technology Stack
 
 - **Python-first**: Do everything possible in Django without additional tools/frameworks. Pure Python.
