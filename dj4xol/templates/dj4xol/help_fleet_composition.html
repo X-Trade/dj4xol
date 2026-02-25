@@ -1,0 +1,97 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Fleet Composition Help</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index">
+        <div class="title-bar">
+            <span class="title">Fleet Composition</span>
+            <span class="tagline">Commissioning & Hull Basics</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_fleet_composition' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-fleet-composition">
+                    <h2><span>Fleet Composition</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <p><strong>Subject to change:</strong> this page describes the current MVP implementation.</p>
+                        <h4>When Composition Is Applied</h4>
+                        <p>
+                            Fleet composition is assigned when a new fleet is commissioned at a colony with a shipyard.
+                            Existing fleets keep their stored values unless they merge with another fleet.
+                        </p>
+                        <h4>Hull Selection</h4>
+                        <p>
+                            The game selects the highest unlocked technology with type <code>HULL</code>.
+                            That selected hull sets the new fleet's cargo capacity, maximum fuel, starting fuel,
+                            and thumbnail class.
+                        </p>
+                        <p>
+                            Thumbnail class controls art selection. For example, a Freighter hull only draws from
+                            the freighter thumbnail folder.
+                        </p>
+                        <h4>Combat Modifier Selection</h4>
+                        <p>
+                            The game selects one highest unlocked technology per technology type and then sums
+                            offensive and defensive parameters from those selected technologies.
+                        </p>
+                        <p>
+                            <code>INFRASTRUCTURE</code> technologies are excluded from fleet offensive and defensive stacking.
+                            <code>HULL</code> values are included if that hull defines offense or defense parameters.
+                        </p>
+                        <h4>Propulsion</h4>
+                        <p>
+                            Maximum safe warp comes from the selected propulsion technology.
+                        </p>
+                        <h4>Merging Fleets</h4>
+                        <p>
+                            Merging keeps the thumbnail of the fleet being merged into.
+                            Cargo capacity and fuel capacities are summed.
+                            Fuel stores are also summed.
+                        </p>
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                        </div>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+    </body>
+</html>

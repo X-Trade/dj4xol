@@ -17,6 +17,8 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'Help Index')
         self.assertContains(response, 'Colony Calculator')
         self.assertContains(response, 'Technology Directory')
+        self.assertContains(response, 'Fleet Composition')
+        self.assertContains(response, 'Research &amp; Labs')
         self.assertContains(response, 'Space Combat')
         self.assertContains(response, 'Invasion')
 
@@ -31,6 +33,18 @@ class HelpPagesTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Invasion')
         self.assertContains(response, 'Stage 1: Planetary Defence Fire')
+
+    def test_help_fleet_composition_renders(self):
+        response = self.client.get(reverse('dj4xol:help_fleet_composition'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Fleet Composition')
+        self.assertContains(response, 'Subject to change')
+
+    def test_help_research_labs_renders(self):
+        response = self.client.get(reverse('dj4xol:help_research_labs'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Research &amp; Labs')
+        self.assertContains(response, 'Lab Output')
 
     def test_help_technology_renders_and_filters(self):
         energy = ResearchCategory.objects.create(
