@@ -322,6 +322,7 @@ body.map-dragging * {
     gap: 8px;
 }
 
+.object-thumbnail,
 .fleet-thumbnail {
     width: 64px;
     height: 64px;
@@ -663,6 +664,7 @@ body.turned-in.lcars .order-params::after {
 .env-value {
     width: 60px;
     text-align: right;
+    overflow: clip;
 }
 
 .env-support {

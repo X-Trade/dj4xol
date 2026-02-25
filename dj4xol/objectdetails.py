@@ -102,6 +102,10 @@ class DetailBuilder():
                          self.selected_obj.effective_thumbnail_path
                          if isinstance(self.selected_obj, Fleet) else None
                      ),
+                     'star_thumbnail': (
+                         self.selected_obj.effective_thumbnail_path
+                         if isinstance(self.selected_obj, Star) else None
+                     ),
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
                      'salvage_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Salvage) else None,
@@ -149,6 +153,9 @@ class DetailBuilder():
             'is_salvage': target_type == 'salvage',
             'fleet_thumbnail': (
                 self.selected_obj.effective_thumbnail_path if target_type == 'fleet' else None
+            ),
+            'star_thumbnail': (
+                self.selected_obj.effective_thumbnail_path if target_type == 'star' else None
             ),
             'report_year': report_year,
             'report_age': self.game.year - report_year,
