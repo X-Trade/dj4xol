@@ -179,11 +179,29 @@ $(document).ready(function() {
     var isDragging = false;
     var hasDragged = false;
     var startX, startY, scrollLeft, scrollTop;
+    var dragSelectionLocked = false;
+
+    function lockDragSelection() {
+        if (dragSelectionLocked) {
+            return;
+        }
+        dragSelectionLocked = true;
+        document.body.classList.add('map-dragging');
+    }
+
+    function unlockDragSelection() {
+        if (!dragSelectionLocked) {
+            return;
+        }
+        dragSelectionLocked = false;
+        document.body.classList.remove('map-dragging');
+    }
 
     $starmap.on('mousedown', function(e) {
         // Don't drag if clicking on a control or link
         if ($(e.target).closest('.starmap-controls, a').length) return;
         isDragging = true;
+        lockDragSelection();
         hasDragged = false;
         startX = e.pageX - $starmap.offset().left;
         startY = e.pageY - $starmap.offset().top;
@@ -193,8 +211,14 @@ $(document).ready(function() {
 
     $(document).on('mouseup', function() {
         isDragging = false;
+        unlockDragSelection();
         // Reset hasDragged after a short delay so click handler can check it
         setTimeout(function() { hasDragged = false; }, 0);
+    });
+
+    $(window).on('blur', function() {
+        isDragging = false;
+        unlockDragSelection();
     });
 
     $(document).on('mousemove', function(e) {
@@ -334,6 +358,7 @@ $(document).ready(function() {
             if ($(e.target).closest('.starmap-controls, a').length) return;
             if (e.touches.length === 1) {
                 touchDragging = true;
+                lockDragSelection();
                 pinchStartDist = null;
                 pinchStartZoom = null;
                 touchStartX = e.touches[0].clientX;
@@ -382,6 +407,9 @@ $(document).ready(function() {
 
         starmapEl.addEventListener('touchend', function(e) {
             touchDragging = false;
+            if (!e.touches || e.touches.length === 0) {
+                unlockDragSelection();
+            }
             if (!e.touches || e.touches.length < 2) {
                 touchPinching = false;
                 lastTouchPinchAt = Date.now();
@@ -394,6 +422,7 @@ $(document).ready(function() {
         starmapEl.addEventListener('touchcancel', function() {
             touchDragging = false;
             touchPinching = false;
+            unlockDragSelection();
             lastTouchPinchAt = Date.now();
             pinchStartDist = null;
             pinchStartZoom = null;

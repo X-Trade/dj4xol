@@ -707,8 +707,12 @@ def help_technology(request):
         )
 
     category_counts = {
-        row['category']: row['count']
-        for row in filter_qs.values('category').annotate(count=models.Count('id'))
+        row['category_id']: row['count']
+        for row in (
+            filter_qs.order_by()
+            .values('category_id')
+            .annotate(count=models.Count('id'))
+        )
     }
     for category in categories:
         category.tech_count = category_counts.get(category.id, 0)
@@ -719,9 +723,9 @@ def help_technology(request):
         tech_qs = tech_qs.filter(category=selected_category)
     tech_rows = list(
         tech_qs.order_by(
+            'level',
             'category__display_order',
             'category__name',
-            'level',
             'display_order',
             'name',
         )

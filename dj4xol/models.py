@@ -526,7 +526,7 @@ class Star(AbstractMapObject):
     germanium_inventory = models.IntegerField(default=random_surface_germanium_init)
 
     colonists = models.IntegerField(default=0)
-    # Base carrying capacity (in millions), effective capacity = base * habitability
+    # Base carrying capacity (in millions), scaled by nonlinear habitability.
     base_capacity = models.IntegerField(default=random_capacity_init)
 
     # Economic infrastructure
