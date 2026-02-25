@@ -1,6 +1,7 @@
 """Fleet thumbnail selection helpers."""
 
 from .ship_thumbnail_catalog import ALL_SHIP_THUMBNAILS
+from .ship_thumbnail_catalog import SHIP_THUMBNAILS_BY_CLASS
 
 
 DEFAULT_FLEET_THUMBNAIL = "dj4xol/images/thumbs/ship/scout/1__r01_c01.png"
@@ -20,9 +21,14 @@ def _seed_to_index(seed, count):
     return total % count
 
 
-def choose_fleet_thumbnail(seed):
-    """Return a deterministic thumbnail path for a given seed."""
-    if not ALL_SHIP_THUMBNAILS:
+def choose_fleet_thumbnail(seed, ship_class=None):
+    """Return a deterministic thumbnail path for a given seed/class."""
+    pool = None
+    if ship_class:
+        pool = SHIP_THUMBNAILS_BY_CLASS.get(str(ship_class).lower())
+    if not pool:
+        pool = ALL_SHIP_THUMBNAILS
+    if not pool:
         return DEFAULT_FLEET_THUMBNAIL
-    idx = _seed_to_index(seed, len(ALL_SHIP_THUMBNAILS))
-    return ALL_SHIP_THUMBNAILS[idx]
+    idx = _seed_to_index(seed, len(pool))
+    return pool[idx]

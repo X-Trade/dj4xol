@@ -127,6 +127,9 @@ class ResearchTurnTest(TestCase):
         category = ResearchCategory.objects.create(
             code='ENERGY', name='Energy', enabled=True
         )
+        hull_category = ResearchCategory.objects.create(
+            code='CONSTR', name='Construction', enabled=True
+        )
         Technology.objects.create(
             category=category,
             level=1,
@@ -134,9 +137,16 @@ class ResearchTurnTest(TestCase):
             tech_type='PROPULSION',
             params_json='{"max_warp_speed": 7}',
         )
+        Technology.objects.create(
+            category=hull_category,
+            level=6,
+            name='Freighter Hull',
+            tech_type='HULL',
+            params_json='{"max_cargo_capacity": 400, "max_fuel": 200, "hull_thumbnail_class": "freighter", "defense_level": 2.0}',
+        )
         rows = ensure_player_research_rows(self.player)
         for row in rows:
-            row.current_level = 1.0
+            row.current_level = 6.0
             row.save()
 
         existing_ids = set(Fleet.objects.filter(player=self.player).values_list('id', flat=True))
@@ -161,6 +171,11 @@ class ResearchTurnTest(TestCase):
         new_fleet = Fleet.objects.filter(player=self.player).exclude(id__in=existing_ids).first()
         self.assertIsNotNone(new_fleet)
         self.assertEqual(new_fleet.max_safe_warp, 7)
+        self.assertEqual(new_fleet.cargo_capacity, 400)
+        self.assertEqual(new_fleet.fuel, 200.0)
+        self.assertEqual(new_fleet.max_fuel, 200.0)
+        self.assertEqual(new_fleet.defense_level, 2.0)
+        self.assertIn('/freighter/', new_fleet.thumbnail_path)
 
     def test_merge_uses_weighted_tech_levels(self):
         fleet_a = Fleet.objects.create(
@@ -275,10 +290,43 @@ class ResearchTurnTest(TestCase):
         )
         Technology.objects.create(
             category=materials,
-            level=1,
+            level=2,
             name='Hybrid Core',
             tech_type='SHIELD',
             params_json='{"offense_level": 0.5, "defense_level": 0.5}',
+            enabled=True,
+        )
+
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 2.0
+            row.save(update_fields=['current_level'])
+
+        effects = get_player_tech_effects(self.player)
+        self.assertAlmostEqual(effects['offense_level'], 1.75, places=4)
+        self.assertAlmostEqual(effects['defense_level'], 0.5, places=4)
+
+    def test_tech_effects_ignore_infrastructure_for_fleet_modifiers(self):
+        energy = ResearchCategory.objects.create(
+            code='ENI', name='Energy-I', enabled=True
+        )
+        infra = ResearchCategory.objects.create(
+            code='INI', name='Infra-I', enabled=True
+        )
+        Technology.objects.create(
+            category=energy,
+            level=1,
+            name='Beam Core',
+            tech_type='ENERGY_WEAPON',
+            params_json='{"offense_level": 1.0}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=infra,
+            level=1,
+            name='Defense Grid',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"offense_level": 99.0, "defense_level": 99.0}',
             enabled=True,
         )
 
@@ -288,8 +336,8 @@ class ResearchTurnTest(TestCase):
             row.save(update_fields=['current_level'])
 
         effects = get_player_tech_effects(self.player)
-        self.assertAlmostEqual(effects['offense_level'], 1.75, places=4)
-        self.assertAlmostEqual(effects['defense_level'], 1.25, places=4)
+        self.assertAlmostEqual(effects['offense_level'], 1.0, places=4)
+        self.assertAlmostEqual(effects['defense_level'], 0.0, places=4)
 
     def test_colony_defense_uses_latest_unlocked_technology(self):
         energy = ResearchCategory.objects.create(

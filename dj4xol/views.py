@@ -627,6 +627,9 @@ def help_index(request):
 def _format_tech_param_key(key):
     labels = {
         'max_warp_speed': 'Maximum Warp',
+        'max_cargo_capacity': 'Cargo Capacity',
+        'max_fuel': 'Fuel Capacity',
+        'hull_thumbnail_class': 'Hull Class',
         'offense_level': 'Offense Level',
         'defense_level': 'Defense Level',
         'colony_defense_level': 'Colony Defense Level',
