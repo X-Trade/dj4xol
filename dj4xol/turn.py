@@ -67,6 +67,7 @@ from .research import (
     get_player_colony_defense_level,
     apply_research_bonus_rp,
 )
+from .fleet_thumbnails import choose_fleet_thumbnail
 
 # Population carrying capacity constants now live in colony_rules.py
 
@@ -2411,15 +2412,23 @@ class GameTurn():
         fleet_name = f"{player.name} Fleet {fleet_count}"
 
         tech_effects = get_player_tech_effects(player)
+        thumbnail_path = choose_fleet_thumbnail(
+            f"{self.game.id}:{star.id}:{fleet_name}:{self.game.year}",
+            tech_effects.get('hull_thumbnail_class'),
+        )
         fleet = Fleet.objects.create(
             game=self.game,
             player=player,
             name=fleet_name,
             x=star.x,
             y=star.y,
+            cargo_capacity=tech_effects.get('max_cargo_capacity', 100),
+            fuel=tech_effects.get('max_fuel', 50.0),
+            max_fuel=tech_effects.get('max_fuel', 50.0),
             max_safe_warp=tech_effects['max_warp_speed'],
             offense_level=tech_effects['offense_level'],
             defense_level=tech_effects['defense_level'],
+            thumbnail_path=thumbnail_path,
         )
 
         # Create notification message

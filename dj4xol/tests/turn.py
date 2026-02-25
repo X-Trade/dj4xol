@@ -4890,7 +4890,8 @@ class TestFleetFuel(TestCase):
         self.assertAlmostEqual(fleet.fuel, 0.2, places=4)
         self.assertGreater(player.messages.count(), start_messages)
         msg = player.messages.order_by('-id').first()
-        self.assertIn('Bussard collectors', msg.message)
+        self.assertIn('ordered warp 6', msg.message)
+        self.assertIn('warp 4', msg.message)
 
     def test_refuels_in_friendly_shipyard_orbit(self):
         from ..models import Fleet

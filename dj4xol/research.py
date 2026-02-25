@@ -20,6 +20,9 @@ from .research_rules import (
 
 TECH_PARAM_LABELS = {
     'max_warp_speed': 'Maximum Warp',
+    'max_cargo_capacity': 'Cargo Capacity',
+    'max_fuel': 'Fuel Capacity',
+    'hull_thumbnail_class': 'Hull Class',
     'offense_level': 'Offense Level',
     'defense_level': 'Defense Level',
     'colony_defense_level': 'Colony Defense Level',
@@ -404,10 +407,16 @@ def get_player_unlocked_technologies(player):
 def get_player_tech_effects(player):
     """Return current research effects for fleet commissioning/combat.
 
-    For MVP, effects come from the highest unlocked level in each tech_type.
+    Effects come from one selected technology per type:
+    - Highest unlocked level in each tech type (deterministic tie-break)
+    - INFRASTRUCTURE is excluded from fleet offense/defense effects
+    - Highest unlocked HULL controls max cargo/fuel + thumbnail class
     """
     effects = {
         'max_warp_speed': 2,
+        'max_cargo_capacity': 100,
+        'max_fuel': 50.0,
+        'hull_thumbnail_class': 'scout',
         'offense_level': 0.0,
         'defense_level': 0.0,
     }
@@ -415,19 +424,25 @@ def get_player_tech_effects(player):
     if not unlocked:
         return effects
 
-    max_level_by_type = {}
+    selected_by_type = {}
     for tech in unlocked:
-        max_level_by_type[tech.tech_type] = max(
-            max_level_by_type.get(tech.tech_type, -1),
-            int(tech.level)
-        )
+        key = str(tech.tech_type or '')
+        sort_key = (int(tech.level), int(tech.display_order or 0), str(tech.name or ''))
+        current = selected_by_type.get(key)
+        if current is None:
+            selected_by_type[key] = (sort_key, tech)
+            continue
+        if sort_key > current[0]:
+            selected_by_type[key] = (sort_key, tech)
 
-    selected = [
-        tech for tech in unlocked
-        if int(tech.level) == max_level_by_type.get(tech.tech_type, int(tech.level))
-    ]
+    selected_hull = None
+    if 'HULL' in selected_by_type:
+        selected_hull = selected_by_type['HULL'][1]
 
-    for tech in selected:
+    for tech_type, selected in selected_by_type.items():
+        if tech_type == 'INFRASTRUCTURE':
+            continue
+        tech = selected[1]
         params = _safe_params(tech)
         max_warp = params.get('max_warp_speed')
         if max_warp is not None:
@@ -449,6 +464,24 @@ def get_player_tech_effects(player):
                 effects['defense_level'] += float(defense_level)
             except (TypeError, ValueError):
                 pass
+
+    if selected_hull is not None:
+        params = _safe_params(selected_hull)
+        max_cargo = params.get('max_cargo_capacity')
+        if max_cargo is not None:
+            try:
+                effects['max_cargo_capacity'] = max(0, int(max_cargo))
+            except (TypeError, ValueError):
+                pass
+        max_fuel = params.get('max_fuel')
+        if max_fuel is not None:
+            try:
+                effects['max_fuel'] = max(0.0, float(max_fuel))
+            except (TypeError, ValueError):
+                pass
+        hull_class = params.get('hull_thumbnail_class')
+        if hull_class:
+            effects['hull_thumbnail_class'] = str(hull_class).strip().lower()
     return effects
 
 
