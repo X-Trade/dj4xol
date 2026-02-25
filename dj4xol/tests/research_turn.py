@@ -142,7 +142,7 @@ class ResearchTurnTest(TestCase):
             level=6,
             name='Freighter Hull',
             tech_type='HULL',
-            params_json='{"max_cargo_capacity": 400, "max_fuel": 200, "hull_thumbnail_class": "freighter", "defense_level": 2.0}',
+            params_json='{"max_cargo_capacity": 400, "max_fuel": 200, "hull_thumbnail_class": "freighter", "defense_level": 0.2}',
         )
         rows = ensure_player_research_rows(self.player)
         for row in rows:
@@ -174,7 +174,7 @@ class ResearchTurnTest(TestCase):
         self.assertEqual(new_fleet.cargo_capacity, 400)
         self.assertEqual(new_fleet.fuel, 200.0)
         self.assertEqual(new_fleet.max_fuel, 200.0)
-        self.assertEqual(new_fleet.defense_level, 2.0)
+        self.assertEqual(new_fleet.defense_level, 0.2)
         self.assertIn('/freighter/', new_fleet.thumbnail_path)
 
     def test_merge_uses_weighted_tech_levels(self):

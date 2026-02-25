@@ -601,6 +601,22 @@ def help_colony(request):
 
 
 @registration_required()
+def help_fleet_composition(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_fleet_composition.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
+def help_research_labs(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_research_labs.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
 def help_space_combat(request):
     account = request.user.dj4xol_account
     return render(request, 'dj4xol/help_space_combat.html', {
