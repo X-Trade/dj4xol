@@ -1942,6 +1942,8 @@ class TestFleetCargo(TestCase):
         self.assertEqual(fleet.boranium_inventory, 0)
         self.assertEqual(fleet.germanium_inventory, 0)
         self.assertEqual(fleet.colonists, 0)
+        self.assertEqual(fleet.fuel, 50.0)
+        self.assertEqual(fleet.max_fuel, 50.0)
 
     def test_cargo_calculations(self):
         """Test cargo_used and cargo_remaining properties."""
@@ -2044,11 +2046,17 @@ class TestFleetCargo(TestCase):
         self.assertEqual(cargo_info['boranium'], 300)
         self.assertEqual(cargo_info['germanium'], 150)
         self.assertEqual(cargo_info['colonists'], 50)
+        self.assertEqual(cargo_info['fuel'], 50.0)
+        self.assertEqual(cargo_info['max_fuel'], 50.0)
+        self.assertEqual(cargo_info['max_safe_warp'], 2)
         self.assertEqual(cargo_info['offense_modifier'], '+0')
         self.assertEqual(cargo_info['defense_modifier'], '+0')
 
         # Test inventory display data
         inventory = details['fleet_inventory']
+        self.assertEqual(inventory['Fuel']['amount'], 50.0)
+        self.assertEqual(inventory['Fuel']['percent'], 100.0)
+        self.assertEqual(inventory['Fuel']['display'], '50.0mg')
         self.assertEqual(inventory['Ironium']['amount'], 500)
         self.assertEqual(inventory['Ironium']['percent'], 50.0)  # 500/1000 = 50%
         self.assertEqual(inventory['Ironium']['display'], '500kt')
@@ -2285,6 +2293,49 @@ class TestProductionProgress(TestCase):
         self.assertEqual(production_order['resource_progress'], 0)   # No resources allocated
         self.assertEqual(production_order['labor_progress'], 0)      # No BP allocated
         self.assertEqual(production_order['progress_percent'], 0)    # No progress
+
+
+class TestProductionRollupMessages(TestCase):
+    def test_sends_single_rollup_message_per_star(self):
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        turn = GameTurn(game)
+        counts = {
+            'mine': 3,
+            'factory': 2,
+            'lab': 1,
+            'defense': 4,
+            'shipyard': 1,
+        }
+        before = player.messages.count()
+        turn._send_production_summary_messages(star, counts)
+
+        self.assertEqual(player.messages.count(), before + 1)
+        msg = player.messages.order_by('-id').first()
+        self.assertIn('Construction progress at', msg.message)
+        self.assertIn('3 mines', msg.message)
+        self.assertIn('2 factories', msg.message)
+        self.assertIn('1 lab', msg.message)
+        self.assertIn('4 defenses', msg.message)
+        self.assertIn('1 shipyard', msg.message)
+
+    def test_no_rollup_when_nothing_completed(self):
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        turn = GameTurn(game)
+        before = player.messages.count()
+        turn._send_production_summary_messages(star, {
+            'mine': 0,
+            'factory': 0,
+            'lab': 0,
+            'defense': 0,
+            'shipyard': 0,
+        })
+        self.assertEqual(player.messages.count(), before)
 
 
 class TestFleetTransferOrders(TestCase):
@@ -4763,6 +4814,103 @@ class TestWarpDamage(TestCase):
         self.assertEqual(order.warpfactor, 3)
 
 
+class TestFleetFuel(TestCase):
+    def test_movement_consumes_fuel(self):
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.shipyards = 0
+        star.save(update_fields=['shipyards'])
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Fuel Fleet",
+            x=star.x, y=star.y, max_safe_warp=6, fuel=10.0, max_fuel=10.0
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=star.x + 20, y=star.y, warpfactor=6
+        )
+
+        GameTurn(game).generate_turn()
+        fleet.refresh_from_db()
+        self.assertAlmostEqual(fleet.fuel, 8.5, places=4)
+
+    def test_movement_blocked_by_insufficient_fuel(self):
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.shipyards = 0
+        star.save(update_fields=['shipyards'])
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Dry Fleet",
+            x=star.x, y=star.y, max_safe_warp=6, fuel=1.0, max_fuel=10.0
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=star.x + 20, y=star.y, warpfactor=6
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=False):
+            GameTurn(game).generate_turn()
+        fleet.refresh_from_db()
+        self.assertEqual((fleet.x, fleet.y), (star.x, star.y))
+        self.assertAlmostEqual(fleet.fuel, 1.0, places=4)
+        self.assertEqual(fleet.orders.count(), 1)
+
+    def test_bussard_collectors_can_enable_reduced_warp_move(self):
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.shipyards = 0
+        star.save(update_fields=['shipyards'])
+        start_messages = player.messages.count()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Collector Fleet",
+            x=star.x, y=star.y, max_safe_warp=6, fuel=0.2, max_fuel=10.0
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=star.x + 20, y=star.y, warpfactor=6
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=True), \
+             patch('dj4xol.turn.random.randint', return_value=1):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual((fleet.x, fleet.y), (star.x + 4, star.y))
+        self.assertAlmostEqual(fleet.fuel, 0.2, places=4)
+        self.assertGreater(player.messages.count(), start_messages)
+        msg = player.messages.order_by('-id').first()
+        self.assertIn('Bussard collectors', msg.message)
+
+    def test_refuels_in_friendly_shipyard_orbit(self):
+        from ..models import Fleet
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.shipyards = 1
+        star.save(update_fields=['shipyards'])
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Refuel Fleet",
+            x=star.x, y=star.y, fuel=5.0, max_fuel=40.0
+        )
+
+        GameTurn(game).generate_turn()
+        fleet.refresh_from_db()
+        self.assertAlmostEqual(fleet.fuel, 40.0, places=4)
+
+
 class TestWarpDamageHelpers(TestCase):
     """Unit tests for warp damage helper functions."""
 
@@ -4974,20 +5122,24 @@ class TestMergeFleet(TestCase):
         self.assertEqual(fleet2.colonists, 75)
 
     def test_merge_fleet_capacity_combined(self):
-        """Cargo capacity and dry mass are summed."""
+        """Cargo capacity, fuel stores, and dry mass are summed."""
         from ..models import FleetOrders
 
         game = default_game()
         player = game.players.first()
         star = player.homeworld
+        star.shipyards = 0
+        star.save(update_fields=['shipyards'])
 
         fleet1 = Fleet.objects.create(
             game=game, player=player, name="Fleet 1",
-            x=star.x, y=star.y, cargo_capacity=1000, dry_mass=100
+            x=star.x, y=star.y,
+            cargo_capacity=1000, dry_mass=100, fuel=12.5, max_fuel=40.0
         )
         fleet2 = Fleet.objects.create(
             game=game, player=player, name="Fleet 2",
-            x=star.x, y=star.y, cargo_capacity=2000, dry_mass=200
+            x=star.x, y=star.y,
+            cargo_capacity=2000, dry_mass=200, fuel=25.0, max_fuel=60.0
         )
 
         FleetOrders.objects.create(
@@ -5000,6 +5152,8 @@ class TestMergeFleet(TestCase):
         fleet2.refresh_from_db()
         self.assertEqual(fleet2.cargo_capacity, 3000)
         self.assertEqual(fleet2.dry_mass, 300)
+        self.assertAlmostEqual(fleet2.fuel, 37.5, places=4)
+        self.assertAlmostEqual(fleet2.max_fuel, 100.0, places=4)
 
     def test_merge_fleet_orders_redirected(self):
         """Orders targeting source fleet are updated to target merged fleet."""

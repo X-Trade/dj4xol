@@ -636,6 +636,8 @@ class DetailBuilder():
             'capacity': self.selected_obj.cargo_capacity,
             'used': self.selected_obj.cargo_used,
             'remaining': self.selected_obj.cargo_remaining,
+            'fuel': self.selected_obj.fuel,
+            'max_fuel': self.selected_obj.max_fuel,
             'ironium': self.selected_obj.ironium_inventory,
             'boranium': self.selected_obj.boranium_inventory,
             'germanium': self.selected_obj.germanium_inventory,
@@ -655,7 +657,9 @@ class DetailBuilder():
             return None
         
         capacity = self.selected_obj.cargo_capacity
+        fuel_cap = max(0.0, float(self.selected_obj.max_fuel))
         inventory = {
+            'Fuel': self._build_cargo_data(self.selected_obj.fuel, fuel_cap, 'mg'),
             'Ironium': self._build_cargo_data(self.selected_obj.ironium_inventory, capacity, 'kt'),
             'Boranium': self._build_cargo_data(self.selected_obj.boranium_inventory, capacity, 'kt'),
             'Germanium': self._build_cargo_data(self.selected_obj.germanium_inventory, capacity, 'kt'),
@@ -666,10 +670,14 @@ class DetailBuilder():
     def _build_cargo_data(self, amount, capacity, unit):
         """Build cargo data dict for progress bar display."""
         percent = (amount / capacity * 100) if capacity > 0 else 0
+        if unit == 'mg':
+            display = f'{float(amount):.1f}{unit}'
+        else:
+            display = f'{amount:,}{unit}'
         return {
             'amount': amount,
             'percent': percent,
-            'display': f'{amount:,}{unit}',
+            'display': display,
         }
 
     def build_salvage_inventory(self):

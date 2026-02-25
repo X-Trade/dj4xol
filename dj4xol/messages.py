@@ -384,55 +384,48 @@ class FleetBuiltMessageFactory(MessageFactory):
 
 
 class ProductionSummaryMessageFactory(MessageFactory):
-    """Messages for summarized production completion."""
+    """Single rollup message for construction completed at one star in a year."""
     category = 'PRODUCTION'
 
-    # Templates for different quantities - {count} and {star} placeholders
-    # Only generate messages for 4+ items
-    TEMPLATES = {
-        'mine': {
-            'plural': [
-                "{count} mines were constructed at {star}.",
-                "Mining operations expanded significantly at {star} - {count} new mines operational.",
-                "{count} new mines completed at {star}.",
-            ],
-        },
-        'factory': {
-            'plural': [
-                "{count} factories were built at {star}.",
-                "Industrial capacity at {star} expanded with {count} new factories.",
-                "{count} new factories completed at {star}.",
-            ],
-        },
-        'defense': {
-            'plural': [
-                "{count} defense installations were completed at {star}.",
-                "Planetary defenses at {star} strengthened with {count} new installations.",
-                "{count} new defenses constructed at {star}.",
-            ],
-        },
-        'lab': {
-            'plural': [
-                "{count} laboratories were constructed at {star}.",
-                "Research capacity at {star} expanded with {count} new labs.",
-                "{count} new labs completed at {star}.",
-            ],
-        },
+    LABELS = {
+        'mine': ('mine', 'mines'),
+        'factory': ('factory', 'factories'),
+        'lab': ('lab', 'labs'),
+        'defense': ('defense', 'defenses'),
+        'shipyard': ('shipyard', 'shipyards'),
     }
 
-    def __init__(self, game, player, star, production_type, count, message=None):
+    def __init__(self, game, player, star, production_counts, message=None):
         super().__init__(game, player, message, intensity=0.2)
         self.star = star
-        self.production_type = production_type  # 'mine', 'factory', or 'defense'
-        self.count = count
+        self.production_counts = dict(production_counts or {})
+
+    @staticmethod
+    def _join_list(parts):
+        if not parts:
+            return ''
+        if len(parts) == 1:
+            return parts[0]
+        if len(parts) == 2:
+            return parts[0] + ' and ' + parts[1]
+        return ', '.join(parts[:-1]) + ', and ' + parts[-1]
 
     def format_message(self):
-        templates = self.TEMPLATES.get(self.production_type, {}).get('plural', [])
-        if not templates:
-            return f"{self.count} {self.production_type}s completed at {format_map_object(self.star)}."
-        return random.choice(templates).format(
-            count=self.count,
-            star=format_map_object(self.star)
+        parts = []
+        for key in ['mine', 'factory', 'lab', 'defense', 'shipyard']:
+            count = int(self.production_counts.get(key) or 0)
+            if count <= 0:
+                continue
+            singular, plural = self.LABELS.get(key, (key, key + 's'))
+            label = singular if count == 1 else plural
+            parts.append(f"{count} {label}")
+
+        if not parts:
+            return f"Construction progress at {format_map_object(self.star)}: no major projects completed."
+
+        return (
+            f"Construction progress at {format_map_object(self.star)}: "
+            f"{self._join_list(parts)} completed."
         )
 
 
@@ -826,6 +819,31 @@ class FleetWarpDamageMessageFactory(MessageFactory):
             integrity_loss=self.integrity_loss,
             cargo_desc=self._format_cargo_desc(),
             colonist_deaths=self.colonist_deaths
+        )
+
+
+class FleetBussardRecoveryMessageFactory(MessageFactory):
+    """Message when a fleet scavenges emergency fuel and continues moving."""
+    category = 'GENERAL'
+    templates = [
+        "{fleet} gathered {fuel_gain}mg with Bussard collectors and continued at warp {warp} (ordered warp {requested_warp}).",
+        "Low fuel emergency on {fleet}: Bussard collectors recovered {fuel_gain}mg, allowing warp {warp} movement (ordered warp {requested_warp}).",
+        "{fleet} lacked fuel at ordered warp {requested_warp}, but scavenged {fuel_gain}mg and proceeded at warp {warp}.",
+    ]
+
+    def __init__(self, game, player, fleet, fuel_gain, warp, requested_warp, message=None):
+        super().__init__(game, player, message, intensity=0.1)
+        self.fleet = fleet
+        self.fuel_gain = int(fuel_gain)
+        self.warp = int(warp)
+        self.requested_warp = int(requested_warp)
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=format_map_object(self.fleet),
+            fuel_gain=self.fuel_gain,
+            warp=self.warp,
+            requested_warp=self.requested_warp,
         )
 
 

@@ -26,6 +26,7 @@ from .messages import (
     MineralGiftMessageFactory,
     ProductionSummaryMessageFactory,
     FleetWarpDamageMessageFactory,
+    FleetBussardRecoveryMessageFactory,
     FleetWarpDestroyedMessageFactory,
     FleetMergedMessageFactory,
     FleetOrdersCompletedMessageFactory,
@@ -104,6 +105,9 @@ ORBITAL_DEFENSE_HAZARD_BASE_CHANCE = 0.15
 ORBITAL_DEFENSE_HAZARD_MIN_CHANCE = 0.10
 ORBITAL_DEFENSE_HAZARD_MAX_CHANCE = 0.20
 ORBITAL_DEFENSE_HAZARD_DAMAGE_FACTOR = 0.25
+BUSSARD_RECOVERY_CHANCE = 0.5
+BUSSARD_RECOVERY_MIN_MG = 1
+BUSSARD_RECOVERY_MAX_MG = 5
 
 
 # Chance calculation functions (separated for testability)
@@ -369,7 +373,22 @@ class GameTurn():
                 continue  # Fleet was deleted (e.g., by colonise order)
             result = self.move_fleet(fleet)
             if result is not None:
+                self._refuel_fleet_if_in_friendly_shipyard_orbit(result)
                 result.save()
+
+    def _refuel_fleet_if_in_friendly_shipyard_orbit(self, fleet):
+        """Refuel fleets that end the turn in orbit of a friendly shipyard colony."""
+        from .models import Star
+
+        can_refuel = Star.objects.filter(
+            game=self.game,
+            x=fleet.x,
+            y=fleet.y,
+            player=fleet.player,
+            shipyards__gt=0,
+        ).exists()
+        if can_refuel:
+            fleet.fuel = fleet.max_fuel
 
     def check_lost_fleets(self):
         """Remove fleets that have moved beyond map boundaries."""
@@ -822,6 +841,10 @@ class GameTurn():
 
         # Check if fleet can reach destination this turn
         warp_speed = order.warpfactor if order.order_type in ['MOVE', 'INTERCEPT'] else 5
+        if distance > 0:
+            warp_speed = self._resolve_movement_warp_with_fuel(fleet, order, warp_speed)
+            if warp_speed <= 0:
+                return False
 
         # Check for warp damage before moving
         damage_result = self._check_warp_damage(fleet, warp_speed, order)
@@ -864,6 +887,57 @@ class GameTurn():
                 if target and (fleet.x, fleet.y) == (target.x, target.y):
                     return True
             return False
+
+    def _movement_fuel_cost(self, fleet, warp_speed):
+        """Fuel used for one year of movement at the specified warp speed."""
+        max_warp = max(1, int(fleet.max_safe_warp))
+        return max(1.0, float(warp_speed) / (float(max_warp) / 1.5))
+
+    def _resolve_movement_warp_with_fuel(self, fleet, order, requested_warp):
+        """Resolve usable warp for this movement turn based on available fuel."""
+        if self._consume_movement_fuel(fleet, requested_warp):
+            return requested_warp
+
+        if not roll_chance(BUSSARD_RECOVERY_CHANCE):
+            return 0
+
+        fuel_gain = random.randint(BUSSARD_RECOVERY_MIN_MG, BUSSARD_RECOVERY_MAX_MG)
+        fleet.fuel = min(float(fleet.max_fuel), float(fleet.fuel) + float(fuel_gain))
+        warp = self._max_affordable_warp_speed(fleet, requested_warp)
+        if warp <= 0 or not self._consume_movement_fuel(fleet, warp):
+            return 0
+        self._create_bussard_recovery_message(fleet, fuel_gain, warp, requested_warp)
+        return warp
+
+    def _max_affordable_warp_speed(self, fleet, requested_warp):
+        """Highest warp (<= requested) this fleet can currently fuel for one turn."""
+        fuel = float(fleet.fuel)
+        if fuel < 1.0:
+            return 0
+        max_warp = max(1, int(fleet.max_safe_warp))
+        candidate = min(
+            max(1, int(requested_warp)),
+            max(1, int(fuel * (float(max_warp) / 1.5))),
+        )
+        while candidate > 0 and self._movement_fuel_cost(fleet, candidate) > fuel:
+            candidate -= 1
+        return candidate
+
+    def _consume_movement_fuel(self, fleet, warp_speed):
+        """Consume movement fuel; return False when insufficient fuel is available."""
+        cost = self._movement_fuel_cost(fleet, warp_speed)
+        if float(fleet.fuel) < cost:
+            return False
+        fleet.fuel = max(0.0, float(fleet.fuel) - cost)
+        return True
+
+    def _create_bussard_recovery_message(self, fleet, fuel_gain, warp, requested_warp):
+        factory = FleetBussardRecoveryMessageFactory(
+            self.game, fleet.player, fleet, fuel_gain, warp, requested_warp
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
 
     def _get_intercept_destination(self, order):
         """Calculate intercept destination based on target fleet movement."""
@@ -1864,6 +1938,8 @@ class GameTurn():
         # Merge attributes into target fleet
         target_fleet.ship_count = total_ships
         target_fleet.cargo_capacity += source_fleet.cargo_capacity
+        target_fleet.max_fuel += source_fleet.max_fuel
+        target_fleet.fuel += source_fleet.fuel
         target_fleet.dry_mass += source_fleet.dry_mass
         target_fleet.max_safe_warp = min(
             target_fleet.max_safe_warp, source_fleet.max_safe_warp
@@ -2373,21 +2449,21 @@ class GameTurn():
         star.shipyards += 1
 
     def _send_production_summary_messages(self, star, production_counts):
-        """Send aggregate production messages for mines/factories/defenses.
-
-        Only sends messages for 4+ items of a type.
-        """
+        """Send one construction rollup message per star per year."""
         player = star.player
-        min_count_for_message = 4
-
-        for production_type, count in production_counts.items():
-            if count >= min_count_for_message:
-                factory = ProductionSummaryMessageFactory(
-                    self.game, player, star, production_type, count
-                )
-                msg = factory.new_message()
-                msg.year = self.game.year
-                msg.save()
+        completed = {
+            key: int(production_counts.get(key) or 0)
+            for key in ('mine', 'factory', 'lab', 'defense', 'shipyard')
+            if int(production_counts.get(key) or 0) > 0
+        }
+        if not completed:
+            return
+        factory = ProductionSummaryMessageFactory(
+            self.game, player, star, completed
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
 
     def _apply_terraform_order(self, star, order):
         """Apply a single terraforming order.
