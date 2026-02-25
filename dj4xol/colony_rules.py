@@ -4,6 +4,7 @@ BILLION = 1_000_000_000
 MILLION = 1_000_000
 DEFAULT_SOFT_CAP = 10 * BILLION   # Fallback if no star capacity
 CAPACITY_SCALE_RATIO = 0.5        # Scale is this fraction of soft cap
+CAPACITY_HAB_EXPONENT = 8.0       # Nonlinear hab curve: mid-hab worlds stay small
 
 # Economic constants
 COLONISTS_PER_JOB = 1000  # Each mine/factory employs this many colonists
@@ -34,7 +35,9 @@ def capacity_modifier(population, soft_cap):
 def effective_capacity(player, star):
     """Calculate effective carrying capacity for a star based on habitability.
 
-    Uses base_capacity (in millions) scaled by habitability factor.
+    Uses base_capacity (in millions) scaled by a nonlinear habitability factor.
+    The exponent keeps poor/mid-habitability worlds in the low millions while
+    preserving large capacities only for excellent worlds.
     """
     hab_factor = 0
     for env in ['gravity', 'temperature', 'radiation']:
@@ -49,7 +52,10 @@ def effective_capacity(player, star):
 
     # base_capacity is in millions, convert to actual colonists
     base = star.base_capacity * MILLION
-    return int(base * hab_factor) if hab_factor > 0 else MILLION  # Minimum 1m capacity
+    if hab_factor <= 0:
+        return MILLION  # Minimum 1m capacity
+    scaled = hab_factor ** CAPACITY_HAB_EXPONENT
+    return max(MILLION, int(base * scaled))
 
 
 def habitability_proportion(hab_min, hab_max, centre, value):

@@ -15,3 +15,4 @@ from .research_events import *
 from .resource_generation import *
 from .onboarding import *
 from .help_pages import *
+from .default_sync import *

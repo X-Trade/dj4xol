@@ -628,7 +628,10 @@ class DetailBuilder():
             return None
         if not self.player or self.selected_obj.player != self.player:
             return None
-        
+
+        offense_mod = int(round(float(self.selected_obj.offense_level) * 10.0))
+        defense_mod = int(round(float(self.selected_obj.defense_level) * 10.0))
+
         return {
             'capacity': self.selected_obj.cargo_capacity,
             'used': self.selected_obj.cargo_used,
@@ -640,6 +643,8 @@ class DetailBuilder():
             'max_safe_warp': self.selected_obj.max_safe_warp,
             'integrity': self.selected_obj.integrity,
             'ship_count': self.selected_obj.ship_count,
+            'offense_modifier': f'{offense_mod:+d}',
+            'defense_modifier': f'{defense_mod:+d}',
         }
 
     def build_fleet_inventory(self):

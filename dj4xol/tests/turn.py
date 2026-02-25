@@ -144,6 +144,43 @@ class TestCapacityModifier(TestCase):
         self.assertAlmostEqual(modifier, 0.0, places=1)
 
 
+class TestEffectiveCapacity(TestCase):
+    def test_perfect_habitability_keeps_near_full_capacity(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        star = player.homeworld
+        star.base_capacity = 10000  # 10bn
+        star.gravity = player.gravity_center
+        star.temperature = player.temperature_center
+        star.radiation = player.radiation_center
+        cap = effective_capacity(player, star)
+        self.assertEqual(cap, 10_000_000_000)
+
+    def test_half_habitability_scales_to_millions(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        star = player.homeworld
+        star.base_capacity = 10000  # 10bn
+        # Halfway from center to habitable edge => proportion 0.5 per env.
+        star.gravity = player.gravity_center + ((player.hab_max('gravity') - player.gravity_center) * 0.5)
+        star.temperature = player.temperature_center + ((player.hab_max('temperature') - player.temperature_center) * 0.5)
+        star.radiation = player.radiation_center + ((player.hab_max('radiation') - player.radiation_center) * 0.5)
+        cap = effective_capacity(player, star)
+        self.assertGreaterEqual(cap, 1_000_000)
+        self.assertLess(cap, 1_000_000_000)
+
+    def test_edge_habitability_has_minimum_capacity_floor(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        star = player.homeworld
+        star.base_capacity = 10000
+        star.gravity = player.hab_max('gravity')
+        star.temperature = player.hab_max('temperature')
+        star.radiation = player.hab_max('radiation')
+        cap = effective_capacity(player, star)
+        self.assertEqual(cap, 1_000_000)
+
+
 class TestPopulationGrowth(TestCase):
     def test_growth_on_perfect_homeworld(self):
         """Population grows on perfectly habitable planet."""
@@ -2007,6 +2044,8 @@ class TestFleetCargo(TestCase):
         self.assertEqual(cargo_info['boranium'], 300)
         self.assertEqual(cargo_info['germanium'], 150)
         self.assertEqual(cargo_info['colonists'], 50)
+        self.assertEqual(cargo_info['offense_modifier'], '+0')
+        self.assertEqual(cargo_info['defense_modifier'], '+0')
 
         # Test inventory display data
         inventory = details['fleet_inventory']
@@ -2025,6 +2064,33 @@ class TestFleetCargo(TestCase):
         self.assertEqual(inventory['Colonists']['amount'], 50)
         self.assertEqual(inventory['Colonists']['percent'], 5.0)  # 50/1000 = 5%
         self.assertEqual(inventory['Colonists']['display'], '50k')
+
+    def test_object_details_fleet_composition_includes_tech_modifiers(self):
+        from ..objectdetails import DetailBuilder
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Combat Fleet",
+            x=8,
+            y=8,
+            ship_count=12,
+            integrity=91,
+            offense_level=1.1,
+            defense_level=-0.4,
+        )
+
+        detail_builder = DetailBuilder(
+            game, x=8, y=8, selected=fleet.short_id.lower(), player=player
+        )
+        details = detail_builder.build_detail()
+
+        self.assertIsNotNone(details)
+        self.assertEqual(details['fleet_cargo']['offense_modifier'], '+11')
+        self.assertEqual(details['fleet_cargo']['defense_modifier'], '-4')
 
     def test_object_details_includes_star_mining_rates_for_owned_colony(self):
         """Owned colonies should include per-resource mining rates."""

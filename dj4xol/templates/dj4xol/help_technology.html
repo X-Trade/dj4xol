@@ -80,19 +80,17 @@
                     <h2><span>Detail{% if selected_category %} - {{ selected_category.name }}{% endif %}</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content"><div class="research-panel-body research-detail-body">
                         {% if tech_rows %}
-                        {% regroup tech_rows by category as category_groups %}
-                        {% for cat_group in category_groups %}
-                        {% regroup cat_group.list by level as level_groups %}
+                        {% regroup tech_rows by level as level_groups %}
                         {% for level_group in level_groups %}
                         <div class="detail-row">
-                            <span class="env-label">{{ cat_group.grouper.name }} L{{ level_group.grouper }}</span>
+                            <span class="env-label">Level {{ level_group.grouper }}</span>
                             <span class="detail-value"></span>
                         </div>
                         {% for tech in level_group.list %}
                         <div class="tech-item">
                             <div class="tech-head">
                                 <strong>{{ tech.name }}</strong>
-                                <span>{{ tech.tech_type }}</span>
+                                <span>{{ tech.category.name }} L{{ tech.level }} / {{ tech.tech_type }}</span>
                             </div>
                             {% if tech.description %}
                             <p>{{ tech.description }}</p>
@@ -108,7 +106,6 @@
                             </table>
                             {% endif %}
                         </div>
-                        {% endfor %}
                         {% endfor %}
                         {% endfor %}
                         {% else %}

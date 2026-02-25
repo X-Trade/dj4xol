@@ -78,3 +78,45 @@ class HelpPagesTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Laser Test')
         self.assertNotContains(response, 'Shield Test')
+
+    def test_help_technology_category_counts_show_full_totals(self):
+        energy = ResearchCategory.objects.create(
+            code='ENERCNT',
+            name='Energy',
+            display_order=10,
+            enabled=True,
+        )
+        materials = ResearchCategory.objects.create(
+            code='MATCNT',
+            name='Materials',
+            display_order=20,
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=energy,
+            level=1,
+            name='Laser A',
+            tech_type='ENERGY_WEAPON',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=energy,
+            level=2,
+            name='Laser B',
+            tech_type='ENERGY_WEAPON',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=materials,
+            level=1,
+            name='Shield A',
+            tech_type='SHIELD',
+            enabled=True,
+        )
+
+        response = self.client.get(reverse('dj4xol:help_technology'))
+        self.assertEqual(response.status_code, 200)
+
+        categories = {c.id: c for c in response.context['categories']}
+        self.assertEqual(categories[energy.id].tech_count, 2)
+        self.assertEqual(categories[materials.id].tech_count, 1)

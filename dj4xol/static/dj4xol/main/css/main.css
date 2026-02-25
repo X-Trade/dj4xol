@@ -82,6 +82,13 @@ body {
     user-select: text;
 }
 
+/* While dragging the starmap, temporarily disable selection everywhere. */
+body.map-dragging,
+body.map-dragging * {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+}
+
 .column-left {
     grid-column: 1;
     grid-row: 1;
