@@ -4,7 +4,9 @@
 <div class="panel-content"><div id="detail">
     <div class="detail-header">
         {% if detail.is_fleet and detail.fleet_thumbnail %}
-        <img class="fleet-thumbnail" src="{% static detail.fleet_thumbnail %}" alt="Fleet thumbnail">
+        <img class="object-thumbnail" src="{% static detail.fleet_thumbnail %}" alt="Fleet thumbnail">
+        {% elif detail.is_star and detail.star_thumbnail %}
+        <img class="object-thumbnail" src="{% static detail.star_thumbnail %}" alt="Star thumbnail">
         {% endif %}
         {% if detail.objects_here|length > 1 %}
         <select class="detail-selector" onchange="window.location.href='?x={{ selection.x }}&y={{ selection.y }}&sel=' + this.value">

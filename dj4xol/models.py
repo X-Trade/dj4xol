@@ -7,6 +7,7 @@ from itertools import chain
 from .starnamer import StarNamer
 from .habitability_rules import HabitabilityRules
 from .fleet_thumbnails import choose_fleet_thumbnail
+from .star_thumbnails import choose_star_thumbnail
 import random
 import uuid
 from uuid_extensions import uuid7 as _uuid7
@@ -538,6 +539,10 @@ class Star(AbstractMapObject):
     defenses = models.IntegerField(default=0)
     shipyards = models.IntegerField(default=0)
     buildpoints_consumed = models.IntegerField(default=0)  # Reset each turn
+
+    @property
+    def effective_thumbnail_path(self):
+        return choose_star_thumbnail(self.id or self.short_id or self.name)
 
 
 class ServerRace(UUIDMixin, HabitabilityMixin):

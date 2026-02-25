@@ -2132,6 +2132,26 @@ class TestFleetCargo(TestCase):
         self.assertEqual(resources['Boranium']['mining_rate'], 30)
         self.assertEqual(resources['Germanium']['mining_rate'], 20)
 
+    def test_object_details_includes_star_thumbnail(self):
+        from ..objectdetails import DetailBuilder
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        detail_builder = DetailBuilder(
+            game,
+            x=star.x,
+            y=star.y,
+            selected=star.short_id.lower(),
+            player=player,
+        )
+        details = detail_builder.build_detail()
+        self.assertIsNotNone(details)
+        self.assertTrue(details['is_star'])
+        self.assertIn('star_thumbnail', details)
+        self.assertTrue(details['star_thumbnail'].startswith('dj4xol/images/thumbs/star/all/'))
+
 
 class TestProductionProgress(TestCase):
     """Test production order progress calculations."""
