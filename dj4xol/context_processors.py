@@ -1,6 +1,7 @@
 """
 Context processors for dj4xol templates.
 """
+from .version import APP_VERSION
 
 
 def user_theme(request):
@@ -9,4 +10,7 @@ def user_theme(request):
     if request.user.is_authenticated:
         if hasattr(request.user, 'dj4xol_account'):
             theme = request.user.dj4xol_account.theme or 'classic'
-    return {'user_theme': theme}
+    return {
+        'user_theme': theme,
+        'app_version': APP_VERSION,
+    }
