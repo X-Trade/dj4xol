@@ -1,7 +1,5 @@
 ============= MAIN TODO =============
 1. Star names on starmap
-2. show move orders as dotted line
-3. Starting tech level (race setting)
 4. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
 5. Secret resources
 6. fleet-to-fleet Refuelling
