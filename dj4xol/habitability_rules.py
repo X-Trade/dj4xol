@@ -62,7 +62,7 @@ class HabitabilityRules:
 
 
 class RaceCreationRules(HabitabilityRules):
-    HABITABILITY_BUDGET = 90.0
+    HABITABILITY_BUDGET = 118.0
     HABITABILITY_COST_MULTIPLIER = 4.0
     WIDTH_COST_MULTIPLIER = 2.0
     MIN_WIDTH = 0.1
@@ -73,6 +73,7 @@ class RaceCreationRules(HabitabilityRules):
     DEFAULT_STARTING_LABS = 1
     DEFAULT_STARTING_SHIPYARDS = 1
     DEFAULT_STARTING_FLEETS = 2
+    DEFAULT_STARTING_TECH_LEVEL = 3
 
     def __init__(
         self,
@@ -84,6 +85,8 @@ class RaceCreationRules(HabitabilityRules):
         starting_labs=None,
         starting_shipyards=None,
         starting_fleets=None,
+        starting_tech_level=None,
+        starting_tech_level_cost=None,
         convert_unused_buildpoints_to_research=False,
         singular_research=False,
         budget=None,
@@ -102,24 +105,42 @@ class RaceCreationRules(HabitabilityRules):
             starting_shipyards = self.DEFAULT_STARTING_SHIPYARDS
         if starting_fleets is None:
             starting_fleets = self.DEFAULT_STARTING_FLEETS
+        if starting_tech_level is None:
+            starting_tech_level = self.DEFAULT_STARTING_TECH_LEVEL
         self.starting_colonists = int(starting_colonists)
         self.starting_mines = int(starting_mines)
         self.starting_factories = int(starting_factories)
         self.starting_labs = int(starting_labs)
         self.starting_shipyards = int(starting_shipyards)
         self.starting_fleets = int(starting_fleets)
+        self.starting_tech_level = int(starting_tech_level)
+        if starting_tech_level_cost is None:
+            starting_tech_level_cost = self._default_starting_tech_level_cost(
+                self.starting_tech_level
+            )
+        self.starting_tech_level_cost_value = max(0.0, float(starting_tech_level_cost or 0.0))
         self.convert_unused_buildpoints_to_research = bool(convert_unused_buildpoints_to_research)
         self.singular_research = bool(singular_research)
 
     def width_cost(self):
-        return super().width_cost() * self.WIDTH_COST_MULTIPLIER
+        # Keep width=1.0 unchanged, but increase cost curve as width approaches 2.0.
+        # Effective width: w + 0.5*(w-1)^2 => w=1.0 -> 1.0, w=2.0 -> 2.5
+        width_total = sum(
+            self._effective_width_cost(self.widths[env]) for env in self.envs
+        )
+        return width_total * self.WIDTH_COST_MULTIPLIER * self.cost_multiplier
 
     def per_env_cost(self, env):
         base = (
-            self.widths[env] * self.WIDTH_COST_MULTIPLIER
+            self._effective_width_cost(self.widths[env]) * self.WIDTH_COST_MULTIPLIER
             + (1.0 - abs(self.centers[env] - 1.0))
         )
         return base * self.cost_multiplier
+
+    @staticmethod
+    def _effective_width_cost(width):
+        width = float(width)
+        return width + 0.5 * ((width - 1.0) ** 2)
 
     def colonist_cost(self):
         return max(0, self.starting_colonists)
@@ -128,7 +149,7 @@ class RaceCreationRules(HabitabilityRules):
         return max(0, self.starting_mines)
 
     def factories_cost(self):
-        return max(0, self.starting_factories)
+        return max(0, self.starting_factories) * 2
 
     def labs_cost(self):
         return max(0, self.starting_labs) * 8
@@ -138,6 +159,29 @@ class RaceCreationRules(HabitabilityRules):
 
     def fleets_cost(self):
         return max(0, self.starting_fleets) * 8
+
+    def starting_tech_level_cost(self):
+        return self.starting_tech_level_cost_value
+
+    @staticmethod
+    def _default_starting_tech_level_cost(level):
+        level = max(0, int(level or 0))
+        if level <= 0:
+            return 0.0
+        rp_prev_prev = 50
+        rp_prev = 80
+        total_rp = 0
+        for idx in range(1, level + 1):
+            if idx == 1:
+                rp = 50
+            elif idx == 2:
+                rp = 80
+            else:
+                rp = rp_prev + rp_prev_prev
+                rp_prev_prev = rp_prev
+                rp_prev = rp
+            total_rp += rp
+        return float(total_rp) / 10.0
 
     def convert_unused_buildpoints_cost(self):
         return 20 if self.convert_unused_buildpoints_to_research else 0
@@ -149,6 +193,7 @@ class RaceCreationRules(HabitabilityRules):
         return (self.habitability_cost() + self.colonist_cost() +
                 self.mines_cost() + self.factories_cost() +
                 self.labs_cost() + self.shipyards_cost() + self.fleets_cost() +
+                self.starting_tech_level_cost() +
                 self.convert_unused_buildpoints_cost() - self.singular_research_savings())
 
     def validate(self):
@@ -175,6 +220,8 @@ class RaceCreationRules(HabitabilityRules):
             errors.append('Starting shipyards cannot be negative')
         if self.starting_fleets < 0:
             errors.append('Starting fleets cannot be negative')
+        if self.starting_tech_level < 0:
+            errors.append('Starting tech level cannot be negative')
         if self.total_cost() > self.budget:
             errors.append(
                 f'Habitability cost ({self.total_cost():.2f}) exceeds budget ({self.budget})'

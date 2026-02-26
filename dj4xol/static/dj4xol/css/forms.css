@@ -264,6 +264,31 @@
 .create-race .hint {
     padding-left: 16px;
     color: #666;
+    font-size: 0.9em;
+    line-height: 1.25;
+}
+
+.onboarding .hint {
+    padding-left: 16px;
+    color: #666;
+    font-size: 0.9em;
+    line-height: 1.25;
+}
+
+.starting-tech-warning {
+    display: none;
+    margin-top: 3px;
+    font-style: italic;
+}
+
+.create-race .hint.starting-tech-warning.form-errors,
+.onboarding .hint.starting-tech-warning.form-errors {
+    color: #cc3333;
+}
+
+body.lcars.create-race .hint.starting-tech-warning.form-errors,
+body.lcars.onboarding .hint.starting-tech-warning.form-errors {
+    color: var(--status-warning);
 }
 
 .create-race .panel.open .panel-content > div,

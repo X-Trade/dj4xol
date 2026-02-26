@@ -16,7 +16,8 @@ from .decorators import registration_required, player_only_view
 from .turn import GameTurn
 from .research import (
     build_research_screen_data, update_player_allocations, set_even_allocations,
-    set_singular_allocation,
+    set_singular_allocation, get_global_research_max_level,
+    get_starting_tech_balance_costs,
 )
 from .technology_thumbnails import (
     get_technology_thumbnail_initial_index,
@@ -558,7 +559,14 @@ def create_race(request):
             return redirect('dj4xol:index')
     else:
         form = ServerRaceForm()
-    return render(request, 'dj4xol/create_race.html', {'form': form, 'selected_theme': selected_theme})
+    max_level = get_global_research_max_level()
+    return render(request, 'dj4xol/create_race.html', {
+        'form': form,
+        'selected_theme': selected_theme,
+        'starting_tech_costs_json': json.dumps(
+            get_starting_tech_balance_costs(max_level=max_level)
+        ),
+    })
 
 
 @registration_required()
@@ -580,6 +588,9 @@ def create_game(request):
             factory.game.turn_scheme = d['turn_scheme']
             factory.game.years_per_turn = d['years_per_turn']
             factory.game.random_events = d.get('random_events', False)
+            factory.game.max_starting_tech_level = int(
+                d.get('max_starting_tech_level') or 5
+            )
             if d.get('join_open_years'):
                 factory.game.join_until_year = d['starting_year'] + d['join_open_years']
             factory.set_map_size(d['map_size_x'], d['map_size_y'])
@@ -1062,9 +1073,13 @@ def onboarding_race(request):
             return redirect('dj4xol:index')
     else:
         form = ServerRaceForm()
+    max_level = get_global_research_max_level()
     return render(request, 'dj4xol/onboarding_race.html', {
         'form': form,
         'selected_theme': account.theme,
+        'starting_tech_costs_json': json.dumps(
+            get_starting_tech_balance_costs(max_level=max_level)
+        ),
     })
 
 

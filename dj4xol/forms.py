@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.password_validation import password_validators_help_text_html
 from .models import ServerRace, ServerRaceType, Game, Account
+from .research import get_global_research_max_level, get_starting_tech_balance_cost
 
 
 class ServerRaceForm(forms.ModelForm):
@@ -21,7 +22,7 @@ class ServerRaceForm(forms.ModelForm):
             'name', 'plural_name', 'homeworld_name', 'race_type', 'description',
             'starting_colonists',
             'starting_mines', 'starting_factories', 'starting_labs',
-            'starting_shipyards', 'starting_fleets',
+            'starting_shipyards', 'starting_fleets', 'starting_tech_level',
             'convert_unused_buildpoints_to_research', 'singular_research',
             'gravity_center', 'gravity_width',
             'temperature_center', 'temperature_width',
@@ -35,6 +36,7 @@ class ServerRaceForm(forms.ModelForm):
             'starting_labs': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
             'starting_shipyards': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
             'starting_fleets': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
+            'starting_tech_level': forms.NumberInput(attrs={'step': '1', 'min': '0'}),
             'gravity_center': forms.NumberInput(attrs={'step': '0.05', 'min': '0', 'max': '2'}),
             'gravity_width': forms.NumberInput(attrs={'step': '0.1', 'min': '0.1', 'max': '2'}),
             'temperature_center': forms.NumberInput(attrs={'step': '0.05', 'min': '0', 'max': '2'}),
@@ -45,8 +47,10 @@ class ServerRaceForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        max_level = get_global_research_max_level()
         self.fields['race_type'].queryset = ServerRaceType.objects.filter(enabled=True)
         self.fields['description'].required = False
+        self.fields['starting_tech_level'].widget.attrs['max'] = str(max_level)
         if self.instance and self.instance.pk:
             self.fields['spend_leftover_on_research'].initial = bool(
                 self.instance.spend_leftover_points_on_research
@@ -90,11 +94,22 @@ class ServerRaceForm(forms.ModelForm):
             starting_labs=cleaned_data.get('starting_labs', 1),
             starting_shipyards=cleaned_data.get('starting_shipyards', 1),
             starting_fleets=cleaned_data.get('starting_fleets', 2),
+            starting_tech_level=cleaned_data.get('starting_tech_level', 3),
+            starting_tech_level_cost=get_starting_tech_balance_cost(
+                cleaned_data.get('starting_tech_level', 3)
+            ),
             convert_unused_buildpoints_to_research=cleaned_data.get(
                 'convert_unused_buildpoints_to_research', False
             ),
             singular_research=cleaned_data.get('singular_research', False),
         )
+        max_level = get_global_research_max_level()
+        chosen_level = int(cleaned_data.get('starting_tech_level', 0) or 0)
+        if chosen_level > max_level:
+            self.add_error(
+                'starting_tech_level',
+                'Starting tech level cannot exceed %s.' % max_level
+            )
         errors = rules.validate()
         if errors:
             raise forms.ValidationError(errors)
@@ -195,6 +210,13 @@ class NewGameForm(forms.Form):
         required=False,
         help_text="Enable random events affecting colonies"
     )
+    max_starting_tech_level = forms.IntegerField(
+        label="Max Starting Tech Level",
+        min_value=0,
+        required=False,
+        initial=5,
+        help_text="Highest starting tech level a race can keep in this game. Races above this are clamped and the difference is refunded into leftover points."
+    )
     race = forms.ModelChoiceField(
         label="Play as Race",
         queryset=ServerRace.objects.none()
@@ -208,9 +230,24 @@ class NewGameForm(forms.Form):
 
     def __init__(self, account, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['max_starting_tech_level'].widget.attrs['max'] = str(
+            get_global_research_max_level()
+        )
         self.fields['race'].queryset = ServerRace.objects.filter(
             models.Q(public=True) | models.Q(owner=account)
         )
+
+    def clean_max_starting_tech_level(self):
+        max_level = get_global_research_max_level()
+        value = self.cleaned_data.get('max_starting_tech_level')
+        if value is None:
+            return 5
+        value = int(value)
+        if value > max_level:
+            raise forms.ValidationError(
+                'Max starting tech level cannot exceed %s.' % max_level
+            )
+        return value
 
     def parse_invitations(self):
         """Parse invitations field into list of (type, value) tuples."""

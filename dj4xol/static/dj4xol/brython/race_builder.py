@@ -1,4 +1,5 @@
 from browser import document, html
+import json
 from habitability_rules import RaceCreationRules
 
 STEP = 0.1
@@ -157,6 +158,33 @@ def _update_all(ui_rows, summary_value, error_box):
     starting_labs = read_int('id_starting_labs', 1)
     starting_shipyards = read_int('id_starting_shipyards', 1)
     starting_fleets = read_int('id_starting_fleets', 2)
+    starting_tech_level = read_int('id_starting_tech_level', 3)
+    starting_tech_level_costs = {}
+    starting_tech_cost_json = document.getElementById('starting-tech-costs-json')
+    if starting_tech_cost_json:
+        try:
+            starting_tech_level_costs = {
+                int(k): float(v) for (k, v) in json.loads(
+                    starting_tech_cost_json.textContent or '{}'
+                ).items()
+            }
+        except Exception:
+            starting_tech_level_costs = {}
+    max_defined_start_level = max(starting_tech_level_costs.keys()) if starting_tech_level_costs else 0
+    if max_defined_start_level > 0:
+        starting_tech_level = _clamp(starting_tech_level, 0, max_defined_start_level)
+        starting_tech_input = document.getElementById('id_starting_tech_level')
+        if starting_tech_input:
+            starting_tech_input.value = str(int(starting_tech_level))
+    starting_tech_level_cost = float(
+        starting_tech_level_costs.get(int(starting_tech_level), 0.0)
+    )
+    starting_tech_warning = document.getElementById('starting-tech-warning')
+    if starting_tech_warning:
+        if int(starting_tech_level) > 5:
+            starting_tech_warning.style.display = 'block'
+        else:
+            starting_tech_warning.style.display = 'none'
     convert_checkbox = document.getElementById('id_convert_unused_buildpoints_to_research')
     singular_checkbox = document.getElementById('id_singular_research')
     convert_unused_buildpoints_to_research = bool(
@@ -180,6 +208,8 @@ def _update_all(ui_rows, summary_value, error_box):
         starting_labs=starting_labs,
         starting_shipyards=starting_shipyards,
         starting_fleets=starting_fleets,
+        starting_tech_level=starting_tech_level,
+        starting_tech_level_cost=starting_tech_level_cost,
         convert_unused_buildpoints_to_research=convert_unused_buildpoints_to_research,
         singular_research=singular_research,
     )
@@ -223,6 +253,7 @@ def _update_all(ui_rows, summary_value, error_box):
     set_points('lab-row', rules.labs_cost())
     set_points('shipyard-row', rules.shipyards_cost())
     set_points('fleet-row', rules.fleets_cost())
+    set_points('starting-tech-row', rules.starting_tech_level_cost())
     set_points('convert-bp-row', rules.convert_unused_buildpoints_cost())
     set_points('singular-row', -rules.singular_research_savings())
 
@@ -386,6 +417,7 @@ def init_habitability_form():
     attach_points('id_starting_labs', 'lab-row', 'lab-row-points')
     attach_points('id_starting_shipyards', 'shipyard-row', 'shipyard-row-points')
     attach_points('id_starting_fleets', 'fleet-row', 'fleet-row-points')
+    attach_points('id_starting_tech_level', 'starting-tech-row', 'starting-tech-row-points')
     attach_points(
         'id_convert_unused_buildpoints_to_research',
         'convert-bp-row',
@@ -443,6 +475,7 @@ def init_habitability_form():
         'id_starting_labs',
         'id_starting_shipyards',
         'id_starting_fleets',
+        'id_starting_tech_level',
     ]:
         input_el = document.getElementById(field_id)
         if input_el:

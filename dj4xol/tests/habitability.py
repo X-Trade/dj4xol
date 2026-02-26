@@ -84,6 +84,19 @@ class TestHabitabilityMixin(TestCase):
         )
         self.assertAlmostEqual(rules.total_cost(), rules.budget)
 
+    def test_race_creation_width_cost_curve_keeps_1_and_raises_2(self):
+        rules_narrow = RaceCreationRules(
+            centers={'gravity': 0.0, 'temperature': 1.0, 'radiation': 1.0},
+            widths={'gravity': 1.0, 'temperature': 1.0, 'radiation': 1.0},
+        )
+        rules_wide = RaceCreationRules(
+            centers={'gravity': 0.0, 'temperature': 1.0, 'radiation': 1.0},
+            widths={'gravity': 2.0, 'temperature': 1.0, 'radiation': 1.0},
+        )
+        # Center at 0.0 removes center-cost component for gravity, isolating width cost.
+        self.assertAlmostEqual(rules_narrow.per_env_cost('gravity'), 8.0)
+        self.assertAlmostEqual(rules_wide.per_env_cost('gravity'), 20.0)
+
     def test_validate_habitability_range_below_zero(self):
         """Range extending below 0 should return error."""
         self.race.gravity_center = 0.2
