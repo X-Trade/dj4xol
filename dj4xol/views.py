@@ -645,11 +645,21 @@ def help_index(request):
     })
 
 
+@registration_required()
+def help_version_history(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_version_history.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
 def _format_tech_param_key(key):
     labels = {
         'max_warp_speed': 'Maximum Warp',
         'max_cargo_capacity': 'Cargo Capacity',
         'max_fuel': 'Fuel Capacity',
+        'fuel_efficiency': 'Fuel Efficiency',
+        'overmax_fuel_penalty': 'Overmax Fuel Penalty',
         'hull_thumbnail_class': 'Hull Class',
         'offense_level': 'Offense Level',
         'defense_level': 'Defense Level',
@@ -662,6 +672,11 @@ def _format_tech_param_value(key, value):
     if key in ('offense_level', 'defense_level', 'colony_defense_level'):
         try:
             return int(round(float(value) * 10))
+        except (TypeError, ValueError):
+            return value
+    if key in ('fuel_efficiency', 'overmax_fuel_penalty'):
+        try:
+            return '{}%'.format(int(round(float(value) * 100)))
         except (TypeError, ValueError):
             return value
     return value

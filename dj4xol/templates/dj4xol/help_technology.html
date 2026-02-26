@@ -103,7 +103,7 @@
                             <div class="tech-body">
                                 <div class="tech-head">
                                     <strong>{{ tech.name }}</strong>
-                                    <span>{{ tech.category.name }} L{{ tech.level }} / {{ tech.tech_type }}</span>
+                                    <span>{{ tech.category.name }} L{{ tech.level }} / {{ tech.get_tech_type_display }}</span>
                                 </div>
                                 {% if tech.description %}
                                 <p>{{ tech.description }}</p>

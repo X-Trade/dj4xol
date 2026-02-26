@@ -891,8 +891,28 @@ class GameTurn():
 
     def _movement_fuel_cost(self, fleet, warp_speed):
         """Fuel used for one year of movement at the specified warp speed."""
-        max_warp = max(1, int(fleet.max_safe_warp))
-        return max(1.0, float(warp_speed) / (float(max_warp) / 1.5))
+        ship_count = max(1, int(fleet.ship_count or 1))
+        max_warp = max(1.0, float(fleet.max_safe_warp or 1))
+        speed = max(0.0, float(warp_speed or 0.0))
+
+        fuel_efficiency = max(0.05, float(getattr(fleet, 'fuel_efficiency', 1.0) or 1.0))
+        overmax_penalty = max(
+            0.1, float(getattr(fleet, 'overmax_fuel_penalty', 1.0) or 1.0)
+        )
+
+        normalised = speed / max_warp
+        cruise_normalised = min(normalised, 1.0)
+        # Baseline curve: low warp is cheap, safe warp is around 1.5mg per ship-year.
+        cruise_cost = 0.15 + 1.35 * (cruise_normalised ** 1.4)
+
+        overmax_cost = 0.0
+        if normalised > 1.0:
+            over = normalised - 1.0
+            # Exponential overmax burn; propulsion tech can worsen/improve this.
+            overmax_cost = overmax_penalty * 0.6 * ((2.0 ** (over * 1.6)) - 1.0)
+
+        per_ship_cost = max(0.05, (cruise_cost + overmax_cost) / fuel_efficiency)
+        return per_ship_cost * ship_count
 
     def _resolve_movement_warp_with_fuel(self, fleet, order, requested_warp):
         """Resolve usable warp for this movement turn based on available fuel."""
@@ -913,13 +933,10 @@ class GameTurn():
     def _max_affordable_warp_speed(self, fleet, requested_warp):
         """Highest warp (<= requested) this fleet can currently fuel for one turn."""
         fuel = float(fleet.fuel)
-        if fuel < 1.0:
+        if fuel <= 0.0:
             return 0
-        max_warp = max(1, int(fleet.max_safe_warp))
-        candidate = min(
-            max(1, int(requested_warp)),
-            max(1, int(fuel * (float(max_warp) / 1.5))),
-        )
+
+        candidate = max(1, int(requested_warp))
         while candidate > 0 and self._movement_fuel_cost(fleet, candidate) > fuel:
             candidate -= 1
         return candidate
@@ -1935,6 +1952,14 @@ class GameTurn():
             (source_fleet.defense_level * source_fleet.ship_count) +
             (target_fleet.defense_level * target_fleet.ship_count)
         ) / float(total_ships)
+        weighted_fuel_efficiency = (
+            (source_fleet.fuel_efficiency * source_fleet.ship_count) +
+            (target_fleet.fuel_efficiency * target_fleet.ship_count)
+        ) / float(total_ships)
+        weighted_overmax_fuel_penalty = (
+            (source_fleet.overmax_fuel_penalty * source_fleet.ship_count) +
+            (target_fleet.overmax_fuel_penalty * target_fleet.ship_count)
+        ) / float(total_ships)
 
         # Merge attributes into target fleet
         target_fleet.ship_count = total_ships
@@ -1945,6 +1970,8 @@ class GameTurn():
         target_fleet.max_safe_warp = min(
             target_fleet.max_safe_warp, source_fleet.max_safe_warp
         )
+        target_fleet.fuel_efficiency = weighted_fuel_efficiency
+        target_fleet.overmax_fuel_penalty = weighted_overmax_fuel_penalty
         target_fleet.offense_level = weighted_offense_level
         target_fleet.defense_level = weighted_defense_level
         target_fleet.integrity = avg_integrity
@@ -2426,6 +2453,8 @@ class GameTurn():
             fuel=tech_effects.get('max_fuel', 50.0),
             max_fuel=tech_effects.get('max_fuel', 50.0),
             max_safe_warp=tech_effects['max_warp_speed'],
+            fuel_efficiency=tech_effects.get('fuel_efficiency', 1.0),
+            overmax_fuel_penalty=tech_effects.get('overmax_fuel_penalty', 1.0),
             offense_level=tech_effects['offense_level'],
             defense_level=tech_effects['defense_level'],
             thumbnail_path=thumbnail_path,

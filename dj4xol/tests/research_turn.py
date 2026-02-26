@@ -135,7 +135,7 @@ class ResearchTurnTest(TestCase):
             level=1,
             name='Warp 7',
             tech_type='PROPULSION',
-            params_json='{"max_warp_speed": 7}',
+            params_json='{"max_warp_speed": 7, "fuel_efficiency": 1.15, "overmax_fuel_penalty": 0.85}',
         )
         Technology.objects.create(
             category=hull_category,
@@ -174,6 +174,8 @@ class ResearchTurnTest(TestCase):
         self.assertEqual(new_fleet.cargo_capacity, 400)
         self.assertEqual(new_fleet.fuel, 200.0)
         self.assertEqual(new_fleet.max_fuel, 200.0)
+        self.assertAlmostEqual(new_fleet.fuel_efficiency, 1.15, places=4)
+        self.assertAlmostEqual(new_fleet.overmax_fuel_penalty, 0.85, places=4)
         self.assertEqual(new_fleet.defense_level, 0.2)
         self.assertIn('/freighter/', new_fleet.thumbnail_path)
 

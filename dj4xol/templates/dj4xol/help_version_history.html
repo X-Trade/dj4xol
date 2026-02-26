@@ -1,0 +1,131 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Version History</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index">
+        <div class="title-bar">
+            <span class="title">Version History</span>
+            <span class="tagline">Recent Development Log</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_version_history' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-version-history">
+                    <h2><span>Recent Developments</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content"><div>
+                        <p>
+                            This is a user-facing summary of recent development.
+                            Some historical version markers are approximate because formal
+                            release tracking started later in the project.
+                        </p>
+
+                        <h4><span class="env-label">v0.8.4</span></h4>
+                        <ul class="game-list">
+                            <li>Introduced level-0 baseline fleet technology.</li>
+                            <li>Added technology thumbnails and hover/zoom interactions.</li>
+                            <li>Expanded hull and propulsion technology tree depth.</li>
+                        </ul>
+
+                        <h4><span class="env-label">v0.8.3</span></h4>
+                        <ul class="game-list">
+                            <li>Refreshed default technology balancing.</li>
+                            <li>Patched migration compatibility.</li>
+                        </ul>
+
+                        <h4><span class="env-label">v0.8.1</span></h4>
+                        <ul class="game-list">
+                            <li>Added deterministic fleet and star thumbnails.</li>
+                            <li>Added fleet fuel systems.</li>
+                            <li>Introduced hull-driven cargo and fuel capacities.</li>
+                        </ul>
+
+                        <h4><span class="env-label">v0.8.0</span></h4>
+                        <ul class="game-list">
+                            <li>Added fleet combat technology.</li>
+                            <li>Added race creation research options.</li>
+                            <li>Improved colony production messaging.</li>
+                            <li>Added hazard fire from hostile planetary defences.</li>
+                        </ul>
+
+                        <h4><span class="env-label">v0.2.2</span></h4>
+                        <ul class="game-list">
+                            <li>Rolled out research categories and unlocks.</li>
+                            <li>Added the Technology Directory.</li>
+                            <li>Added help pages for combat, invasion, and core systems.</li>
+                        </ul>
+
+                        <h4><span class="env-label">v0.2.0</span></h4>
+                        <ul class="game-list">
+                            <li>Introduced space combat and invasion rules.</li>
+                            <li>Added staffing-aware economic and defence calculations.</li>
+                            <li>Improved map controls on mobile and desktop.</li>
+                            <li>Refined messaging, detail panel, and turn flow.</li>
+                        </ul>
+
+                        <h4><span class="env-label">v0.1.2</span></h4>
+                            <li>Added first-time user experience pages.</li>
+                        <ul class="game-list">
+                        </ul>
+
+                        <h4><span class="env-label">v0.1.1</span></h4>
+                        <ul class="game-list">
+                            <li>Established the core gameplay loop.</li>
+                            <li>Added player and game setup.</li>
+                            <li>Added stars, fleets, and movement orders.</li>
+                            <li>Added production queues, mining, factories, and shipyards.</li>
+                            <li>Added reports, themes, and major responsive UI structure.</li>
+                        </ul>
+
+                        <h4><span class="env-label">v0.0.1</span></h4>
+                        <ul class="game-list">
+                            <li>Earliest playable prototype from 2021.</li>
+                            <li>Included basic game setup and fleet movement foundations.</li>
+                        </ul>
+
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                        </div>
+                    </div></div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+    </body>
+</html>

@@ -33,7 +33,8 @@
       Build your empire, explore the galaxy, and compete with other players
       for galactic domination. Create or join a game to get started.
 
-      New players should check the documentation for tips on getting started.
+      New players should check the Help Index.
+      Returning players can check out the Version History.
 - model: dj4xol.ServerSettings
   fields:
     key: 'server_allow_registration'
@@ -324,6 +325,19 @@
     enabled: True
 
 - model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000100"
+  fields:
+    short_id: "tech00000100"
+    category: 1
+    level: 0
+    name: 'Prototype Warp Coils'
+    description: 'First-generation warp drive with poor fuel economy and conservative safety margins.'
+    tech_type: 'PROPULSION'
+    params_json: '{"max_warp_speed": 2, "fuel_efficiency": 0.58, "overmax_fuel_penalty": 1.40}'
+    display_order: 5
+    enabled: True
+
+- model: dj4xol.Technology
   pk: "00000000-0000-0000-0000-000000000101"
   fields:
     short_id: "tech00000101"
@@ -332,7 +346,7 @@
     name: 'Improved Warp Coils'
     description: 'Refined coil harmonics permit safer high-speed transit.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 3}'
+    params_json: '{"max_warp_speed": 3, "fuel_efficiency": 0.70, "overmax_fuel_penalty": 1.25}'
     display_order: 10
     enabled: True
 
@@ -345,7 +359,7 @@
     name: 'Adaptive Navigation Computers'
     description: 'Advanced guidance packages support tighter warp tolerances.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 4}'
+    params_json: '{"max_warp_speed": 4, "fuel_efficiency": 0.78, "overmax_fuel_penalty": 1.20}'
     display_order: 20
     enabled: True
 
@@ -358,7 +372,7 @@
     name: 'Reinforced Field Lattices'
     description: 'Improved stress management allows sustained higher warp.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 5}'
+    params_json: '{"max_warp_speed": 5, "fuel_efficiency": 0.86, "overmax_fuel_penalty": 1.12}'
     display_order: 30
     enabled: True
 
@@ -371,7 +385,7 @@
     name: 'Phase-Coupled Warp Frames'
     description: 'Experimental frame coupling pushes safe warp limits further.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 6}'
+    params_json: '{"max_warp_speed": 6, "fuel_efficiency": 0.94, "overmax_fuel_penalty": 1.05}'
     display_order: 40
     enabled: True
 
@@ -384,7 +398,7 @@
     name: 'Quantum Slipstream Baffles'
     description: 'Slipstream damping baffles reduce transit turbulence at higher warp.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 7}'
+    params_json: '{"max_warp_speed": 7, "fuel_efficiency": 1.00, "overmax_fuel_penalty": 1.00}'
     display_order: 42
     enabled: True
 
@@ -397,7 +411,7 @@
     name: 'Interstellar Ram Scoops'
     description: 'Fuel-scoop geometry stabilizes long-range high-warp transits.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 8}'
+    params_json: '{"max_warp_speed": 8, "fuel_efficiency": 1.10, "overmax_fuel_penalty": 0.92}'
     display_order: 44
     enabled: True
 
@@ -410,7 +424,7 @@
     name: 'Inertial Shear Dampers'
     description: 'Reinforced dampers keep hull stress within tolerances at extreme cruise warp.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 9}'
+    params_json: '{"max_warp_speed": 9, "fuel_efficiency": 1.18, "overmax_fuel_penalty": 0.86}'
     display_order: 46
     enabled: True
 
@@ -423,7 +437,7 @@
     name: 'Null-Phase Transit Geometry'
     description: 'Phase-shaped transit envelopes permit stable Warp 10 cruise envelopes.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 10, "defense_level": -0.4}'
+    params_json: '{"max_warp_speed": 10, "defense_level": -0.4, "fuel_efficiency": 0.88, "overmax_fuel_penalty": 1.55}'
     display_order: 48
     enabled: True
 
@@ -436,7 +450,7 @@
     name: 'Inertial Minimizer'
     description: 'High-precision inertial damping lowers frame stress and maintains reliable Warp 10 transit.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 10}'
+    params_json: '{"max_warp_speed": 10, "fuel_efficiency": 1.28, "overmax_fuel_penalty": 0.80}'
     display_order: 49
     enabled: True
 
@@ -449,8 +463,21 @@
     name: 'Shield-Drain Overdrive Injectors'
     description: 'Emergency overdrive unlocks Warp 11 but bleeds defensive shielding under sustained operation.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 11, "defense_level": -0.6}'
+    params_json: '{"max_warp_speed": 11, "defense_level": -0.6, "fuel_efficiency": 0.82, "overmax_fuel_penalty": 1.75}'
     display_order: 50
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000200"
+  fields:
+    short_id: "tech00000200"
+    category: 1
+    level: 0
+    name: 'Gauss Gun'
+    description: 'A primitive mass-driver weapon with limited penetration.'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 0.10}'
+    display_order: 45
     enabled: True
 
 - model: dj4xol.Technology
@@ -620,6 +647,19 @@
     tech_type: 'ENERGY_WEAPON'
     params_json: '{"offense_level": 2.40}'
     display_order: 110
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000300"
+  fields:
+    short_id: "tech00000300"
+    category: 3
+    level: 0
+    name: 'Light Composite Plating'
+    description: 'Baseline hull reinforcement with modest defensive value.'
+    tech_type: 'ARMOUR'
+    params_json: '{"defense_level": 0.10}'
+    display_order: 115
     enabled: True
 
 - model: dj4xol.Technology
@@ -857,11 +897,24 @@
     enabled: True
 
 - model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000500"
+  fields:
+    short_id: "tech00000500"
+    category: 5
+    level: 0
+    name: 'Probe Hull'
+    description: 'Minimal autonomous hull for expendable reconnaissance craft.'
+    tech_type: 'HULL'
+    params_json: '{"max_cargo_capacity": 10, "max_fuel": 40, "hull_thumbnail_class": "probe", "defense_level": -1.0, "offense_level": -0.5}'
+    display_order: 205
+    enabled: True
+
+- model: dj4xol.Technology
   pk: "00000000-0000-0000-0000-000000000501"
   fields:
     short_id: "tech00000501"
     category: 5
-    level: 0
+    level: 1
     name: 'Scout Hull'
     description: 'Baseline scout chassis with minimal holds and tanks.'
     tech_type: 'HULL'
