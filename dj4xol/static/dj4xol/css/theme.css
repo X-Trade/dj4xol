@@ -223,6 +223,21 @@ a:hover {
     margin: 10px 0;
 }
 
+/* Long-press thumbnail pop overlay (renders above panel clipping). */
+.thumb-pop-target {
+    touch-action: manipulation;
+    cursor: zoom-in;
+}
+
+.thumb-pop-overlay {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    margin: 0;
+    transform: none !important;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
 /* ============================================
    Hamburger Menu
    ============================================ */

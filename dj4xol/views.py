@@ -18,6 +18,11 @@ from .research import (
     build_research_screen_data, update_player_allocations, set_even_allocations,
     set_singular_allocation,
 )
+from .technology_thumbnails import (
+    get_technology_thumbnail_initial_index,
+    get_technology_thumbnail_path,
+    get_technology_thumbnail_paths,
+)
 from .starmap import StarMap
 from .factory import GameFactory
 from .forms import ServerRaceForm, NewGameForm, RegistrationForm, JoinGameForm
@@ -751,6 +756,9 @@ def help_technology(request):
     )
     for tech in tech_rows:
         params = _safe_tech_params(tech)
+        tech.thumbnail_path = get_technology_thumbnail_path(tech)
+        tech.thumbnail_paths = get_technology_thumbnail_paths(tech)
+        tech.thumbnail_initial_index = get_technology_thumbnail_initial_index(tech)
         tech.params_display = [
             {
                 'label': _format_tech_param_key(key),

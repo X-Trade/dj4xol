@@ -1,12 +1,13 @@
 ============= MAIN TODO =============
 1. Star names on starmap
 2. show move orders as dotted line
-3. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
-4. Secret resources
-5. fleet-to-fleet Refuelling
-6. Ship Design (Basic)
-7. Instant merge/split fleets (dedicated interactive screen)
-8. Custom server help pages (wiki/cms)
+3. Starting tech level (race setting)
+4. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
+5. Secret resources
+6. fleet-to-fleet Refuelling
+7. Ship Design (Basic)
+8. Instant merge/split fleets (dedicated interactive screen)
+9. Custom server help pages (wiki/cms)
 10. radar system (ties to #11). Players cannot see ships beyond their ships or planets sensor range
 11. protect unnecessary/unsporting information from being delivered to the wrong owner-player
    for example, a player cannot see the orders of another player's vessel

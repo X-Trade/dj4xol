@@ -17,6 +17,11 @@ from .research_rules import (
     rp_cost_for_level,
     normalise_percentages,
 )
+from .technology_thumbnails import (
+    get_technology_thumbnail_initial_index,
+    get_technology_thumbnail_path,
+    get_technology_thumbnail_paths,
+)
 
 TECH_PARAM_LABELS = {
     'max_warp_speed': 'Maximum Warp',
@@ -726,6 +731,9 @@ def build_research_screen_data(player, selected_category_id=None):
                     'name': item.name,
                     'description': item.description,
                     'tech_type': item.tech_type,
+                    'thumbnail_path': get_technology_thumbnail_path(item),
+                    'thumbnail_paths': get_technology_thumbnail_paths(item),
+                    'thumbnail_initial_index': get_technology_thumbnail_initial_index(item),
                     'params': params,
                     'params_display': [
                         {'label': _format_param_key(key), 'value': _format_param_value(key, value)}
