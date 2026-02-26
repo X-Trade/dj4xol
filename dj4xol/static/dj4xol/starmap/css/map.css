@@ -108,6 +108,25 @@ body.lcars .maparea a.mapstar-name {
     stroke: #79b8ff;
 }
 
+.fleet-patrol-radius {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+}
+
+.fleet-patrol-radius-selected {
+    stroke: #79b8ff;
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    opacity: 0.75;
+}
+
+.fleet-patrol-radius-preview {
+    stroke: #9cc8ff;
+    stroke-width: 1;
+    stroke-dasharray: 2 4;
+    opacity: 0.45;
+}
+
 /* Keep map object visuals stable; no generic link hover styling on stars/fleets. */
 .maparea a,
 .maparea a:hover,
