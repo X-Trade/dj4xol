@@ -265,6 +265,50 @@ def _max_level_by_category(category_ids):
     return result
 
 
+def get_global_research_max_level():
+    """Return the highest configured research level."""
+    ensure_default_level_requirements()
+    max_level = (
+        DefaultResearchLevelRequirement.objects.aggregate(
+            models.Max('level')
+        ).get('level__max') or 0
+    )
+    return int(max_level)
+
+
+def get_starting_tech_balance_costs(max_level=None, rp_per_point=10.0):
+    """Return cumulative starting-tech costs in Balance Points by level."""
+    ensure_default_level_requirements()
+    if max_level is None:
+        max_level = get_global_research_max_level()
+    max_level = max(0, int(max_level))
+    rp_per_point = max(0.0001, float(rp_per_point))
+
+    level_rp = {
+        int(row.level): int(row.rp_cost)
+        for row in DefaultResearchLevelRequirement.objects.filter(
+            level__lte=max_level
+        ).order_by('level')
+    }
+    costs = {0: 0.0}
+    cumulative_rp = 0
+    for level in range(1, max_level + 1):
+        cumulative_rp += int(level_rp.get(level, rp_cost_for_level(level)))
+        costs[level] = cumulative_rp / rp_per_point
+    return costs
+
+
+def get_starting_tech_balance_cost(level, rp_per_point=10.0):
+    """Return cumulative Balance Point cost for a chosen starting tech level."""
+    level = max(0, int(level or 0))
+    return float(
+        get_starting_tech_balance_costs(
+            max_level=level,
+            rp_per_point=rp_per_point,
+        ).get(level, 0.0)
+    )
+
+
 def _advance_research_row_with_requirements(row, added_rp, max_level, eligible_stars):
     """Apply RP and advance one research row, consuming required minerals."""
     old_level = float(row.current_level or 0.0)

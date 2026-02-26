@@ -18,9 +18,13 @@ def get_default_race():
         name='Tester',
         defaults={
             'plural_name': 'Testers',
-            'race_type': get_default_race_type()
+            'race_type': get_default_race_type(),
+            'starting_tech_level': 0,
         }
     )
+    if race.starting_tech_level != 0:
+        race.starting_tech_level = 0
+        race.save(update_fields=['starting_tech_level'])
     return race
 
 

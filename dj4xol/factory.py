@@ -260,6 +260,26 @@ class GameFactory():
         player.save()
         return player
 
+    def _resolve_starting_tech_level(self, race):
+        requested_level = max(0, int(getattr(race, 'starting_tech_level', 0) or 0))
+        max_allowed = max(0, int(getattr(self.game, 'max_starting_tech_level', 0) or 0))
+        effective_level = min(requested_level, max_allowed)
+
+        from .research import get_starting_tech_balance_cost
+        requested_cost = float(get_starting_tech_balance_cost(requested_level))
+        effective_cost = float(get_starting_tech_balance_cost(effective_level))
+        refunded_points = max(0.0, requested_cost - effective_cost)
+        return effective_level, refunded_points
+
+    def _apply_starting_research_level(self, player):
+        from .research import ensure_player_research_rows
+        start_level = max(0, int(getattr(player, 'starting_tech_level', 0) or 0))
+        rows = ensure_player_research_rows(player)
+        for row in rows:
+            row.current_level = float(start_level)
+            row.stored_rp = 0.0
+            row.save(update_fields=['current_level', 'stored_rp'])
+
     def join_player(self, account, race, invited=False):
         """Add a player to an existing game with homeworld assignment.
         Returns the created Player instance or None if joining failed.
@@ -294,16 +314,19 @@ class GameFactory():
         player.starting_labs = race.starting_labs
         player.starting_shipyards = race.starting_shipyards
         player.starting_fleets = race.starting_fleets
+        effective_starting_tech_level, refunded_points = self._resolve_starting_tech_level(race)
+        player.starting_tech_level = effective_starting_tech_level
         player.convert_unused_buildpoints_to_research = (
             race.convert_unused_buildpoints_to_research
         )
         player.singular_research = race.singular_research
         player.spend_leftover_points_on_research = race.spend_leftover_points_on_research
-        player.leftover_points = race.leftover_points
+        player.leftover_points = float(race.leftover_points or 0.0) + float(refunded_points)
         player.copy_habitability_from(race)
         player.save()
         self._assign_homeworld_to_player(player, self._find_homeworld_star(available_stars))
         self._create_starting_fleets(player)
+        self._apply_starting_research_level(player)
         return player
 
     def _create_starting_fleets(self, player):

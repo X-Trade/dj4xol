@@ -159,6 +159,47 @@ class testGameFactory(TestCase):
         unique_coords = set(coords)
         self.assertLess(len(unique_coords), len(coords))
 
+    def test_join_player_applies_starting_tech_level_to_research_rows(self):
+        self.races[0].starting_tech_level = 3
+        self.races[0].save(update_fields=['starting_tech_level'])
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(5)
+        gf.save()
+
+        player = gf.join_player(self.accounts[0], self.races[0])
+        levels = set(
+            player.research_progress.values_list('current_level', flat=True)
+        )
+        self.assertEqual(levels, {3.0})
+
+    def test_join_player_caps_starting_tech_level_and_refunds_leftover_points(self):
+        self.races[0].starting_tech_level = 3
+        self.races[0].leftover_points = 1.0
+        self.races[0].spend_leftover_points_on_research = True
+        self.races[0].save(update_fields=[
+            'starting_tech_level',
+            'leftover_points',
+            'spend_leftover_points_on_research',
+        ])
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(5)
+        gf.save()
+        gf.game.max_starting_tech_level = 2
+        gf.game.save(update_fields=['max_starting_tech_level'])
+
+        player = gf.join_player(self.accounts[0], self.races[0])
+        self.assertEqual(player.starting_tech_level, 2)
+        # L3 costs 26 BP and L2 costs 13 BP, so 13 BP refunded + 1 existing.
+        self.assertEqual(player.leftover_points, 14.0)
+        levels = set(
+            player.research_progress.values_list('current_level', flat=True)
+        )
+        self.assertEqual(levels, {2.0})
+
 
 class testStarNamer(TestCase):
     def test_data_contains_no_duplicates(self):

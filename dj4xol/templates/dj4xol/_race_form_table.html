@@ -81,6 +81,17 @@
         <td class="hint">&nbsp;</td>
     </tr>
     <tr>
+        <th>Starting Tech Level:</th>
+        <td>
+            {{ form.starting_tech_level }}
+            {{ form.starting_tech_level.errors }}
+            <div id="starting-tech-warning" class="hint starting-tech-warning form-errors">
+                Many games limit starting tech level to 5. Any excess points are refunded into leftover points and converted according to your race settings.
+            </div>
+        </td>
+        <td class="hint">Cost is based on cumulative research unlock costs, converted at 10 RP per Balance Point.</td>
+    </tr>
+    <tr>
         <th>Starting Colonists:</th>
         <td>
             <label>{{ form.starting_colonists }} k</label>
@@ -102,7 +113,7 @@
             {{ form.starting_factories }}
             {{ form.starting_factories.errors }}
         </td>
-        <td class="hint">1 point per factory.</td>
+        <td class="hint">2 points per factory.</td>
     </tr>
     <tr>
         <th>Starting Labs:</th>
@@ -133,7 +144,7 @@
         <td>
             {{ form.convert_unused_buildpoints_to_research }}
             <label for="id_convert_unused_buildpoints_to_research">
-                Convert unused Build Points to Research
+                Convert unused Production to Research
             </label>
             {{ form.convert_unused_buildpoints_to_research.errors }}
         </td>
