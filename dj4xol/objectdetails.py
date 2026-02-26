@@ -17,6 +17,7 @@ from dj4xol.colony_rules import (
 )
 
 from itertools import chain
+from math import ceil, sqrt
 
 
 class DetailBuilder():
@@ -36,6 +37,21 @@ class DetailBuilder():
     def format_kt(value):
         """Format a resource value with commas and kt suffix."""
         return f"{value:,}kt"
+
+    @staticmethod
+    def _estimate_eta_years(start_x, start_y, target_x, target_y, warp):
+        """Estimate years to reach target at a constant warp speed."""
+        if start_x is None or start_y is None or target_x is None or target_y is None:
+            return None
+        dx = int(target_x) - int(start_x)
+        dy = int(target_y) - int(start_y)
+        distance = sqrt((dx * dx) + (dy * dy))
+        if distance <= 0:
+            return 0
+        speed = max(0, int(warp or 0))
+        if speed <= 0:
+            return None
+        return max(1, int(ceil(distance / float(speed))))
 
     def __init__(self, game, x=None, y=None, selected=None, player=None):
         self.game = game
@@ -605,10 +621,13 @@ class DetailBuilder():
         if not self.player or self.selected_obj.player != self.player:
             return []
         orders = []
+        current_x = int(self.selected_obj.x)
+        current_y = int(self.selected_obj.y)
         for o in self.selected_obj.orders.order_by('position', 'id'):
             target = None
             target_link = None
             obj, x, y, kind = o.get_actual_target()
+            eta_years = None
             if kind in ['star', 'fleet', 'salvage'] and obj:
                 target = obj.name
                 target_link = f'?x={obj.x}&y={obj.y}&sel={obj.short_id}&locate=1'
@@ -616,12 +635,28 @@ class DetailBuilder():
                 target = DetailBuilder.format_empty_space(x, y)
                 if x is not None and y is not None:
                     target_link = f'?x={x}&y={y}&locate=1'
+
+            if o.order_type in ['MOVE', 'INTERCEPT', 'PATROL']:
+                eta_years = self._estimate_eta_years(
+                    current_x,
+                    current_y,
+                    x,
+                    y,
+                    o.warpfactor,
+                )
+
+            if o.order_type in ['MOVE', 'INTERCEPT', 'PATROL'] and x is not None and y is not None:
+                current_x = int(x)
+                current_y = int(y)
+            repeat_allowed = o.order_type not in ['COLONISE', 'MERGE', 'SCUTTLE']
             orders.append({
                 'short_id': o.short_id,
                 'target': target,
                 'target_link': target_link,
                 'warpfactor': o.warpfactor,
+                'eta_years': eta_years,
                 'repeat': o.repeat,
+                'repeat_allowed': repeat_allowed,
                 'order_type': o.order_type,
                 'patrol_radius': o.patrol_radius,
                 'transfer_type': o.transfer_type,

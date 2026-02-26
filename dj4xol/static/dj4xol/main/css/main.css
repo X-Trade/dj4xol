@@ -1008,6 +1008,44 @@ body.turned-in.lcars .order-params::after {
     background: #a33;
 }
 
+.order-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+    z-index: 1;
+}
+
+.repeat-toggle-btn {
+    background: #2a5a8a;
+    color: #fff;
+    border: none;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+}
+
+.repeat-toggle-btn.active {
+    opacity: 1;
+}
+
+.repeat-toggle-btn.ghost {
+    opacity: 0.35;
+}
+
+.repeat-toggle-btn:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.repeat-toggle-btn:disabled {
+    cursor: default;
+    opacity: 0.15;
+}
+
 /* Order type row with dropdown, controls and + button */
 .order-type-row {
     display: flex;
