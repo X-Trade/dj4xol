@@ -1,5 +1,4 @@
 ============= MAIN TODO =============
-1. Star names on starmap
 4. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
 5. Secret resources
 6. fleet-to-fleet Refuelling
