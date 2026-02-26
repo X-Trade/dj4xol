@@ -24,8 +24,6 @@ Implemented systems include:
 ## Current Priorities
 
 Near-term work is tracked in `todo.txt`. Current focus includes:
-- Star names on the starmap
-- Starmap order visualisation (dotted movement paths)
 - Colony Micromanager (as unlockable automation)
 - Fleet-to-fleet refuelling
 - Ship design (basic, then advanced)

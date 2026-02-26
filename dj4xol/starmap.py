@@ -1,4 +1,5 @@
 from math import cos, sin, radians
+from html import escape
 from .models import Game, Player, Fleet, Star, Salvage, Report
 
 class StarMap():
@@ -39,6 +40,9 @@ class StarMap():
                 player=self.player,
                 target_type='star',
             ).values_list('target_id', flat=True)
+        )
+        self.homeworld_star_ids = set(
+            game.players.exclude(homeworld=None).values_list('homeworld_id', flat=True)
         )
         self.map = self.render_map()
 
@@ -102,12 +106,14 @@ class StarMap():
     def render_star_group(self, stars):
         """Render stars at the same position with offsets for multiples."""
         html = ""
+        label_star = next((s for s in stars if s.id in self.homeworld_star_ids), stars[0])
         anchor_star = next(
             (s for s in stars if self._get_exploration_class(s) == "mapstar-explored"),
             stars[0],
         )
         if len(stars) == 1:
             html += self.render_star(anchor_star)
+            html += self.render_star_name(label_star)
         else:
             # Determine group ownership for main dot color
             group_class = self._resolve_group_class(stars)
@@ -127,7 +133,26 @@ class StarMap():
                 offset_x = center_adjust + offset_distance * cos(angle)
                 offset_y = center_adjust + offset_distance * sin(angle)
                 html += self.render_star(star, offset_x, offset_y, satellite=True)
+            html += self.render_star_name(label_star)
         return html
+
+    def render_star_name(self, star):
+        """Render a star name label above the star position."""
+        # Position using star center (5px marker => +2.5px) for proper text alignment.
+        x = star.x * self.MAP_SCALE + self.border_offset + 2.5
+        y = star.y * self.MAP_SCALE + self.border_offset + 2.5
+        safe_name = escape(star.name or '')
+        if self.dest_mode:
+            url = (
+                f"javascript:submitDestination('{star.short_id}', "
+                f"{star.x}, {star.y}, 'star')"
+            )
+        else:
+            url = f"?x={star.x}&y={star.y}&sel={star.short_id}"
+        return (
+            f'<a href="{url}" class="mapstar-name" '
+            f'style="left:{x}px; top:{y}px;" title="{safe_name}">{safe_name}</a>'
+        )
 
     def _resolve_group_class(self, stars):
         """Determine CSS class for a group of stars based on ownership mix."""

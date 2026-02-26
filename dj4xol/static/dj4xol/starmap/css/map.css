@@ -59,6 +59,31 @@
     background-color: #000;
 }
 
+.mapstar-name {
+    position: absolute;
+    transform: translate(-50%, -10px);
+    color: #fff;
+    font-size: 7px;
+    line-height: 1;
+    white-space: nowrap;
+    text-shadow: 0 0 2px #000, 0 0 4px #000;
+    text-decoration: none;
+    opacity: 0;
+    z-index: 3;
+}
+
+.maparea.show-star-names .mapstar-name {
+    opacity: 1;
+}
+
+.maparea a.mapstar-name {
+    color: #fff !important;
+}
+
+body.lcars .maparea a.mapstar-name {
+    color: #7fb8ff !important;
+}
+
 .fleet-movement-overlay {
     position: absolute;
     top: 0;

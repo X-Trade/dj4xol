@@ -126,6 +126,7 @@ $(document).ready(function() {
         movementState = 'selected';
     }
     var $movementBtn = $('#starmap-movement-paths');
+    var $starNamesBtn = $('#starmap-star-names');
 
     (function loadMovementPaths() {
         var el = document.getElementById('movement-paths-json');
@@ -242,6 +243,27 @@ $(document).ready(function() {
         localStorage.setItem(storageKey + ':movementPaths', movementState);
         updateMovementButton();
         drawMovementPaths();
+    });
+
+    var starNamesEnabled = localStorage.getItem(storageKey + ':starNames') === 'true';
+
+    function updateStarNamesButton() {
+        if (!$starNamesBtn.length) {
+            return;
+        }
+        $starNamesBtn.toggleClass('active', starNamesEnabled);
+        $starNamesBtn.attr('title', starNamesEnabled ? 'Star names: On' : 'Star names: Off');
+        $starNamesBtn.attr('aria-label', starNamesEnabled ? 'Star names on' : 'Star names off');
+        $maparea.toggleClass('show-star-names', starNamesEnabled);
+    }
+
+    updateStarNamesButton();
+
+    $starNamesBtn.on('click', function(e) {
+        e.preventDefault();
+        starNamesEnabled = !starNamesEnabled;
+        localStorage.setItem(storageKey + ':starNames', starNamesEnabled ? 'true' : 'false');
+        updateStarNamesButton();
     });
 
     // Function to show locate animation at given map coordinates
