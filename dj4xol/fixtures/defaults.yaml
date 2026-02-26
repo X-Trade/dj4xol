@@ -944,7 +944,7 @@
     name: 'Frigate Hull'
     description: 'Standard escort hull with stronger armor and internal bulkheads.'
     tech_type: 'HULL'
-    params_json: '{"max_cargo_capacity": 200, "max_fuel": 100, "hull_thumbnail_class": "fighter", "defense_level": 0.1}'
+    params_json: '{"max_cargo_capacity": 200, "max_fuel": 100, "hull_thumbnail_class": "frigate", "defense_level": 0.1}'
     display_order: 220
     enabled: True
 

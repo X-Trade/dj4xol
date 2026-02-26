@@ -57,7 +57,8 @@ def _format_param_value(key, value):
     """Return player-facing display value for technology parameter values."""
     if key in ('offense_level', 'defense_level', 'colony_defense_level'):
         try:
-            return int(round(float(value) * 10))
+            scaled = int(round(float(value) * 10))
+            return '{:+d}'.format(scaled)
         except (TypeError, ValueError):
             return value
     if key in ('fuel_efficiency', 'overmax_fuel_penalty'):
@@ -65,6 +66,11 @@ def _format_param_value(key, value):
             return '{}%'.format(int(round(float(value) * 100)))
         except (TypeError, ValueError):
             return value
+    if key == 'hull_thumbnail_class':
+        text = str(value or '').strip()
+        if not text:
+            return value
+        return text.replace('_', ' ').title()
     return value
 
 
