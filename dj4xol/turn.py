@@ -1,5 +1,5 @@
 from datetime import timedelta
-from math import atan2, degrees
+from math import atan2, degrees, log2
 from numpy import array as nparray, linalg
 from django.db import models
 from django.utils import timezone
@@ -106,6 +106,7 @@ ORBITAL_DEFENSE_HAZARD_BASE_CHANCE = 0.15
 ORBITAL_DEFENSE_HAZARD_MIN_CHANCE = 0.10
 ORBITAL_DEFENSE_HAZARD_MAX_CHANCE = 0.20
 ORBITAL_DEFENSE_HAZARD_DAMAGE_FACTOR = 0.25
+MERGE_COMBAT_RETENTION = 0.95
 BUSSARD_RECOVERY_CHANCE = 0.5
 BUSSARD_RECOVERY_MIN_MG = 1
 BUSSARD_RECOVERY_MAX_MG = 5
@@ -176,6 +177,16 @@ def tech_level_to_multiplier(level):
     except (TypeError, ValueError):
         value = 0.0
     return 2.0 ** max(0.0, value)
+
+
+def multiplier_to_tech_level(multiplier):
+    """Convert linear multiplier back to log2 tech level."""
+    try:
+        value = float(multiplier)
+    except (TypeError, ValueError):
+        value = 1.0
+    # Keep merged values in supported range for combat multipliers.
+    return max(0.0, log2(max(1.0, value)))
 
 
 def calculate_fleet_attack_multiplier(fleet):
@@ -1944,14 +1955,30 @@ class GameTurn():
             (source_fleet.integrity * source_fleet.ship_count) +
             (target_fleet.integrity * target_fleet.ship_count)
         ) // total_ships
-        weighted_offense_level = (
-            (source_fleet.offense_level * source_fleet.ship_count) +
-            (target_fleet.offense_level * target_fleet.ship_count)
-        ) / float(total_ships)
-        weighted_defense_level = (
-            (source_fleet.defense_level * source_fleet.ship_count) +
-            (target_fleet.defense_level * target_fleet.ship_count)
-        ) / float(total_ships)
+        source_attack_mult = tech_level_to_multiplier(source_fleet.offense_level)
+        target_attack_mult = tech_level_to_multiplier(target_fleet.offense_level)
+        merged_count_norm = normalize_ship_count(total_ships)
+        source_count_norm = normalize_ship_count(source_fleet.ship_count)
+        target_count_norm = normalize_ship_count(target_fleet.ship_count)
+
+        # Preserve proportional pre-merge attack contribution with a slight
+        # retention penalty so merging remains a strategic tradeoff.
+        combined_attack_score = (
+            (source_count_norm * source_attack_mult) +
+            (target_count_norm * target_attack_mult)
+        ) * MERGE_COMBAT_RETENTION
+        merged_attack_mult = combined_attack_score / max(0.001, merged_count_norm)
+
+        source_defense_mult = tech_level_to_multiplier(source_fleet.defense_level)
+        target_defense_mult = tech_level_to_multiplier(target_fleet.defense_level)
+        combined_defense_score = (
+            (source_defense_mult * source_fleet.ship_count) +
+            (target_defense_mult * target_fleet.ship_count)
+        ) * MERGE_COMBAT_RETENTION
+        merged_defense_mult = combined_defense_score / float(total_ships)
+
+        merged_offense_level = multiplier_to_tech_level(merged_attack_mult)
+        merged_defense_level = multiplier_to_tech_level(merged_defense_mult)
         weighted_fuel_efficiency = (
             (source_fleet.fuel_efficiency * source_fleet.ship_count) +
             (target_fleet.fuel_efficiency * target_fleet.ship_count)
@@ -1972,8 +1999,8 @@ class GameTurn():
         )
         target_fleet.fuel_efficiency = weighted_fuel_efficiency
         target_fleet.overmax_fuel_penalty = weighted_overmax_fuel_penalty
-        target_fleet.offense_level = weighted_offense_level
-        target_fleet.defense_level = weighted_defense_level
+        target_fleet.offense_level = merged_offense_level
+        target_fleet.defense_level = merged_defense_level
         target_fleet.integrity = avg_integrity
 
         # Transfer cargo (may exceed capacity - intentional for merge)

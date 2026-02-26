@@ -12,11 +12,13 @@ class ResearchViewTest(TestCase):
         self.user, _ = get_default_user()
         self.client = Client()
         self.client.force_login(self.user)
-        self.energy = ResearchCategory.objects.create(
-            code='ENERGY', name='Energy', display_order=10, enabled=True
+        self.energy, _ = ResearchCategory.objects.get_or_create(
+            code='VIEW_ENERGY',
+            defaults={'name': 'View Energy', 'display_order': 10, 'enabled': True}
         )
-        self.electronics = ResearchCategory.objects.create(
-            code='ELECT', name='Electronics', display_order=20, enabled=True
+        self.electronics, _ = ResearchCategory.objects.get_or_create(
+            code='VIEW_ELECT',
+            defaults={'name': 'View Electronics', 'display_order': 20, 'enabled': True}
         )
 
     def test_research_view_renders(self):

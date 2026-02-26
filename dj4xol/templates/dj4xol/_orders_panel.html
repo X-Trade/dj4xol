@@ -5,15 +5,22 @@
             {% if detail.fleet_orders %}
                 {% for order in detail.fleet_orders %}
                 <div class="order-item">
+                    <div class="order-info">
                     {% if order.order_type == 'MOVE' or not order.order_type %}
-                        <span>Warp {{ order.warpfactor }} to {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
+                        <span>Warp {{ order.warpfactor }} to {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
+                        {% if order.eta_years is not None %}
+                        <div class="order-tooltip"><span>ETA: {{ order.eta_years }} year{{ order.eta_years|pluralize }}</span></div>
+                        {% endif %}
                     {% elif order.order_type == 'INTERCEPT' %}
-                        <span>Intercept {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %} at warp {{ order.warpfactor }}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
+                        <span>Intercept {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %} at warp {{ order.warpfactor }}</span>
+                        {% if order.eta_years is not None %}
+                        <div class="order-tooltip"><span>ETA: {{ order.eta_years }} year{{ order.eta_years|pluralize }}</span></div>
+                        {% endif %}
                     {% elif order.order_type == 'TRANSFER' %}
                         {% if order.transfer_type == 'UNLOAD_ALL' %}
-                        <span>Unload All at {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
+                        <span>Unload All at {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
                         {% else %}
-                        <span>{{ order.transfer_type|title|default:"Transfer" }} at {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
+                        <span>{{ order.transfer_type|title|default:"Transfer" }} at {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
                         <div class="order-tooltip">
                             <div class="tooltip-header">{{ order.transfer_type|title }} Resources</div>
                             <table class="tooltip-table">
@@ -31,10 +38,22 @@
                     {% elif order.order_type == 'SCUTTLE' %}
                         <span>Scuttle Fleet</span>
                     {% elif order.order_type == 'PATROL' %}
-                        <span>Patrol within {{ order.patrol_radius }}ly of {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}{% if order.repeat %} <span class="repeat-icon" title="Repeating">&#x21bb;</span>{% endif %}</span>
+                        <span>Patrol within {{ order.patrol_radius }}ly of {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
+                        {% if order.eta_years is not None %}
+                        <div class="order-tooltip"><span>ETA: {{ order.eta_years }} year{{ order.eta_years|pluralize }}</span></div>
+                        {% endif %}
                     {% else %}
                         <span>Unknown order type: {{ order.order_type }}</span>
                     {% endif %}
+                    </div>
+                    <div class="order-actions">
+                        <form method="post" action="{% url 'dj4xol:toggle_fleet_order_repeat' game.short_id order.short_id %}" style="display:inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="x" value="{{ selection.x }}">
+                            <input type="hidden" name="y" value="{{ selection.y }}">
+                            <input type="hidden" name="sel" value="{{ selection.sel }}">
+                            <button type="submit" class="repeat-toggle-btn{% if order.repeat %} active{% else %} ghost{% endif %}" title="{% if order.repeat %}Disable repeat{% else %}Enable repeat{% endif %}" {% if not order.repeat_allowed %}disabled{% endif %}>&#x21bb;</button>
+                        </form>
                     <form method="post" action="{% url 'dj4xol:remove_fleet_order' game.short_id order.short_id %}" style="display:inline">
                         {% csrf_token %}
                         <input type="hidden" name="x" value="{{ selection.x }}">
@@ -42,6 +61,7 @@
                         <input type="hidden" name="sel" value="{{ selection.sel }}">
                         <button type="submit" class="order-remove-btn">&times;</button>
                     </form>
+                    </div>
                 </div>
                 {% endfor %}
             {% else %}

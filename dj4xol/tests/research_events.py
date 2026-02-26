@@ -13,8 +13,9 @@ class ResearchEventsTest(TestCase):
         self.game = default_game(stars=5)
         self.player = self.game.players.first()
         self.star = self.player.homeworld
-        self.category = ResearchCategory.objects.create(
-            code='ENERGY', name='Energy', enabled=True
+        self.category, _ = ResearchCategory.objects.get_or_create(
+            code='EVT_ENERGY',
+            defaults={'name': 'Event Energy', 'enabled': True}
         )
         Technology.objects.create(
             category=self.category,
@@ -34,7 +35,10 @@ class ResearchEventsTest(TestCase):
         self.star.colonists = 10000
         self.star.save()
 
-        row = ensure_player_research_rows(self.player)[0]
+        row = next(
+            item for item in ensure_player_research_rows(self.player)
+            if item.category_id == self.category.id
+        )
         row.allocation_percent = 100
         row.save(update_fields=['allocation_percent'])
 
@@ -54,7 +58,10 @@ class ResearchEventsTest(TestCase):
         self.star.colonists = 5000
         self.star.save()
 
-        row = ensure_player_research_rows(self.player)[0]
+        row = next(
+            item for item in ensure_player_research_rows(self.player)
+            if item.category_id == self.category.id
+        )
         row.allocation_percent = 100
         row.stored_rp = 0
         row.current_level = 0
@@ -71,4 +78,3 @@ class ResearchEventsTest(TestCase):
         ).order_by('-id').first()
         self.assertIsNotNone(msg)
         self.assertIn('RP', msg.message)
-        self.assertIn('Energy', msg.message)

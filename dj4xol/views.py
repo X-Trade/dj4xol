@@ -632,6 +632,24 @@ def remove_fleet_order(request, game_short_id, order_short_id):
     return _redirect_preserving_selection(request, game)
 
 
+@player_only_view()
+def toggle_fleet_order_repeat(request, game_short_id, order_short_id):
+    """Toggle repeat flag for a fleet order."""
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    if player.turned_in:
+        return _redirect_preserving_selection(request, game)
+
+    order = FleetOrders.objects.get(short_id=order_short_id, game=game, fleet__player=player)
+    if order.order_type in ['COLONISE', 'MERGE', 'SCUTTLE']:
+        return _redirect_preserving_selection(request, game)
+
+    order.repeat = not bool(order.repeat)
+    order.save(update_fields=['repeat'])
+    return _redirect_preserving_selection(request, game)
+
+
 @registration_required()
 def create_race(request):
     """Create a new custom race template."""

@@ -38,6 +38,7 @@ urlpatterns = [
     url(r'^(?P<game_short_id>[0-9a-z]{8})/production/remove/(?P<order_short_id>[0-9a-z]{12})/$', views.remove_production_order, name='remove_production'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/fleet-order/add/$', views.add_fleet_order, name='add_fleet_order'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/fleet-order/remove/(?P<order_short_id>[0-9a-z]{12})/$', views.remove_fleet_order, name='remove_fleet_order'),
+    url(r'^(?P<game_short_id>[0-9a-z]{8})/fleet-order/repeat/(?P<order_short_id>[0-9a-z]{12})/$', views.toggle_fleet_order_repeat, name='toggle_fleet_order_repeat'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/objects-at/(?P<x>\d+)/(?P<y>\d+)/$', views.objects_at_location, name='objects_at_location'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/messages/$', views.message_history, name='message_history'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/research/$', views.research, name='research'),

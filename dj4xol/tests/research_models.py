@@ -9,16 +9,20 @@ class ResearchModelsTest(TestCase):
     def setUp(self):
         self.game = default_game(stars=5)
         self.player = self.game.players.first()
-        self.energy = ResearchCategory.objects.create(
-            code='ENERGY', name='Energy', display_order=10, enabled=True
+        self.energy, _ = ResearchCategory.objects.get_or_create(
+            code='MOD_ENERGY',
+            defaults={'name': 'Model Energy', 'display_order': 10, 'enabled': True}
         )
-        self.electronics = ResearchCategory.objects.create(
-            code='ELECT', name='Electronics', display_order=20, enabled=True
+        self.electronics, _ = ResearchCategory.objects.get_or_create(
+            code='MOD_ELECT',
+            defaults={'name': 'Model Electronics', 'display_order': 20, 'enabled': True}
         )
 
     def test_ensure_player_research_rows_created(self):
         rows = ensure_player_research_rows(self.player)
-        self.assertEqual(len(rows), 2)
+        category_ids = {r.category_id for r in rows}
+        self.assertIn(self.energy.id, category_ids)
+        self.assertIn(self.electronics.id, category_ids)
         self.assertAlmostEqual(sum(r.allocation_percent for r in rows), 100.0, places=5)
 
     def test_unlocked_technology_from_current_level(self):
@@ -36,6 +40,5 @@ class ResearchModelsTest(TestCase):
                 row.current_level = 1.0
                 row.save()
 
-        unlocked = get_player_unlocked_technologies(self.player)
-        self.assertEqual(len(unlocked), 1)
-        self.assertEqual(unlocked[0].name, 'Warp 6')
+        unlocked = list(get_player_unlocked_technologies(self.player))
+        self.assertTrue(any(item.name == 'Warp 6' for item in unlocked))

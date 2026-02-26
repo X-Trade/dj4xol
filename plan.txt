@@ -24,6 +24,7 @@
 * Rarium
 * Cryptium
 * Etherium
+* Schwarzium
 
 *** Stability ***
 * StabilityCoef = pow2(Employment - 0.5)
