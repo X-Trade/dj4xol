@@ -70,10 +70,12 @@
     text-decoration: none;
     opacity: 0;
     z-index: 3;
+    pointer-events: none;
 }
 
 .maparea.show-star-names .mapstar-name {
     opacity: 1;
+    pointer-events: auto;
 }
 
 .maparea a.mapstar-name {

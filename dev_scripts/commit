@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""Run tests, update version/changelog, stage app changes, and commit.
+
+Usage examples:
+  dev_scripts/commit "Fix map drag jitter"
+  dev_scripts/commit --patch "Add patrol radius overlay"
+  dev_scripts/commit --minor "Ship new movement path controls"
+  dev_scripts/commit --major "Release 1.0 gameplay baseline"
+  dev_scripts/commit --version 0.9.0 "Set explicit release version"
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+VERSION_RE = re.compile(r"^APP_VERSION\s*=\s*['\"](\d+)\.(\d+)\.(\d+)['\"]\s*$", re.MULTILINE)
+FIRST_VERSION_SECTION_RE = re.compile(
+    r"(?P<header>^\s*<h4><span class=\"env-label\">v(?P<version>\d+\.\d+\.\d+)</span></h4>\n"
+    r"^\s*<ul class=\"game-list\">\n)"
+    r"(?P<items>.*?)"
+    r"(?P<footer>^\s*</ul>\n)",
+    re.MULTILINE | re.DOTALL,
+)
+FIRST_VERSION_HEADER_RE = re.compile(
+    r"^(?P<indent>\s*)<h4><span class=\"env-label\">v\d+\.\d+\.\d+</span></h4>\n",
+    re.MULTILINE,
+)
+SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run tests, optionally bump/set app version, append changelog entry, "
+            "stage ./dj4xol, and commit."
+        )
+    )
+    bump = parser.add_mutually_exclusive_group()
+    bump.add_argument("--patch", action="store_true", help="Increment patch version.")
+    bump.add_argument("--minor", action="store_true", help="Increment minor version and reset patch to 0.")
+    bump.add_argument("--major", action="store_true", help="Increment major version and reset minor/patch to 0.")
+    bump.add_argument(
+        "--version",
+        metavar="X.Y.Z",
+        help="Set explicit semantic version instead of incrementing.",
+    )
+    parser.add_argument(
+        "message",
+        nargs="+",
+        help="Commit message and changelog bullet text.",
+    )
+    return parser.parse_args()
+
+
+def run(cmd: list[str], cwd: Path) -> None:
+    print("$ " + " ".join(cmd))
+    subprocess.run(cmd, cwd=str(cwd), check=True)
+
+
+def read_current_version(version_path: Path) -> tuple[str, tuple[int, int, int], str]:
+    content = version_path.read_text(encoding="utf-8")
+    match = VERSION_RE.search(content)
+    if not match:
+        raise ValueError(f"Could not parse APP_VERSION from {version_path}")
+    major, minor, patch = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    return f"{major}.{minor}.{patch}", (major, minor, patch), content
+
+
+def compute_target_version(args: argparse.Namespace, current: tuple[int, int, int]) -> tuple[str, bool]:
+    if args.version is not None:
+        if not SEMVER_RE.match(args.version):
+            raise ValueError("--version must be in X.Y.Z numeric format")
+        return args.version, True
+    if args.patch:
+        return f"{current[0]}.{current[1]}.{current[2] + 1}", True
+    if args.minor:
+        return f"{current[0]}.{current[1] + 1}.0", True
+    if args.major:
+        return f"{current[0] + 1}.0.0", True
+    return f"{current[0]}.{current[1]}.{current[2]}", False
+
+
+def write_version(version_path: Path, content: str, new_version: str) -> None:
+    new_content, count = VERSION_RE.subn(f"APP_VERSION = '{new_version}'", content, count=1)
+    if count != 1:
+        raise ValueError(f"Failed to update APP_VERSION in {version_path}")
+    version_path.write_text(new_content, encoding="utf-8")
+
+
+def _li_indent(items_block: str, default: str) -> str:
+    match = re.search(r"^(\s*)<li>", items_block, re.MULTILINE)
+    if match:
+        return match.group(1)
+    return default + "    "
+
+
+def update_changelog(changelog_path: Path, message: str, version: str, start_new_version: bool) -> None:
+    content = changelog_path.read_text(encoding="utf-8")
+    escaped_message = html.escape(message, quote=False)
+
+    if start_new_version:
+        header_match = FIRST_VERSION_HEADER_RE.search(content)
+        if not header_match:
+            raise ValueError(f"Could not find first version header in {changelog_path}")
+        indent = header_match.group("indent")
+        new_section = (
+            f"{indent}<h4><span class=\"env-label\">v{version}</span></h4>\n"
+            f"{indent}<ul class=\"game-list\">\n"
+            f"{indent}    <li>{escaped_message}</li>\n"
+            f"{indent}</ul>\n\n"
+        )
+        content = content[:header_match.start()] + new_section + content[header_match.start():]
+    else:
+        section_match = FIRST_VERSION_SECTION_RE.search(content)
+        if not section_match:
+            raise ValueError(f"Could not find first version section in {changelog_path}")
+        header = section_match.group("header")
+        items = section_match.group("items")
+        footer = section_match.group("footer")
+        header_indent = re.match(r"^(\s*)", header).group(1)  # type: ignore[union-attr]
+        li_indent = _li_indent(items, header_indent)
+        new_item = f"{li_indent}<li>{escaped_message}</li>\n"
+        new_items = new_item + items
+        replacement = header + new_items + footer
+        content = content[:section_match.start()] + replacement + content[section_match.end():]
+
+    changelog_path.write_text(content, encoding="utf-8")
+
+
+def main() -> int:
+    args = parse_args()
+    commit_message = " ".join(args.message).strip()
+    if not commit_message:
+        raise ValueError("Commit message must not be empty")
+
+    repo_root = Path(__file__).resolve().parents[1]
+    version_path = repo_root / "dj4xol" / "version.py"
+    changelog_path = repo_root / "dj4xol" / "templates" / "dj4xol" / "help_version_history.html"
+
+    current_version, current_tuple, version_content = read_current_version(version_path)
+    target_version, start_new_version = compute_target_version(args, current_tuple)
+
+    run(["pyenv", "exec", "python", "manage.py", "test"], cwd=repo_root)
+
+    if start_new_version and target_version != current_version:
+        write_version(version_path, version_content, target_version)
+        print(f"Updated version: {current_version} -> {target_version}")
+    elif start_new_version:
+        print(f"Version unchanged (explicit): {target_version}")
+    else:
+        print(f"Version unchanged: {current_version}")
+
+    update_changelog(
+        changelog_path=changelog_path,
+        message=commit_message,
+        version=target_version,
+        start_new_version=start_new_version,
+    )
+    print("Updated changelog:", changelog_path)
+
+    run(["git", "add", "./dj4xol"], cwd=repo_root)
+    run(["git", "commit", "-m", commit_message], cwd=repo_root)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except subprocess.CalledProcessError as exc:
+        print(f"Command failed with exit code {exc.returncode}", file=sys.stderr)
+        raise SystemExit(exc.returncode)
+    except Exception as exc:  # pragma: no cover - script error path
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
