@@ -148,7 +148,7 @@
                             </select>
                         {% endif %}
                     </div>
-                    <div class="dest-display-row" id="patrol-destination" style="display: none;">
+                    <div class="dest-display-row" id="patrol-destination" style="display: none;" data-location-x="{{ detail.patrol_targets.location.0 }}" data-location-y="{{ detail.patrol_targets.location.1 }}">
                         {% if detail.patrol_targets.display_mode == 'single' %}
                             <span class="dest-display">{{ detail.patrol_targets.default_target }}</span>
                             <input type="hidden" id="patrol-single-target-value" data-target="{% if detail.patrol_targets.targets.0.type == 'star' %}star:{{ detail.patrol_targets.targets.0.short_id }}{% elif detail.patrol_targets.targets.0.type == 'fleet' %}fleet:{{ detail.patrol_targets.targets.0.short_id }}{% endif %}">
@@ -161,9 +161,9 @@
                                     {% if obj.type == 'space' %}
                                         <option value="space" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Space)</option>
                                     {% elif obj.type == 'star' %}
-                                        <option value="star:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Star)</option>
+                                        <option value="star:{{ obj.short_id }}" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Star)</option>
                                     {% elif obj.type == 'fleet' %}
-                                        <option value="fleet:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
+                                        <option value="fleet:{{ obj.short_id }}" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
                                     {% endif %}
                                 {% endfor %}
                             </select>
@@ -341,6 +341,7 @@
     var targetXInput = document.querySelector('input[name="target_x"]');
     var targetYInput = document.querySelector('input[name="target_y"]');
     var patrolTargetInput = document.getElementById('patrol-target-input');
+    var patrolDestinationContainer = document.getElementById('patrol-destination');
     
     // Transfer sliders - define at top level
     var transferSliders = ['ironium', 'boranium', 'germanium', 'colonists'];
@@ -458,12 +459,23 @@
         var patrolTargetSelect = document.getElementById('patrol-target');
         if (patrolTargetSelect) {
             patrolTargetInput.value = patrolTargetSelect.value;
+            var selected = patrolTargetSelect.options[patrolTargetSelect.selectedIndex];
+            if (selected && targetXInput && targetYInput) {
+                targetXInput.value = selected.getAttribute('data-x') || '';
+                targetYInput.value = selected.getAttribute('data-y') || '';
+            }
+            emitPatrolPreview();
             return;
         }
 
         var singleTargetValue = document.getElementById('patrol-single-target-value');
         if (singleTargetValue) {
             patrolTargetInput.value = singleTargetValue.getAttribute('data-target');
+            if (patrolDestinationContainer && targetXInput && targetYInput) {
+                targetXInput.value = patrolDestinationContainer.getAttribute('data-location-x') || '';
+                targetYInput.value = patrolDestinationContainer.getAttribute('data-location-y') || '';
+            }
+            emitPatrolPreview();
             return;
         }
 
@@ -476,6 +488,7 @@
                 targetXInput.value = x;
                 targetYInput.value = y;
             }
+            emitPatrolPreview();
         }
     }
 
@@ -548,6 +561,50 @@
     function updateAddButtonStatePatrol() {
         var patrolTargetValue = patrolTargetInput ? patrolTargetInput.value : '';
         addBtn.disabled = patrolTargetValue === '';
+    }
+
+    function emitPatrolPreview() {
+        if (!patrolTargetInput || !patrolRadiusHidden) return;
+        var currentType = orderType ? orderType.value : '';
+        if (currentType !== 'PATROL') {
+            window.dispatchEvent(new CustomEvent('dj4xol:patrolPreview', { detail: { enabled: false } }));
+            return;
+        }
+
+        var centerX = null;
+        var centerY = null;
+        var patrolTargetSelect = document.getElementById('patrol-target');
+        if (patrolTargetSelect) {
+            var selected = patrolTargetSelect.options[patrolTargetSelect.selectedIndex];
+            if (selected) {
+                centerX = selected.getAttribute('data-x');
+                centerY = selected.getAttribute('data-y');
+            }
+        }
+        if ((centerX === null || centerY === null) && targetXInput && targetYInput) {
+            centerX = targetXInput.value;
+            centerY = targetYInput.value;
+        }
+        if ((centerX === null || centerY === null) && patrolDestinationContainer) {
+            centerX = patrolDestinationContainer.getAttribute('data-location-x');
+            centerY = patrolDestinationContainer.getAttribute('data-location-y');
+        }
+
+        var parsedX = parseInt(centerX, 10);
+        var parsedY = parseInt(centerY, 10);
+        if (!isFinite(parsedX) || !isFinite(parsedY)) {
+            window.dispatchEvent(new CustomEvent('dj4xol:patrolPreview', { detail: { enabled: false } }));
+            return;
+        }
+        var radius = Math.max(0, parseInt(patrolRadiusHidden.value, 10) || 0);
+        window.dispatchEvent(new CustomEvent('dj4xol:patrolPreview', {
+            detail: {
+                enabled: true,
+                center_x: parsedX,
+                center_y: parsedY,
+                radius: radius
+            }
+        }));
     }
     
     // Update destination link with current order type
@@ -718,6 +775,7 @@
 
         // Update destination link
         updateDestinationLink(currentType);
+        emitPatrolPreview();
     }
     
     // Order type switching
@@ -884,6 +942,7 @@
                 initializePatrolTarget();
                 updateAddButtonStatePatrol();
             }
+            emitPatrolPreview();
         });
     }
 
@@ -940,13 +999,14 @@
         patrolTargetSelect.addEventListener('change', function() {
             patrolTargetInput.value = this.value;
             var selected = patrolTargetSelect.options[patrolTargetSelect.selectedIndex];
-            if (selected && selected.value === 'space') {
+            if (selected) {
                 if (targetXInput && targetYInput) {
                     targetXInput.value = selected.getAttribute('data-x') || '';
                     targetYInput.value = selected.getAttribute('data-y') || '';
                 }
             }
             updateAddButtonStatePatrol();
+            emitPatrolPreview();
         });
     }
 
@@ -997,6 +1057,7 @@
             if (patrolRadiusDisplay) {
                 patrolRadiusDisplay.textContent = val + ' ly';
             }
+            emitPatrolPreview();
         }
         patrolRadiusInput.addEventListener('input', updatePatrolRadius);
         updatePatrolRadius();
@@ -1055,6 +1116,7 @@
     
     // Initialize on page load (call this last)
     initializeOrderType();
+    emitPatrolPreview();
     
     // Fleet order tooltip functionality (same as production orders)
     function positionTooltip(e, item) {

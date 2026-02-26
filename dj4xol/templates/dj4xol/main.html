@@ -72,7 +72,7 @@
                             <button id="starmap-zoom-in" title="Zoom in">+</button>
                             <button id="starmap-zoom-out" title="Zoom out">-</button>
                             <button id="starmap-locate" title="Auto-center on selection">&#8982;</button>
-                            <button id="starmap-movement-paths" title="Fleet movement paths" aria-label="Fleet movement paths"></button>
+                            <button id="starmap-movement-paths" title="Show Orders" aria-label="Show Orders"></button>
                             <button id="starmap-star-names" title="Star names" aria-label="Star names">Nn</button>
                             {% if homeworld %}<a href="?x={{ homeworld.x }}&y={{ homeworld.y }}&sel={{ homeworld.short_id }}&locate=1"><button id="starmap-home" title="Go to homeworld">&#8962;</button></a>{% endif %}
                         </div>
@@ -248,5 +248,6 @@
         </script>
         <script type="text/javascript" src="{% static 'dj4xol/js/thumb_pop.js' %}"></script>
         <script type="application/json" id="movement-paths-json">{{ movement_paths_json|safe }}</script>
+        <script type="application/json" id="selected-patrol-circles-json">{{ selected_patrol_circles_json|safe }}</script>
     </body>
 </html>

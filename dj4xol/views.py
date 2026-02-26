@@ -78,6 +78,33 @@ def _build_player_movement_paths(game, player):
     return segments
 
 
+def _build_selected_fleet_patrol_circles(selected_obj, player):
+    """Return patrol circles for selected owned fleet orders."""
+    if not selected_obj or not isinstance(selected_obj, Fleet):
+        return []
+    if not player or selected_obj.player != player:
+        return []
+
+    circles = []
+    orders = selected_obj.orders.filter(order_type='PATROL').order_by('position', 'id')
+    for order in orders:
+        _, target_x, target_y, kind = order.get_actual_target()
+        if kind in ('none', 'invalid') or target_x is None or target_y is None:
+            continue
+        try:
+            radius = int(order.patrol_radius or 0)
+        except (TypeError, ValueError):
+            radius = 0
+        if radius < 0:
+            radius = 0
+        circles.append({
+            'center_x': int(target_x),
+            'center_y': int(target_y),
+            'radius': radius,
+        })
+    return circles
+
+
 def _setting_enabled(value, default=True):
     if value is None:
         return default
@@ -269,8 +296,12 @@ def starmap(request, game_short_id):
     homeworld = player.homeworld if player else None
     movement_paths = _build_player_movement_paths(game, player)
     selected_fleet_short_id = None
+    selected_patrol_circles = []
     if detail and detail.get('is_fleet') and detail.get('is_owned'):
         selected_fleet_short_id = detail.get('fleet_short_id')
+        selected_patrol_circles = _build_selected_fleet_patrol_circles(
+            detail_builder.selected_obj, player
+        )
 
     return render(request, 'dj4xol/main.html', {
         'game': game,
@@ -293,6 +324,7 @@ def starmap(request, game_short_id):
         'destination_targets': destination_targets,
         'movement_paths_json': json.dumps(movement_paths),
         'selected_fleet_short_id': selected_fleet_short_id or '',
+        'selected_patrol_circles_json': json.dumps(selected_patrol_circles),
     })
 
 

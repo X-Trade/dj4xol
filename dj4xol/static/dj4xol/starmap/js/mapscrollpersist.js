@@ -120,6 +120,8 @@ $(document).ready(function() {
     var borderOffset = parseInt($maparea.data('border')) || 0;
     var selectedFleetId = ($maparea.data('selected-fleet-id') || '').toString();
     var movementPaths = [];
+    var selectedPatrolCircles = [];
+    var patrolPreviewCircle = null;
     var movementStateValues = ['off', 'selected', 'all'];
     var movementState = localStorage.getItem(storageKey + ':movementPaths') || 'selected';
     if (movementStateValues.indexOf(movementState) < 0) {
@@ -140,11 +142,23 @@ $(document).ready(function() {
             movementPaths = [];
         }
     })();
+    (function loadSelectedPatrolCircles() {
+        var el = document.getElementById('selected-patrol-circles-json');
+        if (!el) return;
+        try {
+            var parsed = JSON.parse(el.textContent || '[]');
+            if (Array.isArray(parsed)) {
+                selectedPatrolCircles = parsed;
+            }
+        } catch (e) {
+            selectedPatrolCircles = [];
+        }
+    })();
 
     function movementStateLabel(state) {
-        if (state === 'off') return 'P:0';
-        if (state === 'all') return 'P:A';
-        return 'P:S';
+        if (state === 'off') return 'Off';
+        if (state === 'all') return 'All';
+        return 'Selected';
     }
 
     function movementStateIcon(state) {
@@ -176,13 +190,32 @@ $(document).ready(function() {
         $movementBtn.removeClass('mode-off mode-selected mode-all');
         $movementBtn.addClass('mode-' + movementState);
         if (movementState === 'off') {
-            $movementBtn.attr('title', 'Fleet movement paths: Off');
+            $movementBtn.attr('title', 'Show Orders: Off');
         } else if (movementState === 'all') {
-            $movementBtn.attr('title', 'Fleet movement paths: All');
+            $movementBtn.attr('title', 'Show Orders: All');
         } else {
-            $movementBtn.attr('title', 'Fleet movement paths: Selected');
+            $movementBtn.attr('title', 'Show Orders: Selected');
         }
-        $movementBtn.attr('aria-label', 'Fleet movement paths: ' + movementStateLabel(movementState));
+        $movementBtn.attr('aria-label', 'Show Orders: ' + movementStateLabel(movementState));
+    }
+
+    function appendPatrolCircle(overlay, ns, circleData, className) {
+        if (!circleData) {
+            return;
+        }
+        var centerX = (parseInt(circleData.center_x, 10) * mapScale) + borderOffset + 2.5;
+        var centerY = (parseInt(circleData.center_y, 10) * mapScale) + borderOffset + 2.5;
+        var radius = parseInt(circleData.radius, 10);
+        if (!isFinite(centerX) || !isFinite(centerY) || !isFinite(radius) || radius < 0) {
+            return;
+        }
+
+        var circle = document.createElementNS(ns, 'circle');
+        circle.setAttribute('cx', centerX);
+        circle.setAttribute('cy', centerY);
+        circle.setAttribute('r', radius * mapScale);
+        circle.setAttribute('class', className);
+        overlay.appendChild(circle);
     }
 
     function drawMovementPaths() {
@@ -196,37 +229,59 @@ $(document).ready(function() {
         while (overlay.firstChild) {
             overlay.removeChild(overlay.firstChild);
         }
-        if (movementState === 'off' || !movementPaths.length) {
+        if (movementState === 'off') {
             return;
         }
 
         var ns = 'http://www.w3.org/2000/svg';
         var cxOffset = 2.5;
-        for (var i = 0; i < movementPaths.length; i++) {
-            var seg = movementPaths[i] || {};
-            var fleetId = (seg.fleet_short_id || '').toString();
-            var isSelected = !!selectedFleetId && fleetId === selectedFleetId;
+        if (movementPaths.length) {
+            for (var i = 0; i < movementPaths.length; i++) {
+                var seg = movementPaths[i] || {};
+                var fleetId = (seg.fleet_short_id || '').toString();
+                var isSelected = !!selectedFleetId && fleetId === selectedFleetId;
 
-            if (movementState === 'selected' && !isSelected) {
-                continue;
-            }
+                if (movementState === 'selected' && !isSelected) {
+                    continue;
+                }
 
-            var x1 = (parseInt(seg.from_x, 10) * mapScale) + borderOffset + cxOffset;
-            var y1 = (parseInt(seg.from_y, 10) * mapScale) + borderOffset + cxOffset;
-            var x2 = (parseInt(seg.to_x, 10) * mapScale) + borderOffset + cxOffset;
-            var y2 = (parseInt(seg.to_y, 10) * mapScale) + borderOffset + cxOffset;
-            if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) {
-                continue;
+                var x1 = (parseInt(seg.from_x, 10) * mapScale) + borderOffset + cxOffset;
+                var y1 = (parseInt(seg.from_y, 10) * mapScale) + borderOffset + cxOffset;
+                var x2 = (parseInt(seg.to_x, 10) * mapScale) + borderOffset + cxOffset;
+                var y2 = (parseInt(seg.to_y, 10) * mapScale) + borderOffset + cxOffset;
+                if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) {
+                    continue;
+                }
+                var line = document.createElementNS(ns, 'line');
+                line.setAttribute('x1', x1);
+                line.setAttribute('y1', y1);
+                line.setAttribute('x2', x2);
+                line.setAttribute('y2', y2);
+                line.setAttribute('class', (
+                    'fleet-movement-line ' + (isSelected ? 'fleet-movement-line-selected' : 'fleet-movement-line-other')
+                ));
+                overlay.appendChild(line);
             }
-            var line = document.createElementNS(ns, 'line');
-            line.setAttribute('x1', x1);
-            line.setAttribute('y1', y1);
-            line.setAttribute('x2', x2);
-            line.setAttribute('y2', y2);
-            line.setAttribute('class', (
-                'fleet-movement-line ' + (isSelected ? 'fleet-movement-line-selected' : 'fleet-movement-line-other')
-            ));
-            overlay.appendChild(line);
+        }
+
+        if (selectedFleetId && selectedPatrolCircles.length) {
+            for (var j = 0; j < selectedPatrolCircles.length; j++) {
+                appendPatrolCircle(
+                    overlay,
+                    ns,
+                    selectedPatrolCircles[j],
+                    'fleet-patrol-radius fleet-patrol-radius-selected'
+                );
+            }
+        }
+
+        if (patrolPreviewCircle) {
+            appendPatrolCircle(
+                overlay,
+                ns,
+                patrolPreviewCircle,
+                'fleet-patrol-radius fleet-patrol-radius-preview'
+            );
         }
     }
 
@@ -242,6 +297,29 @@ $(document).ready(function() {
         movementState = movementStateValues[(idx + 1) % movementStateValues.length];
         localStorage.setItem(storageKey + ':movementPaths', movementState);
         updateMovementButton();
+        drawMovementPaths();
+    });
+
+    window.addEventListener('dj4xol:patrolPreview', function(e) {
+        var detail = (e && e.detail) || {};
+        if (!detail.enabled) {
+            patrolPreviewCircle = null;
+            drawMovementPaths();
+            return;
+        }
+        var centerX = parseInt(detail.center_x, 10);
+        var centerY = parseInt(detail.center_y, 10);
+        var radius = Math.max(0, parseInt(detail.radius, 10) || 0);
+        if (!isFinite(centerX) || !isFinite(centerY)) {
+            patrolPreviewCircle = null;
+            drawMovementPaths();
+            return;
+        }
+        patrolPreviewCircle = {
+            center_x: centerX,
+            center_y: centerY,
+            radius: radius
+        };
         drawMovementPaths();
     });
 
