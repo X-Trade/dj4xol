@@ -607,14 +607,19 @@ class DetailBuilder():
         orders = []
         for o in self.selected_obj.orders.order_by('position', 'id'):
             target = None
+            target_link = None
             obj, x, y, kind = o.get_actual_target()
             if kind in ['star', 'fleet', 'salvage'] and obj:
                 target = obj.name
+                target_link = f'?x={obj.x}&y={obj.y}&sel={obj.short_id}&locate=1'
             elif kind == 'space':
                 target = DetailBuilder.format_empty_space(x, y)
+                if x is not None and y is not None:
+                    target_link = f'?x={x}&y={y}&locate=1'
             orders.append({
                 'short_id': o.short_id,
                 'target': target,
+                'target_link': target_link,
                 'warpfactor': o.warpfactor,
                 'repeat': o.repeat,
                 'order_type': o.order_type,
