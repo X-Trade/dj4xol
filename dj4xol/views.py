@@ -29,6 +29,55 @@ from .factory import GameFactory
 from .forms import ServerRaceForm, NewGameForm, RegistrationForm, JoinGameForm
 
 
+def _build_player_movement_paths(game, player):
+    """Build ordered movement segments for player's fleets.
+
+    Each segment is chained from fleet position through queued movement
+    destinations so the map can render planned routes.
+    """
+    if not player:
+        return []
+
+    movement_types = {'MOVE', 'INTERCEPT', 'PATROL', 'COLONISE', 'MERGE'}
+    segments = []
+    fleets = (
+        player.fleets.filter(game=game)
+        .prefetch_related(
+            'orders',
+            'orders__target_star',
+            'orders__target_fleet',
+            'orders__target_salvage',
+        )
+        .order_by('name', 'id')
+    )
+    for fleet in fleets:
+        current_x = int(fleet.x)
+        current_y = int(fleet.y)
+        orders = sorted(
+            [o for o in fleet.orders.all() if o.order_type in movement_types],
+            key=lambda item: (int(item.position or 0), str(item.id)),
+        )
+        for order in orders:
+            _, target_x, target_y, kind = order.get_actual_target()
+            if kind in ('none', 'invalid'):
+                continue
+            if target_x is None or target_y is None:
+                continue
+            target_x = int(target_x)
+            target_y = int(target_y)
+            if target_x == current_x and target_y == current_y:
+                continue
+            segments.append({
+                'fleet_short_id': fleet.short_id,
+                'from_x': current_x,
+                'from_y': current_y,
+                'to_x': target_x,
+                'to_y': target_y,
+            })
+            current_x, current_y = target_x, target_y
+    return segments
+
+
 def _setting_enabled(value, default=True):
     if value is None:
         return default
@@ -218,6 +267,10 @@ def starmap(request, game_short_id):
 
     # Get player's homeworld for home button
     homeworld = player.homeworld if player else None
+    movement_paths = _build_player_movement_paths(game, player)
+    selected_fleet_short_id = None
+    if detail and detail.get('is_fleet') and detail.get('is_owned'):
+        selected_fleet_short_id = detail.get('fleet_short_id')
 
     return render(request, 'dj4xol/main.html', {
         'game': game,
@@ -238,6 +291,8 @@ def starmap(request, game_short_id):
         'dest_x': dest_x,
         'dest_y': dest_y,
         'destination_targets': destination_targets,
+        'movement_paths_json': json.dumps(movement_paths),
+        'selected_fleet_short_id': selected_fleet_short_id or '',
     })
 
 

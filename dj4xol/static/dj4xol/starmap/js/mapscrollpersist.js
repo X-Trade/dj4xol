@@ -56,6 +56,7 @@ $(document).ready(function() {
     var $starmap = $("#starmap");
     var $maparea = $("#maparea");
     var $sizer = $("#maparea-sizer");
+    var $movementOverlay = $("#fleet-movement-overlay");
 
     // Storage key prefix based on game URL (path only, no query params)
     var storageKey = 'starmap:' + window.location.pathname;
@@ -117,6 +118,131 @@ $(document).ready(function() {
     // Get border offset from maparea data attribute (in pixels, unscaled)
     var mapScale = 6;
     var borderOffset = parseInt($maparea.data('border')) || 0;
+    var selectedFleetId = ($maparea.data('selected-fleet-id') || '').toString();
+    var movementPaths = [];
+    var movementStateValues = ['off', 'selected', 'all'];
+    var movementState = localStorage.getItem(storageKey + ':movementPaths') || 'selected';
+    if (movementStateValues.indexOf(movementState) < 0) {
+        movementState = 'selected';
+    }
+    var $movementBtn = $('#starmap-movement-paths');
+
+    (function loadMovementPaths() {
+        var el = document.getElementById('movement-paths-json');
+        if (!el) return;
+        try {
+            var parsed = JSON.parse(el.textContent || '[]');
+            if (Array.isArray(parsed)) {
+                movementPaths = parsed;
+            }
+        } catch (e) {
+            movementPaths = [];
+        }
+    })();
+
+    function movementStateLabel(state) {
+        if (state === 'off') return 'P:0';
+        if (state === 'all') return 'P:A';
+        return 'P:S';
+    }
+
+    function movementStateIcon(state) {
+        if (state === 'all') {
+            return '' +
+                '<svg class="movement-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">' +
+                '  <line class="movement-path" x1="4" y1="4" x2="20" y2="20"></line>' +
+                '  <line class="movement-path" x1="4" y1="14" x2="20" y2="10"></line>' +
+                '  <circle class="movement-node" cx="4" cy="4" r="2.2"></circle>' +
+                '  <circle class="movement-node" cx="20" cy="20" r="2.2"></circle>' +
+                '  <circle class="movement-node" cx="4" cy="14" r="2.2"></circle>' +
+                '  <circle class="movement-node" cx="20" cy="10" r="2.2"></circle>' +
+                '</svg>';
+        }
+        return '' +
+            '<svg class="movement-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">' +
+            '  <line class="movement-path" x1="4" y1="20" x2="20" y2="4"></line>' +
+            '  <circle class="movement-node" cx="4" cy="20" r="2.4"></circle>' +
+            '  <circle class="movement-node" cx="20" cy="4" r="2.4"></circle>' +
+            '</svg>';
+    }
+
+    function updateMovementButton() {
+        if (!$movementBtn.length) {
+            return;
+        }
+        $movementBtn.html(movementStateIcon(movementState));
+        $movementBtn.toggleClass('active', movementState !== 'off');
+        $movementBtn.removeClass('mode-off mode-selected mode-all');
+        $movementBtn.addClass('mode-' + movementState);
+        if (movementState === 'off') {
+            $movementBtn.attr('title', 'Fleet movement paths: Off');
+        } else if (movementState === 'all') {
+            $movementBtn.attr('title', 'Fleet movement paths: All');
+        } else {
+            $movementBtn.attr('title', 'Fleet movement paths: Selected');
+        }
+        $movementBtn.attr('aria-label', 'Fleet movement paths: ' + movementStateLabel(movementState));
+    }
+
+    function drawMovementPaths() {
+        if (!$movementOverlay.length) {
+            return;
+        }
+        var overlay = $movementOverlay.get(0);
+        if (!overlay) {
+            return;
+        }
+        while (overlay.firstChild) {
+            overlay.removeChild(overlay.firstChild);
+        }
+        if (movementState === 'off' || !movementPaths.length) {
+            return;
+        }
+
+        var ns = 'http://www.w3.org/2000/svg';
+        var cxOffset = 2.5;
+        for (var i = 0; i < movementPaths.length; i++) {
+            var seg = movementPaths[i] || {};
+            var fleetId = (seg.fleet_short_id || '').toString();
+            var isSelected = !!selectedFleetId && fleetId === selectedFleetId;
+
+            if (movementState === 'selected' && !isSelected) {
+                continue;
+            }
+
+            var x1 = (parseInt(seg.from_x, 10) * mapScale) + borderOffset + cxOffset;
+            var y1 = (parseInt(seg.from_y, 10) * mapScale) + borderOffset + cxOffset;
+            var x2 = (parseInt(seg.to_x, 10) * mapScale) + borderOffset + cxOffset;
+            var y2 = (parseInt(seg.to_y, 10) * mapScale) + borderOffset + cxOffset;
+            if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) {
+                continue;
+            }
+            var line = document.createElementNS(ns, 'line');
+            line.setAttribute('x1', x1);
+            line.setAttribute('y1', y1);
+            line.setAttribute('x2', x2);
+            line.setAttribute('y2', y2);
+            line.setAttribute('class', (
+                'fleet-movement-line ' + (isSelected ? 'fleet-movement-line-selected' : 'fleet-movement-line-other')
+            ));
+            overlay.appendChild(line);
+        }
+    }
+
+    updateMovementButton();
+    drawMovementPaths();
+
+    $movementBtn.on('click', function(e) {
+        e.preventDefault();
+        var idx = movementStateValues.indexOf(movementState);
+        if (idx < 0) {
+            idx = 0;
+        }
+        movementState = movementStateValues[(idx + 1) % movementStateValues.length];
+        localStorage.setItem(storageKey + ':movementPaths', movementState);
+        updateMovementButton();
+        drawMovementPaths();
+    });
 
     // Function to show locate animation at given map coordinates
     function showLocateAnimation(x, y) {
