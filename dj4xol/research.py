@@ -27,6 +27,8 @@ TECH_PARAM_LABELS = {
     'max_warp_speed': 'Maximum Warp',
     'max_cargo_capacity': 'Cargo Capacity',
     'max_fuel': 'Fuel Capacity',
+    'fuel_efficiency': 'Fuel Efficiency',
+    'overmax_fuel_penalty': 'Overmax Fuel Penalty',
     'hull_thumbnail_class': 'Hull Class',
     'offense_level': 'Offense Level',
     'defense_level': 'Defense Level',
@@ -58,7 +60,17 @@ def _format_param_value(key, value):
             return int(round(float(value) * 10))
         except (TypeError, ValueError):
             return value
+    if key in ('fuel_efficiency', 'overmax_fuel_penalty'):
+        try:
+            return '{}%'.format(int(round(float(value) * 100)))
+        except (TypeError, ValueError):
+            return value
     return value
+
+
+def _tech_type_label(tech_type):
+    choice_map = dict(Technology.TECH_TYPE_CHOICES)
+    return choice_map.get(str(tech_type or ''), str(tech_type or 'Other').title())
 
 
 def _whole_percentages(values):
@@ -421,6 +433,8 @@ def get_player_tech_effects(player):
         'max_warp_speed': 2,
         'max_cargo_capacity': 100,
         'max_fuel': 50.0,
+        'fuel_efficiency': 1.0,
+        'overmax_fuel_penalty': 1.0,
         'hull_thumbnail_class': 'scout',
         'offense_level': 0.0,
         'defense_level': 0.0,
@@ -443,6 +457,9 @@ def get_player_tech_effects(player):
     selected_hull = None
     if 'HULL' in selected_by_type:
         selected_hull = selected_by_type['HULL'][1]
+    selected_propulsion = None
+    if 'PROPULSION' in selected_by_type:
+        selected_propulsion = selected_by_type['PROPULSION'][1]
 
     for tech_type, selected in selected_by_type.items():
         if tech_type == 'INFRASTRUCTURE':
@@ -487,6 +504,21 @@ def get_player_tech_effects(player):
         hull_class = params.get('hull_thumbnail_class')
         if hull_class:
             effects['hull_thumbnail_class'] = str(hull_class).strip().lower()
+
+    if selected_propulsion is not None:
+        params = _safe_params(selected_propulsion)
+        fuel_efficiency = params.get('fuel_efficiency')
+        if fuel_efficiency is not None:
+            try:
+                effects['fuel_efficiency'] = max(0.05, float(fuel_efficiency))
+            except (TypeError, ValueError):
+                pass
+        overmax_penalty = params.get('overmax_fuel_penalty')
+        if overmax_penalty is not None:
+            try:
+                effects['overmax_fuel_penalty'] = max(0.1, float(overmax_penalty))
+            except (TypeError, ValueError):
+                pass
     return effects
 
 
@@ -731,6 +763,7 @@ def build_research_screen_data(player, selected_category_id=None):
                     'name': item.name,
                     'description': item.description,
                     'tech_type': item.tech_type,
+                    'tech_type_label': _tech_type_label(item.tech_type),
                     'thumbnail_path': get_technology_thumbnail_path(item),
                     'thumbnail_paths': get_technology_thumbnail_paths(item),
                     'thumbnail_initial_index': get_technology_thumbnail_initial_index(item),

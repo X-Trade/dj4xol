@@ -22,6 +22,11 @@
                     <h2><span>Welcome</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content"><div class="welcome-content">
                         {{ server_welcome|linebreaks }}
+                        <p>
+                            New players should use the <a href="{% url 'dj4xol:help_index' %}">Help Index</a>,
+                            and returning players can check out the
+                            <a href="{% url 'dj4xol:help_version_history' %}">Version History</a>.
+                        </p>
                     </div></div>
                 </div>
                 {% endif %}

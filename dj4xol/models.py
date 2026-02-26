@@ -435,6 +435,8 @@ class Fleet(AbstractMapObject):
     max_safe_warp = models.IntegerField(default=2)
     fuel = models.FloatField(default=50.0)  # Current fuel in mg
     max_fuel = models.FloatField(default=50.0)  # Maximum fuel in mg
+    fuel_efficiency = models.FloatField(default=1.0)  # Per-fleet fuel efficiency multiplier
+    overmax_fuel_penalty = models.FloatField(default=1.0)  # Exponential burn multiplier above safe warp
     offense_level = models.FloatField(default=0.0)
     defense_level = models.FloatField(default=0.0)
     thumbnail_path = models.CharField(max_length=255, blank=True, default='')

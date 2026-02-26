@@ -26,6 +26,7 @@ urlpatterns = [
     url(r'^help/space-combat/$', views.help_space_combat, name='help_space_combat'),
     url(r'^help/invasion/$', views.help_invasion, name='help_invasion'),
     url(r'^help/technology/$', views.help_technology, name='help_technology'),
+    url(r'^help/version-history/$', views.help_version_history, name='help_version_history'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/$', views.starmap, name='game'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/join/$', views.join_game, name='join_game'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/turn-in/$', views.turn_in, name='turn_in'),

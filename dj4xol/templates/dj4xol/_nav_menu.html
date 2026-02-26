@@ -23,7 +23,7 @@
         {% if current_page != 'profile' %}
         <a href="{% url 'dj4xol:profile' %}">Profile</a>
         {% endif %}
-        {% if current_page != 'help_index' and current_page != 'help_colony' and current_page != 'help_fleet_composition' and current_page != 'help_research_labs' and current_page != 'help_technology' and current_page != 'help_space_combat' and current_page != 'help_invasion' %}
+        {% if current_page != 'help_index' and current_page != 'help_colony' and current_page != 'help_fleet_composition' and current_page != 'help_research_labs' and current_page != 'help_technology' and current_page != 'help_space_combat' and current_page != 'help_invasion' and current_page != 'help_version_history' %}
         <a href="{% url 'dj4xol:help_index' %}">Help</a>
         {% endif %}
         <a href="{% url 'logout' %}">Logout</a>
