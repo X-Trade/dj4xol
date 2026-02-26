@@ -423,7 +423,7 @@
     name: 'Null-Phase Transit Geometry'
     description: 'Phase-shaped transit envelopes permit stable Warp 10 cruise envelopes.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 10}'
+    params_json: '{"max_warp_speed": 10, "defense_level": -0.4}'
     display_order: 48
     enabled: True
 
@@ -865,7 +865,7 @@
     name: 'Scout Hull'
     description: 'Baseline scout chassis with minimal holds and tanks.'
     tech_type: 'HULL'
-    params_json: '{"max_cargo_capacity": 50, "max_fuel": 50, "hull_thumbnail_class": "scout", "defense_level": 0.0}'
+    params_json: '{"max_cargo_capacity": 50, "max_fuel": 50, "hull_thumbnail_class": "scout", "defense_level": -0.4}'
     display_order: 210
     enabled: True
 

@@ -156,23 +156,37 @@
                         {% if next_level_items %}
                         {% for item in next_level_items %}
                         <div class="tech-item">
-                            <div class="tech-head">
-                                <strong>{{ item.name }}</strong>
-                                <span>{{ item.tech_type }}</span>
+                            <div class="tech-thumb-wrap">
+                                <img
+                                    class="tech-thumb"
+                                    src="{% static item.thumbnail_path %}"
+                                    alt="{{ item.tech_type }}"
+                                    data-icons="{% for path in item.thumbnail_paths %}{% static path %}{% if not forloop.last %}|{% endif %}{% endfor %}"
+                                    data-index="{{ item.thumbnail_initial_index }}"
+                                >
+                                {% if item.thumbnail_paths|length > 1 %}
+                                <span class="tech-thumb-corner" title="Multiple variants (long-press to zoom)"></span>
+                                {% endif %}
                             </div>
-                            {% if item.description %}
-                            <p>{{ item.description }}</p>
-                            {% endif %}
-                            {% if item.params_display %}
-                            <table class="tech-params">
-                                {% for entry in item.params_display %}
-                                <tr>
-                                    <td>{{ entry.label }}</td>
-                                    <td>{{ entry.value }}</td>
-                                </tr>
-                                {% endfor %}
-                            </table>
-                            {% endif %}
+                            <div class="tech-body">
+                                <div class="tech-head">
+                                    <strong>{{ item.name }}</strong>
+                                    <span>{{ item.tech_type }}</span>
+                                </div>
+                                {% if item.description %}
+                                <p>{{ item.description }}</p>
+                                {% endif %}
+                                {% if item.params_display %}
+                                <table class="tech-params">
+                                    {% for entry in item.params_display %}
+                                    <tr>
+                                        <td>{{ entry.label }}</td>
+                                        <td>{{ entry.value }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </table>
+                                {% endif %}
+                            </div>
                         </div>
                         {% endfor %}
                         {% else %}
@@ -226,6 +240,7 @@
         <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython_stdlib.js"></script>
         <script type="text/python" src="{% static 'dj4xol/brython/research_rules.py' %}"></script>
         <script type="text/python" src="{% static 'dj4xol/brython/research_alloc.py' %}"></script>
+        <script type="text/python" src="{% static 'dj4xol/brython/tech_thumbs.py' %}"></script>
         <script>
         if (window.brython) {
             brython();

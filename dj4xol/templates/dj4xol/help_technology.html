@@ -88,23 +88,37 @@
                         </div>
                         {% for tech in level_group.list %}
                         <div class="tech-item">
-                            <div class="tech-head">
-                                <strong>{{ tech.name }}</strong>
-                                <span>{{ tech.category.name }} L{{ tech.level }} / {{ tech.tech_type }}</span>
+                            <div class="tech-thumb-wrap">
+                                <img
+                                    class="tech-thumb"
+                                    src="{% static tech.thumbnail_path %}"
+                                    alt="{{ tech.tech_type }}"
+                                    data-icons="{% for path in tech.thumbnail_paths %}{% static path %}{% if not forloop.last %}|{% endif %}{% endfor %}"
+                                    data-index="{{ tech.thumbnail_initial_index }}"
+                                >
+                                {% if tech.thumbnail_paths|length > 1 %}
+                                <span class="tech-thumb-corner" title="Multiple variants (long-press to zoom)"></span>
+                                {% endif %}
                             </div>
-                            {% if tech.description %}
-                            <p>{{ tech.description }}</p>
-                            {% endif %}
-                            {% if tech.params_display %}
-                            <table class="tech-params">
-                                {% for entry in tech.params_display %}
-                                <tr>
-                                    <td>{{ entry.label }}</td>
-                                    <td>{{ entry.value }}</td>
-                                </tr>
-                                {% endfor %}
-                            </table>
-                            {% endif %}
+                            <div class="tech-body">
+                                <div class="tech-head">
+                                    <strong>{{ tech.name }}</strong>
+                                    <span>{{ tech.category.name }} L{{ tech.level }} / {{ tech.tech_type }}</span>
+                                </div>
+                                {% if tech.description %}
+                                <p>{{ tech.description }}</p>
+                                {% endif %}
+                                {% if tech.params_display %}
+                                <table class="tech-params">
+                                    {% for entry in tech.params_display %}
+                                    <tr>
+                                        <td>{{ entry.label }}</td>
+                                        <td>{{ entry.value }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </table>
+                                {% endif %}
+                            </div>
                         </div>
                         {% endfor %}
                         {% endfor %}
@@ -157,6 +171,14 @@
                 panel.classList.add(variants[index % variants.length]);
             });
         })();
+        </script>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython_stdlib.js"></script>
+        <script type="text/python" src="{% static 'dj4xol/brython/tech_thumbs.py' %}"></script>
+        <script>
+        if (window.brython) {
+            brython();
+        }
         </script>
     </body>
 </html>

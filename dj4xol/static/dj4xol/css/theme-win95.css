@@ -988,3 +988,40 @@ input[type="range"]::-webkit-slider-thumb {
     box-shadow: 0 1px 0 #ffffff;
     margin: 8px 0;
 }
+
+.win95 .tech-thumb-wrap {
+    border: none;
+    border-radius: 0;
+    padding: 2px;
+    box-sizing: border-box;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+    background: #c0c0c0;
+    overflow: visible;
+}
+
+.win95 .thumb-pop-overlay {
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080,
+                0 4px 12px rgba(0, 0, 0, 0.4);
+    background: #c0c0c0;
+}
+
+.win95 .detail-header .object-thumbnail.thumb-pop-target {
+    padding: 2px;
+    box-sizing: border-box;
+    background: #c0c0c0;
+    border: none;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+.win95 .tech-thumb-corner {
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(240, 240, 240, 0.82) 68%,
+        rgba(200, 200, 200, 0.68) 100%
+    );
+    filter: drop-shadow(-1px 1px 0 rgba(0, 0, 0, 0.24));
+}
