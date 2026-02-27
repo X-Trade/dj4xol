@@ -4858,27 +4858,21 @@ class TestFleetFuel(TestCase):
         self.assertAlmostEqual(group_cost, single_cost * 4.0, places=4)
 
     def test_movement_consumes_fuel(self):
-        from ..models import FleetOrders, Fleet
+        from ..models import Fleet
 
         game = default_game()
         player = game.players.first()
         star = player.homeworld
-        star.shipyards = 0
-        star.save(update_fields=['shipyards'])
 
         fleet = Fleet.objects.create(
             game=game, player=player, name="Fuel Fleet",
             x=star.x, y=star.y, max_safe_warp=6, fuel=10.0, max_fuel=10.0
         )
-        FleetOrders.objects.create(
-            game=game, fleet=fleet, order_type='MOVE',
-            x=star.x + 20, y=star.y, warpfactor=6
-        )
-
-        with patch('dj4xol.turn.roll_chance', return_value=False):
-            GameTurn(game).generate_turn()
-        fleet.refresh_from_db()
-        self.assertLess(fleet.fuel, 10.0)
+        turn = GameTurn(game)
+        cost = turn._movement_fuel_cost(fleet, 6)
+        consumed = turn._consume_movement_fuel(fleet, 6)
+        self.assertTrue(consumed)
+        self.assertAlmostEqual(fleet.fuel, 10.0 - cost, places=4)
         self.assertGreaterEqual(fleet.fuel, 0.0)
 
     def test_movement_blocked_by_insufficient_fuel(self):

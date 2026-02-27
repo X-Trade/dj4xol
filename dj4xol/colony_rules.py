@@ -12,7 +12,10 @@ COLONISTS_PER_SHIPYARD = 10000  # Shipyards employ 10x more colonists
 BUILDPOINTS_PER_FACTORY = 10  # Each factory produces this many buildpoints per turn
 RESEARCHPOINTS_PER_LAB = 20  # Each lab produces this many research points per turn
 KT_PER_MINE = 10  # Each mine extracts this many kt of minerals per turn
-YIELD_DEPLETION_RATE = 0.00001  # Yield drops by this % per kt extracted (0.001% per kt)
+# Baseline depletion per kt extracted. Additional depletion is applied when a
+# resource is over-mined (annual extraction exceeds that resource's yield %).
+YIELD_DEPLETION_RATE = 0.0001  # 0.01% per kt
+OVERMINING_DEPLETION_MULTIPLIER = 1.0
 HOMEWORLD_MIN_YIELD = 30  # Homeworld yields never drop below this percentage
 
 

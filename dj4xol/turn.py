@@ -60,6 +60,7 @@ from .colony_rules import (
     calculate_habitability_factor,
     calculate_growth_factor,
     calculate_effective_defenses,
+    OVERMINING_DEPLETION_MULTIPLIER,
 )
 from .research import (
     process_player_research_for_year,
@@ -2272,8 +2273,19 @@ class GameTurn():
                     inventory_field = resource.replace('_yield', '_inventory')
                     setattr(star, inventory_field, getattr(star, inventory_field) + whole_kt)
 
-                    # Linear yield depletion proportional to extraction
-                    depletion = whole_kt * YIELD_DEPLETION_RATE
+                    # Baseline depletion plus explicit over-mining acceleration.
+                    # Treat yield % as a rough sustainable annual extraction rate.
+                    sustainable_extraction = max(1.0, float(yield_val))
+                    overmining_ratio = max(
+                        0.0,
+                        (float(extraction) - sustainable_extraction) / sustainable_extraction
+                    )
+                    depletion_rate = (
+                        YIELD_DEPLETION_RATE * (
+                            1.0 + (overmining_ratio * OVERMINING_DEPLETION_MULTIPLIER)
+                        )
+                    )
+                    depletion = whole_kt * depletion_rate
                     whole_depletion = int(depletion)
                     fractional = depletion - whole_depletion
                     if fractional > 0 and random.random() < fractional:
