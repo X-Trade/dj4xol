@@ -230,6 +230,26 @@ class NewGameForm(forms.Form):
 
     def __init__(self, account, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.order_fields([
+            'name',
+            'description',
+            'race',
+            'starting_year',
+            'map_size_x',
+            'map_size_y',
+            'num_stars',
+            'clusters',
+            'systems',
+            'public',
+            'joinable',
+            'join_open_years',
+            'max_players',
+            'turn_scheme',
+            'years_per_turn',
+            'random_events',
+            'max_starting_tech_level',
+            'invitations',
+        ])
         self.fields['max_starting_tech_level'].widget.attrs['max'] = str(
             get_global_research_max_level()
         )

@@ -33,18 +33,14 @@ body {
     display: none;
 }
 
-.panel.open .panel-scrollable-list,
-.panel.open .panel-scrollable-text {
+body.home-page .panel.open .panel-scrollable-list,
+body.home-page .panel.open .panel-scrollable-text,
+body.profile-page .panel.open .panel-scrollable-list,
+body.profile-page .panel.open .panel-scrollable-text {
     min-height: 25vh;
     max-height: 25vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-}
-
-/* Onboarding forms should not be capped to 25vh on desktop layouts. */
-.onboarding .panel.open .panel-scrollable-text {
-    min-height: 0;
-    max-height: none;
 }
 
 /* Onboarding pages follow the same outer layout model as forms/help pages. */
@@ -349,13 +345,11 @@ body {
         box-sizing: border-box;
     }
 
-    .panel.open .panel-scrollable-list,
-    .panel.open .panel-scrollable-text {
+    body.home-page .panel.open .panel-scrollable-list,
+    body.home-page .panel.open .panel-scrollable-text,
+    body.profile-page .panel.open .panel-scrollable-list,
+    body.profile-page .panel.open .panel-scrollable-text {
         max-height: 50vh;
-    }
-
-    .onboarding .panel.open .panel-scrollable-text {
-        max-height: none;
     }
 
     .onboarding .columns.single-column {

@@ -9,7 +9,7 @@
         {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
         {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
     </head>
-    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %}">
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} home-page">
         <div class="title-bar">
             <span class="title">{{ server_name }}</span>
             {% if server_tagline %}<span class="tagline">{{ server_tagline }}</span>{% endif %}

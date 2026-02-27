@@ -10,7 +10,7 @@
         {% if selected_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
         <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
     </head>
-    <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} create-race">
+    <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} create-race single-panel-page">
         <div class="title-bar">
             <span class="title">Create Race</span>
             <span class="tagline">Custom race template</span>
@@ -20,7 +20,8 @@
             <div class="column">
                 <div class="panel no-transition open" data-panel="race">
                     <h2><span>Create New Race</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <form method="post" class="race-form">
                             {% csrf_token %}
                             {% include 'dj4xol/_race_form_table.html' %}
@@ -29,7 +30,8 @@
                                 <button type="submit" class="nav-button primary">Create Race</button>
                             </div>
                         </form>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
             </div>
         </div>
@@ -92,5 +94,6 @@
                 }
             })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

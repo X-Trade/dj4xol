@@ -1133,8 +1133,10 @@ body.turned-in.lcars .order-params::after {
     margin-bottom: 0;
 }
 
-.order-param-row label {
-    width: 80px;
+.order-param-row > label {
+    flex: 0 0 110px;
+    width: 110px;
+    min-width: 110px;
     font-size: 0.9em;
     color: #555;
 }
@@ -1247,6 +1249,7 @@ body.turned-in.lcars .order-params::after {
 }
 
 .transfer-value {
+    flex: 0 0 80px;
     min-width: 80px;
     text-align: right;
     font-size: 0.9em;

@@ -164,8 +164,9 @@
         padding: 0 6px 10px 6px;
     }
 
-    .create-race .panel-content > div,
-    .onboarding .panel-content > div {
+    .create-race .panel-scrollable-text,
+    .onboarding .panel-scrollable-text,
+    .create-game .panel-scrollable-text {
         padding: 8px 10px;
     }
 
@@ -223,11 +224,6 @@
         padding-right: 8px;
     }
 
-    .create-race .panel.open .panel-content > div,
-    .onboarding .panel.open .panel-content > div,
-    .create-game .panel.open .panel-content > div {
-        max-height: calc(100vh - 180px);
-    }
 }
 
 .brython .habitability-field {
@@ -245,6 +241,13 @@
     width: 100%;
 }
 
+.create-game .columns.single-column {
+    max-width: 800px;
+    margin: 0 auto;
+    grid-template-columns: minmax(324px, 1fr);
+    width: 100%;
+}
+
 .colony-help .columns.single-column {
     max-width: 800px;
     margin: 0 auto;
@@ -256,7 +259,13 @@
     width: 100%;
 }
 
-.create-race .panel-content > div {
+.create-game .column {
+    width: 100%;
+}
+
+.create-race .panel-scrollable-text,
+.onboarding .panel-scrollable-text,
+.create-game .panel-scrollable-text {
     padding: 15px 20px;
     padding-top: 0;
 }
@@ -289,13 +298,6 @@
 body.lcars.create-race .hint.starting-tech-warning.form-errors,
 body.lcars.onboarding .hint.starting-tech-warning.form-errors {
     color: var(--status-warning);
-}
-
-.create-race .panel.open .panel-content > div,
-.onboarding .panel.open .panel-content > div,
-.create-game .panel.open .panel-content > div {
-    min-height: 25vh;
-    max-height: calc(100vh - 180px) !important;
 }
 
 .create-race .profile-table th,
@@ -450,38 +452,28 @@ body.lcars.onboarding .hint.starting-tech-warning.form-errors {
     color: var(--panel-header-text);
 }
 
-/* Single-panel help/onboarding layout constraints.
+/* Single-panel form/help/onboarding layout constraints.
  * Keep scrolling inside panel content only, never on page/columns.
  */
-.help-index,
-.colony-help,
-.onboarding {
+.single-panel-page {
     height: 100vh;
     overflow: hidden !important;
 }
 
-.help-index .columns,
-.colony-help .columns,
-.onboarding .columns,
-.help-index .column,
-.colony-help .column,
-.onboarding .column {
+.single-panel-page .columns,
+.single-panel-page .column {
     height: 100%;
     min-height: 0;
     overflow: hidden !important;
 }
 
-.help-index .columns.single-column,
-.colony-help .columns.single-column,
-.onboarding .columns.single-column {
+.single-panel-page .columns.single-column {
     max-width: 845px;
     margin: 0 auto;
     width: 100%;
 }
 
-.help-index .panel-content.panel-stack,
-.colony-help .panel-content.panel-stack,
-.onboarding .panel-content.panel-stack {
+.single-panel-page .panel-content.panel-stack {
     min-height: 30vh !important;
     max-height: 80vh !important;
     width: 100%;
