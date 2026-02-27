@@ -4,6 +4,9 @@ from django.shortcuts import render, redirect
 from django.urls import resolve
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
+from django.utils import timezone
+from datetime import timedelta
+import os
 import json
 
 from dj4xol.objectdetails import DetailBuilder
@@ -121,9 +124,18 @@ def _allow_self_signup():
     return _setting_enabled(value, default=True)
 
 
-@registration_required()
 def gamelist(request):
-    """Index of all games the user can see."""
+    """Index / landing page.
+
+    - Authenticated + registered users see their game dashboard.
+    - Anonymous users see a public landing page.
+    """
+    if not request.user.is_authenticated:
+        return render(request, 'dj4xol/landing.html', _landing_context(request))
+
+    if not hasattr(request.user, 'dj4xol_account'):
+        return redirect('dj4xol:register')
+
     account = request.user.dj4xol_account
     playing_game_ids = Player.objects.filter(account=account).values('game')
 
@@ -147,6 +159,126 @@ def gamelist(request):
         'server_tagline': ServerSettings.get('server_tagline', ''),
         'server_welcome': ServerSettings.get('server_welcome', ''),
     })
+
+
+def _readme_bullets(section_title):
+    """Extract markdown bullet lines from a README section."""
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    readme_path = os.path.join(repo_root, 'README.md')
+    if not os.path.exists(readme_path):
+        return []
+
+    with open(readme_path, 'r') as f:
+        lines = f.readlines()
+
+    section_start = None
+    section_header = '## %s' % section_title
+    for idx, line in enumerate(lines):
+        if line.strip() == section_header:
+            section_start = idx + 1
+            break
+    if section_start is None:
+        return []
+
+    bullets = []
+    for line in lines[section_start:]:
+        stripped = line.strip()
+        if stripped.startswith('## '):
+            break
+        if stripped.startswith('- '):
+            bullets.append(stripped[2:].strip())
+    return bullets
+
+
+def _landing_context(request=None):
+    now = timezone.now()
+    weekly_cutoff = now - timedelta(days=7)
+
+    active_games_count = (
+        Game.objects.filter(ended=False)
+        .filter(players__isnull=False)
+        .distinct()
+        .count()
+    )
+    weekly_active_players = Account.objects.filter(
+        django_user__last_login__gte=weekly_cutoff
+    ).count()
+
+    priorities = _readme_bullets('Current Priorities')
+    future = _readme_bullets('Future Possibilities')
+
+    if not priorities:
+        priorities = [
+            'Colony automation and quality-of-life tools',
+            'Fleet logistics and interaction improvements',
+            'Diplomacy and trade systems',
+        ]
+    if not future:
+        future = [
+            'Expanded ship design and tech tooling',
+            'More galaxy-generation modes',
+            'Optional AI modules',
+            'Endgame research and resources',
+            'Enhanced combat resolution',
+            'Colony stability and breakaways',
+        ]
+
+    canonical_url = '/4x/'
+    if request is not None:
+        canonical_url = request.build_absolute_uri('/4x/')
+
+    return {
+        'server_name': ServerSettings.get('server_name', 'dj4xol'),
+        'server_tagline': ServerSettings.get('server_tagline', ''),
+        'active_games_count': active_games_count,
+        'weekly_active_players': weekly_active_players,
+        'allow_self_signup': _allow_self_signup(),
+        'github_url': ServerSettings.get(
+            'server_github_url',
+            'https://github.com/search?q=dj4xol'
+        ),
+        'roadmap_priorities': priorities[:8],
+        'roadmap_future': future[:8],
+        'canonical_url': canonical_url,
+    }
+
+
+def _gallery_context(request=None):
+    canonical_url = '/4x/gallery/'
+    if request is not None:
+        canonical_url = request.build_absolute_uri('/4x/gallery/')
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    gallery_dir = os.path.join(
+        repo_root, 'dj4xol', 'static', 'dj4xol', 'home', 'images', 'gallery'
+    )
+    screenshots = []
+    allowed_ext = ('.png', '.jpg', '.jpeg', '.webp', '.gif')
+    if os.path.isdir(gallery_dir):
+        for filename in sorted(os.listdir(gallery_dir)):
+            lower = filename.lower()
+            if not lower.endswith(allowed_ext):
+                continue
+            label = os.path.splitext(filename)[0].replace('_', ' ').replace('-', ' ')
+            screenshots.append({
+                'url': '/static/dj4xol/home/images/gallery/%s' % filename,
+                'label': label.strip() or filename,
+            })
+
+    return {
+        'server_name': ServerSettings.get('server_name', 'dj4xol'),
+        'server_tagline': ServerSettings.get('server_tagline', ''),
+        'canonical_url': canonical_url,
+        'github_url': ServerSettings.get(
+            'server_github_url',
+            'https://github.com/search?q=dj4xol'
+        ),
+        'screenshots': screenshots,
+    }
+
+
+def gallery(request):
+    return render(request, 'dj4xol/gallery.html', _gallery_context(request))
 
 @registration_required()
 def join_game(request, game_short_id):

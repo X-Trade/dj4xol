@@ -1,0 +1,200 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+        <title>{{ server_name }} - Open Source 4X Space Strategy (PBEM-style)</title>
+        <meta name="description" content="{{ server_name }} is a free, open source, turn-based 4X space strategy game inspired by classic 90s PBEM gameplay. Build colonies, move fleets, research tech, and check in daily or hourly.">
+        <meta name="robots" content="index,follow,max-image-preview:large">
+        <meta property="og:type" content="website">
+        <meta property="og:title" content="{{ server_name }} - Open Source 4X Space Strategy">
+        <meta property="og:description" content="A free, open source turn-based 4X game with classic pacing: 10-minute check-ins on hourly or daily turns.">
+        <meta property="og:url" content="{{ canonical_url }}">
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:title" content="{{ server_name }} - Open Source 4X Space Strategy">
+        <meta name="twitter:description" content="Classic-inspired PBEM-style 4X gameplay with modern web access.">
+        <link rel="canonical" href="{{ canonical_url }}">
+
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/landing.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+
+        <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "VideoGame",
+          "name": "{{ server_name|escapejs }}",
+          "genre": ["4X", "Turn-based strategy", "Space strategy"],
+          "applicationCategory": "Game",
+          "operatingSystem": "Web",
+          "isAccessibleForFree": true,
+          "url": "{{ canonical_url|escapejs }}",
+          "description": "Free and open source turn-based 4X strategy inspired by classic PBEM games."
+        }
+        </script>
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} landing-page">
+        <header class="title-bar landing-title-bar">
+            <div class="landing-title-wrap">
+                <span class="title">{{ server_name }}</span>
+                {% if server_tagline %}<span class="tagline">{{ server_tagline }}</span>{% endif %}
+            </div>
+            <nav class="landing-top-links" aria-label="Main">
+                <a href="{{ github_url }}" target="_blank" rel="noopener">GitHub</a>
+                <a href="{% url 'dj4xol:gallery' %}">Gallery</a>
+                {% if allow_self_signup %}<a href="{% url 'dj4xol:signup' %}" class="primary-link">Sign Up</a>{% endif %}
+                <a href="{% url 'login' %}">Log In</a>
+            </nav>
+        </header>
+
+        <main class="landing-main">
+            <section class="panel open no-transition landing-hero" data-panel="intro" aria-labelledby="hero-title">
+                <h2><span id="hero-title">Open Source 4X, Built for Slow Strategy</span></h2>
+                <div class="panel-content panel-stack">
+                    <div class="landing-copy">
+                        <h1>Build an empire over weeks, not minutes.</h1>
+                        <p>
+                            DJ4XOL is a free and open source turn-based 4X space strategy game inspired by classic 90s PBEM design.
+                            You expand from a homeworld, manage colonies and minerals, commission fleets, research technologies,
+                            and resolve each turn through deliberate planning.
+                        </p>
+                        <p>
+                            This is the opposite of fast-paced. Join an hourly or daily generation game and it becomes a passive
+                            10-minute check-in habit.
+                        </p>
+                    </div>
+                    <div class="landing-cta-row">
+                        {% if allow_self_signup %}
+                        <a class="landing-cta primary" href="{% url 'dj4xol:signup' %}">Create Free Account</a>
+                        {% endif %}
+                        <a class="landing-cta" href="{% url 'login' %}">Log In</a>
+                        <a class="landing-cta" href="{% url 'dj4xol:gallery' %}">Gallery</a>
+                        <a class="landing-cta" href="{{ github_url }}" target="_blank" rel="noopener">View Source</a>
+                    </div>
+                </div>
+            </section>
+
+            <section class="landing-grid" aria-label="Game details">
+                <article class="panel open no-transition" data-panel="server-activity">
+                    <h2><span>Server Activity</span></h2>
+                    <div class="panel-content panel-stack">
+                        <div class="stats-tiles">
+                            <section class="stats-tile">
+                                <h3>Active Games</h3>
+                                <div class="landing-stat-value">{{ active_games_count }}</div>
+                                <p>Currently running games with active players.</p>
+                            </section>
+                            <section class="stats-tile">
+                                <h3>Weekly Active Players</h3>
+                                <div class="landing-stat-value">{{ weekly_active_players }}</div>
+                                <p>Players who logged in during the last 7 days.</p>
+                            </section>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="panel open no-transition" data-panel="how-to-play">
+                    <h2><span>How It Plays</span></h2>
+                    <div class="panel-content panel-stack">
+                        <ul class="landing-list">
+                            <li>Choose or create a game, then design your race and starting approach.</li>
+                            <li>Plan production and fleet orders between turn generations.</li>
+                            <li>Resolve movement, combat, invasions, and economy on each turn.</li>
+                            <li>Read reports and messages, then queue your next decisions.</li>
+                        </ul>
+                    </div>
+                </article>
+
+                <article class="panel open no-transition" data-panel="features">
+                    <h2><span>Features</span></h2>
+                    <div class="panel-content panel-stack">
+                        <ul class="landing-list">
+                            <li>Multi-game server with onboarding, invitations, and profile setup.</li>
+                            <li>Colony economy, fleet commissioning, research, combat, and invasions.</li>
+                            <li>Classic starmap planning with detailed turn reports.</li>
+                            <li>Three UI themes: Classic, LCARS, and Win95.</li>
+                            <li>Fully open source with active development roadmap.</li>
+                        </ul>
+                    </div>
+                </article>
+
+                <article class="panel open no-transition" data-panel="signup">
+                    <h2><span>Sign Up & Join</span></h2>
+                    <div class="panel-content panel-stack">
+                        {% if allow_self_signup %}
+                        <p>Self-signup is enabled. Create an account, join an open game, or accept an invite from another player.</p>
+                        <p><a href="{% url 'dj4xol:signup' %}" class="inline-action">Start here</a> or <a href="{% url 'login' %}" class="inline-action">log in</a> if you already have an account.</p>
+                        {% else %}
+                        <p>Self-signup is currently disabled on this server. Contact the admin for an invite.</p>
+                        <p>You can still <a href="{% url 'login' %}" class="inline-action">log in</a> with an existing account.</p>
+                        {% endif %}
+                    </div>
+                </article>
+
+                <article class="panel open no-transition" data-panel="roadmap">
+                    <h2><span>Roadmap</span></h2>
+                    <div class="panel-content panel-stack roadmap-grid">
+                        <div>
+                            <h3>Current Priorities</h3>
+                            <ul class="landing-list compact">
+                                {% for item in roadmap_priorities %}
+                                <li>{{ item }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        <div>
+                            <h3>Future Possibilities</h3>
+                            <ul class="landing-list compact">
+                                {% for item in roadmap_future %}
+                                <li>{{ item }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </article>
+            </section>
+        </main>
+
+        <aside class="cookie-consent" id="cookie-consent" role="dialog" aria-live="polite" aria-label="Cookie preferences" hidden>
+            <p>
+                This site uses essential cookies for login/session state and local storage for interface preferences.
+            </p>
+            <div class="cookie-actions">
+                <button type="button" id="cookie-accept">Accept</button>
+                <a href="{% url 'dj4xol:help_index' %}">Learn more</a>
+            </div>
+        </aside>
+
+        <script>
+        (function() {
+            var consentKey = 'dj4xol_cookie_consent_v1';
+            var consent = document.getElementById('cookie-consent');
+            var accept = document.getElementById('cookie-accept');
+
+            if (!consent || !accept) return;
+
+            var accepted = false;
+            try {
+                accepted = window.localStorage.getItem(consentKey) === 'accepted';
+            } catch (e) {
+                accepted = false;
+            }
+
+            if (!accepted) {
+                consent.hidden = false;
+            }
+
+            accept.addEventListener('click', function() {
+                try {
+                    window.localStorage.setItem(consentKey, 'accepted');
+                } catch (e) {
+                    // Ignore storage errors and still hide the prompt.
+                }
+                consent.hidden = true;
+            });
+        })();
+        </script>
+    </body>
+</html>

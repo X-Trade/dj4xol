@@ -1,0 +1,63 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+        <title>{{ server_name }} - Gallery</title>
+        <meta name="description" content="Gameplay screenshots from {{ server_name }}, a free and open source turn-based 4X space strategy game.">
+        <meta name="robots" content="index,follow,max-image-preview:large">
+        <meta property="og:type" content="website">
+        <meta property="og:title" content="{{ server_name }} - Screenshot Gallery">
+        <meta property="og:description" content="Browse in-game screenshots and interface themes.">
+        <meta property="og:url" content="{{ canonical_url }}">
+        <link rel="canonical" href="{{ canonical_url }}">
+
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/landing.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} landing-page gallery-page">
+        <header class="title-bar landing-title-bar">
+            <div class="landing-title-wrap">
+                <span class="title">{{ server_name }} Gallery</span>
+                {% if server_tagline %}<span class="tagline">{{ server_tagline }}</span>{% endif %}
+            </div>
+            <nav class="landing-top-links" aria-label="Main">
+                <a href="{% url 'dj4xol:index' %}">Home</a>
+                <a href="{% url 'login' %}">Log In</a>
+                <a href="{{ github_url }}" target="_blank" rel="noopener">GitHub</a>
+            </nav>
+        </header>
+
+        <main class="landing-main">
+            <section class="panel open no-transition" data-panel="gallery-intro">
+                <h2><span>Screenshot Gallery</span></h2>
+                <div class="panel-content panel-stack">
+                    <p>Drop screenshots into <code>dj4xol/static/dj4xol/home/images/gallery/</code>. They will appear here automatically.</p>
+                </div>
+            </section>
+
+            <section class="panel open no-transition" data-panel="gallery-grid">
+                <h2><span>Images</span></h2>
+                <div class="panel-content panel-stack">
+                    {% if screenshots %}
+                    <div class="gallery-grid">
+                        {% for shot in screenshots %}
+                        <figure class="gallery-card">
+                            <a href="{{ shot.url }}" target="_blank" rel="noopener">
+                                <img src="{{ shot.url }}" alt="{{ shot.label }} screenshot" loading="lazy" decoding="async">
+                            </a>
+                            <figcaption>{{ shot.label }}</figcaption>
+                        </figure>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p>No screenshots yet.</p>
+                    {% endif %}
+                </div>
+            </section>
+        </main>
+    </body>
+</html>

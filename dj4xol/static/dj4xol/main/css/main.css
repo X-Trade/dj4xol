@@ -318,11 +318,6 @@ body.map-dragging * {
         min-height: 150px;
     }
 
-    .messages-section .panel-content > div {
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        touch-action: pan-y;
-    }
 }
 
 /* Short viewport - give up and scroll */

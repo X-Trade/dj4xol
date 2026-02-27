@@ -10,6 +10,7 @@ app_name = 'dj4xol'
 
 urlpatterns = [
     url(r'^$', views.gamelist, name='index'),
+    url(r'^gallery/$', views.gallery, name='gallery'),
     url(r'^signup/$', views.signup, name='signup'),
     url(r'^register/$', views.register, name='register'),
     url(r'^onboarding/theme/$', views.onboarding_theme, name='onboarding_theme'),

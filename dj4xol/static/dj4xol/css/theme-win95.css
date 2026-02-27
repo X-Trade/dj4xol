@@ -545,13 +545,24 @@ input:focus {
 .win95 .panel-scrollable-text {
     position: relative;
     overflow-y: auto;
-    padding-right: 14px;
+    padding: 2px 18px 2px 4px;
     scrollbar-width: none;
     --panel-scroll-thumb-scale: 0.35;
     --panel-scroll-thumb-min-size: 12;
+    box-shadow: none;
+    border: none;
+    background: transparent;
+}
+
+.win95 .panel-scroll-frame {
     box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
                 inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
     border: none;
+    background: #ffffff;
+}
+
+.win95 .panel-scroll-frame.panel-scroll-frame-text {
+    background: #c0c0c0;
 }
 
 .win95 .panel-scrollable-list {
@@ -559,7 +570,7 @@ input:focus {
 }
 
 .win95 .panel-scrollable-text {
-    background: #c0c0c0;
+    background: transparent;
     padding-top: 4px;
     padding-bottom: 4px;
 }
@@ -577,13 +588,13 @@ input:focus {
     width: 14px;
     overflow: hidden;
     display: block;
-    margin: 1.4px 4px 1px 4px !important;
+    margin: 1.4px 4px 4px 4px !important;
     padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
     box-sizing: border-box;
     pointer-events: auto;
-    z-index: 2;
+    z-index: 3;
 }
 
 .win95 .panel-scrollbar-track {
@@ -716,17 +727,18 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .panel #messages.panel-scrollable-list {
-    background: #ffffff;
-    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
-                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+    background: transparent;
+    box-shadow: none;
     border: none;
+    padding: 2px 18px 2px 4px;
 }
 
 .panel .messages-scroll {
-    background: #ffffff;
-    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
-                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+    background: transparent;
+    box-shadow: none;
     border: none;
+    padding: 2px 18px 2px 4px;
+    background-clip: padding-box;
 }
 
 .message {
