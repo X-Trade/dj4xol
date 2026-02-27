@@ -1,5 +1,5 @@
 from datetime import timedelta
-from math import atan2, degrees, log2
+from math import atan2, ceil, degrees, log2
 from numpy import array as nparray, linalg
 from django.db import models
 from django.utils import timezone
@@ -375,6 +375,10 @@ class GameTurn():
 
     def fleet_movements(self):
         """Move fleets according to their orders."""
+        self._locked_fleet_ids_for_year = set()
+        self._fleet_start_positions_for_year = {
+            fleet.id: (fleet.x, fleet.y) for fleet in self.game.fleets.all()
+        }
         # Get fleet IDs first, then fetch fresh for each processing
         # This ensures we see changes made by other fleet's transfers
         fleet_ids = list(self.game.fleets.values_list('id', flat=True))
@@ -384,6 +388,10 @@ class GameTurn():
                 fleet = self.game.fleets.get(id=fleet_id)
             except self.game.fleets.model.DoesNotExist:
                 continue  # Fleet was deleted (e.g., by colonise order)
+            if fleet.id in self._locked_fleet_ids_for_year:
+                self._refuel_fleet_if_in_friendly_shipyard_orbit(fleet)
+                fleet.save()
+                continue
             result = self.move_fleet(fleet)
             if result is not None:
                 self._refuel_fleet_if_in_friendly_shipyard_orbit(result)
@@ -725,7 +733,12 @@ class GameTurn():
         msg.save()
 
     def _move_fleet_single_order(self, fleet):
-        """Process fleet orders: no order executes twice per turn, transfers passthrough, moves block."""
+        """Process fleet orders with one move-like order per turn.
+
+        Non-movement orders can pass through in one turn. Once a MOVE/INTERCEPT/
+        PATROL order has executed, subsequent non-movement orders may execute
+        immediately, but the next movement order waits for next turn.
+        """
         # Snapshot orders at start of turn to avoid processing newly created repeat orders
         # Transfer orders: execute once and continue to next order (passthrough)
         # Move orders: execute once and stop processing (blocking)
@@ -733,10 +746,16 @@ class GameTurn():
         # Snapshot all current orders to prevent processing repeat orders created this turn
         orders_to_process = list(fleet.orders.order_by('position', 'id'))
 
+        movement_executed = False
+
         for order in orders_to_process:
             # Check if order still exists (might have been deleted by previous processing)
             if not fleet.orders.filter(id=order.id).exists():
                 continue
+
+            if order.order_type in ['MOVE', 'INTERCEPT', 'PATROL'] and movement_executed:
+                # Exactly one move-like order can execute per turn.
+                break
 
             if order.order_type == 'TRANSFER':
                 # Try to execute transfer immediately
@@ -757,10 +776,14 @@ class GameTurn():
                     # Fleet destroyed by warp damage
                     return None
                 if move_result is True:
-                    # Reached destination - handle repeat and STOP
+                    if order.order_type == 'INTERCEPT':
+                        self._lock_successful_enemy_intercept(fleet, order)
+                    # Reached destination - handle repeat and passthrough
                     self._handle_repeating_order(order)
                     order.delete()
-                # BLOCKING: Whether reached or still moving, STOP processing
+                    movement_executed = True
+                    continue
+                # Still moving: block until next turn
                 break
 
             elif order.order_type == 'COLONISE':
@@ -790,7 +813,10 @@ class GameTurn():
                 patrol_result = self._execute_patrol_order(fleet, order)
                 if patrol_result == 'executed':
                     return None
-                elif patrol_result in ['moved', 'blocked']:
+                elif patrol_result == 'moved':
+                    movement_executed = True
+                    continue
+                elif patrol_result == 'blocked':
                     break
 
             else:
@@ -858,6 +884,22 @@ class GameTurn():
             warp_speed = self._resolve_movement_warp_with_fuel(fleet, order, warp_speed)
             if warp_speed <= 0:
                 return False
+
+        # If target fleet is already within intercept range, snap directly to it.
+        # This avoids "parking ahead" when predictive lead is unnecessary.
+        if is_intercept and order.target_fleet:
+            target_fleet = order.target_fleet
+            live_distance = linalg.norm(
+                nparray([target_fleet.x, target_fleet.y]) - position
+            )
+            if self._is_within_intercept_snap_range(live_distance, warp_speed):
+                live_vector = nparray([target_fleet.x, target_fleet.y]) - position
+                if linalg.norm(live_vector) > 0:
+                    dx, dy = live_vector[0], live_vector[1]
+                    fleet.heading = degrees(atan2(dx, -dy)) % 360
+                fleet.x = target_fleet.x
+                fleet.y = target_fleet.y
+                return True
 
         # Check for warp damage before moving
         damage_result = self._check_warp_damage(fleet, warp_speed, order)
@@ -969,6 +1011,24 @@ class GameTurn():
         msg.year = self.game.year
         msg.save()
 
+    def _lock_successful_enemy_intercept(self, interceptor, order):
+        """Lock both fleets in place after a successful enemy intercept."""
+        target = order.target_fleet
+        if not target:
+            return
+        if interceptor.player_id == target.player_id:
+            return
+        if (interceptor.x, interceptor.y) != (target.x, target.y):
+            return
+        interceptor_start = self._fleet_start_positions_for_year.get(interceptor.id)
+        target_start = self._fleet_start_positions_for_year.get(target.id)
+        if interceptor_start is not None and interceptor_start == target_start:
+            # If both started stacked this year, don't immobilize the target.
+            return
+
+        self._locked_fleet_ids_for_year.add(interceptor.id)
+        self._locked_fleet_ids_for_year.add(target.id)
+
     def _get_intercept_destination(self, order):
         """Calculate intercept destination based on target fleet movement."""
         from math import radians, sin, cos
@@ -982,6 +1042,10 @@ class GameTurn():
         target_fleet = order.target_fleet
         target_speed = self._get_fleet_current_speed(target_fleet)
         if target_speed <= 0:
+            return target_fleet.x, target_fleet.y
+
+        if self._is_interceptor_ahead_of_target(order.fleet, target_fleet):
+            # Don't keep leading further ahead; turn directly toward target.
             return target_fleet.x, target_fleet.y
 
         try:
@@ -1001,6 +1065,32 @@ class GameTurn():
         intercept_x = int(target_fleet.x + dx * target_speed)
         intercept_y = int(target_fleet.y + dy * target_speed)
         return intercept_x, intercept_y
+
+    def _is_interceptor_ahead_of_target(self, interceptor, target_fleet):
+        """Return True when interceptor is ahead along target's movement vector."""
+        from math import radians, sin, cos
+
+        target_speed = self._get_fleet_current_speed(target_fleet)
+        if target_speed <= 0:
+            return False
+
+        theta = radians(target_fleet.heading)
+        movement_vector = nparray([sin(theta), -cos(theta)])
+        relative_vector = nparray([
+            interceptor.x - target_fleet.x,
+            interceptor.y - target_fleet.y,
+        ])
+        return float(relative_vector.dot(movement_vector)) > 0.0
+
+    def _is_within_intercept_snap_range(self, distance, warp_speed):
+        """Return True if intercept can snap to the target this turn.
+
+        Uses a small tolerance before ceil-rounding to avoid near-miss jitter.
+        """
+        if warp_speed <= 0:
+            return False
+        rounded_distance = ceil(max(0.0, float(distance) - 0.35))
+        return rounded_distance <= int(warp_speed)
 
     def _get_fleet_current_speed(self, fleet):
         """Return fleet's current movement speed based on its orders."""

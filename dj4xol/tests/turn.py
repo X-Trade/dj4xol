@@ -1211,12 +1211,10 @@ class TestFleetTransferOrderExecution(TestCase):
                 break
 
         # Fleet should now be at target and transfer should have executed
+        # in the same turn as arrival.
         self.assertTrue(reached)
         self.assertEqual(fleet.x, target_star.x)
         self.assertEqual(fleet.y, target_star.y)
-        if fleet.orders.count() > 0:
-            GameTurn(game).generate_turn()
-            fleet.refresh_from_db()
         self.assertEqual(fleet.orders.count(), 0)  # Transfer completed
         self.assertEqual(fleet.ironium_inventory, 100)  # Transfer executed
 
@@ -4159,7 +4157,7 @@ class TestFleetColoniseOrders(TestCase):
         self.assertEqual(target_star.player, player)
 
     def test_colonise_with_move_orders(self):
-        """Move then colonise sequence should work correctly."""
+        """Move then colonise should execute colonise immediately on arrival."""
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
         fleet = game.fleets.first()
@@ -4194,20 +4192,7 @@ class TestFleetColoniseOrders(TestCase):
             target_star=target_star
         )
 
-        # Turn 1: Fleet should move to star but not colonise (move is blocking)
-        GameTurn(game).generate_turn()
-
-        # Fleet should still exist after move
-        self.assertTrue(Fleet.objects.filter(id=fleet_id).exists())
-        fleet.refresh_from_db()
-        self.assertEqual(fleet.x, target_star.x)
-        self.assertEqual(fleet.y, target_star.y)
-
-        # Colonise order should still be pending
-        self.assertEqual(fleet.orders.count(), 1)
-        self.assertEqual(fleet.orders.first().order_type, 'COLONISE')
-
-        # Turn 2: Colonise should execute
+        # Turn 1: Fleet reaches star and colonise executes in same turn.
         GameTurn(game).generate_turn()
 
         # Fleet should be deleted
@@ -5574,6 +5559,137 @@ class TestInterceptPatrolOrders(TestCase):
         GameTurn(game).generate_turn()
         fleet.refresh_from_db()
         self.assertNotEqual((fleet.x, fleet.y), (10, 10))
+
+    def test_intercept_ahead_targets_current_position(self):
+        """Interceptor ahead of moving target should fly directly toward it."""
+        from ..models import FleetOrders
+
+        game, player1, _ = self._create_two_player_game()
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Interceptor",
+            x=80, y=50, ship_count=1, integrity=100
+        )
+        target = Fleet.objects.create(
+            game=game, player=player1, name="Target",
+            x=70, y=50, ship_count=1, integrity=100, heading=90
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=target, order_type='MOVE', x=99, y=50, warpfactor=5
+        )
+        intercept_order = FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='INTERCEPT',
+            target_fleet=target, warpfactor=5
+        )
+
+        x, y = GameTurn(game)._get_intercept_destination(intercept_order)
+        self.assertEqual((x, y), (target.x, target.y))
+
+    def test_intercept_arrival_executes_followup_merge_same_turn(self):
+        """Successful intercept should run immediate non-move follow-up orders."""
+        from ..models import FleetOrders
+
+        game, player1, _ = self._create_two_player_game()
+
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Interceptor",
+            x=15, y=11, ship_count=1, integrity=100, max_safe_warp=13
+        )
+        target = Fleet.objects.create(
+            game=game, player=player1, name="Target",
+            x=20, y=10, ship_count=1, integrity=100, max_safe_warp=13, heading=90
+        )
+
+        # Target is moving away, so predictive intercept point is farther than interceptor warp.
+        FleetOrders.objects.create(
+            game=game, fleet=target, order_type='MOVE', x=40, y=10, warpfactor=4
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='INTERCEPT',
+            target_fleet=target, warpfactor=5
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='MERGE', target_fleet=target
+        )
+
+        with patch('dj4xol.turn.random.shuffle', lambda x: None):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Fleet.objects.filter(id=interceptor.id).exists())
+        target.refresh_from_db()
+        self.assertEqual(target.ship_count, 2)
+
+    def test_enemy_intercept_locks_target_and_forces_same_year_combat(self):
+        """Enemy fleet intercepted this year should not move away before combat."""
+        from ..models import FleetOrders
+
+        game, player1, player2 = self._create_two_player_game()
+
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Interceptor",
+            x=15, y=11, ship_count=1, integrity=100, max_safe_warp=13
+        )
+        target = Fleet.objects.create(
+            game=game, player=player2, name="Target",
+            x=20, y=10, ship_count=1, integrity=100, max_safe_warp=13, heading=90
+        )
+        target_destination = (40, 10)
+
+        FleetOrders.objects.create(
+            game=game, fleet=target, order_type='MOVE',
+            x=target_destination[0], y=target_destination[1], warpfactor=4
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='INTERCEPT',
+            target_fleet=target, warpfactor=5
+        )
+
+        with patch('dj4xol.turn.random.shuffle', lambda x: None):
+            GameTurn(game).generate_turn()
+
+        interceptor.refresh_from_db()
+        target.refresh_from_db()
+
+        # Interceptor should have snapped to target, and target should be locked in place.
+        self.assertEqual((interceptor.x, interceptor.y), (target.x, target.y))
+        self.assertNotEqual((target.x, target.y), target_destination)
+
+        # Combat should have happened this same year.
+        self.assertTrue(player1.messages.filter(category='COMBAT').exists())
+        self.assertTrue(player2.messages.filter(category='COMBAT').exists())
+
+    def test_enemy_intercept_does_not_lock_when_starting_stacked(self):
+        """Stacked-at-start intercept should not immobilize a moving target."""
+        from ..models import FleetOrders
+
+        game, player1, player2 = self._create_two_player_game()
+
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Interceptor",
+            x=10, y=10, ship_count=1, integrity=100, max_safe_warp=13
+        )
+        target = Fleet.objects.create(
+            game=game, player=player2, name="Target",
+            x=10, y=10, ship_count=1, integrity=100, max_safe_warp=13, heading=90
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='INTERCEPT',
+            target_fleet=target, warpfactor=5, repeat=True
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=target, order_type='MOVE',
+            x=30, y=10, warpfactor=4
+        )
+
+        with patch('dj4xol.turn.random.shuffle', lambda x: None):
+            GameTurn(game).generate_turn()
+
+        interceptor.refresh_from_db()
+        target.refresh_from_db()
+
+        # Target should have moved; stacked start must not lock it in place.
+        self.assertNotEqual((target.x, target.y), (10, 10))
+        self.assertNotEqual((interceptor.x, interceptor.y), (target.x, target.y))
 
     def test_patrol_order_detail_includes_patrol_radius(self):
         """Detail payload should include patrol radius for PATROL orders."""
