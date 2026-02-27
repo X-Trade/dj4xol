@@ -46,8 +46,10 @@
     overflow: hidden;
 }
 
-.help-index .panel.open .panel-content > div,
-.colony-help .panel.open .panel-content > div {
+.help-index .panel.open .panel-scrollable-list,
+.help-index .panel.open .panel-scrollable-text,
+.colony-help .panel.open .panel-scrollable-list,
+.colony-help .panel.open .panel-scrollable-text {
     flex: 1 1 auto;
     min-height: 0 !important;
     max-height: none !important;

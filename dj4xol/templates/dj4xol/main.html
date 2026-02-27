@@ -59,24 +59,26 @@
             <div class="column-left">
                 <div class="panel no-transition open" data-panel="starmap">
                     <h2><span>Starmap</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div class="starmap-wrapper">
-                        <div class="starmap" id="starmap">
-                            <div class="maparea-sizer" id="maparea-sizer">
-                                <div class="maparea" id="maparea" data-width="{{ starmap.width }}" data-height="{{ starmap.height }}" data-border="{{ starmap.border_offset }}" data-dest-mode="{{ dest_mode|yesno:'true,false' }}"{% if detail %} data-sel-x="{{ detail.x }}" data-sel-y="{{ detail.y }}"{% endif %} data-selected-fleet-id="{{ selected_fleet_short_id|default:'' }}">
-                                    <svg id="fleet-movement-overlay" class="fleet-movement-overlay" width="{{ starmap.width }}" height="{{ starmap.height }}" aria-hidden="true"></svg>
-                                    {{ starmap.map |safe }}
+                    <div class="panel-content">
+                        <div class="starmap-wrapper">
+                            <div class="starmap" id="starmap">
+                                <div class="maparea-sizer" id="maparea-sizer">
+                                    <div class="maparea" id="maparea" data-width="{{ starmap.width }}" data-height="{{ starmap.height }}" data-border="{{ starmap.border_offset }}" data-dest-mode="{{ dest_mode|yesno:'true,false' }}"{% if detail %} data-sel-x="{{ detail.x }}" data-sel-y="{{ detail.y }}"{% endif %} data-selected-fleet-id="{{ selected_fleet_short_id|default:'' }}">
+                                        <svg id="fleet-movement-overlay" class="fleet-movement-overlay" width="{{ starmap.width }}" height="{{ starmap.height }}" aria-hidden="true"></svg>
+                                        {{ starmap.map |safe }}
+                                    </div>
                                 </div>
                             </div>
+                            <div class="starmap-controls">
+                                <button id="starmap-zoom-in" title="Zoom in">+</button>
+                                <button id="starmap-zoom-out" title="Zoom out">-</button>
+                                <button id="starmap-locate" title="Auto-center on selection">&#8982;</button>
+                                <button id="starmap-movement-paths" title="Show Orders" aria-label="Show Orders"></button>
+                                <button id="starmap-star-names" title="Star names" aria-label="Star names">Nn</button>
+                                {% if homeworld %}<a href="?x={{ homeworld.x }}&y={{ homeworld.y }}&sel={{ homeworld.short_id }}&locate=1"><button id="starmap-home" title="Go to homeworld">&#8962;</button></a>{% endif %}
+                            </div>
                         </div>
-                        <div class="starmap-controls">
-                            <button id="starmap-zoom-in" title="Zoom in">+</button>
-                            <button id="starmap-zoom-out" title="Zoom out">-</button>
-                            <button id="starmap-locate" title="Auto-center on selection">&#8982;</button>
-                            <button id="starmap-movement-paths" title="Show Orders" aria-label="Show Orders"></button>
-                            <button id="starmap-star-names" title="Star names" aria-label="Star names">Nn</button>
-                            {% if homeworld %}<a href="?x={{ homeworld.x }}&y={{ homeworld.y }}&sel={{ homeworld.short_id }}&locate=1"><button id="starmap-home" title="Go to homeworld">&#8962;</button></a>{% endif %}
-                        </div>
-                    </div></div>
+                    </div>
                 </div>
                 {% include 'dj4xol/_messages_panel.html' %}
             </div>
@@ -87,9 +89,11 @@
                     {% else %}
                         <div class="detail-section panel no-transition open" data-panel="detail">
                             <h2><span>Detail</span><span class="panel-toggle"></span></h2>
-                            <div class="panel-content"><div id="detail">
-                                <p>Click on a star or fleet to view details.</p>
-                            </div></div>
+                            <div class="panel-content panel-stack detail-panel-stack">
+                                <section id="detail" class="unknown-detail-body">
+                                    <p>Click on a star or fleet to view details.</p>
+                                </section>
+                            </div>
                         </div>
                     {% endif %}
                 </div>

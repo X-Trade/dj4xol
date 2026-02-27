@@ -1,8 +1,8 @@
 {% load numbers static %}
 <div class="detail-section panel no-transition open" data-panel="detail">
 <h2><span>Detail</span><span class="panel-toggle"></span></h2>
-<div class="panel-content"><div id="detail">
-    <div class="detail-header">
+<div class="panel-content panel-stack detail-panel-stack">
+    <div class="detail-header{% if detail.unexplored %} detail-header-unexplored{% endif %}">
         {% if detail.is_fleet and detail.fleet_thumbnail %}
         <img class="object-thumbnail thumb-pop-target" src="{% static detail.fleet_thumbnail %}" alt="Fleet thumbnail">
         {% elif detail.is_star and detail.star_thumbnail %}
@@ -34,7 +34,7 @@
         </div>
     </div>
     {% endif %}
-    <hr>
+    <section id="detail" class="panel-scrollable-text">
     {% if detail.unexplored %}
     <div class="unexplored-notice">{% if detail.is_star %}Unexplored{% else %}???{% endif %}</div>
     <p class="unexplored-hint">Send a fleet to this location to gather intelligence.</p>
@@ -216,8 +216,10 @@
         </div>
     </div>
     {% endif %}
-    {% if player.account.django_user.is_superuser %}
-    <div class="debug-actions">
+    {% endif %}{# end detail.unexplored else #}
+    </section>
+    {% if not detail.unexplored and player.account.django_user.is_superuser %}
+    <div class="debug-actions panel-footer">
         {% if detail.is_star %}
         <form method="post" action="{% url 'dj4xol:debug_colonize' game.short_id detail.star_short_id %}" style="display:inline">
             {% csrf_token %}
@@ -238,8 +240,7 @@
         {% endif %}
     </div>
     {% endif %}
-    {% endif %}{# end detail.unexplored else #}
-</div></div>
+</div>
 </div>
 {% if detail.is_owned %}
 <script>

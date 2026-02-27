@@ -19,7 +19,8 @@
             <div class="column">
                 <div class="panel no-transition open" data-panel="theme">
                     <h2><span>Choose Theme</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <p>Select your preferred visual theme. You can always change this later in your 4x Profile.</p>
                         <form method="post">
                             {% csrf_token %}
@@ -37,7 +38,8 @@
                                 <button type="submit" class="nav-button primary">Next &raquo;</button>
                             </div>
                         </form>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
             </div>
         </div>
@@ -76,5 +78,6 @@
                 });
             })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

@@ -58,6 +58,14 @@ $(document).ready(function() {
     var $sizer = $("#maparea-sizer");
     var $movementOverlay = $("#fleet-movement-overlay");
 
+    // Prevent accidental link-drag when star names are visible; preserves click navigation.
+    document.addEventListener('dragstart', function(ev) {
+        var target = ev.target;
+        if (target && target.closest && target.closest('.mapstar-name')) {
+            ev.preventDefault();
+        }
+    });
+
     // Storage key prefix based on game URL (path only, no query params)
     var storageKey = 'starmap:' + window.location.pathname;
 
@@ -423,9 +431,20 @@ $(document).ready(function() {
         document.body.classList.remove('map-dragging');
     }
 
+    function shouldBlockMapDragStart(target) {
+        var $target = $(target);
+        if ($target.closest('.starmap-controls').length) {
+            return true;
+        }
+        // Allow drag-start on visible star-name links so map panning still works.
+        if ($target.closest('a').length && !$target.closest('.mapstar-name').length) {
+            return true;
+        }
+        return false;
+    }
+
     $starmap.on('mousedown', function(e) {
-        // Don't drag if clicking on a control or link
-        if ($(e.target).closest('.starmap-controls, a').length) return;
+        if (shouldBlockMapDragStart(e.target)) return;
         isDragging = true;
         lockDragSelection();
         hasDragged = false;
@@ -581,7 +600,7 @@ $(document).ready(function() {
         );
 
         starmapEl.addEventListener('touchstart', function(e) {
-            if ($(e.target).closest('.starmap-controls, a').length) return;
+            if (shouldBlockMapDragStart(e.target)) return;
             if (e.touches.length === 1) {
                 touchDragging = true;
                 lockDragSelection();
@@ -811,10 +830,170 @@ $(document).ready(function() {
         });
     }
 
+    function updateCustomPanelScrollbar(el) {
+        if (!el) return;
+        var clientHeight = el.clientHeight || 0;
+        var scrollHeight = el.scrollHeight || 0;
+        if (clientHeight <= 0) return;
+        var overlay = el.__customScrollbarOverlay;
+        if (!overlay) return;
+        var thumb = overlay.__thumbEl;
+        if (!thumb) return;
+
+        var thumbSize;
+        var thumbTop;
+        var thumbOpacity;
+        var maxTop;
+        var computed = window.getComputedStyle(el);
+        var thumbScale = parseFloat(computed.getPropertyValue('--panel-scroll-thumb-scale'));
+        var thumbMin = parseFloat(computed.getPropertyValue('--panel-scroll-thumb-min-size'));
+        if (!isFinite(thumbScale) || thumbScale <= 0) {
+            thumbScale = 0.5;
+        }
+        if (!isFinite(thumbMin) || thumbMin <= 0) {
+            thumbMin = 12;
+        }
+
+        if (scrollHeight <= clientHeight + 1) {
+            thumbSize = Math.max(20, Math.min(clientHeight, Math.round(clientHeight * 0.35)));
+            thumbSize = Math.max(thumbMin, Math.round(thumbSize * thumbScale));
+            thumbSize = Math.min(thumbSize, clientHeight);
+            maxTop = Math.max(0, clientHeight - thumbSize);
+            thumbTop = Math.round(maxTop / 2);
+            thumbOpacity = 0;
+        } else {
+            var ratio = clientHeight / scrollHeight;
+            thumbSize = Math.max(20, Math.round(clientHeight * ratio));
+            thumbSize = Math.max(thumbMin, Math.round(thumbSize * thumbScale));
+            thumbSize = Math.min(thumbSize, clientHeight);
+            maxTop = Math.max(0, clientHeight - thumbSize);
+            thumbTop = Math.round((el.scrollTop / (scrollHeight - clientHeight)) * maxTop);
+            thumbOpacity = 1;
+        }
+        thumbTop = Math.max(0, Math.min(thumbTop, Math.max(0, clientHeight - thumbSize)));
+
+        overlay.style.top = el.offsetTop + 'px';
+        overlay.style.right = '0px';
+        overlay.style.height = clientHeight + 'px';
+        thumb.style.height = thumbSize + 'px';
+        thumb.style.transform = 'translateY(' + thumbTop + 'px)';
+        thumb.style.opacity = String(thumbOpacity);
+        el.__customScrollbarMetrics = {
+            clientHeight: clientHeight,
+            scrollHeight: scrollHeight,
+            thumbSize: thumbSize,
+            maxTop: maxTop
+        };
+    }
+
+    function ensureCustomScrollbarOverlay(el) {
+        if (!el || el.__customScrollbarOverlay) {
+            return el ? el.__customScrollbarOverlay : null;
+        }
+        var parent = el.parentElement;
+        if (!parent) {
+            return null;
+        }
+        var computedPos = window.getComputedStyle(parent).position;
+        if (!computedPos || computedPos === 'static') {
+            parent.style.position = 'relative';
+        }
+        var overlay = document.createElement('span');
+        overlay.className = 'panel-scrollbar-overlay';
+        var track = document.createElement('span');
+        track.className = 'panel-scrollbar-track';
+        var thumb = document.createElement('span');
+        thumb.className = 'panel-scrollbar-thumb';
+        overlay.appendChild(track);
+        overlay.appendChild(thumb);
+        parent.appendChild(overlay);
+        el.__customScrollbarOverlay = overlay;
+        overlay.__thumbEl = thumb;
+        overlay.__trackEl = track;
+
+        // Click track to jump near click position.
+        overlay.addEventListener('pointerdown', function(ev) {
+            if (ev.target === thumb) {
+                return;
+            }
+            var metrics = el.__customScrollbarMetrics;
+            if (!metrics || metrics.scrollHeight <= metrics.clientHeight || metrics.maxTop <= 0) {
+                return;
+            }
+            var rect = overlay.getBoundingClientRect();
+            var y = ev.clientY - rect.top;
+            var targetTop = y - (metrics.thumbSize / 2);
+            targetTop = Math.max(0, Math.min(targetTop, metrics.maxTop));
+            el.scrollTop = (targetTop / metrics.maxTop) * (metrics.scrollHeight - metrics.clientHeight);
+            updateCustomPanelScrollbar(el);
+        });
+
+        // Drag thumb to scroll (desktop + mobile pointer events).
+        thumb.addEventListener('pointerdown', function(ev) {
+            ev.preventDefault();
+            var startY = ev.clientY;
+            var startScrollTop = el.scrollTop;
+            var metrics = el.__customScrollbarMetrics;
+            if (!metrics || metrics.maxTop <= 0 || metrics.scrollHeight <= metrics.clientHeight) {
+                return;
+            }
+            var pxToScroll = (metrics.scrollHeight - metrics.clientHeight) / metrics.maxTop;
+            try {
+                thumb.setPointerCapture(ev.pointerId);
+            } catch (err) {}
+
+            function onMove(moveEv) {
+                var dy = moveEv.clientY - startY;
+                el.scrollTop = startScrollTop + (dy * pxToScroll);
+                updateCustomPanelScrollbar(el);
+            }
+
+            function onEnd(endEv) {
+                document.removeEventListener('pointermove', onMove);
+                document.removeEventListener('pointerup', onEnd);
+                document.removeEventListener('pointercancel', onEnd);
+                try {
+                    thumb.releasePointerCapture(endEv.pointerId);
+                } catch (err) {}
+            }
+
+            document.addEventListener('pointermove', onMove);
+            document.addEventListener('pointerup', onEnd);
+            document.addEventListener('pointercancel', onEnd);
+        });
+
+        // Wheel over overlay should still scroll content.
+        overlay.addEventListener('wheel', function(ev) {
+            ev.preventDefault();
+            el.scrollTop += ev.deltaY;
+            updateCustomPanelScrollbar(el);
+        }, { passive: false });
+        return overlay;
+    }
+
+    function refreshCustomPanelScrollbars() {
+        if (!document.body.classList.contains('lcars') &&
+            !document.body.classList.contains('win95')) {
+            return;
+        }
+        var scrollEls = document.querySelectorAll('.panel-scrollable-list, .panel-scrollable-text');
+        for (var i = 0; i < scrollEls.length; i += 1) {
+            var el = scrollEls[i];
+            if (!el.__customScrollbarBound) {
+                el.__customScrollbarBound = true;
+                ensureCustomScrollbarOverlay(el);
+                el.addEventListener('scroll', function(ev) {
+                    updateCustomPanelScrollbar(ev.currentTarget);
+                });
+            }
+            ensureCustomScrollbarOverlay(el);
+            updateCustomPanelScrollbar(el);
+        }
+    }
+
     // Messages scroll persistence
-    var $messagesScroll = $('#messages-scroll');
     var $messages = $('#messages');
-    if ($messagesScroll.length && $messages.length) {
+    if ($messages.length) {
         var messagesKey = storageKey + ':messages';
         var currentYear = $messages.data('year');
         var savedYear = localStorage.getItem(messagesKey + ':year');
@@ -822,12 +1001,12 @@ $(document).ready(function() {
 
         // Restore scroll position only if same year
         if (savedYear && parseInt(savedYear) === currentYear && savedScroll) {
-            $messagesScroll.scrollTop(parseInt(savedScroll));
+            $messages.scrollTop(parseInt(savedScroll));
         }
 
         // Save scroll position on scroll
-        $messagesScroll.on('scroll', function() {
-            localStorage.setItem(messagesKey + ':scroll', $messagesScroll.scrollTop());
+        $messages.on('scroll', function() {
+            localStorage.setItem(messagesKey + ':scroll', $messages.scrollTop());
             localStorage.setItem(messagesKey + ':year', currentYear);
         });
     }
@@ -856,6 +1035,7 @@ $(document).ready(function() {
         var isCollapsed = $section.hasClass('collapsed');
         $toggle.text(isCollapsed ? '+' : '−');
         localStorage.setItem(collapseKey + ':' + sectionName, isCollapsed);
+        setTimeout(refreshCustomPanelScrollbars, 0);
     });
 
     // Panel collapse (main panels like Starmap, Messages, Detail, Orders)
@@ -896,5 +1076,9 @@ $(document).ready(function() {
         $panel.toggleClass('open');
         var isOpen = $panel.hasClass('open');
         localStorage.setItem(panelKey + ':' + panelName, isOpen);
+        setTimeout(refreshCustomPanelScrollbars, 0);
     });
+
+    window.addEventListener('resize', refreshCustomPanelScrollbars);
+    setTimeout(refreshCustomPanelScrollbars, 0);
 });

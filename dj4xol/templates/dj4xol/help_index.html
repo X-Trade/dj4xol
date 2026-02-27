@@ -21,7 +21,8 @@
             <div class="column">
                 <div class="panel no-transition open" data-panel="help-home">
                     <h2><span>Help Index</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-list">
                         <p>Choose a help tool:</p>
                         <ul class="game-list">
                             <li><a href="{% url 'dj4xol:help_technology' %}">Technology Directory</a>Browse configured technologies by category and level.</li>
@@ -32,7 +33,8 @@
                             <li><a href="{% url 'dj4xol:help_colony' %}">Colony Calculator</a> Simulate growth, productivity, and resource output.</li>
                             <li><a href="{% url 'dj4xol:help_version_history' %}">Version History</a> See a summary of recent development changes.</li>
                         </ul>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
             </div>
         </div>
@@ -65,5 +67,6 @@
                 }
             })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

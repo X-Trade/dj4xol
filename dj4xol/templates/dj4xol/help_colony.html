@@ -21,7 +21,8 @@
             <div class="column">
                 <div class="panel no-transition open" data-panel="help">
                     <h2><span>Colony Calculator</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <form class="race-form" id="colony-help-form">
                             <table class="profile-table">
                                 <tr>
@@ -58,10 +59,11 @@
                                 </tr>
                             </table>
                         </form>
+                        </section>
                         <div class="panel-footer">
                             <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
                         </div>
-                    </div></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -108,5 +110,6 @@
                 }
             })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

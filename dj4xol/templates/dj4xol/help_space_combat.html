@@ -21,7 +21,8 @@
             <div class="column">
                 <div class="panel no-transition open" data-panel="help-space-combat">
                     <h2><span>Space Combat</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <p>
                             Space combat is resolved by location. If two or more players have fleets at the same coordinates,
                             each side contributes a combat strength based on ships, integrity, race traits, and fleet combat levels.
@@ -94,10 +95,11 @@
                             If one side is much stronger, that side tends to take much less damage, but it can still suffer losses,
                             especially if luck and integrity effects move against it.
                         </p>
+                        </section>
                         <div class="panel-footer">
                             <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
                         </div>
-                    </div></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -130,5 +132,6 @@
                 }
             })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

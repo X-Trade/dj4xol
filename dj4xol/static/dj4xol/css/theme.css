@@ -70,6 +70,7 @@ a:hover {
     background: var(--titlebar-bg);
     color: var(--titlebar-text);
     flex-shrink: 0;
+    min-width: 0;
 }
 
 .title-bar .title {
@@ -84,6 +85,13 @@ a:hover {
 .title-bar .turn-status {
     flex: 1;
     white-space: nowrap;
+    min-width: 0;
+}
+
+.title-bar .title,
+.title-bar .year,
+.title-bar .tagline {
+    min-width: 0;
 }
 
 .title-bar a {
@@ -183,24 +191,48 @@ a:hover {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-}
-
-.panel-content > div {
-    flex: 1;
-    min-height: 0;
     border: 1px solid var(--panel-content-border);
     border-top: none;
     background: var(--panel-content-bg);
     padding: var(--panel-padding);
     box-sizing: border-box;
-    overflow-y: auto;
     padding-top: 4px;
     padding-bottom: 4px;
 }
 
+/* Reusable panel layout utilities for explicit scroll/footer composition. */
+.panel-stack {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.panel-scrollable-list,
+.panel-scrollable-text {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 5px;
+    box-sizing: border-box;
+}
+
+.panel-footer,
+.panel-footer-form {
+    flex-shrink: 0;
+    margin: 8px;
+}
+
+.panel-footer {
+    padding: 8px;
+    box-sizing: border-box;
+}
+
 /* Starmap panel has no padding */
-.panel[data-panel="starmap"] .panel-content > div {
+.panel[data-panel="starmap"] .panel-content {
     padding: 0;
+    border: none;
+    background: transparent;
 }
 
 .panel:not(.open) .panel-content {
@@ -221,6 +253,16 @@ a:hover {
     height: 1px;
     background: var(--panel-border);
     margin: 10px 0;
+}
+
+body:not(.lcars):not(.win95) .detail-header {
+    border: 1px solid var(--panel-border);
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.02));
+    padding-left: 0;
+}
+
+body:not(.lcars):not(.win95) .detail-header.detail-header-unexplored {
+    padding-left: 10px;
 }
 
 /* Long-press thumbnail pop overlay (renders above panel clipping). */
@@ -395,8 +437,7 @@ body:not(.lcars):not(.win95) .env-label {
 
     .column,
     .panel,
-    .panel-content,
-    .panel-content > div {
+    .panel-content {
         max-width: 100%;
         width: 100%;
         box-sizing: border-box;
@@ -420,19 +461,30 @@ body:not(.lcars):not(.win95) .env-label {
     }
 
     .title-bar {
-        font-size: 1.1em;
-        flex-wrap: wrap;
-        gap: 8px 12px;
+        font-size: 1em;
+        flex-wrap: nowrap;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .title-bar .title,
+    .title-bar .year,
+    .title-bar .tagline,
+    .title-bar .turn-status {
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .title-bar .turn-status {
-        flex: 1 1 100%;
-        white-space: normal;
+        flex: 1 1 auto;
     }
 
     .nav-menu {
         position: relative;
         margin-left: auto;
+        flex: 0 0 auto;
     }
 
     body,
@@ -670,6 +722,10 @@ body:not(.lcars):not(.win95) .env-label {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     padding-bottom: 6px;
+}
+
+.onboarding .theme-selector {
+    justify-content: center;
 }
 
 .theme-option {

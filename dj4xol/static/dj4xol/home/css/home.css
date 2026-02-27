@@ -29,20 +29,55 @@ body {
     overflow: hidden;
 }
 
-.panel-content > div {
-    flex: 0 0 auto;
-    min-height: 0;
-}
-
 .panel:not(.open) .panel-content {
     display: none;
 }
 
-.panel.open .panel-content > div {
+.panel.open .panel-scrollable-list,
+.panel.open .panel-scrollable-text {
     min-height: 25vh;
     max-height: 25vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+}
+
+/* Onboarding forms should not be capped to 25vh on desktop layouts. */
+.onboarding .panel.open .panel-scrollable-text {
+    min-height: 0;
+    max-height: none;
+}
+
+/* Onboarding pages follow the same outer layout model as forms/help pages. */
+.onboarding .columns {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.onboarding .column {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.onboarding .column > .panel {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+.onboarding .panel-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
 }
 
 /* Remove default paragraph margin */
@@ -91,7 +126,7 @@ body {
     height: fit-content;
 }
 
-.onboarding .panel-content > div {
+.onboarding .panel-content {
     padding-top: 0;
     width: 100%;
     box-sizing: border-box;
@@ -205,16 +240,6 @@ body {
     font-size: 0.9em;
 }
 
-.panel-body-spread {
-    display: flex;
-    flex-direction: column;
-    min-height: 100%;
-}
-
-.panel-body-spread .panel-footer {
-    margin-top: auto;
-}
-
 .game-list li > a:first-child,
 .game-list li > span:first-child {
     font-weight: 500;
@@ -247,15 +272,6 @@ body {
 
 .action-list li a {
     font-weight: 500;
-}
-
-/* Profile page styles */
-.profile-section {
-    margin-bottom: 20px;
-}
-
-.profile-section .panel-content > div {
-    padding: 15px 20px;
 }
 
 .profile-table {
@@ -304,8 +320,8 @@ body {
     }
 
     .onboarding .columns.single-column {
-        padding-left: 0;
-        padding-right: 0;
+        padding-left: 8px;
+        padding-right: 8px;
     }
 
     .columns.two-column .column-left,
@@ -327,15 +343,24 @@ body {
     .column,
     .column > .panel,
     .panel,
-    .panel-content,
-    .panel-content > div {
+    .panel-content {
         max-width: 100%;
         width: 100%;
         box-sizing: border-box;
     }
 
-    .panel.open .panel-content > div {
+    .panel.open .panel-scrollable-list,
+    .panel.open .panel-scrollable-text {
         max-height: 50vh;
+    }
+
+    .onboarding .panel.open .panel-scrollable-text {
+        max-height: none;
+    }
+
+    .onboarding .columns.single-column {
+        padding-bottom: 8px;
+        box-sizing: border-box;
     }
 
     .panel {
