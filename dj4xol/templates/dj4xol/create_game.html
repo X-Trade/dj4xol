@@ -10,7 +10,7 @@
         {% if selected_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
         <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
     </head>
-    <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} create-game">
+    <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} create-game single-panel-page">
         <div class="title-bar">
             <span class="title">Create Game</span>
             <span class="tagline">New game setup</span>
@@ -20,7 +20,8 @@
             <div class="column">
                 <div class="panel no-transition open" data-panel="game">
                     <h2><span>Create New Game</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <form method="post" class="game-form">
                             {% csrf_token %}
                             <table class="profile-table">
@@ -39,17 +40,21 @@
                                         {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
                                     </td>
                                 </tr>
+                                {% if field.name == 'description' %}
+                                <tr>
+                                    <th></th>
+                                    <td><div class="help-text"><a class="action-link" href="{% url 'dj4xol:create_race' %}">Create a new race</a></div></td>
+                                </tr>
+                                {% endif %}
                                 {% endfor %}
                             </table>
                             <div class="form-nav">
                                 <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:index' %}'">Back to Games</button>
                                 <button type="submit" class="nav-button primary">Create Game</button>
                             </div>
-                            <div class="panel-footer">
-                                <a class="action-link" href="{% url 'dj4xol:create_race' %}">Create a new race first</a>
-                            </div>
                         </form>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
             </div>
         </div>
@@ -93,5 +98,6 @@
                 brython();
             }
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

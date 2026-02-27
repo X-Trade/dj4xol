@@ -41,7 +41,7 @@ class AccountAdmin(admin.ModelAdmin):
 
 @admin.register(Player)
 class PlayerAdmin(admin.ModelAdmin):
-    list_display = ('pk', 'game', 'account', 'name')
+    list_display = ('pk', 'short_id', 'game', 'account', 'name')
     readonly_fields = ('pk',)
     list_select_related = ('game', 'account')
 
@@ -134,10 +134,35 @@ class TechnologyAdmin(admin.ModelAdmin):
 @admin.register(PlayerResearch)
 class PlayerResearchAdmin(admin.ModelAdmin):
     list_display = (
-        'player', 'category', 'current_level', 'stored_rp', 'allocation_percent'
+        'player_display', 'category', 'current_level', 'stored_rp', 'allocation_percent'
     )
     list_filter = ('category', 'player__game')
-    search_fields = ('player__name', 'category__name')
+    search_fields = (
+        'player__name',
+        'player__short_id',
+        'player__account__alias',
+        'player__account__django_user__username',
+        'category__name',
+    )
+    list_select_related = ('player__account', 'player__account__django_user', 'player__game', 'category')
+
+    @staticmethod
+    def _format_player_label(player):
+        account = player.account.alias if player.account_id else 'No account'
+        game_name = player.game.name if player.game_id else 'No game'
+        return '%s | %s | %s | %s' % (player.name, account, game_name, player.short_id)
+
+    def player_display(self, obj):
+        return self._format_player_label(obj.player)
+    player_display.short_description = 'Player'
+    player_display.admin_order_field = 'player__name'
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        field = super(PlayerResearchAdmin, self).formfield_for_foreignkey(db_field, request, **kwargs)
+        if db_field.name == 'player':
+            field.queryset = field.queryset.select_related('account', 'game')
+            field.label_from_instance = self._format_player_label
+        return field
 
 
 @admin.register(DefaultResearchLevelRequirement)
