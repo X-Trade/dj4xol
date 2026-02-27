@@ -1,13 +1,53 @@
-{% extends 'base.html' %}
-
-{% block title %}Login{% endblock %}
-
-{% block content %}
-  <h2>Login</h2>
-  <form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Login</button>
-  </form>
-  <p>Don't have an account? <a href="{% url 'dj4xol:signup' %}">Sign up</a></p>
-{% endblock %}
+{% load static %}
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Login</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="classic onboarding">
+        <div class="title-bar">
+            <span class="title">DJ4XOL</span>
+            <span class="tagline">Log In</span>
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="login">
+                    <h2><span>Login</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                            {% if form.errors %}
+                            <p class="form-errors">Please check your username and password and try again.</p>
+                            {% endif %}
+                            <form method="post">
+                                {% csrf_token %}
+                                {% if next %}
+                                <input type="hidden" name="next" value="{{ next }}">
+                                {% endif %}
+                                <table class="profile-table">
+                                    <tr>
+                                        <th>{{ form.username.label_tag }}</th>
+                                        <td>{{ form.username }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>{{ form.password.label_tag }}</th>
+                                        <td>{{ form.password }}</td>
+                                    </tr>
+                                </table>
+                                <div class="form-nav">
+                                    <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:index' %}'">&laquo; Home</button>
+                                    <button type="submit" class="nav-button primary">Log In &raquo;</button>
+                                </div>
+                            </form>
+                            <p>Don't have an account? <a href="{% url 'dj4xol:signup' %}">Sign up</a></p>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

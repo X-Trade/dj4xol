@@ -126,6 +126,7 @@ if not DEBUG:
     STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
 
 # Auth redirects
+LOGIN_REDIRECT_URL = '/4x/'
 LOGOUT_REDIRECT_URL = '/4x/'
 
 # Local overrides (local dev)
