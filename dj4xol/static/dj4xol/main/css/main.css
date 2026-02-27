@@ -226,22 +226,26 @@ body.map-dragging * {
     }
 
     /* One-column panel sizing: messages/detail/orders */
-    .messages-section.panel.open,
-    .detail-section.panel.open {
+    .messages-section.panel.open {
         min-height: 248px;
         max-height: 50vh;
     }
 
+    .detail-section.panel.open {
+        min-height: 248px;
+        max-height: 75vh;
+    }
+
     .orders-section.panel.open {
         min-height: 248px;
-        max-height: 50vh;
-        height: 50vh;
+        max-height: 75vh;
+        height: 75vh;
     }
 
     #detail,
     .orders-panel {
         overflow-y: auto;
-        max-height: 50vh;
+        max-height: 75vh;
         -webkit-overflow-scrolling: touch;
         touch-action: pan-y;
     }
@@ -1001,7 +1005,6 @@ body.turned-in.lcars .order-params::after {
     font-size: 14px;
     line-height: 1;
     position: relative;
-    z-index: 1;
 }
 
 .order-remove-btn:hover {
@@ -1280,6 +1283,13 @@ body.turned-in.lcars .order-params::after {
     white-space: nowrap;
     z-index: 1000;
     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    pointer-events: none;
+}
+
+.order-tooltip-floating {
+    position: fixed !important;
+    z-index: 20000 !important;
+    display: none;
     pointer-events: none;
 }
 

@@ -1138,18 +1138,53 @@
     initializeOrderType();
     emitPatrolPreview();
     
+    function getFloatingOrderTooltip() {
+        var tooltip = document.getElementById('floating-order-tooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.id = 'floating-order-tooltip';
+            tooltip.className = 'order-tooltip order-tooltip-floating';
+            document.body.appendChild(tooltip);
+        }
+        return tooltip;
+    }
+
     // Fleet order tooltip functionality (same as production orders)
+    function shouldSuppressTooltipEvent(e, item) {
+        if (!e || !item) {
+            return false;
+        }
+        if (e.target && e.target.closest('.order-actions')) {
+            return true;
+        }
+        var rect = item.getBoundingClientRect();
+        var rightActionZoneStart = rect.left + (rect.width * 0.8);
+        return e.clientX >= rightActionZoneStart;
+    }
+
     function positionTooltip(e, item) {
-        var tooltip = item.querySelector('.order-tooltip');
-        if (tooltip) {
+        if (shouldSuppressTooltipEvent(e, item)) {
+            hideTooltip();
+            return;
+        }
+        var sourceTooltip = item.querySelector('.order-tooltip');
+        if (sourceTooltip) {
+            var tooltip = getFloatingOrderTooltip();
+            tooltip.innerHTML = sourceTooltip.innerHTML;
             tooltip.style.display = 'block';
-            tooltip.style.left = (e.clientX + 12) + 'px';
-            tooltip.style.top = (e.clientY + 12) + 'px';
+
+            var x = e.clientX + 12;
+            var y = e.clientY + 12;
+            var maxX = window.innerWidth - tooltip.offsetWidth - 8;
+            var maxY = window.innerHeight - tooltip.offsetHeight - 8;
+
+            tooltip.style.left = Math.max(8, Math.min(x, maxX)) + 'px';
+            tooltip.style.top = Math.max(8, Math.min(y, maxY)) + 'px';
         }
     }
     
-    function hideTooltip(item) {
-        var tooltip = item.querySelector('.order-tooltip');
+    function hideTooltip() {
+        var tooltip = document.getElementById('floating-order-tooltip');
         if (tooltip) {
             tooltip.style.display = 'none';
         }
@@ -1164,7 +1199,7 @@
                 positionTooltip(e, item);
             });
             item.addEventListener('mouseleave', function() {
-                hideTooltip(item);
+                hideTooltip();
             });
             item.addEventListener('mousemove', function(e) {
                 positionTooltip(e, item);
