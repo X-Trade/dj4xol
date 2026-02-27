@@ -1,7 +1,7 @@
 <div class="orders-section panel no-transition open" data-panel="orders">
     <h2><span>Orders</span><span class="panel-toggle"></span></h2>
-    <div class="panel-content"><div id="orders" class="orders-panel">
-        <div class="orders-list">
+    <div class="panel-content orders-panel panel-stack">
+        <section id="orders" class="orders-list panel-scrollable-list">
             {% if detail.fleet_orders %}
                 {% for order in detail.fleet_orders %}
                 <div class="order-item">
@@ -67,9 +67,9 @@
             {% else %}
                 <p class="no-orders">No orders queued.</p>
             {% endif %}
-        </div>
+        </section>
 
-        <form method="post" action="{% url 'dj4xol:add_fleet_order' game.short_id %}" class="order-form">
+        <form method="post" action="{% url 'dj4xol:add_fleet_order' game.short_id %}" class="order-form panel-footer-form">
             {% csrf_token %}
             <input type="hidden" name="fleet" value="{{ detail.fleet_short_id }}">
             <input type="hidden" name="order_type" id="order-type-input" value="{% if request.GET.order_type %}{{ request.GET.order_type }}{% else %}MOVE{% endif %}">
@@ -328,7 +328,7 @@
                 </div>
             </div>
         </form>
-    </div></div>
+    </div>
 </div>
 
 <script>

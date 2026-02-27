@@ -19,7 +19,8 @@
             <div class="column">
                 <div class="panel no-transition open" data-panel="race">
                     <h2><span>Create Your First Race</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <form method="post" class="race-form">
                             {% csrf_token %}
                             {% include 'dj4xol/_race_form_table.html' %}
@@ -28,7 +29,8 @@
                                 <button type="submit" class="nav-button primary">Finish &raquo;</button>
                             </div>
                         </form>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
             </div>
         </div>
@@ -65,6 +67,7 @@
         <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython_stdlib.js"></script>
         <script type="application/json" id="starting-tech-costs-json">{{ starting_tech_costs_json|default:"{}"|safe }}</script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
         <script type="text/python" src="{% static 'dj4xol/brython/habitability_rules.py' %}"></script>
         <script type="text/python" src="{% static 'dj4xol/brython/race_builder.py' %}"></script>
         <script>

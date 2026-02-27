@@ -21,13 +21,16 @@
                     {% if form.non_field_errors %}
                     <div class="panel no-transition open" data-panel="errors">
                         <h2><span>Errors</span><span class="panel-toggle"></span></h2>
-                        <div class="panel-content"><div>{{ form.non_field_errors }}</div></div>
+                        <div class="panel-content panel-stack">
+                            <section class="panel-scrollable-text">{{ form.non_field_errors }}</section>
+                        </div>
                     </div>
                     {% endif %}
                     {% if show_user_form %}
                     <div class="panel no-transition open" data-panel="auth">
                         <h2><span>Create Login</span><span class="panel-toggle"></span></h2>
-                        <div class="panel-content"><div>
+                        <div class="panel-content panel-stack">
+                            <section class="panel-scrollable-text">
                             <table class="profile-table">
                                 <tr>
                                     <th>{{ form.username.label_tag }}</th>
@@ -52,12 +55,14 @@
                                 </tr>
                                 {% endif %}
                             </table>
-                        </div></div>
+                            </section>
+                        </div>
                     </div>
                     {% endif %}
                 <div class="panel no-transition open" data-panel="profile">
                     <h2><span>Create Your 4x Profile</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <table class="profile-table">
                             <tr>
                                 <th>{{ form.alias.label_tag }}</th>
@@ -82,7 +87,8 @@
                         <div class="form-nav single-action">
                             <button type="submit" class="nav-button primary">Next &raquo;</button>
                         </div>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
                 </form>
             </div>
@@ -101,6 +107,7 @@
                 });
             })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
         <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython_stdlib.js"></script>
         <script type="text/python" src="{% static 'dj4xol/brython/onboarding_profile.py' %}"></script>

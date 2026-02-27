@@ -41,7 +41,8 @@
             <div class="research-left">
                 <div class="panel no-transition open" data-panel="budget">
                     <h2><span>Research Budget</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div class="research-panel-body">
+                    <div class="panel-content panel-stack research-panel-body">
+                        <section class="panel-scrollable-text">
                         <div class="detail-row">
                             <span class="env-label">Total Labs</span>
                             <span class="detail-value">{{ budget.total_labs }}</span>
@@ -62,12 +63,13 @@
                             <span class="detail-value">{{ budget.leftover_bonus_rp|floatformat:0 }}</span>
                         </div>
                         {% endif %}
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
                 <div class="panel no-transition open" data-panel="allocations">
                     <h2><span>Allocations</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div class="research-panel-body">
-                        <form method="post">
+                    <div class="panel-content panel-stack research-panel-body">
+                        <form method="post" class="panel-scrollable-list">
                             {% csrf_token %}
                             {% if selected_category %}
                             <input type="hidden" name="category" value="{{ selected_category.id }}">
@@ -106,13 +108,14 @@
                                 {% endif %}
                             </div>
                         </form>
-                    </div></div>
+                    </div>
                 </div>
             </div>
             <div class="research-right">
                 <div class="panel no-transition open" data-panel="details">
                     <h2><span>Detail{% if selected_category %} - {{ selected_category.name }}{% endif %}</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div class="research-panel-body research-detail-body">
+                    <div class="panel-content panel-stack research-panel-body">
+                        <section class="research-detail-body panel-scrollable-text">
                         {% if next_level_number %}
                         <div class="detail-row">
                             <span class="env-label">Next Level</span>
@@ -192,7 +195,8 @@
                         {% else %}
                         <p>No technology items defined for the next level in this category.</p>
                         {% endif %}
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
             </div>
         </div>
@@ -236,6 +240,7 @@
             });
         })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
         <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython_stdlib.js"></script>
         <script type="text/python" src="{% static 'dj4xol/brython/research_rules.py' %}"></script>

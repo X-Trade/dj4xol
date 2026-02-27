@@ -1,7 +1,7 @@
 <div class="orders-section panel no-transition open" data-panel="production">
     <h2><span>Production</span><span class="panel-toggle"></span></h2>
-    <div class="panel-content"><div id="production" class="orders-panel">
-        <div class="orders-list">
+    <div class="panel-content orders-panel panel-stack">
+        <section id="production" class="orders-list panel-scrollable-list">
             {% if detail.production_orders %}
                 {% for order in detail.production_orders %}
                 <div class="order-item"
@@ -46,8 +46,8 @@
             {% else %}
                 <p class="no-orders">No production orders.</p>
             {% endif %}
-        </div>
-        <form method="post" action="{% url 'dj4xol:add_production' game.short_id %}" class="order-form">
+        </section>
+        <form method="post" action="{% url 'dj4xol:add_production' game.short_id %}" class="order-form panel-footer-form">
             {% csrf_token %}
             <input type="hidden" name="star" value="{{ detail.star_short_id }}">
             <input type="hidden" name="x" value="{{ selection.x }}">
@@ -71,7 +71,7 @@
                 <button type="submit" class="order-add-btn">+</button>
             </div>
         </form>
-    </div></div>
+    </div>
 </div>
 <script>
 function getFloatingOrderTooltip() {

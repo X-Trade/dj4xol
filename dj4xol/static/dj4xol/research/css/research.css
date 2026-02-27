@@ -29,7 +29,6 @@
 .research-detail-body {
     height: 100%;
     min-height: 0;
-    overflow-y: auto;
 }
 
 .allocation-row {

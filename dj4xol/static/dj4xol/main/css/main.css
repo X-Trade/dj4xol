@@ -274,7 +274,7 @@ body.map-dragging * {
         touch-action: pan-y;
     }
 
-    .orders-panel {
+    .orders-section .panel-content.panel-stack {
         max-height: 75vh;
         overflow: hidden;
     }
@@ -318,19 +318,10 @@ body.map-dragging * {
         min-height: 150px;
     }
 
-    .messages-section .panel-content > div,
-    .detail-section .panel-content > div {
+    .messages-section .panel-content > div {
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         touch-action: pan-y;
-    }
-
-    /* Keep order panel wrapper non-scrollable on mobile; only .orders-list should scroll. */
-    .orders-section .panel-content > div {
-        overflow-y: hidden !important;
-        overflow-x: hidden !important;
-        -webkit-overflow-scrolling: auto;
-        touch-action: auto;
     }
 }
 
@@ -360,6 +351,22 @@ body.map-dragging * {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex: 0 0 auto;
+    max-height: 64px;
+    overflow: hidden;
+    border-right: none;
+}
+
+.detail-header.detail-header-unexplored {
+    flex: 0 0 64px;
+    min-height: 64px;
+    max-height: 64px;
+    padding-left: 10px;
+}
+
+.detail-section.panel.open .panel-content.detail-panel-stack {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .object-thumbnail,
@@ -464,16 +471,8 @@ body.map-dragging * {
     overflow: hidden;
 }
 
-.orders-panel {
-    border: 1px solid #808080;
-    padding: 10px;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
+.orders-section .panel-content.panel-stack {
     max-height: 100%;
-    overflow: hidden;
 }
 
 .orders-list {
@@ -482,7 +481,6 @@ body.map-dragging * {
     margin-bottom: 10px;
     min-height: 0;
     border: 1px solid #e0e0e0;
-    padding: 0 5px;
 }
 
 .orders-list form {
@@ -558,18 +556,22 @@ body.turned-in.lcars .order-params::after {
 
 /* Detail panel - matches starmap width */
 #detail {
-    border: 1px solid #808080;
-    padding: 10px;
     box-sizing: border-box;
     flex: 1;
     overflow-y: auto;
     min-height: 0;
 }
 
+#detail.unknown-detail-body {
+    overflow-y: visible;
+    padding-left: 10px;
+}
+
 /* Unexplored objects */
 .unexplored-notice {
     font-weight: bold;
     color: #888;
+    margin-top: 4px;
 }
 
 .unexplored-hint {
@@ -789,23 +791,14 @@ body.turned-in.lcars .order-params::after {
 }
 
 /* Messages panel */
-#messages {
-    border: 1px solid #808080;
-    padding: 10px;
-    box-sizing: border-box;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow: hidden;
-}
-
+#messages,
 .messages-scroll {
     flex: 1;
-    overflow-y: scroll;
-    padding: 5px;
+    overflow-y: auto;
     border: 1px solid #e0e0e0;
     min-height: 40px;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .messages-scroll::-webkit-scrollbar {
@@ -862,8 +855,6 @@ body.turned-in.lcars .order-params::after {
 }
 
 .messages-footer {
-    margin-top: 8px;
-    padding-top: 8px;
     border-top: 1px solid #e0e0e0;
     text-align: right;
     font-size: 0.9em;

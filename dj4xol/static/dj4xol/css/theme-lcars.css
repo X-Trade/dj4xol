@@ -59,7 +59,7 @@ body {
 .title-bar {
     background:
         linear-gradient(to bottom, #000 0%, #000 75%, transparent 75%, transparent 100%),
-        linear-gradient(to right, #cc6633 0%, #cc6633 calc(100% - 74px), #000 calc(100% - 74px), #000 100%);
+        linear-gradient(to right, #cc6633 0%, #cc6633 calc(100% - 70px), #000 calc(100% - 70px), #000 100%);
     padding: 12px 20px;
     min-height: 50px;
     position: relative;
@@ -263,7 +263,8 @@ body {
     transform: translate(-50%, -50%) scaleY(0);
 }
 
-.panel-content > div {
+.panel-content > div:not(.panel-footer),
+.panel-content.panel-stack {
     background: #000;
     border: 3px solid #cc6633;
     border-top: none;
@@ -274,21 +275,26 @@ body {
     width: 100%;
 }
 
-.panel-content > div::-webkit-scrollbar {
+.lcars .panel-content > div,
+.lcars .panel-content.panel-stack {
+    padding-top: 0;
+}
+
+.panel-content > div:not(.panel-footer)::-webkit-scrollbar {
     width: 14px;
 }
 
-.panel-content > div::-webkit-scrollbar-track {
+.panel-content > div:not(.panel-footer)::-webkit-scrollbar-track {
     background: #000;
 }
 
-.panel-content > div::-webkit-scrollbar-thumb {
+.panel-content > div:not(.panel-footer)::-webkit-scrollbar-thumb {
     background: #cc6633;
     border-radius: 7px;
     border: 2px solid #000;
 }
 
-.panel-content > div::-webkit-scrollbar-thumb:hover {
+.panel-content > div:not(.panel-footer)::-webkit-scrollbar-thumb:hover {
     background: #ff9966;
 }
 
@@ -306,7 +312,8 @@ body {
         #cc99cc calc(100% - 40px), #cc99cc 100%);
 }
 
-.panel.lcars-variant-2 .panel-content > div {
+.panel.lcars-variant-2 .panel-content > div:not(.panel-footer),
+.panel.lcars-variant-2 .panel-content.panel-stack {
     background: #0a0a14;
     border: 3px solid #9999cc;
     border-top: none;
@@ -319,10 +326,18 @@ body {
         #66cccc calc(100% - 40px), #66cccc 100%);
 }
 
-.panel.lcars-variant-3 .panel-content > div {
+.panel.lcars-variant-3 .panel-content > div:not(.panel-footer),
+.panel.lcars-variant-3 .panel-content.panel-stack {
     background: #0a0a14;
     border: 3px solid #cc99cc;
     border-top: none;
+}
+
+.lcars .detail-header {
+    margin-top: 0 !important;
+    border-right: none !important;
+    border-right-style: none !important;
+    border-right-width: 0 !important;
 }
 
 /* ============================================
@@ -474,34 +489,93 @@ input:focus {
    LCARS Game-Specific Elements
    ============================================ */
 
-/* Orders panel */
-.panel .orders-panel {
-    background: #000;
-    border: 3px solid #cc6633;
-    border-top: none;
-}
-
 .panel .orders-list {
     border: none;
     background: transparent;
 }
 
-.panel .orders-list::-webkit-scrollbar {
-    width: 14px;
+.lcars .panel-scrollable-list,
+.lcars .panel-scrollable-text {
+    position: relative;
+    overflow-y: auto;
+    margin-right: 0;
+    padding-right: 25px;
+    scrollbar-width: none;
 }
 
-.panel .orders-list::-webkit-scrollbar-track {
-    background: #000;
+.lcars .panel-content.panel-stack {
+    padding-right: 0;
 }
 
-.panel .orders-list::-webkit-scrollbar-thumb {
-    background: #cc6633;
-    border-radius: 7px;
+.lcars .panel-content.panel-stack > div {
+    margin-right: 10px;
+}
+
+.lcars .panel-content.panel-stack > form {
+    margin-right: 10px;
+}
+
+.lcars .panel-content.panel-stack > .panel-footer {
+    padding-top: 8px;
+}
+
+.lcars .panel-scrollable-list::-webkit-scrollbar,
+.lcars .panel-scrollable-text::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.lcars .panel {
+    --panel-scroll-thumb-color: #cc6633;
+    --panel-scroll-track-color: #000;
+}
+
+.lcars .panel.lcars-variant-2 {
+    --panel-scroll-thumb-color: #9999cc;
+}
+
+.lcars .panel.lcars-variant-3 {
+    --panel-scroll-thumb-color: #cc99cc;
+}
+
+.lcars .panel-scrollbar-overlay {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 25px;
+    overflow: hidden;
+    display: block;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+    pointer-events: auto;
+    z-index: 2;
+}
+
+.lcars .panel-scrollbar-track {
+    position: absolute;
+    inset: 0;
+    background: var(--panel-scroll-track-color);
+    box-sizing: border-box;
+    pointer-events: auto;
+}
+
+.lcars .panel-scrollbar-thumb {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 25px;
+    background: var(--panel-scroll-thumb-color);
+    border-radius: 0;
     border: 2px solid #000;
-}
-
-.panel .orders-list::-webkit-scrollbar-thumb:hover {
-    background: #ff9966;
+    opacity: 0.45;
+    transform: translateY(0);
+    box-sizing: border-box;
+    pointer-events: auto;
+    touch-action: none;
+    cursor: ns-resize;
 }
 
 .order-item {
@@ -644,31 +718,30 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* Messages */
 .panel #messages {
-    background: #0a0a14;
-    border: 3px solid #9999cc;
-    border-top: none;
+    background: transparent;
+    border: none;
+    box-shadow: none;
 }
 
 .panel .messages-scroll {
     border: none;
 }
 
-.panel .messages-scroll::-webkit-scrollbar {
-    width: 14px;
+.panel .messages-footer {
+    border-top: 2px solid #cc6633;
 }
 
-.panel .messages-scroll::-webkit-scrollbar-track {
-    background: #000;
+.lcars .panel-footer,
+.lcars .panel-footer-form {
+    margin: 0;
 }
 
-.panel .messages-scroll::-webkit-scrollbar-thumb {
-    background: #cc6633;
-    border-radius: 7px;
-    border: 2px solid #000;
+.panel.lcars-variant-2 .messages-footer {
+    border-top-color: #9999cc;
 }
 
-.panel .messages-scroll::-webkit-scrollbar-thumb:hover {
-    background: #ff9966;
+.panel.lcars-variant-3 .messages-footer {
+    border-top-color: #cc99cc;
 }
 
 .message {
@@ -694,8 +767,8 @@ input[type="range"]::-webkit-slider-thumb {
 /* Detail panel */
 .panel #detail {
     background: #000;
-    border: 3px solid #cc6633;
-    border-top: none;
+    border: none;
+    box-shadow: none;
 }
 
 .panel #detail hr {
@@ -822,19 +895,25 @@ input[type="range"]::-webkit-slider-thumb {
    ============================================ */
 .panel[data-panel="starmap"] .panel-content > div {
     padding: 0;
-    border: none;
+    border: none !important;
     border-radius: 0 0 0 25px;
     overflow: hidden;
 }
 
+.lcars .panel[data-panel="starmap"] .panel-content {
+    border: none !important;
+    background: transparent !important;
+}
+
 .starmap-wrapper {
     padding: 0;
+    border: none !important;
     border-radius: 0 0 0 25px;
     overflow: hidden;
 }
 
 .starmap {
-    border: none;
+    border: none !important;
     background: #000;
     padding: 0;
 }
@@ -888,6 +967,10 @@ input[type="range"]::-webkit-slider-thumb {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     padding-bottom: 6px;
+}
+
+.onboarding .theme-selector {
+    justify-content: center;
 }
 
 .theme-option {
@@ -1015,7 +1098,46 @@ input[type="range"]::-webkit-slider-thumb {
 /* ============================================
    LCARS Home/Profile Page Adjustments
    ============================================ */
-.columns.two-column .panel .panel-content > div,
-.columns.single-column .panel .panel-content > div {
+.columns.two-column .panel .panel-content > .panel-scrollable-list,
+.columns.two-column .panel .panel-content > .panel-scrollable-text,
+.columns.single-column .panel .panel-content > .panel-scrollable-list,
+.columns.single-column .panel .panel-content > .panel-scrollable-text {
     min-height: 15vh;
+}
+
+@media (max-width: 900px),
+       ((max-width: 1200px) and (orientation: portrait) and
+        (hover: none) and (pointer: coarse)) {
+    .lcars .title-bar {
+        padding: 8px 12px;
+        min-height: 44px;
+    }
+
+    .lcars .title-bar .title {
+        font-size: 1em;
+        letter-spacing: 1px;
+    }
+
+    .lcars .title-bar .year,
+    .lcars .title-bar .tagline,
+    .lcars .title-bar .turn-status {
+        font-size: 0.95em;
+    }
+
+    .lcars .nav-menu {
+        position: relative;
+        right: auto;
+        bottom: auto;
+        margin-left: auto;
+    }
+
+    .lcars .title-bar::after {
+        width: 40px;
+    }
+
+    .lcars .title-bar {
+        background:
+            linear-gradient(to bottom, #000 0%, #000 75%, transparent 75%, transparent 100%),
+            linear-gradient(to right, #cc6633 0%, #cc6633 calc(100% - 40px), #000 calc(100% - 40px), #000 100%);
+    }
 }

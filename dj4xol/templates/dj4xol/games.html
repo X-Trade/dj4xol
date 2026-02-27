@@ -20,20 +20,23 @@
                 {% if server_welcome %}
                 <div class="panel no-transition open" data-panel="welcome">
                     <h2><span>Welcome</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div class="welcome-content">
+                    <div class="panel-content panel-stack welcome-content">
+                        <section class="panel-scrollable-text">
                         {{ server_welcome|linebreaks }}
                         <p>
                             New players should use the <a href="{% url 'dj4xol:help_index' %}">Help Index</a>,
                             and returning players can check out the
                             <a href="{% url 'dj4xol:help_version_history' %}">Version History</a>.
                         </p>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
                 {% endif %}
 
                 <div class="panel no-transition open" data-panel="mygames">
                     <h2><span>My Games</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-list">
                         {% if my_games %}
                         <ul class="game-list">
                         {% for game in my_games %}
@@ -46,13 +49,15 @@
                         {% else %}
                         <p class="no-items">No games yet. Create or join a game to get started.</p>
                         {% endif %}
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
 
                 {% if invited_games %}
                 <div class="panel no-transition open" data-panel="invitations">
                     <h2><span>Invitations</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-list">
                         <ul class="game-list">
                         {% for game in invited_games %}
                             <li>
@@ -62,7 +67,8 @@
                             </li>
                         {% endfor %}
                         </ul>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
                 {% endif %}
             </div>
@@ -70,7 +76,8 @@
             <div class="column column-right">
                 <div class="panel no-transition open" data-panel="opengames">
                     <h2><span>Open Games</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-list">
                         {% if open_games %}
                         <ul class="game-list">
                         {% for game in open_games %}
@@ -84,17 +91,20 @@
                         {% else %}
                         <p class="no-items">No open games available.</p>
                         {% endif %}
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
 
                 <div class="panel no-transition open" data-panel="actions">
                     <h2><span>Actions</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-list">
                         <ul class="action-list">
                             <li><a href="{% url 'dj4xol:create_game' %}">Create New Game</a></li>
                             <li><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></li>
                         </ul>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
             </div>
         </div>
@@ -143,5 +153,6 @@
             }
         })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

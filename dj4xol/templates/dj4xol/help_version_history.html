@@ -21,10 +21,20 @@
             <div class="column">
                 <div class="panel no-transition open" data-panel="help-version-history">
                     <h2><span>Recent Developments</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <p>
                             This is a user-facing summary of recent developments.
                         </p>
+
+                        <h4><span class="env-label">v0.9.0</span></h4>
+
+                        <ul class="game-list">
+
+                            <li>completely rebuilt themes and styles</li>
+
+                        </ul>
+
 
                         <h4><span class="env-label">v0.8.7</span></h4>
 
@@ -121,11 +131,11 @@
                             <li>Earliest playable prototype from 2021.</li>
                             <li>Included basic game setup and fleet movement foundations.</li>
                         </ul>
-
+                        </section>
                         <div class="panel-footer">
                             <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
                         </div>
-                    </div></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -158,5 +168,6 @@
                 }
             })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

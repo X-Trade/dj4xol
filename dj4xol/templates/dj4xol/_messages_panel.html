@@ -1,7 +1,7 @@
 <div class="messages-section panel no-transition open" data-panel="messages">
     <h2><span>Messages</span><span class="panel-toggle"></span></h2>
-    <div class="panel-content"><div id="messages" data-year="{{ game.year }}">
-        <div class="messages-scroll" id="messages-scroll">
+    <div class="panel-content panel-stack">
+        <section id="messages" class="messages-scroll panel-scrollable-list" data-year="{{ game.year }}">
             {% for msg in messages %}
             <div class="message{% if msg.priority %} priority{% endif %}">
                 <span class="message-year">Year {{ msg.year }}{% if msg.priority %} <span class="priority-flag">!</span>{% endif %}</span>
@@ -10,9 +10,9 @@
             {% empty %}
             <p class="no-messages">No messages yet.</p>
             {% endfor %}
-        </div>
-        <div class="messages-footer">
+        </section>
+        <footer class="messages-footer panel-footer">
             <a href="{% url 'dj4xol:message_history' game.short_id %}">View full history</a>
-        </div>
-    </div></div>
+        </footer>
+    </div>
 </div>

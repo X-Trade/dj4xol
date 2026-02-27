@@ -21,7 +21,8 @@
             <div class="column">
                 <div class="panel no-transition open" data-panel="help-invasion">
                     <h2><span>Invasion</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <p>
                             Invasion occurs when a fleet unloads colonists onto an enemy-owned colony.
                             Resolution happens in two stages: planetary defence fire first, then ground combat if invaders remain.
@@ -87,10 +88,11 @@
                             Defences are unusual among infrastructure in that they are not penalised by overstaffing.
                             The major labour risk is understaffing.
                         </p>
+                        </section>
                         <div class="panel-footer">
                             <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
                         </div>
-                    </div></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -123,5 +125,6 @@
                 }
             })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

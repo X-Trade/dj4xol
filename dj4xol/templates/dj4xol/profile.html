@@ -19,7 +19,8 @@
             <div class="column column-left">
                 <div class="panel no-transition open" data-panel="account">
                     <h2><span>4x Profile Details</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div class="panel-body panel-body-spread">
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <table class="profile-table">
                             <tr>
                                 <th>Username</th>
@@ -48,12 +49,14 @@
                                 <td>{{ account.django_user.date_joined|date:"d M Y" }}</td>
                             </tr>
                         </table>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
 
                 <div class="panel no-transition open" data-panel="theme">
                     <h2><span>Theme</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <p>Select your preferred visual theme:</p>
                         <div class="theme-selector">
                             {% for theme_code, theme_name in theme_choices %}
@@ -61,17 +64,19 @@
                                 <div class="theme-preview {{ theme_code }}"></div>
                                 <span class="theme-name">{{ theme_name }}</span>
                             </div>
-                            {% endfor %}
+                        {% endfor %}
                         </div>
                         <p id="theme-status"></p>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
             </div>
 
             <div class="column column-right">
                 <div class="panel no-transition open" data-panel="games">
                     <h2><span>Games Playing ({{ games_playing|length }})</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div class="panel-body panel-body-spread">
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-list">
                         {% if games_playing %}
                         <ul class="game-list">
                         {% for game in games_playing %}
@@ -84,16 +89,18 @@
                         {% else %}
                         <p class="no-items">Not playing in any games.</p>
                         {% endif %}
+                        </section>
                         <div class="panel-footer">
                             <a href="{% url 'dj4xol:create_game' %}">Create New Game</a>
                         </div>
-                    </div></div>
+                    </div>
                 </div>
 
                 {% if games_owned %}
                 <div class="panel no-transition open" data-panel="owned">
                     <h2><span>Games Owned ({{ games_owned|length }})</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-list">
                         <ul class="game-list">
                         {% for game in games_owned %}
                             <li>
@@ -102,13 +109,15 @@
                             </li>
                         {% endfor %}
                         </ul>
-                    </div></div>
+                        </section>
+                    </div>
                 </div>
                 {% endif %}
 
                 <div class="panel no-transition open" data-panel="races">
                     <h2><span>Custom Races ({{ races|length }})</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div class="panel-body panel-body-spread">
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-list">
                         {% if races %}
                         <ul class="game-list">
                         {% for race in races %}
@@ -121,10 +130,11 @@
                         {% else %}
                         <p class="no-items">No custom races created.</p>
                         {% endif %}
+                        </section>
                         <div class="panel-footer">
                             <a href="{% url 'dj4xol:create_race' %}">Create New Race</a>
                         </div>
-                    </div></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -215,5 +225,6 @@
             });
         })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

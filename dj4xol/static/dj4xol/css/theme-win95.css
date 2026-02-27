@@ -238,7 +238,8 @@ body {
     background: #000000;
 }
 
-.panel-content > div {
+.panel-content > div,
+.panel-content.panel-stack {
     background: #c0c0c0;
     border: none;
     box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
@@ -310,8 +311,29 @@ a:hover {
 }
 
 /* Reduced padding throughout */
-.panel-content > div {
+.panel-content > div,
+.panel-content.panel-stack {
     padding: 4px;
+}
+
+.win95 .panel-footer {
+    padding: 4px;
+}
+
+.win95 .panel-footer,
+.win95 .panel-footer-form {
+    margin: 0;
+}
+
+/* Footer blocks should be flat in Win95; keep inset treatment for form blocks. */
+.win95 .panel-content.panel-stack > .panel-footer {
+    box-shadow: none !important;
+    border: none;
+    background: transparent;
+}
+
+.detail-section .panel-content.detail-panel-stack {
+    padding-top: 0;
 }
 
 .order-item {
@@ -462,7 +484,7 @@ input:focus {
 .messages-scroll::-webkit-scrollbar-thumb:hover,
 .panel-content > div::-webkit-scrollbar-thumb:hover,
 #detail::-webkit-scrollbar-thumb:hover {
-    background: #a0a0a0;
+    background: #d4d4d4;
 }
 
 .orders-list::-webkit-scrollbar-track,
@@ -495,7 +517,7 @@ input:focus {
 }
 
 .starmap::-webkit-scrollbar-thumb:hover {
-    background: #a0a0a0 !important;
+    background: #d4d4d4 !important;
 }
 
 .starmap::-webkit-scrollbar-track {
@@ -512,14 +534,85 @@ input:focus {
    ============================================ */
 
 /* Orders panel */
-.orders-panel {
-    background: #c0c0c0;
-}
 
-.orders-list {
+.panel-scrollable-list {
     background: #ffffff;
     box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
                 inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+.win95 .panel-scrollable-list,
+.win95 .panel-scrollable-text {
+    position: relative;
+    overflow-y: auto;
+    padding-right: 14px;
+    scrollbar-width: none;
+    --panel-scroll-thumb-scale: 0.35;
+    --panel-scroll-thumb-min-size: 12;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+    border: none;
+}
+
+.win95 .panel-scrollable-list {
+    background: #ffffff;
+}
+
+.win95 .panel-scrollable-text {
+    background: #c0c0c0;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+.win95 .panel-scrollable-list::-webkit-scrollbar,
+.win95 .panel-scrollable-text::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.win95 .panel-scrollbar-overlay {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 14px;
+    overflow: hidden;
+    display: block;
+    margin: 1.4px 4px 1px 4px !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+    pointer-events: auto;
+    z-index: 2;
+}
+
+.win95 .panel-scrollbar-track {
+    position: absolute;
+    inset: 0;
+    background: repeating-conic-gradient(#c0c0c0 0% 25%, #ffffff 0% 50%)
+                50% / 2px 2px;
+    box-sizing: border-box;
+    pointer-events: auto;
+}
+
+.win95 .panel-scrollbar-thumb {
+    position: absolute;
+    top: 0;
+    right: 1px;
+    width: 12px;
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    opacity: 0.45;
+    transform: translateY(0);
+    box-sizing: border-box;
+    pointer-events: auto;
+    touch-action: none;
+    cursor: ns-resize;
+}
+
+.win95 .panel-scrollbar-thumb:hover {
+    background: #d4d4d4;
 }
 
 .order-item {
@@ -622,6 +715,13 @@ input[type="range"]::-webkit-slider-thumb {
     background: #c0c0c0;
 }
 
+.panel #messages.panel-scrollable-list {
+    background: #ffffff;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+    border: none;
+}
+
 .panel .messages-scroll {
     background: #ffffff;
     box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
@@ -650,8 +750,23 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 /* Detail panel */
+.win95 .detail-header {
+    margin: 2px 0;
+    border: none !important;
+    border-right: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
 .panel #detail {
     background: #c0c0c0;
+}
+
+.win95 #detail.unknown-detail-body {
+    background: transparent;
+    box-shadow: none;
+    border: none;
+    overflow-y: visible;
 }
 
 /* Environmental bars */
@@ -1025,4 +1140,22 @@ input[type="range"]::-webkit-slider-thumb {
         rgba(200, 200, 200, 0.68) 100%
     );
     filter: drop-shadow(-1px 1px 0 rgba(0, 0, 0, 0.24));
+}
+
+@media (max-width: 900px),
+       ((max-width: 1200px) and (orientation: portrait) and
+        (hover: none) and (pointer: coarse)) {
+    .win95 .title-bar {
+        gap: 6px;
+        padding: 4px 8px;
+    }
+
+    .win95 .title-bar .turn-status {
+        padding: 0 4px;
+    }
+
+    .win95 .title-bar button {
+        min-width: 64px;
+        padding: 2px 6px;
+    }
 }

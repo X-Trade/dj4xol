@@ -21,7 +21,8 @@
             <div class="column">
                 <div class="panel no-transition open" data-panel="help-fleet-composition">
                     <h2><span>Fleet Composition</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content"><div>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         <p><strong>Subject to change:</strong> this page describes the current MVP implementation.</p>
                         <h4>When Composition Is Applied</h4>
                         <p>
@@ -57,10 +58,11 @@
                             Cargo capacity and fuel capacities are summed.
                             Fuel stores are also summed.
                         </p>
+                        </section>
                         <div class="panel-footer">
                             <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
                         </div>
-                    </div></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -93,5 +95,6 @@
                 }
             })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>
