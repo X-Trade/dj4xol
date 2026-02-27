@@ -57,3 +57,22 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
 }
+
+.help-index .panel-footer,
+.colony-help .panel-footer {
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.help-index .panel-footer > :first-child,
+.colony-help .panel-footer > :first-child {
+    margin-right: auto;
+}
+
+.help-index .panel-footer > :last-child:not(:first-child),
+.colony-help .panel-footer > :last-child:not(:first-child) {
+    margin-left: auto;
+}

@@ -217,6 +217,22 @@ a:hover {
     box-sizing: border-box;
 }
 
+.panel-scroll-frame {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.panel-scroll-frame > .panel-scrollable-list,
+.panel-scroll-frame > .panel-scrollable-text {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
 .panel-footer,
 .panel-footer-form {
     flex-shrink: 0;

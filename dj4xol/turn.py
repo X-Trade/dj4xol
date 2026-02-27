@@ -1384,7 +1384,7 @@ class GameTurn():
 
         if colonists_transfer > 0:
             factory = ColonistsLostInSpaceMessageFactory(
-                self.game, fleet.player, fleet.name, colonists_transfer, target_x, target_y
+                self.game, fleet.player, fleet, colonists_transfer, target_x, target_y
             )
             msg = factory.new_message()
             msg.year = self.game.year

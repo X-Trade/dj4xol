@@ -263,7 +263,7 @@ body {
     transform: translate(-50%, -50%) scaleY(0);
 }
 
-.panel-content > div:not(.panel-footer),
+.panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text),
 .panel-content.panel-stack {
     background: #000;
     border: 3px solid #cc6633;
@@ -280,21 +280,21 @@ body {
     padding-top: 0;
 }
 
-.panel-content > div:not(.panel-footer)::-webkit-scrollbar {
+.panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text)::-webkit-scrollbar {
     width: 14px;
 }
 
-.panel-content > div:not(.panel-footer)::-webkit-scrollbar-track {
+.panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text)::-webkit-scrollbar-track {
     background: #000;
 }
 
-.panel-content > div:not(.panel-footer)::-webkit-scrollbar-thumb {
+.panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text)::-webkit-scrollbar-thumb {
     background: #cc6633;
     border-radius: 7px;
     border: 2px solid #000;
 }
 
-.panel-content > div:not(.panel-footer)::-webkit-scrollbar-thumb:hover {
+.panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text)::-webkit-scrollbar-thumb:hover {
     background: #ff9966;
 }
 
@@ -312,7 +312,7 @@ body {
         #cc99cc calc(100% - 40px), #cc99cc 100%);
 }
 
-.panel.lcars-variant-2 .panel-content > div:not(.panel-footer),
+.panel.lcars-variant-2 .panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text),
 .panel.lcars-variant-2 .panel-content.panel-stack {
     background: #0a0a14;
     border: 3px solid #9999cc;
@@ -326,7 +326,7 @@ body {
         #66cccc calc(100% - 40px), #66cccc 100%);
 }
 
-.panel.lcars-variant-3 .panel-content > div:not(.panel-footer),
+.panel.lcars-variant-3 .panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text),
 .panel.lcars-variant-3 .panel-content.panel-stack {
     background: #0a0a14;
     border: 3px solid #cc99cc;
@@ -501,13 +501,18 @@ input:focus {
     margin-right: 0;
     padding-right: 25px;
     scrollbar-width: none;
+    --panel-scroll-thumb-max-size: 57;
+    --panel-scroll-thumb-min-ratio: 0.2;
+    --panel-scroll-overlay-top-offset: -3;
+    --panel-scroll-track-inset-top: 0;
+    --panel-scroll-track-inset-bottom: 0;
 }
 
 .lcars .panel-content.panel-stack {
     padding-right: 0;
 }
 
-.lcars .panel-content.panel-stack > div {
+.lcars .panel-content.panel-stack > div:not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text) {
     margin-right: 10px;
 }
 
@@ -567,6 +572,7 @@ input:focus {
     top: 0;
     right: 0;
     width: 25px;
+    min-height: 20%;
     background: var(--panel-scroll-thumb-color);
     border-radius: 0;
     border: 2px solid #000;
@@ -1100,8 +1106,12 @@ input[type="range"]::-webkit-slider-thumb {
    ============================================ */
 .columns.two-column .panel .panel-content > .panel-scrollable-list,
 .columns.two-column .panel .panel-content > .panel-scrollable-text,
+.columns.two-column .panel .panel-content > .panel-scroll-frame > .panel-scrollable-list,
+.columns.two-column .panel .panel-content > .panel-scroll-frame > .panel-scrollable-text,
 .columns.single-column .panel .panel-content > .panel-scrollable-list,
-.columns.single-column .panel .panel-content > .panel-scrollable-text {
+.columns.single-column .panel .panel-content > .panel-scrollable-text,
+.columns.single-column .panel .panel-content > .panel-scroll-frame > .panel-scrollable-list,
+.columns.single-column .panel .panel-content > .panel-scroll-frame > .panel-scrollable-text {
     min-height: 15vh;
 }
 

@@ -449,3 +449,44 @@ body.lcars.onboarding .hint.starting-tech-warning.form-errors {
     background: var(--panel-header-bg);
     color: var(--panel-header-text);
 }
+
+/* Single-panel help/onboarding layout constraints.
+ * Keep scrolling inside panel content only, never on page/columns.
+ */
+.help-index,
+.colony-help,
+.onboarding {
+    height: 100vh;
+    overflow: hidden !important;
+}
+
+.help-index .columns,
+.colony-help .columns,
+.onboarding .columns,
+.help-index .column,
+.colony-help .column,
+.onboarding .column {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden !important;
+}
+
+.help-index .columns.single-column,
+.colony-help .columns.single-column,
+.onboarding .columns.single-column {
+    max-width: 845px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.help-index .panel-content.panel-stack,
+.colony-help .panel-content.panel-stack,
+.onboarding .panel-content.panel-stack {
+    min-height: 30vh !important;
+    max-height: 80vh !important;
+    width: 100%;
+    max-width: 845px;
+    margin-left: auto;
+    margin-right: auto;
+    overflow: hidden;
+}

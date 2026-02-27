@@ -12,8 +12,22 @@ def map_object_link(obj):
     return f'<a href="{base_url}?x={obj.x}&y={obj.y}&sel={obj.short_id}&locate=1">{name}</a>'
 
 
+def map_coordinate_link(game, x, y, label=None):
+    """Format map coordinates as a clickable link."""
+    from django.urls import reverse
+    if label is None:
+        label = format_space(x, y)
+    base_url = reverse('dj4xol:game', args=[game.short_id])
+    return f'<a href="{base_url}?x={x}&y={y}&locate=1">{escape(label)}</a>'
+
+
 def format_space(x, y):
     return f"Empty Space ({x}, {y})"
+
+
+def format_space_link(game, x, y):
+    label = f"Empty Space ({x}, {y})"
+    return map_coordinate_link(game, x, y, label=label)
 
 
 def format_salvage(x, y):
@@ -36,11 +50,13 @@ def format_map_object(obj, link=True):
     return name
 
 
-def format_location(obj=None, x=None, y=None, link=True):
+def format_location(obj=None, x=None, y=None, link=True, game=None):
     """Format a location as a map object or empty space."""
     if obj is not None:
         return format_map_object(obj, link=link)
     if x is not None and y is not None:
+        if link and game is not None:
+            return format_space_link(game, x, y)
         return format_space(x, y)
     return ""
 
@@ -496,6 +512,7 @@ class FleetLostMessageFactory(MessageFactory):
 class FleetColonisedMessageFactory(MessageFactory):
     """Messages for successful fleet colonisation."""
     category = 'GENERAL'
+    priority = True
     templates = [
         "{fleet} completed colonisation of {star}, depositing {cargo} on the surface.",
     ]
@@ -571,7 +588,7 @@ class ColoniseFailedNoStarMessageFactory(MessageFactory):
         self.target_star = target_star
 
     def format_message(self):
-        location = format_space(self.x, self.y)
+        location = format_location(x=self.x, y=self.y, link=True, game=self.game)
         if self.target_star:
             return random.choice(self.templates_with_star).format(
                 fleet=self.fleet_name,
@@ -617,18 +634,19 @@ class ColonistsLostInSpaceMessageFactory(MessageFactory):
         "{fleet} released {colonists}k colonists into {location}. They did not survive.",
     ]
 
-    def __init__(self, game, player, fleet_name, colonists_kt, x, y, message=None):
+    def __init__(self, game, player, fleet, colonists_kt, x, y, message=None):
         super().__init__(game, player, message, intensity=-0.6)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.colonists_kt = colonists_kt
         self.x = x
         self.y = y
 
     def format_message(self):
+        fleet_display = format_map_object(self.fleet)
         return random.choice(self.templates).format(
-            fleet=self.fleet_name,
+            fleet=fleet_display,
             colonists=self.colonists_kt,
-            location=format_space(self.x, self.y)
+            location=format_location(x=self.x, y=self.y, link=True, game=self.game)
         )
 
 
@@ -883,7 +901,7 @@ class FleetWarpDestroyedMessageFactory(MessageFactory):
         star = Star.objects.filter(game=self.game, x=self.x, y=self.y).first()
         if star:
             return f"near {format_map_object(star)}"
-        return f"in {format_space(self.x, self.y)}"
+        return f"in {format_location(x=self.x, y=self.y, link=True, game=self.game)}"
 
     def format_message(self):
         from .models import Star
@@ -950,7 +968,7 @@ class FleetOrdersCompletedMessageFactory(MessageFactory):
 class FleetScuttledMessageFactory(MessageFactory):
     """Messages for fleet scuttling."""
     category = 'GENERAL'
-    priority = True
+    priority = False
     templates_no_salvage = [
         "{fleet} was scuttled {location}. No recoverable materials.",
         "{fleet} scuttled {location}. The wreckage was lost.",
@@ -982,7 +1000,7 @@ class FleetScuttledMessageFactory(MessageFactory):
         star = Star.objects.filter(game=self.game, x=self.x, y=self.y).first()
         if star:
             return format_map_object(star)
-        return f"in {format_space(self.x, self.y)}"
+        return f"in {format_location(x=self.x, y=self.y, link=True, game=self.game)}"
 
     def format_message(self):
         from .models import Star
@@ -1030,7 +1048,7 @@ class CombatMessageFactory(MessageFactory):
     def _format_location(self):
         if isinstance(self.location, tuple):
             x, y = self.location
-            return format_space(x, y)
+            return format_location(x=x, y=y, link=True, game=self.game)
         return format_map_object(self.location)
 
     def _format_losses(self):
@@ -1143,7 +1161,12 @@ class FirstContactFleetMessageFactory(MessageFactory):
     def format_message(self):
         msg = random.choice(self.templates).format(
             fleet=format_map_object(self.fleet),
-            location=format_space(self.other_fleet.x, self.other_fleet.y),
+            location=format_location(
+                x=self.other_fleet.x,
+                y=self.other_fleet.y,
+                link=True,
+                game=self.game
+            ),
             race=self.other_fleet.player.name
         )
         if self.first_any:
