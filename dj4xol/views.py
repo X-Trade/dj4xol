@@ -235,7 +235,7 @@ def _landing_context(request=None):
         'allow_self_signup': _allow_self_signup(),
         'github_url': ServerSettings.get(
             'server_github_url',
-            'https://github.com/search?q=dj4xol'
+            'https://github.com/X-Trade/dj4xol'
         ),
         'roadmap_priorities': priorities[:8],
         'roadmap_future': future[:8],
@@ -271,7 +271,7 @@ def _gallery_context(request=None):
         'canonical_url': canonical_url,
         'github_url': ServerSettings.get(
             'server_github_url',
-            'https://github.com/search?q=dj4xol'
+            'https://github.com/X-Trade/dj4xol'
         ),
         'screenshots': screenshots,
     }
