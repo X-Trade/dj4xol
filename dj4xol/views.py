@@ -487,6 +487,25 @@ def remove_production_order(request, game_short_id, order_short_id):
 
 
 @player_only_view()
+def toggle_production_order_repeat(request, game_short_id, order_short_id):
+    """Toggle repeat flag for a production order."""
+    from .models import ProductionOrder
+
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    if player.turned_in:
+        return _redirect_preserving_selection(request, game)
+
+    order = ProductionOrder.objects.get(
+        short_id=order_short_id, game=game, star__player=player
+    )
+    order.repeat = not bool(order.repeat)
+    order.save(update_fields=['repeat'])
+    return _redirect_preserving_selection(request, game)
+
+
+@player_only_view()
 def add_fleet_order(request, game_short_id):
     """Add a movement or transfer order to a fleet."""
     game = Game.objects.get(short_id=game_short_id)

@@ -149,3 +149,59 @@ class TestProductionOrders(TestCase):
         # Verify the order type
         order = ProductionOrder.objects.filter(star=homeworld).first()
         self.assertEqual(order.order_type, 'TERRAFORM_GRAVITY')
+
+    def test_toggle_production_order_repeat(self):
+        """Production order repeat can be toggled from the list button."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        order = ProductionOrder.objects.create(
+            game=game,
+            star=homeworld,
+            order_type='BUILD_MINE',
+            repeat=False,
+        )
+
+        user, account = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:toggle_production_order_repeat', args=[game.short_id, order.short_id]),
+            {'x': homeworld.x, 'y': homeworld.y, 'sel': homeworld.short_id}
+        )
+        self.assertEqual(response.status_code, 302)
+        order.refresh_from_db()
+        self.assertTrue(order.repeat)
+
+        response = client.post(
+            reverse('dj4xol:toggle_production_order_repeat', args=[game.short_id, order.short_id]),
+            {'x': homeworld.x, 'y': homeworld.y, 'sel': homeworld.short_id}
+        )
+        self.assertEqual(response.status_code, 302)
+        order.refresh_from_db()
+        self.assertFalse(order.repeat)
+
+    def test_toggle_production_order_repeat_blocked_when_turned_in(self):
+        """Repeat toggle should be blocked when player has turned in."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        player.turned_in = True
+        player.save(update_fields=['turned_in'])
+        homeworld = player.homeworld
+        order = ProductionOrder.objects.create(
+            game=game,
+            star=homeworld,
+            order_type='BUILD_MINE',
+            repeat=False,
+        )
+
+        user, account = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:toggle_production_order_repeat', args=[game.short_id, order.short_id])
+        )
+        self.assertEqual(response.status_code, 302)
+        order.refresh_from_db()
+        self.assertFalse(order.repeat)
