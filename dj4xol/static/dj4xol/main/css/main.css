@@ -213,6 +213,31 @@ body.map-dragging * {
         flex: 0 0 auto;
     }
 
+    /* Flatten wrappers so mobile can order panels directly */
+    .column-left,
+    .column-right,
+    .column-detail,
+    .column-orders {
+        display: contents;
+    }
+
+    /* Mobile panel order: starmap, detail, orders, messages */
+    .column-left > .panel[data-panel="starmap"] {
+        order: 1;
+    }
+
+    .column-right .detail-section {
+        order: 2;
+    }
+
+    .column-right .orders-section {
+        order: 3;
+    }
+
+    .column-left > .messages-section {
+        order: 4;
+    }
+
     /* Reset column collapse rules for mobile */
     .column-detail:has(.panel:not(.open)),
     .column-orders:has(.panel:not(.open)) {
@@ -242,12 +267,16 @@ body.map-dragging * {
         height: 75vh;
     }
 
-    #detail,
-    .orders-panel {
+    #detail {
         overflow-y: auto;
         max-height: 75vh;
         -webkit-overflow-scrolling: touch;
         touch-action: pan-y;
+    }
+
+    .orders-panel {
+        max-height: 75vh;
+        overflow: hidden;
     }
 
     /* Reset panel flex rules for mobile - content-based height */
@@ -290,11 +319,18 @@ body.map-dragging * {
     }
 
     .messages-section .panel-content > div,
-    .orders-section .panel-content > div,
     .detail-section .panel-content > div {
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         touch-action: pan-y;
+    }
+
+    /* Keep order panel wrapper non-scrollable on mobile; only .orders-list should scroll. */
+    .orders-section .panel-content > div {
+        overflow-y: hidden !important;
+        overflow-x: hidden !important;
+        -webkit-overflow-scrolling: auto;
+        touch-action: auto;
     }
 }
 
