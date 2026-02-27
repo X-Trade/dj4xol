@@ -173,6 +173,7 @@ body {
 .nav-dropdown {
     background: #c0c0c0;
     border: none;
+    margin-top: 1px;
     box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
                 inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
     border-radius: 0;
@@ -258,7 +259,7 @@ body {
    ============================================ */
 .columns {
     background: #008080;
-    padding: 8px;
+    padding: 0px 8px 8px 8px;
 }
 
 .column-left,
