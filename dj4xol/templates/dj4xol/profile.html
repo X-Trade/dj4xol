@@ -90,17 +90,14 @@
                         <p class="no-items">Not playing in any games.</p>
                         {% endif %}
                         </section>
-                        <div class="panel-footer">
-                            <a href="{% url 'dj4xol:create_game' %}">Create New Game</a>
-                        </div>
                     </div>
                 </div>
 
-                {% if games_owned %}
                 <div class="panel no-transition open" data-panel="owned">
                     <h2><span>Games Owned ({{ games_owned|length }})</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
                         <section class="panel-scrollable-list">
+                        {% if games_owned %}
                         <ul class="game-list">
                         {% for game in games_owned %}
                             <li>
@@ -109,10 +106,15 @@
                             </li>
                         {% endfor %}
                         </ul>
+                        {% else %}
+                        <p class="no-items">No games owned yet.</p>
+                        {% endif %}
                         </section>
+                        <div class="panel-footer">
+                            <a href="{% url 'dj4xol:create_game' %}">Create New Game</a>
+                        </div>
                     </div>
                 </div>
-                {% endif %}
 
                 <div class="panel no-transition open" data-panel="races">
                     <h2><span>Custom Races ({{ races|length }})</span><span class="panel-toggle"></span></h2>

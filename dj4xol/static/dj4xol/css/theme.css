@@ -502,6 +502,16 @@ body:not(.lcars):not(.win95) .env-label {
         display: none;
     }
 
+    body.home-page .title-bar .tagline,
+    body.profile-page .title-bar .tagline {
+        display: none;
+    }
+
+    body.home-page .title-bar .title,
+    body.profile-page .title-bar .title {
+        flex: 1 1 auto;
+    }
+
     .nav-menu {
         position: relative;
         margin-left: auto;
