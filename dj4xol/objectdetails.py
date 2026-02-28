@@ -218,7 +218,13 @@ class DetailBuilder():
         elif target_type == 'fleet':
             detail['fleet_short_id'] = self.selected_obj.short_id
             if 'ship_count' in data:
-                detail['fleet_cargo'] = {'ship_count': data['ship_count']}
+                detail['fleet_cargo'] = {
+                    'ship_count': data.get('ship_count'),
+                    'max_safe_warp': data.get('max_safe_warp'),
+                    'integrity': data.get('integrity'),
+                    'offense_modifier': data.get('offense_modifier'),
+                    'defense_modifier': data.get('defense_modifier'),
+                }
         elif target_type == 'salvage':
             detail['salvage_short_id'] = self.selected_obj.short_id
             if 'total_minerals' in data:
@@ -673,25 +679,32 @@ class DetailBuilder():
         """Get cargo details for selected fleet."""
         if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
             return None
-        if not self.player or self.selected_obj.player != self.player:
-            return None
 
-        offense_mod = int(round(float(self.selected_obj.offense_level) * 10.0))
-        defense_mod = int(round(float(self.selected_obj.defense_level) * 10.0))
+        # Always expose composition for visible fleets (own or observed).
+        # Cargo/inventory remains owner-only.
+        cargo = self._build_fleet_composition(self.selected_obj)
+        if self.player and self.selected_obj.player == self.player:
+            cargo.update({
+                'capacity': self.selected_obj.cargo_capacity,
+                'used': self.selected_obj.cargo_used,
+                'remaining': self.selected_obj.cargo_remaining,
+                'fuel': self.selected_obj.fuel,
+                'max_fuel': self.selected_obj.max_fuel,
+                'ironium': self.selected_obj.ironium_inventory,
+                'boranium': self.selected_obj.boranium_inventory,
+                'germanium': self.selected_obj.germanium_inventory,
+                'colonists': self.selected_obj.colonists,
+            })
+        return cargo
 
+    def _build_fleet_composition(self, fleet):
+        """Build non-cargo fleet composition fields."""
+        offense_mod = int(round(float(fleet.offense_level) * 10.0))
+        defense_mod = int(round(float(fleet.defense_level) * 10.0))
         return {
-            'capacity': self.selected_obj.cargo_capacity,
-            'used': self.selected_obj.cargo_used,
-            'remaining': self.selected_obj.cargo_remaining,
-            'fuel': self.selected_obj.fuel,
-            'max_fuel': self.selected_obj.max_fuel,
-            'ironium': self.selected_obj.ironium_inventory,
-            'boranium': self.selected_obj.boranium_inventory,
-            'germanium': self.selected_obj.germanium_inventory,
-            'colonists': self.selected_obj.colonists,
-            'max_safe_warp': self.selected_obj.max_safe_warp,
-            'integrity': self.selected_obj.integrity,
-            'ship_count': self.selected_obj.ship_count,
+            'max_safe_warp': fleet.max_safe_warp,
+            'integrity': fleet.integrity,
+            'ship_count': fleet.ship_count,
             'offense_modifier': f'{offense_mod:+d}',
             'defense_modifier': f'{defense_mod:+d}',
         }

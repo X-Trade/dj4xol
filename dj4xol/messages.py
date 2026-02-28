@@ -55,6 +55,11 @@ def format_location(obj=None, x=None, y=None, link=True, game=None):
     if obj is not None:
         return format_map_object(obj, link=link)
     if x is not None and y is not None:
+        if game is not None:
+            from .models import Star
+            star = Star.objects.filter(game=game, x=x, y=y).first()
+            if star is not None:
+                return format_map_object(star, link=link)
         if link and game is not None:
             return format_space_link(game, x, y)
         return format_space(x, y)
@@ -402,6 +407,11 @@ class FleetBuiltMessageFactory(MessageFactory):
 class ProductionSummaryMessageFactory(MessageFactory):
     """Single rollup message for construction completed at one star in a year."""
     category = 'PRODUCTION'
+    templates = [
+        "Construction update from {star}: completed {items}.",
+        "Production report for {star}: {items} completed this year.",
+        "{star} construction report: {items} completed.",
+    ]
 
     LABELS = {
         'mine': ('mine', 'mines'),
@@ -437,11 +447,11 @@ class ProductionSummaryMessageFactory(MessageFactory):
             parts.append(f"{count} {label}")
 
         if not parts:
-            return f"Construction progress at {format_map_object(self.star)}: no major projects completed."
+            return ""
 
-        return (
-            f"Construction progress at {format_map_object(self.star)}: "
-            f"{self._join_list(parts)} completed."
+        return random.choice(self.templates).format(
+            star=format_map_object(self.star),
+            items=self._join_list(parts),
         )
 
 
@@ -1029,13 +1039,15 @@ class CombatMessageFactory(MessageFactory):
     category = 'COMBAT'
     priority = True
     templates = [
-        "Combat at {location}. {winner} prevailed. {losses} {salvage}",
-        "Battle report: {location}. {winner} won. {losses} {salvage}",
-        "Engagement at {location} ended. {winner} holds the field. {losses} {salvage}",
+        "Engagement at {location}{opponents} concluded with a {winner} victory.",
+        "Combat at {location}{opponents} ended in a {winner} victory.",
+        "Battle report from {location}{opponents}: {winner} prevailed.",
     ]
 
     def __init__(self, game, player, winner, location,
                  fleets_destroyed=0, ships_lost=0, integrity_lost=0,
+                 opponents=None,
+                 enemy_fleets_destroyed=0, enemy_ships_lost=0, enemy_integrity_lost=0,
                  salvage_created=False, message=None):
         super().__init__(game, player, message, intensity=-0.2)
         self.winner = winner
@@ -1043,6 +1055,10 @@ class CombatMessageFactory(MessageFactory):
         self.fleets_destroyed = fleets_destroyed
         self.ships_lost = ships_lost
         self.integrity_lost = integrity_lost
+        self.opponents = list(opponents or [])
+        self.enemy_fleets_destroyed = enemy_fleets_destroyed
+        self.enemy_ships_lost = enemy_ships_lost
+        self.enemy_integrity_lost = enemy_integrity_lost
         self.salvage_created = salvage_created
 
     def _format_location(self):
@@ -1059,23 +1075,40 @@ class CombatMessageFactory(MessageFactory):
             parts.append(f"{self.ships_lost} ship(s) lost")
         if self.integrity_lost:
             parts.append(f"{self.integrity_lost}% integrity lost")
-        if not parts:
-            return "No significant losses reported."
-        return "Losses: " + ", ".join(parts) + "."
+        return ", ".join(parts) if parts else "no significant damage"
+
+    def _format_enemy_losses(self):
+        parts = []
+        if self.enemy_fleets_destroyed:
+            parts.append(f"{self.enemy_fleets_destroyed} fleet(s) destroyed")
+        if self.enemy_ships_lost:
+            parts.append(f"{self.enemy_ships_lost} ship(s) lost")
+        if self.enemy_integrity_lost:
+            parts.append(f"{self.enemy_integrity_lost}% integrity lost")
+        return ", ".join(parts) if parts else "no significant damage"
 
     def _format_salvage(self):
-        return "Salvage detected." if self.salvage_created else ""
+        return " Salvage was detected." if self.salvage_created else ""
+
+    def _format_opponents(self):
+        if not self.opponents:
+            return ""
+        if len(self.opponents) == 1:
+            return f" against {self.opponents[0]}"
+        if len(self.opponents) == 2:
+            return f" against {self.opponents[0]} and {self.opponents[1]}"
+        return f" against {', '.join(self.opponents[:-1])}, and {self.opponents[-1]}"
 
     def format_message(self):
-        salvage = self._format_salvage()
-        if salvage:
-            salvage = " " + salvage
-        return random.choice(self.templates).format(
+        lead = random.choice(self.templates).format(
             location=self._format_location(),
+            opponents=self._format_opponents(),
             winner=self.winner.name,
-            losses=self._format_losses(),
-            salvage=salvage
         )
+        our_losses = self._format_losses()
+        enemy_losses = self._format_enemy_losses()
+        summary = f"Our losses were {our_losses}; enemy losses were {enemy_losses}."
+        return lead + " " + summary + self._format_salvage()
 
 
 class OrbitalDefenseHitMessageFactory(MessageFactory):
@@ -1083,13 +1116,14 @@ class OrbitalDefenseHitMessageFactory(MessageFactory):
     category = 'COMBAT'
     priority = True
     templates_attacker = [
-        "{fleet} was struck by defensive fire from {star}. {damage}% integrity lost.",
-        "Hazardous orbit at {star}: {fleet} took {damage}% integrity damage from planetary defenses.",
-        "Defenses on {star} scored a hit on {fleet}. Integrity reduced by {damage}%.",
+        "{fleet} took {damage}% integrity damage from planetary defenses at {star}.",
+        "Defensive fire from {star} damaged {fleet} by {damage}% integrity.",
+        "{fleet} was hit by orbital defenses at {star}; integrity reduced by {damage}%.",
     ]
     templates_defender = [
-        "Planetary defenses at {star} hit an orbiting hostile fleet ({fleet}) for {damage}% damage.",
-        "A lucky defensive shot from {star} damaged enemy fleet {fleet} ({damage}% integrity loss).",
+        "Planetary defenses at {star} damaged hostile fleet {fleet} by {damage}% integrity.",
+        "Defensive batteries at {star} struck {fleet} for {damage}% integrity damage.",
+        "Hostile fleet {fleet} was hit by defenses at {star}; {damage}% integrity lost.",
     ]
 
     def __init__(self, game, player, star, fleet_name, damage, perspective='attacker', message=None):

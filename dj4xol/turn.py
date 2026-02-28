@@ -344,12 +344,18 @@ class GameTurn():
                 'germanium_inventory': obj.germanium_inventory,
             }
         elif target_type == 'fleet':
+            offense_mod = int(round(float(obj.offense_level) * 10.0))
+            defense_mod = int(round(float(obj.defense_level) * 10.0))
             return {
                 'name': obj.name,
                 'x': obj.x,
                 'y': obj.y,
                 'player_name': obj.player.name if obj.player else None,
                 'ship_count': obj.ship_count,
+                'max_safe_warp': obj.max_safe_warp,
+                'integrity': obj.integrity,
+                'offense_modifier': f'{offense_mod:+d}',
+                'defense_modifier': f'{defense_mod:+d}',
             }
         elif target_type == 'salvage':
             return {
@@ -453,38 +459,81 @@ class GameTurn():
 
         handled = set()
         fleets = list(Fleet.objects.filter(game=self.game))
+        first_any_available = {}
+        contacted_races_seen = {}
+
+        def has_contact_with_race(player, other_player):
+            """Return True if player has previously reported an object owned by other_player."""
+            fleet_ids = list(
+                Fleet.objects.filter(game=self.game, player=other_player)
+                .values_list('id', flat=True)
+            )
+            star_ids = list(
+                Star.objects.filter(game=self.game, player=other_player)
+                .values_list('id', flat=True)
+            )
+            target_ids = fleet_ids + star_ids
+            if not target_ids:
+                return False
+            return Report.objects.filter(
+                player=player,
+                target_type__in=['fleet', 'star'],
+                target_id__in=target_ids
+            ).exists()
 
         for fleet in fleets:
             player = fleet.player
             x, y = fleet.x, fleet.y
+            if player.id not in first_any_available:
+                first_any_available[player.id] = (not self._player_has_other_contacts(player))
+            if player.id not in contacted_races_seen:
+                contacted_races_seen[player.id] = set()
 
             # Star contact
             for star in Star.objects.filter(game=self.game, x=x, y=y).exclude(player=player).exclude(player__isnull=True):
+                race_id = star.player_id
+                if race_id in contacted_races_seen[player.id]:
+                    continue
+                if has_contact_with_race(player, star.player):
+                    contacted_races_seen[player.id].add(race_id)
+                    continue
                 key = (player.id, 'star', star.id)
                 if key in handled:
                     continue
                 if Report.objects.filter(player=player, target_type='star', target_id=star.id).exists():
                     continue
-                first_any = not self._player_has_other_contacts(player)
+                first_any = first_any_available[player.id]
                 factory = FirstContactStarMessageFactory(self.game, player, fleet, star, first_any=first_any)
                 msg = factory.new_message()
                 msg.year = self.game.year
                 msg.save()
                 handled.add(key)
+                contacted_races_seen[player.id].add(race_id)
+                if first_any_available[player.id]:
+                    first_any_available[player.id] = False
 
             # Fleet contact
             for other in Fleet.objects.filter(game=self.game, x=x, y=y).exclude(player=player):
+                race_id = other.player_id
+                if race_id in contacted_races_seen[player.id]:
+                    continue
+                if has_contact_with_race(player, other.player):
+                    contacted_races_seen[player.id].add(race_id)
+                    continue
                 key = (player.id, 'fleet', other.id)
                 if key in handled:
                     continue
                 if Report.objects.filter(player=player, target_type='fleet', target_id=other.id).exists():
                     continue
-                first_any = not self._player_has_other_contacts(player)
+                first_any = first_any_available[player.id]
                 factory = FirstContactFleetMessageFactory(self.game, player, fleet, other, first_any=first_any)
                 msg = factory.new_message()
                 msg.year = self.game.year
                 msg.save()
                 handled.add(key)
+                contacted_races_seen[player.id].add(race_id)
+                if first_any_available[player.id]:
+                    first_any_available[player.id] = False
 
     def _player_has_other_contacts(self, player):
         """Return True if player has seen any other player's star/fleet before."""
@@ -549,14 +598,29 @@ class GameTurn():
 
         for player in players:
             result = results[player]
+            opponent_names = sorted({opponent.name for opponent in players if opponent != player})
+            enemy_integrity_lost = 0
+            enemy_ships_lost = 0
+            enemy_fleets_destroyed = 0
+            for opponent in players:
+                if opponent == player:
+                    continue
+                enemy_result = results[opponent]
+                enemy_integrity_lost += enemy_result['integrity_lost']
+                enemy_ships_lost += enemy_result['ships_lost']
+                enemy_fleets_destroyed += enemy_result['fleets_destroyed']
             factory = CombatMessageFactory(
                 self.game,
                 player,
                 winner=winner,
                 location=location,
+                opponents=opponent_names,
                 fleets_destroyed=result['fleets_destroyed'],
                 ships_lost=result['ships_lost'],
                 integrity_lost=result['integrity_lost'],
+                enemy_fleets_destroyed=enemy_fleets_destroyed,
+                enemy_ships_lost=enemy_ships_lost,
+                enemy_integrity_lost=enemy_integrity_lost,
                 salvage_created=result['salvage_created'],
             )
             msg = factory.new_message()

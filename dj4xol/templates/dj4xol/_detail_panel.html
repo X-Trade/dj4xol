@@ -119,22 +119,26 @@
             </div>
             <div class="env-row">
                 <span class="env-label">Max Warp</span>
-                <span class="env-value">{{ detail.fleet_cargo.max_safe_warp }}</span>
+                <span class="env-value">{% if detail.fleet_cargo.max_safe_warp != None %}{{ detail.fleet_cargo.max_safe_warp }}{% else %}???{% endif %}</span>
             </div>
             <div class="env-row">
                 <span class="env-label">Integrity</span>
+                {% if detail.fleet_cargo.integrity != None %}
                 <div class="integrity-bar">
                     <div class="integrity-fill {% if detail.fleet_cargo.integrity < 25 %}critical{% elif detail.fleet_cargo.integrity < 50 %}warning{% endif %}" style="width: {{ detail.fleet_cargo.integrity }}%;"></div>
                 </div>
                 <span class="env-value">{{ detail.fleet_cargo.integrity }}%</span>
+                {% else %}
+                <span class="env-value">???</span>
+                {% endif %}
             </div>
             <div class="env-row">
                 <span class="env-label">Offence</span>
-                <span class="env-value">{{ detail.fleet_cargo.offense_modifier }}</span>
+                <span class="env-value">{% if detail.fleet_cargo.offense_modifier %}{{ detail.fleet_cargo.offense_modifier }}{% else %}???{% endif %}</span>
             </div>
             <div class="env-row">
                 <span class="env-label">Defence</span>
-                <span class="env-value">{{ detail.fleet_cargo.defense_modifier }}</span>
+                <span class="env-value">{% if detail.fleet_cargo.defense_modifier %}{{ detail.fleet_cargo.defense_modifier }}{% else %}???{% endif %}</span>
             </div>
         </div>
     </div>
@@ -204,6 +208,7 @@
                 <span class="env-label">Shipyards</span>
                 <span class="detail-value">{{ detail.infrastructure.Shipyards }}</span>
             </div>
+            {% if detail.is_owned %}
             <div class="detail-row">
                 <span class="env-label">Jobs</span>
                 <span class="detail-value">
@@ -213,6 +218,7 @@
                     </span>
                 </span>
             </div>
+            {% endif %}
         </div>
     </div>
     {% endif %}

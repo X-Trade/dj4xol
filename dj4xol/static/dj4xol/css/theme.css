@@ -497,6 +497,11 @@ body:not(.lcars):not(.win95) .env-label {
         flex: 1 1 auto;
     }
 
+    body:not(.win95) .title-bar .year-prefix,
+    body:not(.win95) .title-bar .turn-prefix {
+        display: none;
+    }
+
     .nav-menu {
         position: relative;
         margin-left: auto;
