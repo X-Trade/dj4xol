@@ -763,7 +763,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .panel .messages-scroll .message.priority {
-    background: #000;
+    background: none;
 }
 
 .panel .messages-scroll .message.priority .message-text {
@@ -772,7 +772,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* Detail panel */
 .panel #detail {
-    background: #000;
+    background: none;
     border: none;
     box-shadow: none;
 }
@@ -1149,5 +1149,18 @@ input[type="range"]::-webkit-slider-thumb {
         background:
             linear-gradient(to bottom, #000 0%, #000 75%, transparent 75%, transparent 100%),
             linear-gradient(to right, #cc6633 0%, #cc6633 calc(100% - 40px), #000 calc(100% - 40px), #000 100%);
+    }
+
+    .lcars .transfer-type-row {
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .lcars .transfer-type-row label {
+        flex: 1 1 calc(33.333% - 8px);
+        min-width: 0;
+        white-space: normal;
+        font-size: 0.85em;
+        line-height: 1.1;
     }
 }

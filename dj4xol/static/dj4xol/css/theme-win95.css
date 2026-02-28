@@ -238,7 +238,7 @@ body {
     background: #000000;
 }
 
-.panel-content > div,
+.panel-content > div:not(.rename-popover),
 .panel-content.panel-stack {
     background: #c0c0c0;
     border: none;
@@ -311,7 +311,7 @@ a:hover {
 }
 
 /* Reduced padding throughout */
-.panel-content > div,
+.panel-content > div:not(.rename-popover),
 .panel-content.panel-stack {
     padding: 4px;
 }
@@ -463,7 +463,7 @@ input:focus {
 /* Ensure consistent scrollbar width on all scrollable elements */
 .orders-list::-webkit-scrollbar,
 .messages-scroll::-webkit-scrollbar,
-.panel-content > div::-webkit-scrollbar,
+.panel-content > div:not(.rename-popover)::-webkit-scrollbar,
 #detail::-webkit-scrollbar {
     width: 16px;
     height: 16px;
@@ -471,7 +471,7 @@ input:focus {
 
 .orders-list::-webkit-scrollbar-thumb,
 .messages-scroll::-webkit-scrollbar-thumb,
-.panel-content > div::-webkit-scrollbar-thumb,
+.panel-content > div:not(.rename-popover)::-webkit-scrollbar-thumb,
 #detail::-webkit-scrollbar-thumb {
     background: #c0c0c0;
     box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
@@ -482,14 +482,14 @@ input:focus {
 
 .orders-list::-webkit-scrollbar-thumb:hover,
 .messages-scroll::-webkit-scrollbar-thumb:hover,
-.panel-content > div::-webkit-scrollbar-thumb:hover,
+.panel-content > div:not(.rename-popover)::-webkit-scrollbar-thumb:hover,
 #detail::-webkit-scrollbar-thumb:hover {
     background: #d4d4d4;
 }
 
 .orders-list::-webkit-scrollbar-track,
 .messages-scroll::-webkit-scrollbar-track,
-.panel-content > div::-webkit-scrollbar-track,
+.panel-content > div:not(.rename-popover)::-webkit-scrollbar-track,
 #detail::-webkit-scrollbar-track {
     background: repeating-conic-gradient(#c0c0c0 0% 25%, #ffffff 0% 50%)
                 50% / 2px 2px;
@@ -497,7 +497,7 @@ input:focus {
 
 .orders-list::-webkit-scrollbar-corner,
 .messages-scroll::-webkit-scrollbar-corner,
-.panel-content > div::-webkit-scrollbar-corner,
+.panel-content > div:not(.rename-popover)::-webkit-scrollbar-corner,
 #detail::-webkit-scrollbar-corner {
     background: #c0c0c0;
 }
