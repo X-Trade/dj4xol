@@ -1,9 +1,9 @@
 from browser import document, timer, window
 
 HOLD_MS = 350
-LONG_HOLD_MS = 2000
 CYCLE_MS = 2000
 BODY = document.select_one('body')
+MOUSE_SUPPRESS_AFTER_TOUCH_MS = 700
 
 
 class ThumbPopController:
@@ -15,6 +15,10 @@ class ThumbPopController:
         self.hold_timer_id = None
         self.cycle_timer_id = None
         self.pop_clone = None
+        self.is_touch = False
+        self.touch_x = None
+        self.touch_y = None
+        self.last_touch_end_ms = 0
         self.img.style.cursor = 'zoom-in'
         self.icons = self._read_icons()
         self.idx = self._read_initial_index()
@@ -93,6 +97,11 @@ class ThumbPopController:
         left = rect_left - ((width - rect_width) / 2.0)
         top = rect_top - ((height - rect_height) / 2.0)
 
+        # On touch devices place pop above finger so it is not obscured.
+        if self.is_touch and self.touch_x is not None and self.touch_y is not None:
+            left = float(self.touch_x) - (width / 2.0)
+            top = float(self.touch_y) - height - 16.0
+
         max_left = max(6.0, viewport_w - width - 6.0)
         max_top = max(6.0, viewport_h - height - 6.0)
         left = max(6.0, min(left, max_left))
@@ -117,15 +126,48 @@ class ThumbPopController:
         else:
             document <= self.pop_clone
 
-    def on_mouse_down(self, _ev):
+    def _event_xy(self, ev):
+        touch = getattr(ev, 'touches', None)
+        if touch is not None and len(touch) > 0:
+            return float(touch[0].clientX), float(touch[0].clientY)
+        changed = getattr(ev, 'changedTouches', None)
+        if changed is not None and len(changed) > 0:
+            return float(changed[0].clientX), float(changed[0].clientY)
+        cx = getattr(ev, 'clientX', None)
+        cy = getattr(ev, 'clientY', None)
+        if cx is not None and cy is not None:
+            return float(cx), float(cy)
+        return None, None
+
+    def on_mouse_down(self, ev):
+        now_ms = int(window.Date.new().getTime())
+        if self.last_touch_end_ms and (now_ms - self.last_touch_end_ms) < MOUSE_SUPPRESS_AFTER_TOUCH_MS:
+            return
         self.is_down = True
+        self.is_touch = False
+        self.touch_x = None
+        self.touch_y = None
+        self.down_started_ms = now_ms
+        self.clear_hold_timer()
+        self.clear_cycle_timer()
+        self.hide_pop()
+        self.hold_timer_id = timer.set_timeout(self.show_pop, HOLD_MS)
+
+    def on_touch_start(self, ev):
+        if hasattr(ev, 'preventDefault'):
+            ev.preventDefault()
+        if hasattr(ev, 'stopPropagation'):
+            ev.stopPropagation()
+        self.is_down = True
+        self.is_touch = True
+        self.touch_x, self.touch_y = self._event_xy(ev)
         self.down_started_ms = int(window.Date.new().getTime())
         self.clear_hold_timer()
         self.clear_cycle_timer()
         self.hide_pop()
         self.hold_timer_id = timer.set_timeout(self.show_pop, HOLD_MS)
 
-    def on_mouse_up(self, _ev):
+    def on_mouse_up(self, ev):
         if not self.is_down:
             return
         held_ms = max(0, int(window.Date.new().getTime()) - self.down_started_ms)
@@ -133,16 +175,29 @@ class ThumbPopController:
         self.down_started_ms = 0
         self.clear_hold_timer()
         self.hide_pop()
-        if held_ms < LONG_HOLD_MS:
+        if held_ms < HOLD_MS:
             self.advance_icon()
+        self.is_touch = False
+        self.touch_x = None
+        self.touch_y = None
         self.schedule_cycle()
+
+    def on_touch_end(self, ev):
+        if not self.is_down:
+            return
+        if hasattr(ev, 'preventDefault'):
+            ev.preventDefault()
+        if hasattr(ev, 'stopPropagation'):
+            ev.stopPropagation()
+        self.last_touch_end_ms = int(window.Date.new().getTime())
+        self.on_mouse_up(ev)
 
     def bind(self):
         self.img.bind('mousedown', self.on_mouse_down)
-        self.img.bind('touchstart', self.on_mouse_down)
+        self.img.bind('touchstart', self.on_touch_start)
         document.bind('mouseup', self.on_mouse_up)
-        document.bind('touchend', self.on_mouse_up)
-        document.bind('touchcancel', self.on_mouse_up)
+        document.bind('touchend', self.on_touch_end)
+        document.bind('touchcancel', self.on_touch_end)
         self.schedule_cycle()
 
 
