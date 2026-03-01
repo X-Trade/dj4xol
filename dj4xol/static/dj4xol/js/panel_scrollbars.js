@@ -37,6 +37,7 @@
         var thumbMax = parseFloat(computed.getPropertyValue('--panel-scroll-thumb-max-size'));
         var thumbMinRatio = parseFloat(computed.getPropertyValue('--panel-scroll-thumb-min-ratio'));
         var overlayTopOffset = parseFloat(computed.getPropertyValue('--panel-scroll-overlay-top-offset'));
+        var overlayHeightScale = parseFloat(computed.getPropertyValue('--panel-scroll-overlay-height-scale'));
         var trackInsetTop = parseFloat(computed.getPropertyValue('--panel-scroll-track-inset-top'));
         var trackInsetBottom = parseFloat(computed.getPropertyValue('--panel-scroll-track-inset-bottom'));
         if (!isFinite(thumbScale) || thumbScale <= 0) thumbScale = 0.5;
@@ -44,13 +45,23 @@
         if (!isFinite(thumbMax) || thumbMax <= 0) thumbMax = Infinity;
         if (!isFinite(thumbMinRatio) || thumbMinRatio < 0) thumbMinRatio = 0;
         if (!isFinite(overlayTopOffset)) overlayTopOffset = 0;
+        if (!isFinite(overlayHeightScale) || overlayHeightScale <= 0) overlayHeightScale = 1;
         if (!isFinite(trackInsetTop) || trackInsetTop < 0) trackInsetTop = 0;
         if (!isFinite(trackInsetBottom) || trackInsetBottom < 0) trackInsetBottom = 0;
         if (overlayTopOffset === 0 && document.body.classList.contains('lcars')) {
             overlayTopOffset = -3;
         }
+        if (document.body.classList.contains('win95')) {
+            // Win95: nudge track down 1px and extend overlay height by ~2%.
+            if (overlayTopOffset === 0) {
+                overlayTopOffset = 1;
+            }
+            if (overlayHeightScale === 1) {
+                overlayHeightScale = 1.02;
+            }
+        }
 
-        var overlayHeight = clientHeight;
+        var overlayHeight = Math.round(clientHeight * overlayHeightScale);
         if (overlayTopOffset < 0) {
             overlayHeight = Math.max(0, clientHeight + overlayTopOffset);
         }

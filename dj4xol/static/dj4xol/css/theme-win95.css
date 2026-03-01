@@ -238,8 +238,7 @@ body {
     background: #000000;
 }
 
-.panel-content > div:not(.rename-popover),
-.panel-content.panel-stack {
+.panel-content > div:not(.rename-popover):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text) {
     background: #c0c0c0;
     border: none;
     box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
@@ -311,8 +310,7 @@ a:hover {
 }
 
 /* Reduced padding throughout */
-.panel-content > div:not(.rename-popover),
-.panel-content.panel-stack {
+.panel-content > div:not(.rename-popover) {
     padding: 4px;
 }
 
@@ -588,7 +586,7 @@ input:focus {
     width: 14px;
     overflow: hidden;
     display: block;
-    margin: 1.4px 4px 4px 4px !important;
+    margin: 0.72px 2px 4px 4px !important;
     padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
@@ -739,6 +737,10 @@ input[type="range"]::-webkit-slider-thumb {
     border: none;
     padding: 2px 18px 2px 4px;
     background-clip: padding-box;
+}
+
+.win95 .messages-scroll.panel-scrollable-list {
+    background: #ffffff !important;
 }
 
 .message {
