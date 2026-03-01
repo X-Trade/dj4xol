@@ -52,13 +52,23 @@ class ThumbPopController:
             timer.clear_timeout(self.cycle_timer_id)
             self.cycle_timer_id = None
 
+    def sync_icons_from_attrs(self):
+        icons = self._read_icons()
+        if icons != self.icons:
+            self.icons = icons
+            self.idx = self._read_initial_index() % len(self.icons)
+            self.img.attrs['src'] = self.icons[self.idx]
+            self.img.attrs['data-index'] = str(self.idx)
+
     def schedule_cycle(self):
+        self.sync_icons_from_attrs()
         if len(self.icons) <= 1:
             return
         self.clear_cycle_timer()
         self.cycle_timer_id = timer.set_timeout(self.on_cycle_tick, CYCLE_MS)
 
     def advance_icon(self):
+        self.sync_icons_from_attrs()
         if len(self.icons) <= 1:
             return
         self.idx = (self.idx + 1) % len(self.icons)
@@ -66,6 +76,7 @@ class ThumbPopController:
         self.img.attrs['data-index'] = str(self.idx)
 
     def on_cycle_tick(self):
+        self.sync_icons_from_attrs()
         self.cycle_timer_id = None
         if self.is_down:
             return
@@ -140,6 +151,7 @@ class ThumbPopController:
         return None, None
 
     def on_mouse_down(self, ev):
+        self.sync_icons_from_attrs()
         now_ms = int(window.Date.new().getTime())
         if self.last_touch_end_ms and (now_ms - self.last_touch_end_ms) < MOUSE_SUPPRESS_AFTER_TOUCH_MS:
             return
@@ -154,6 +166,7 @@ class ThumbPopController:
         self.hold_timer_id = timer.set_timeout(self.show_pop, HOLD_MS)
 
     def on_touch_start(self, ev):
+        self.sync_icons_from_attrs()
         if hasattr(ev, 'preventDefault'):
             ev.preventDefault()
         if hasattr(ev, 'stopPropagation'):
