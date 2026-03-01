@@ -72,13 +72,16 @@
                                                 Name
                                                 <input type="text" name="name" value="{{ hull.name|default:'' }}" maxlength="64" required>
                                             </label>
-                                            <div class="hull-thumb-preview-wrap">
+                                            <div class="hull-thumb-preview-wrap tech-thumb-wrap">
                                                 <img
                                                     id="hull-thumb-preview"
-                                                    class="hull-thumb-preview thumb-pop-target"
+                                                    class="hull-thumb-preview tech-thumb thumb-pop-target"
                                                     src=""
                                                     alt="Hull thumbnail preview"
+                                                    data-icons=""
+                                                    data-index="0"
                                                 >
+                                                <span id="hull-thumb-corner" class="tech-thumb-corner" title="Multiple variants (long-press to zoom)" style="display:none;"></span>
                                             </div>
                                         </div>
                                         <label>
@@ -189,7 +192,7 @@
             var SLOT_ITEM_COUNTS = {{ item_count_choices_json|safe }};
             var SLOT_MAX_LEVELS = {{ max_tech_level_choices_json|safe }};
             var THUMBNAIL_PATHS_BY_CLASS = {{ thumbnail_paths_by_class_json|safe }};
-            var STATIC_BASE = "{% static '' %}";
+            var STATIC_BASE = "{{ STATIC_URL|default:'/static/'|escapejs }}";
             var CELL_PX = 64;
             var SUBCELL_PX = 32;
             var slotsInput = document.getElementById('slots-json');
@@ -203,8 +206,7 @@
             var cargoHoldHeightInput = document.getElementById('cargo-hold-grid-height');
             var thumbnailClassSelect = form.querySelector('select[name="thumbnail_class"]');
             var thumbnailPreview = document.getElementById('hull-thumb-preview');
-            var thumbnailCycleTimer = null;
-            var thumbnailCycleIndex = 0;
+            var thumbnailCorner = document.getElementById('hull-thumb-corner');
 
             function clampInt(v, min, max) {
                 v = parseInt(v, 10);
@@ -227,40 +229,24 @@
                 return classPaths.map(normalizeStaticPath);
             }
 
-            function stopThumbnailCycle() {
-                if (thumbnailCycleTimer) {
-                    clearInterval(thumbnailCycleTimer);
-                    thumbnailCycleTimer = null;
-                }
-            }
-
             function setThumbnailPreview(src, icons, index) {
                 if (!thumbnailPreview) return;
                 thumbnailPreview.src = src || '';
                 thumbnailPreview.setAttribute('data-icons', (icons || []).join('|'));
                 thumbnailPreview.setAttribute('data-index', String(index || 0));
+                if (thumbnailCorner) {
+                    thumbnailCorner.style.display = (icons && icons.length > 1) ? 'block' : 'none';
+                }
             }
 
-            function refreshThumbnailPreview(resetIndex) {
+            function refreshThumbnailPreview() {
                 if (!thumbnailPreview) return;
                 var icons = getPreviewPaths();
-                stopThumbnailCycle();
                 if (!icons.length) {
                     setThumbnailPreview('', [], 0);
                     return;
                 }
-                if (resetIndex) {
-                    thumbnailCycleIndex = 0;
-                } else if (thumbnailCycleIndex >= icons.length) {
-                    thumbnailCycleIndex = 0;
-                }
-                setThumbnailPreview(icons[thumbnailCycleIndex], icons, thumbnailCycleIndex);
-                if (icons.length > 1) {
-                    thumbnailCycleTimer = setInterval(function() {
-                        thumbnailCycleIndex = (thumbnailCycleIndex + 1) % icons.length;
-                        setThumbnailPreview(icons[thumbnailCycleIndex], icons, thumbnailCycleIndex);
-                    }, 1400);
-                }
+                setThumbnailPreview(icons[0], icons, 0);
             }
 
             function getGridCols() {
@@ -471,6 +457,12 @@
                             slots.splice(index, 1);
                             render();
                         });
+                        el.addEventListener('contextmenu', function(ev) {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            slots.splice(index, 1);
+                            render();
+                        });
                         el.appendChild(remove);
 
                         var fields = document.createElement('div');
@@ -597,15 +589,22 @@
             });
             if (thumbnailClassSelect) {
                 thumbnailClassSelect.addEventListener('change', function() {
-                    refreshThumbnailPreview(true);
+                    refreshThumbnailPreview();
                 });
             }
             form.addEventListener('submit', updateSlotsJson);
             render();
-            refreshThumbnailPreview(true);
+            refreshThumbnailPreview();
         })();
         </script>
-        <script type="text/javascript" src="{% static 'dj4xol/js/thumb_pop.js' %}"></script>
         <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython_stdlib.js"></script>
+        <script type="text/python" src="{% static 'dj4xol/brython/tech_thumbs.py' %}"></script>
+        <script>
+        if (window.brython) {
+            brython();
+        }
+        </script>
     </body>
 </html>
