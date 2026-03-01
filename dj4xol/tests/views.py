@@ -182,6 +182,24 @@ class TestProductionOrders(TestCase):
         order.refresh_from_db()
         self.assertFalse(order.repeat)
 
+
+class TestGameDetailRendering(TestCase):
+    def test_selected_object_renders_detail_panel(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        target = player.homeworld
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': target.x, 'y': target.y, 'sel': target.short_id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-panel="detail"')
+        self.assertContains(response, 'id="detail"')
+
     def test_toggle_production_order_repeat_blocked_when_turned_in(self):
         """Repeat toggle should be blocked when player has turned in."""
         game = default_game(stars=5)

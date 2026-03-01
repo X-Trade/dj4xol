@@ -2,6 +2,8 @@ from datetime import timedelta
 from django.utils import timezone
 from dj4xol.starnamer import StarNamer
 from .models import Game, Star, Fleet, Player, Account
+from .research import get_player_tech_effects
+from .fleet_thumbnails import choose_fleet_thumbnail
 import random
 import math
 
@@ -325,21 +327,38 @@ class GameFactory():
         player.copy_habitability_from(race)
         player.save()
         self._assign_homeworld_to_player(player, self._find_homeworld_star(available_stars))
-        self._create_starting_fleets(player)
         self._apply_starting_research_level(player)
+        self._create_starting_fleets(player)
         return player
 
     def _create_starting_fleets(self, player):
         count = max(0, int(player.starting_fleets or 0))
         if count <= 0:
             return
+        tech_effects = get_player_tech_effects(player)
+        fleet_start_index = player.fleets.count()
         for i in range(count):
+            fleet_number = fleet_start_index + i + 1
+            fleet_name = f"{player.name} Fleet {fleet_number}"
+            thumbnail_path = choose_fleet_thumbnail(
+                f"{self.game.id}:{player.id}:{fleet_name}",
+                tech_effects.get('hull_thumbnail_class'),
+            )
             Fleet.objects.create(
                 game=self.game,
                 player=player,
-                name=f"{player.name} Fleet {player.fleets.count() + i + 1}",
+                name=fleet_name,
                 x=player.homeworld.x,
                 y=player.homeworld.y,
+                cargo_capacity=tech_effects.get('max_cargo_capacity', 100),
+                fuel=tech_effects.get('max_fuel', 50.0),
+                max_fuel=tech_effects.get('max_fuel', 50.0),
+                max_safe_warp=tech_effects.get('max_warp_speed', 2),
+                fuel_efficiency=tech_effects.get('fuel_efficiency', 1.0),
+                overmax_fuel_penalty=tech_effects.get('overmax_fuel_penalty', 1.0),
+                offense_level=tech_effects.get('offense_level', 0.0),
+                defense_level=tech_effects.get('defense_level', 0.0),
+                thumbnail_path=thumbnail_path,
             )
     
     def _create_random_fleets(self, count_per_player):
