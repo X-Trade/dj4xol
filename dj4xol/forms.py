@@ -360,6 +360,9 @@ class RegistrationForm(forms.ModelForm):
             'autocapitalize': 'none',
         })
         self.create_user = self.user is None
+        if not self.is_bound and (not self.instance or not self.instance.pk):
+            # New sign-ups must opt in explicitly to newsletters.
+            self.fields['email_newsletter'].initial = False
         if not self.create_user:
             # Hide Django user-creation fields for existing authenticated users.
             self.fields.pop('username')
