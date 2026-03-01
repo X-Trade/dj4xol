@@ -25,6 +25,7 @@ from .messages import (
     ColonistsUnexpectedColonyMessageFactory,
     MineralGiftMessageFactory,
     ProductionSummaryMessageFactory,
+    ProductionOrdersCompletedMessageFactory,
     FleetWarpDamageMessageFactory,
     FleetBussardRecoveryMessageFactory,
     FleetWarpDestroyedMessageFactory,
@@ -2483,6 +2484,7 @@ class GameTurn():
         """
         from .models import Star, ProductionOrder, PRODUCTION_COSTS
         for star in Star.objects.filter(game=self.game, player__isnull=False):
+            had_production_orders = star.production_orders.exists()
             star.buildpoints_consumed = 0
             colonists_busy = 0  # Track colonists busy with construction this turn
             available_bp = calculate_available_buildpoints(star)
@@ -2606,6 +2608,7 @@ class GameTurn():
 
             # Send aggregate production messages (only for 4+ items)
             self._send_production_summary_messages(star, production_counts)
+            self._send_production_orders_completed_message(star, had_production_orders)
 
             star.save()
 
@@ -2710,6 +2713,17 @@ class GameTurn():
         factory = ProductionSummaryMessageFactory(
             self.game, player, star, completed
         )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+    def _send_production_orders_completed_message(self, star, had_production_orders):
+        """Send one message when a colony's production queue becomes empty."""
+        if not had_production_orders:
+            return
+        if star.production_orders.exists():
+            return
+        factory = ProductionOrdersCompletedMessageFactory(self.game, star.player, star)
         msg = factory.new_message()
         msg.year = self.game.year
         msg.save()

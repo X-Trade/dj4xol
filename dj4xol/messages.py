@@ -455,6 +455,24 @@ class ProductionSummaryMessageFactory(MessageFactory):
         )
 
 
+class ProductionOrdersCompletedMessageFactory(MessageFactory):
+    """Message when a colony has no remaining production orders."""
+    category = 'PRODUCTION'
+    templates = [
+        "Production queue at {star} is now empty.",
+        "{star} has completed all queued production orders.",
+    ]
+
+    def __init__(self, game, player, star, message=None):
+        super().__init__(game, player, message, intensity=0.0)
+        self.star = star
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=format_map_object(self.star)
+        )
+
+
 class ResearchLevelUnlockedMessageFactory(MessageFactory):
     """Message when a research category advances one or more levels."""
     category = 'GENERAL'
