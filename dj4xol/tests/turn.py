@@ -3592,6 +3592,7 @@ class TestFleetTransferOrders(TestCase):
         # Position fleet at target and clear cargo
         fleet.x = target_star.x
         fleet.y = target_star.y
+        fleet.cargo_capacity = 1000
         fleet.ironium_inventory = 0
         fleet.boranium_inventory = 0
         fleet.germanium_inventory = 0
@@ -3820,6 +3821,7 @@ class TestFleetOrderExecution(TestCase):
         # Position fleet at target star and clear its cargo
         fleet.x = target_star.x
         fleet.y = target_star.y
+        fleet.cargo_capacity = 1000
         fleet.ironium_inventory = 0
         fleet.boranium_inventory = 0
         fleet.germanium_inventory = 0
@@ -3877,6 +3879,7 @@ class TestFleetOrderExecution(TestCase):
         # Position fleet at target star and clear its cargo
         fleet.x = target_star.x
         fleet.y = target_star.y
+        fleet.cargo_capacity = 1000
         fleet.ironium_inventory = 0
         fleet.boranium_inventory = 0
         fleet.germanium_inventory = 0

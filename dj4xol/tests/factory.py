@@ -1,7 +1,8 @@
 from ..factory import GameFactory
 from ..starnamer import StarNamer
 from django.test import TestCase
-from ..models import Game, Account, ServerRaceType, ServerRace
+from ..models import Game, Account, ServerRaceType, ServerRace, ResearchCategory, Technology
+from ..research import get_player_tech_effects
 from django.contrib.auth.models import User
 
 
@@ -199,6 +200,71 @@ class testGameFactory(TestCase):
             player.research_progress.values_list('current_level', flat=True)
         )
         self.assertEqual(levels, {2.0})
+
+    def test_starting_fleets_follow_player_starting_tech_effects(self):
+        category, _ = ResearchCategory.objects.get_or_create(
+            code='TEST_HULL',
+            defaults={'name': 'Test Hull', 'description': 'Test hull tech'}
+        )
+        Technology.objects.create(
+            category=category,
+            level=4,
+            name='Test L4 Hull',
+            tech_type='HULL',
+            params_json='{"max_cargo_capacity": 777, "max_fuel": 333, "hull_thumbnail_class": "capital"}',
+            enabled=True,
+            display_order=9999,
+        )
+        Technology.objects.create(
+            category=category,
+            level=4,
+            name='Test L4 Warp',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 9, "fuel_efficiency": 0.8, "overmax_fuel_penalty": 1.3}',
+            enabled=True,
+            display_order=9999,
+        )
+        Technology.objects.create(
+            category=category,
+            level=4,
+            name='Test L4 Offense',
+            tech_type='ENERGY_WEAPON',
+            params_json='{"offense_level": 0.7}',
+            enabled=True,
+            display_order=9999,
+        )
+        Technology.objects.create(
+            category=category,
+            level=4,
+            name='Test L4 Defense',
+            tech_type='SHIELD',
+            params_json='{"defense_level": 0.6}',
+            enabled=True,
+            display_order=9999,
+        )
+
+        self.races[0].starting_tech_level = 4
+        self.races[0].starting_fleets = 1
+        self.races[0].save(update_fields=['starting_tech_level', 'starting_fleets'])
+
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(5)
+        gf.save()
+        player = gf.join_player(self.accounts[0], self.races[0])
+        fleet = player.fleets.first()
+        effects = get_player_tech_effects(player)
+
+        self.assertEqual(fleet.cargo_capacity, effects['max_cargo_capacity'])
+        self.assertEqual(fleet.max_fuel, effects['max_fuel'])
+        self.assertEqual(fleet.fuel, effects['max_fuel'])
+        self.assertEqual(fleet.max_safe_warp, effects['max_warp_speed'])
+        self.assertAlmostEqual(fleet.fuel_efficiency, effects['fuel_efficiency'], places=4)
+        self.assertAlmostEqual(fleet.overmax_fuel_penalty, effects['overmax_fuel_penalty'], places=4)
+        self.assertAlmostEqual(fleet.offense_level, effects['offense_level'], places=4)
+        self.assertAlmostEqual(fleet.defense_level, effects['defense_level'], places=4)
+        self.assertIn('/capital/', fleet.thumbnail_path)
 
 
 class testStarNamer(TestCase):

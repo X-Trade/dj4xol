@@ -246,7 +246,8 @@
         {% endif %}
     </div>
     {% endif %}
-    {% if enable_debug_actions and detail.unexplored and player.account.django_user.is_staff and detail.selected_id and (detail.is_star or detail.is_fleet) %}
+    {% if enable_debug_actions and detail.unexplored and player.account.django_user.is_staff and detail.selected_id %}
+    {% if detail.is_star or detail.is_fleet %}
     <div class="debug-actions panel-footer">
         <form method="post" action="{% url 'dj4xol:admin_generate_report' game.short_id detail.selected_id %}" style="display:inline">
             {% csrf_token %}
@@ -256,6 +257,7 @@
             <button type="submit">Debug: Generate Report</button>
         </form>
     </div>
+    {% endif %}
     {% endif %}
 </div>
 </div>
