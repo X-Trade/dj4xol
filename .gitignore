@@ -122,3 +122,7 @@ venv
 .DS_Store
 */.DS_Store
 local_scripts/*
+dj4xol/static/dj4xol/home/images/gallery/*
+!dj4xol/static/dj4xol/home/images/gallery/.gitkeep
+!dj4xol/static/dj4xol/home/images/gallery/.gitignore
+!dj4xol/static/dj4xol/home/images/gallery/README.md
