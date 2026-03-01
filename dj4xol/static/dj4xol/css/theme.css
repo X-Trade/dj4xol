@@ -59,6 +59,11 @@ a:hover {
     text-decoration: underline;
 }
 
+a.admin-only-link {
+    color: var(--status-negative) !important;
+    font-weight: bold;
+}
+
 /* ============================================
    Title Bar
    ============================================ */

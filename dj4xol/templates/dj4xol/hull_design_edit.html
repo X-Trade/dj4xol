@@ -1,0 +1,611 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>{% if hull.pk %}Edit Hull{% else %}Create Hull{% endif %}</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        {% if selected_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if selected_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/css/hull_editor.css' %}">
+    </head>
+    <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} hull-editor-page">
+        <div class="title-bar">
+            <span class="title">{% if hull.pk %}Edit Hull{% else %}Create Hull{% endif %}</span>
+            <span class="tagline">Staff Prototype</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='hull_designs' %}
+        </div>
+        <form method="post" id="hull-editor-form" autocomplete="off">
+            {% csrf_token %}
+            <div class="autofill-decoy" aria-hidden="true">
+                <input type="text" name="contact_name" autocomplete="name" tabindex="-1">
+                <input type="tel" name="contact_phone" autocomplete="tel" tabindex="-1">
+            </div>
+            <input type="hidden" name="slots_json" id="slots-json" value="{{ initial_slots_json|escape }}">
+            <div class="columns two-column hull-editor-columns">
+                <div class="column column-left">
+                    <div class="panel no-transition open" data-panel="hull-layout">
+                        <h2><span>Hull Layout</span><span class="panel-toggle"></span></h2>
+                        <div class="panel-content panel-stack">
+                            <section class="panel-scroll-frame">
+                                <div class="panel-scrollable-text">
+                                    <div class="hull-editor-canvas-wrap">
+                                        <div id="hull-editor-canvas" class="hull-editor-canvas"></div>
+                                        <div class="hull-slot-count" id="slot-count"></div>
+                                        <div class="hull-meta-note">
+                                            Click any square or square join to place a 2x2 slot.
+                                            Slots cannot overlap.
+                                        </div>
+                                        <div class="hull-meta-note">
+                                            Cargo hold area is shown as a centered rectangle.
+                                        </div>
+                                        <div class="hull-meta-note">
+                                            Set cargo hold width and height to 0 to disable it.
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+                            <div class="panel-footer">
+                                <button type="button" class="nav-button" id="clear-hull-grid">Clear Grid</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="column column-right">
+                    <div class="panel no-transition open" data-panel="hull-specs">
+                        <h2><span>Hull Specs</span><span class="panel-toggle"></span></h2>
+                        <div class="panel-content panel-stack">
+                            <section class="panel-scroll-frame">
+                                <div class="panel-scrollable-text">
+                                    {% if errors %}
+                                    <div class="hull-errors">
+                                        {% for err in errors %}
+                                        <div>{{ err }}</div>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                    <div class="hull-form-fields">
+                                        <div class="hull-name-row">
+                                            <label>
+                                                Name
+                                                <input type="text" name="name" value="{{ hull.name|default:'' }}" maxlength="64" required>
+                                            </label>
+                                            <div class="hull-thumb-preview-wrap">
+                                                <img
+                                                    id="hull-thumb-preview"
+                                                    class="hull-thumb-preview thumb-pop-target"
+                                                    src=""
+                                                    alt="Hull thumbnail preview"
+                                                >
+                                            </div>
+                                        </div>
+                                        <label>
+                                            Thumbnail Class
+                                            <select name="thumbnail_class">
+                                                {% for cls in thumbnail_class_choices %}
+                                                <option value="{{ cls }}"{% if hull.thumbnail_class|default:'scout' == cls %} selected{% endif %}>{{ cls|title }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </label>
+                                        <div class="hull-form-row">
+                                            <label>
+                                                Offense Offset
+                                                <input type="number" name="offense_offset" step="1" value="{{ offense_offset_display|floatformat:'-1' }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                            </label>
+                                            <label>
+                                                Defense Offset
+                                                <input type="number" name="defense_offset" step="1" value="{{ defense_offset_display|floatformat:'-1' }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                            </label>
+                                        </div>
+                                        <div class="hull-form-row">
+                                            <label class="hull-cost-input">
+                                                Ironium Cost
+                                                <input type="number" name="ironium_cost" min="0" value="{{ hull.ironium_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <span class="hull-input-suffix">kt</span>
+                                            </label>
+                                            <label class="hull-cost-input">
+                                                Boranium Cost
+                                                <input type="number" name="boranium_cost" min="0" value="{{ hull.boranium_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <span class="hull-input-suffix">kt</span>
+                                            </label>
+                                        </div>
+                                        <div class="hull-form-row">
+                                            <label class="hull-cost-input">
+                                                Germanium Cost
+                                                <input type="number" name="germanium_cost" min="0" value="{{ hull.germanium_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <span class="hull-input-suffix">kt</span>
+                                            </label>
+                                            <label class="hull-cost-input">
+                                                Cargo Capacity
+                                                <input type="number" name="cargo_capacity" min="0" value="{{ hull.cargo_capacity|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly');">
+                                                <span class="hull-input-suffix">kt</span>
+                                            </label>
+                                        </div>
+                                        <div class="hull-form-row">
+                                            <label class="hull-cost-input">
+                                                Fuel Capacity
+                                                <input type="number" name="fuel_capacity" min="0" value="{{ hull.fuel_capacity|default:100 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <span class="hull-input-suffix">mg</span>
+                                            </label>
+                                            <label>
+                                                Cargo Hold Width
+                                                <input type="number" min="0" max="24" name="cargo_hold_grid_width" id="cargo-hold-grid-width" value="{{ hull.cargo_hold_grid_width|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly');">
+                                            </label>
+                                        </div>
+                                        <div class="hull-form-row">
+                                            <label>
+                                                Cargo Hold Height
+                                                <input type="number" min="0" max="24" name="cargo_hold_grid_height" id="cargo-hold-grid-height" value="{{ hull.cargo_hold_grid_height|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly');">
+                                            </label>
+                                            <label>
+                                                Enabled
+                                                <input type="checkbox" name="enabled" {% if hull.enabled or not hull.pk %}checked{% endif %}>
+                                            </label>
+                                        </div>
+                                        <input type="hidden" name="grid_columns" id="grid-columns" value="8">
+                                        <input type="hidden" name="grid_rows" id="grid-rows" value="8">
+                                    </div>
+                                </div>
+                            </section>
+                            <div class="form-nav">
+                                <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:hull_design_list' %}'">&laquo; Back</button>
+                                <button type="submit" class="nav-button primary">Save Hull</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+        <script>
+        (function() {
+            var hamburger = document.getElementById('hamburger-btn');
+            var dropdown = document.getElementById('nav-dropdown');
+            if (hamburger && dropdown) {
+                hamburger.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    dropdown.classList.toggle('open');
+                    hamburger.classList.toggle('open');
+                });
+                document.addEventListener('click', function(e) {
+                    if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                        dropdown.classList.remove('open');
+                        hamburger.classList.remove('open');
+                    }
+                });
+            }
+            var panels = document.querySelectorAll('.panel');
+            panels.forEach(function(panel) {
+                var header = panel.querySelector('h2');
+                if (!header) return;
+                header.addEventListener('click', function() {
+                    panel.classList.remove('no-transition');
+                    panel.classList.toggle('open');
+                });
+            });
+
+            var TECH_TYPES = {{ tech_type_choices_json|safe }};
+            var SLOT_ITEM_COUNTS = {{ item_count_choices_json|safe }};
+            var SLOT_MAX_LEVELS = {{ max_tech_level_choices_json|safe }};
+            var THUMBNAIL_PATHS_BY_CLASS = {{ thumbnail_paths_by_class_json|safe }};
+            var STATIC_BASE = "{% static '' %}";
+            var CELL_PX = 64;
+            var SUBCELL_PX = 32;
+            var slotsInput = document.getElementById('slots-json');
+            var canvas = document.getElementById('hull-editor-canvas');
+            var slotCount = document.getElementById('slot-count');
+            var clearGridButton = document.getElementById('clear-hull-grid');
+            var form = document.getElementById('hull-editor-form');
+            var gridColsInput = document.getElementById('grid-columns');
+            var gridRowsInput = document.getElementById('grid-rows');
+            var cargoHoldWidthInput = document.getElementById('cargo-hold-grid-width');
+            var cargoHoldHeightInput = document.getElementById('cargo-hold-grid-height');
+            var thumbnailClassSelect = form.querySelector('select[name="thumbnail_class"]');
+            var thumbnailPreview = document.getElementById('hull-thumb-preview');
+            var thumbnailCycleTimer = null;
+            var thumbnailCycleIndex = 0;
+
+            function clampInt(v, min, max) {
+                v = parseInt(v, 10);
+                if (isNaN(v)) v = min;
+                if (v < min) v = min;
+                if (v > max) v = max;
+                return v;
+            }
+
+            function normalizeStaticPath(path) {
+                if (!path) return '';
+                if (path.indexOf('/static/') === 0) return path;
+                return STATIC_BASE + String(path).replace(/^\/+/, '');
+            }
+
+            function getPreviewPaths() {
+                if (!thumbnailClassSelect) return [];
+                var selectedClass = String(thumbnailClassSelect.value || '').toLowerCase();
+                var classPaths = THUMBNAIL_PATHS_BY_CLASS[selectedClass] || [];
+                return classPaths.map(normalizeStaticPath);
+            }
+
+            function stopThumbnailCycle() {
+                if (thumbnailCycleTimer) {
+                    clearInterval(thumbnailCycleTimer);
+                    thumbnailCycleTimer = null;
+                }
+            }
+
+            function setThumbnailPreview(src, icons, index) {
+                if (!thumbnailPreview) return;
+                thumbnailPreview.src = src || '';
+                thumbnailPreview.setAttribute('data-icons', (icons || []).join('|'));
+                thumbnailPreview.setAttribute('data-index', String(index || 0));
+            }
+
+            function refreshThumbnailPreview(resetIndex) {
+                if (!thumbnailPreview) return;
+                var icons = getPreviewPaths();
+                stopThumbnailCycle();
+                if (!icons.length) {
+                    setThumbnailPreview('', [], 0);
+                    return;
+                }
+                if (resetIndex) {
+                    thumbnailCycleIndex = 0;
+                } else if (thumbnailCycleIndex >= icons.length) {
+                    thumbnailCycleIndex = 0;
+                }
+                setThumbnailPreview(icons[thumbnailCycleIndex], icons, thumbnailCycleIndex);
+                if (icons.length > 1) {
+                    thumbnailCycleTimer = setInterval(function() {
+                        thumbnailCycleIndex = (thumbnailCycleIndex + 1) % icons.length;
+                        setThumbnailPreview(icons[thumbnailCycleIndex], icons, thumbnailCycleIndex);
+                    }, 1400);
+                }
+            }
+
+            function getGridCols() {
+                return clampInt(gridColsInput.value || 8, 1, 24);
+            }
+
+            function getGridRows() {
+                return clampInt(gridRowsInput.value || 8, 1, 24);
+            }
+
+            function getSubCols() { return getGridCols() * 2; }
+            function getSubRows() { return getGridRows() * 2; }
+
+            function getCargoHoldWidth() {
+                return clampInt(cargoHoldWidthInput.value || 0, 0, getGridCols());
+            }
+
+            function getCargoHoldHeight() {
+                return clampInt(cargoHoldHeightInput.value || 0, 0, getGridRows());
+            }
+
+            function normalizeCargoHoldInputs() {
+                var w = getCargoHoldWidth();
+                var h = getCargoHoldHeight();
+                cargoHoldWidthInput.value = String(w);
+                cargoHoldHeightInput.value = String(h);
+                return { width: w, height: h };
+            }
+
+            function syncCargoHoldDimensions(changedField) {
+                var w = getCargoHoldWidth();
+                var h = getCargoHoldHeight();
+                if (changedField === 'width') {
+                    if (w === 0 && h !== 0) {
+                        h = 0;
+                    } else if (w > 0 && h === 0) {
+                        h = 1;
+                    }
+                } else if (changedField === 'height') {
+                    if (h === 0 && w !== 0) {
+                        w = 0;
+                    } else if (h > 0 && w === 0) {
+                        w = 1;
+                    }
+                }
+                cargoHoldWidthInput.value = String(w);
+                cargoHoldHeightInput.value = String(h);
+            }
+
+            function loadSlots() {
+                var allowedTypes = {};
+                TECH_TYPES.forEach(function(t) {
+                    allowedTypes[String(t.value)] = true;
+                });
+                try {
+                    var parsed = JSON.parse(slotsInput.value || '[]');
+                    if (Array.isArray(parsed)) {
+                        var defaultType = TECH_TYPES[0] ? TECH_TYPES[0].value : 'OTHER';
+                        return parsed.map(function(slot) {
+                            var techType = String(slot.tech_type || '').toUpperCase();
+                            if (!allowedTypes[techType]) {
+                                techType = defaultType;
+                            }
+                            return {
+                                x: slot.x,
+                                y: slot.y,
+                                tech_type: techType,
+                                item_count: slot.item_count,
+                                max_tech_level: slot.max_tech_level
+                            };
+                        });
+                    }
+                } catch (err) {}
+                return [];
+            }
+
+            var slots = loadSlots();
+            var ghost = null;
+            var hovered = null;
+
+            function createSelect(opts, value) {
+                var sel = document.createElement('select');
+                opts.forEach(function(opt) {
+                    var el = document.createElement('option');
+                    el.value = String(opt.value);
+                    el.textContent = String(opt.label);
+                    if (String(value) === String(opt.value)) {
+                        el.selected = true;
+                    }
+                    sel.appendChild(el);
+                });
+                return sel;
+            }
+
+            function createFieldRow(labelText, inputEl) {
+                var row = document.createElement('label');
+                row.className = 'hull-slot-field-row';
+                var label = document.createElement('span');
+                label.className = 'hull-slot-field-label';
+                label.textContent = labelText;
+                row.appendChild(label);
+                row.appendChild(inputEl);
+                return row;
+            }
+
+            function toTechLabel(value) {
+                var match = TECH_TYPES.find(function(t) { return t.value === value; });
+                return match ? match.label : value;
+            }
+
+            function updateSlotsJson() {
+                slotsInput.value = JSON.stringify(slots.map(function(slot) {
+                    return {
+                        x: slot.x,
+                        y: slot.y,
+                        tech_type: slot.tech_type,
+                        item_count: slot.item_count,
+                        max_tech_level: slot.max_tech_level
+                    };
+                }));
+                slotCount.textContent = slots.length + ' slot' + (slots.length === 1 ? '' : 's');
+            }
+
+            function slotFootprint(slot) {
+                return [
+                    slot.x + ',' + slot.y,
+                    (slot.x + 1) + ',' + slot.y,
+                    slot.x + ',' + (slot.y + 1),
+                    (slot.x + 1) + ',' + (slot.y + 1)
+                ];
+            }
+
+            function canPlace(newSlot, ignoreIndex) {
+                var maxX = getSubCols() - 2;
+                var maxY = getSubRows() - 2;
+                if (newSlot.x < 0 || newSlot.y < 0 || newSlot.x > maxX || newSlot.y > maxY) {
+                    return false;
+                }
+                var used = {};
+                for (var i = 0; i < slots.length; i += 1) {
+                    if (ignoreIndex !== undefined && i === ignoreIndex) continue;
+                    slotFootprint(slots[i]).forEach(function(key) { used[key] = true; });
+                }
+                var fp = slotFootprint(newSlot);
+                for (var k = 0; k < fp.length; k += 1) {
+                    if (used[fp[k]]) return false;
+                }
+                return true;
+            }
+
+            function slotToPixel(v) {
+                return v * SUBCELL_PX;
+            }
+
+            function renderCanvasSize() {
+                var w = getGridCols() * CELL_PX;
+                var h = getGridRows() * CELL_PX;
+                canvas.style.width = w + 'px';
+                canvas.style.height = h + 'px';
+            }
+
+            function renderCargoHold() {
+                var dims = normalizeCargoHoldInputs();
+                var hold = canvas.querySelector('.hull-cargo-hold');
+                if (!hold) {
+                    hold = document.createElement('div');
+                    hold.className = 'hull-cargo-hold';
+                    var label = document.createElement('span');
+                    label.className = 'hull-cargo-hold-label';
+                    hold.appendChild(label);
+                    canvas.appendChild(hold);
+                }
+                if (!dims.width || !dims.height) {
+                    hold.style.display = 'none';
+                    return;
+                }
+                hold.style.display = 'block';
+                // Pixel-space centering keeps odd hold sizes on half-grid steps.
+                var xPx = ((getGridCols() - dims.width) * CELL_PX) / 2;
+                var yPx = ((getGridRows() - dims.height) * CELL_PX) / 2;
+                hold.style.left = xPx + 'px';
+                hold.style.top = yPx + 'px';
+                hold.style.width = (dims.width * CELL_PX) + 'px';
+                hold.style.height = (dims.height * CELL_PX) + 'px';
+                hold.querySelector('.hull-cargo-hold-label').textContent = 'Cargo Hold';
+            }
+
+            function renderSlots() {
+                Array.prototype.slice.call(canvas.querySelectorAll('.hull-slot')).forEach(function(el) {
+                    el.remove();
+                });
+                for (var i = 0; i < slots.length; i += 1) {
+                    (function(index) {
+                        var slot = slots[index];
+                        var el = document.createElement('div');
+                        var techClass = String(slot.tech_type || 'OTHER').toLowerCase();
+                        el.className = 'hull-slot slot-tech-' + techClass;
+                        el.style.left = slotToPixel(slot.x) + 'px';
+                        el.style.top = slotToPixel(slot.y) + 'px';
+                        el.dataset.tech = toTechLabel(slot.tech_type);
+
+                        var remove = document.createElement('button');
+                        remove.type = 'button';
+                        remove.className = 'hull-slot-remove';
+                        remove.textContent = 'x';
+                        remove.addEventListener('click', function(ev) {
+                            ev.stopPropagation();
+                            slots.splice(index, 1);
+                            render();
+                        });
+                        el.appendChild(remove);
+
+                        var fields = document.createElement('div');
+                        fields.className = 'hull-slot-fields';
+
+                        var typeSel = createSelect(TECH_TYPES.map(function(t) {
+                            return { value: t.value, label: t.label };
+                        }), slot.tech_type);
+                        typeSel.title = 'Technology Type';
+                        typeSel.addEventListener('change', function() {
+                            slot.tech_type = typeSel.value;
+                            render();
+                        });
+                        fields.appendChild(createFieldRow('Type', typeSel));
+
+                        var countSel = createSelect(SLOT_ITEM_COUNTS.map(function(v) {
+                            return { value: v, label: 'x' + v };
+                        }), slot.item_count);
+                        countSel.title = 'Number of Items';
+                        countSel.addEventListener('change', function() {
+                            slot.item_count = parseInt(countSel.value, 10) || SLOT_ITEM_COUNTS[0];
+                            render();
+                        });
+                        fields.appendChild(createFieldRow('Items', countSel));
+
+                        var levelSel = createSelect(SLOT_MAX_LEVELS.map(function(v) {
+                            return { value: v, label: 'L' + v };
+                        }), slot.max_tech_level);
+                        levelSel.title = 'Max Tech Level';
+                        levelSel.addEventListener('change', function() {
+                            slot.max_tech_level = parseInt(levelSel.value, 10) || 0;
+                            render();
+                        });
+                        fields.appendChild(createFieldRow('Max', levelSel));
+
+                        el.appendChild(fields);
+                        canvas.appendChild(el);
+                    })(i);
+                }
+            }
+
+            function ensureGhost() {
+                if (!ghost) {
+                    ghost = document.createElement('div');
+                    ghost.className = 'hull-slot-ghost';
+                    canvas.appendChild(ghost);
+                }
+                return ghost;
+            }
+
+            function updateGhost(ev) {
+                var rect = canvas.getBoundingClientRect();
+                var x = ev.clientX - rect.left;
+                var y = ev.clientY - rect.top;
+                var sx = Math.floor(x / SUBCELL_PX);
+                var sy = Math.floor(y / SUBCELL_PX);
+                sx = Math.max(0, Math.min(sx, getSubCols() - 2));
+                sy = Math.max(0, Math.min(sy, getSubRows() - 2));
+                hovered = { x: sx, y: sy };
+                var g = ensureGhost();
+                g.style.left = slotToPixel(sx) + 'px';
+                g.style.top = slotToPixel(sy) + 'px';
+                g.style.display = 'block';
+                var can = canPlace({ x: sx, y: sy }, undefined);
+                g.style.borderColor = can ? '#66ccff' : '#cc3333';
+                g.style.background = can ? 'rgba(102, 204, 255, 0.18)' : 'rgba(204, 51, 51, 0.2)';
+            }
+
+            function hideGhost() {
+                if (ghost) ghost.style.display = 'none';
+                hovered = null;
+            }
+
+            canvas.addEventListener('mousemove', updateGhost);
+            canvas.addEventListener('mouseleave', hideGhost);
+            canvas.addEventListener('click', function() {
+                if (!hovered) return;
+                var newSlot = {
+                    x: hovered.x,
+                    y: hovered.y,
+                    tech_type: TECH_TYPES[0] ? TECH_TYPES[0].value : 'OTHER',
+                    item_count: SLOT_ITEM_COUNTS[0] || 1,
+                    max_tech_level: (SLOT_MAX_LEVELS.indexOf(5) !== -1 ? 5 : (SLOT_MAX_LEVELS[0] || 0))
+                };
+                if (!canPlace(newSlot, undefined)) return;
+                slots.push(newSlot);
+                render();
+            });
+            if (clearGridButton) {
+                clearGridButton.addEventListener('click', function() {
+                    if (!slots.length) return;
+                    if (!window.confirm('Remove all slots from this hull layout?')) return;
+                    slots = [];
+                    hideGhost();
+                    render();
+                });
+            }
+
+            function pruneOutOfBounds() {
+                var maxX = getSubCols() - 2;
+                var maxY = getSubRows() - 2;
+                slots = slots.filter(function(slot) {
+                    return slot.x >= 0 && slot.y >= 0 && slot.x <= maxX && slot.y <= maxY;
+                });
+            }
+
+            function render() {
+                renderCanvasSize();
+                renderCargoHold();
+                pruneOutOfBounds();
+                renderSlots();
+                updateSlotsJson();
+            }
+
+            gridColsInput.addEventListener('change', render);
+            gridRowsInput.addEventListener('change', render);
+            cargoHoldWidthInput.addEventListener('change', function() {
+                syncCargoHoldDimensions('width');
+                render();
+            });
+            cargoHoldHeightInput.addEventListener('change', function() {
+                syncCargoHoldDimensions('height');
+                render();
+            });
+            if (thumbnailClassSelect) {
+                thumbnailClassSelect.addEventListener('change', function() {
+                    refreshThumbnailPreview(true);
+                });
+            }
+            form.addEventListener('submit', updateSlotsJson);
+            render();
+            refreshThumbnailPreview(true);
+        })();
+        </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/thumb_pop.js' %}"></script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+    </body>
+</html>

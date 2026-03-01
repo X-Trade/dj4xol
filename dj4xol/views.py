@@ -1,9 +1,10 @@
 from django.db import models
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import resolve
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required
 from django.utils import timezone
 from datetime import timedelta
 import os
@@ -13,7 +14,7 @@ from dj4xol.objectdetails import DetailBuilder
 
 from .models import (
     Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
-    FleetOrders, Star, ResearchCategory, Technology,
+    FleetOrders, Star, ResearchCategory, Technology, HullDesign, HullDesignSlot,
 )
 from .decorators import registration_required, player_only_view
 from .turn import GameTurn
@@ -27,6 +28,7 @@ from .technology_thumbnails import (
     get_technology_thumbnail_path,
     get_technology_thumbnail_paths,
 )
+from .ship_thumbnail_catalog import SHIP_THUMBNAILS_BY_CLASS
 from .starmap import StarMap
 from .factory import GameFactory
 from .forms import ServerRaceForm, NewGameForm, RegistrationForm, JoinGameForm
@@ -861,6 +863,221 @@ def create_game(request):
     return render(request, 'dj4xol/create_game.html', {
         'form': form,
         'selected_theme': selected_theme,
+    })
+
+
+def _parse_hull_slot_payload(raw_slots, hull):
+    """Parse + validate slot payload JSON for hull layout editor."""
+    errors = []
+    try:
+        payload = json.loads(raw_slots or '[]')
+    except (TypeError, ValueError):
+        return [], ['Invalid slot JSON payload.']
+
+    if not isinstance(payload, list):
+        return [], ['Slot payload must be a list.']
+
+    valid_types = {code for code, _label in _hull_slot_tech_type_choices()}
+    valid_item_counts = {1, 2, 4, 8, 16}
+    valid_max_levels = set(_hull_slot_level_choices())
+    clean_slots = []
+    occupied = set()
+    max_x = (int(hull.grid_columns) * 2) - 2
+    max_y = (int(hull.grid_rows) * 2) - 2
+
+    for idx, slot in enumerate(payload):
+        if not isinstance(slot, dict):
+            errors.append('Slot #%s is invalid.' % (idx + 1))
+            continue
+
+        try:
+            x = int(slot.get('x'))
+            y = int(slot.get('y'))
+            item_count = int(slot.get('item_count'))
+            max_tech_level = int(slot.get('max_tech_level'))
+        except (TypeError, ValueError):
+            errors.append('Slot #%s has non-numeric values.' % (idx + 1))
+            continue
+
+        tech_type = str(slot.get('tech_type') or '').strip().upper()
+        if tech_type not in valid_types:
+            errors.append('Slot #%s has invalid technology type.' % (idx + 1))
+            continue
+        if item_count not in valid_item_counts:
+            errors.append('Slot #%s item count must be one of 1, 2, 4, 8, 16.' % (idx + 1))
+            continue
+        if max_tech_level not in valid_max_levels:
+            errors.append('Slot #%s max tech level is invalid.' % (idx + 1))
+            continue
+        if x < 0 or y < 0 or x > max_x or y > max_y:
+            errors.append('Slot #%s is outside the blueprint bounds.' % (idx + 1))
+            continue
+
+        # Slot occupies 2x2 cells in subgrid coordinates.
+        footprint = {(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)}
+        if occupied.intersection(footprint):
+            errors.append('Slot #%s overlaps another slot.' % (idx + 1))
+            continue
+        occupied.update(footprint)
+
+        clean_slots.append({
+            'x': x,
+            'y': y,
+            'tech_type': tech_type,
+            'item_count': item_count,
+            'max_tech_level': max_tech_level,
+            'display_order': idx,
+        })
+
+    return clean_slots, errors
+
+
+def _hull_slot_level_choices():
+    """Valid slot max levels sourced from configured default level costs."""
+    max_level = get_global_research_max_level()
+    costs = get_starting_tech_balance_costs(max_level=max_level)
+    levels = sorted({int(level) for level in costs.keys() if int(level) >= 0})
+    return levels or [0]
+
+
+def _hull_slot_tech_type_choices():
+    disallowed = {'HULL', 'INFRASTRUCTURE'}
+    return [
+        (code, label)
+        for code, label in HullDesignSlot.SLOT_TECH_TYPE_CHOICES
+        if code not in disallowed
+    ]
+
+
+def _hull_thumbnail_class_choices(current_value=None):
+    classes = sorted([
+        key for key in SHIP_THUMBNAILS_BY_CLASS.keys()
+        if key and not str(key).startswith('_')
+    ])
+    if current_value:
+        current_value = str(current_value).strip().lower()
+        if current_value and current_value not in classes:
+            classes.insert(0, current_value)
+    return classes
+
+
+def _hull_thumbnail_paths_by_class(classes):
+    result = {}
+    for cls in classes:
+        result[str(cls)] = list(SHIP_THUMBNAILS_BY_CLASS.get(str(cls), []))
+    return result
+
+
+def _hull_modifier_to_display(value):
+    """Convert backend log-coefficient to editor/display units (+10 == 1.0)."""
+    try:
+        return float(value) * 10.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _hull_modifier_from_display(value):
+    """Convert editor/display units to backend log-coefficient."""
+    return float(value) / 10.0
+
+
+@staff_member_required
+def hull_design_list(request):
+    """Staff-only list of hull designs."""
+    account = getattr(request.user, 'dj4xol_account', None)
+    return render(request, 'dj4xol/hull_design_list.html', {
+        'user_theme': account.theme if account else 'classic',
+        'hulls': HullDesign.objects.all().prefetch_related('slots'),
+    })
+
+
+@staff_member_required
+def hull_design_edit(request, hull_id=None):
+    """Staff-only hull layout editor prototype."""
+    account = getattr(request.user, 'dj4xol_account', None)
+    selected_theme = account.theme if account else 'classic'
+    hull = get_object_or_404(HullDesign, pk=hull_id) if hull_id is not None else HullDesign()
+    errors = []
+    thumbnail_class_choices = _hull_thumbnail_class_choices(hull.thumbnail_class)
+    offense_offset_display = _hull_modifier_to_display(hull.offense_offset)
+    defense_offset_display = _hull_modifier_to_display(hull.defense_offset)
+
+    if request.method == 'POST':
+        hull.name = (request.POST.get('name') or '').strip()
+        hull.thumbnail_class = (request.POST.get('thumbnail_class') or '').strip().lower()
+        hull.enabled = bool(request.POST.get('enabled'))
+        try:
+            offense_offset_display = float(request.POST.get('offense_offset') or 0)
+            defense_offset_display = float(request.POST.get('defense_offset') or 0)
+            hull.offense_offset = _hull_modifier_from_display(offense_offset_display)
+            hull.defense_offset = _hull_modifier_from_display(defense_offset_display)
+            hull.ironium_cost = int(request.POST.get('ironium_cost') or 0)
+            hull.boranium_cost = int(request.POST.get('boranium_cost') or 0)
+            hull.germanium_cost = int(request.POST.get('germanium_cost') or 0)
+            hull.cargo_capacity = int(request.POST.get('cargo_capacity') or 0)
+            hull.fuel_capacity = int(request.POST.get('fuel_capacity') or 100)
+            hull.cargo_hold_grid_width = int(request.POST.get('cargo_hold_grid_width') or 0)
+            hull.cargo_hold_grid_height = int(request.POST.get('cargo_hold_grid_height') or 0)
+            # Hull editor currently uses a fixed 8x8 grid for all designs.
+            hull.grid_columns = 8
+            hull.grid_rows = 8
+        except (TypeError, ValueError):
+            errors.append('Numeric hull fields contain invalid values.')
+
+        if not errors:
+            try:
+                hull.full_clean()
+            except Exception as exc:
+                if hasattr(exc, 'messages'):
+                    errors.extend(exc.messages)
+                else:
+                    errors.append(str(exc))
+
+        if hull.thumbnail_class not in set(thumbnail_class_choices):
+            errors.append('Thumbnail class is invalid.')
+
+        slot_payload = request.POST.get('slots_json', '[]')
+        clean_slots, slot_errors = _parse_hull_slot_payload(slot_payload, hull)
+        errors.extend(slot_errors)
+
+        if not errors:
+            hull.save()
+            HullDesignSlot.objects.filter(hull=hull).delete()
+            for slot in clean_slots:
+                HullDesignSlot.objects.create(hull=hull, **slot)
+            return redirect('dj4xol:hull_design_edit', hull_id=hull.id)
+
+        initial_slots = slot_payload
+    else:
+        slots = [
+            {
+                'x': slot.x,
+                'y': slot.y,
+                'tech_type': slot.tech_type,
+                'item_count': slot.item_count,
+                'max_tech_level': slot.max_tech_level,
+            }
+            for slot in hull.slots.all().order_by('display_order', 'id')
+        ] if hull.pk else []
+        initial_slots = json.dumps(slots)
+
+    return render(request, 'dj4xol/hull_design_edit.html', {
+        'selected_theme': selected_theme,
+        'hull': hull,
+        'errors': errors,
+        'initial_slots_json': initial_slots,
+        'tech_type_choices_json': json.dumps([
+            {'value': code, 'label': label}
+            for code, label in _hull_slot_tech_type_choices()
+        ]),
+        'item_count_choices_json': json.dumps([1, 2, 4, 8, 16]),
+        'max_tech_level_choices_json': json.dumps(_hull_slot_level_choices()),
+        'thumbnail_class_choices': thumbnail_class_choices,
+        'thumbnail_paths_by_class_json': json.dumps(
+            _hull_thumbnail_paths_by_class(thumbnail_class_choices)
+        ),
+        'offense_offset_display': offense_offset_display,
+        'defense_offset_display': defense_offset_display,
     })
 
 

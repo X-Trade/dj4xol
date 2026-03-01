@@ -102,6 +102,9 @@
                         <ul class="action-list">
                             <li><a href="{% url 'dj4xol:create_game' %}">Create New Game</a></li>
                             <li><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></li>
+                            {% if user.is_staff %}
+                            <li><a href="{% url 'dj4xol:hull_design_list' %}" class="admin-only-link">Hull Layout Editor</a></li>
+                            {% endif %}
                         </ul>
                         </section>
                     </div>

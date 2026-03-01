@@ -11,7 +11,7 @@ except ImportError:
 from .models import (
     Account, Player, Game, ServerSettings, ServerRaceType,
     DefaultResearchLevelRequirement, ResearchCategory, ResearchLevelRequirement,
-    Technology, PlayerResearch,
+    Technology, PlayerResearch, HullDesign, HullDesignSlot,
 )
 from .research import copy_default_requirements_to_category, ensure_default_level_requirements
 from .turn import GameTurn
@@ -163,6 +163,34 @@ class PlayerResearchAdmin(admin.ModelAdmin):
             field.queryset = field.queryset.select_related('account', 'game')
             field.label_from_instance = self._format_player_label
         return field
+
+
+class HullDesignSlotInline(admin.TabularInline):
+    model = HullDesignSlot
+    extra = 0
+    fields = ('display_order', 'x', 'y', 'tech_type', 'item_count', 'max_tech_level')
+    ordering = ('display_order', 'id')
+
+
+@admin.register(HullDesign)
+class HullDesignAdmin(admin.ModelAdmin):
+    list_display = (
+        'name', 'thumbnail_class', 'enabled', 'slot_count', 'layout_editor'
+    )
+    list_filter = ('enabled', 'thumbnail_class')
+    search_fields = ('name', 'thumbnail_class')
+    inlines = [HullDesignSlotInline]
+
+    def slot_count(self, obj):
+        return obj.slots.count()
+    slot_count.short_description = 'Slots'
+
+    def layout_editor(self, obj):
+        return format_html(
+            '<a class="button" href="{}">Edit Layout</a>',
+            reverse('dj4xol:hull_design_edit', args=[obj.id])
+        )
+    layout_editor.short_description = 'Layout Editor'
 
 
 @admin.register(DefaultResearchLevelRequirement)
