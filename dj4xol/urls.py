@@ -38,6 +38,7 @@ urlpatterns = [
     url(r'^(?P<game_short_id>[0-9a-z]{8})/generate/$', views.generate_turn, name='generate_turn'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/debug/colonize/(?P<star_short_id>[0-9a-z]{12})/$', views.debug_colonize, name='debug_colonize'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/debug/create-fleet/$', views.debug_create_fleet, name='debug_create_fleet'),
+    url(r'^(?P<game_short_id>[0-9a-z]{8})/debug/generate-report/(?P<object_short_id>[0-9a-z]{12})/$', views.admin_generate_report, name='admin_generate_report'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/production/add/$', views.add_production_order, name='add_production'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/production/remove/(?P<order_short_id>[0-9a-z]{12})/$', views.remove_production_order, name='remove_production'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/production/repeat/(?P<order_short_id>[0-9a-z]{12})/$', views.toggle_production_order_repeat, name='toggle_production_order_repeat'),

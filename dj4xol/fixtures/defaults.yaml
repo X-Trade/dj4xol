@@ -57,6 +57,11 @@
     value: 'False'
 - model: dj4xol.ServerSettings
   fields:
+    key: 'enable_debug_actions'
+    description: 'Enable debug actions in game panels'
+    value: 'False'
+- model: dj4xol.ServerSettings
+  fields:
     key: 'gpt_api_key'
     description: 'GPT API key'
     value: ''

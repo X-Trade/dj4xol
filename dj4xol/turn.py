@@ -51,6 +51,7 @@ from .colony_rules import (
     COLONISTS_PER_JOB,
     COLONISTS_PER_SHIPYARD,
     calculate_available_buildpoints,
+    calculate_available_researchpoints,
     calculate_staffing_ratio,
     calculate_productivity_multiplier,
     calculate_consumed_buildpoints,
@@ -325,6 +326,9 @@ class GameTurn():
     def _build_report_data(self, player, obj, target_type):
         """Build the data dict to cache in a report."""
         if target_type == 'star':
+            jobs = ((obj.mines + obj.factories + obj.labs + obj.defenses) * COLONISTS_PER_JOB
+                    + obj.shipyards * COLONISTS_PER_SHIPYARD)
+            employment = calculate_employment_percent(obj)
             return {
                 'name': obj.name,
                 'x': obj.x,
@@ -342,6 +346,17 @@ class GameTurn():
                 'ironium_inventory': obj.ironium_inventory,
                 'boranium_inventory': obj.boranium_inventory,
                 'germanium_inventory': obj.germanium_inventory,
+                # Infrastructure snapshot (matches visible Detail panel values).
+                'mines': obj.mines,
+                'factories': obj.factories,
+                'factories_bp': calculate_available_buildpoints(obj),
+                'labs': obj.labs,
+                'labs_rp': calculate_available_researchpoints(obj),
+                'defenses': obj.defenses,
+                'defenses_tooltip': None,
+                'shipyards': obj.shipyards,
+                'jobs_count': jobs,
+                'jobs_employment': employment,
             }
         elif target_type == 'fleet':
             offense_mod = int(round(float(obj.offense_level) * 10.0))
@@ -362,6 +377,9 @@ class GameTurn():
                 'name': obj.name,
                 'x': obj.x,
                 'y': obj.y,
+                'ironium_inventory': obj.ironium_inventory,
+                'boranium_inventory': obj.boranium_inventory,
+                'germanium_inventory': obj.germanium_inventory,
                 'total_minerals': obj.total_minerals,
             }
         return {}

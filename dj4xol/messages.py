@@ -387,9 +387,9 @@ class FleetBuiltMessageFactory(MessageFactory):
     """Messages for fleet construction completion."""
     category = 'PRODUCTION'
     templates = [
-        "Construction of {fleet} completed at {star}.",
+        "Production of {fleet} completed at {star}.",
         "{fleet} has been commissioned at {star}.",
-        "The shipyards at {star} have finished constructing {fleet}.",
+        "The shipyards at {star} have finished producing {fleet}.",
     ]
 
     def __init__(self, game, player, star, fleet, message=None):
@@ -408,9 +408,9 @@ class ProductionSummaryMessageFactory(MessageFactory):
     """Single rollup message for construction completed at one star in a year."""
     category = 'PRODUCTION'
     templates = [
-        "Construction update from {star}: completed {items}.",
+        "Production update from {star}: completed {items}.",
         "Production report for {star}: {items} completed this year.",
-        "{star} construction report: {items} completed.",
+        "{star} production report: {items} completed.",
     ]
 
     LABELS = {
@@ -1262,7 +1262,7 @@ class FleetBuildBlockedNoShipyardMessageFactory(MessageFactory):
     category = 'PRODUCTION'
     priority = True
     templates = [
-        "Fleet construction at {star} blocked - no shipyard available.",
+        "Fleet production at {star} blocked - no shipyard available.",
         "Cannot build fleet at {star} - a shipyard is required.",
         "Fleet production at {star} halted. Build a shipyard first.",
     ]

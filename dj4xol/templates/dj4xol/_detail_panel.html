@@ -224,7 +224,7 @@
     {% endif %}
     {% endif %}{# end detail.unexplored else #}
     </section>
-    {% if not detail.unexplored and player.account.django_user.is_superuser %}
+    {% if enable_debug_actions and not detail.unexplored and player.account.django_user.is_superuser %}
     <div class="debug-actions panel-footer">
         {% if detail.is_star %}
         <form method="post" action="{% url 'dj4xol:debug_colonize' game.short_id detail.star_short_id %}" style="display:inline">
@@ -244,6 +244,17 @@
             <button type="submit">Debug: Create Fleet</button>
         </form>
         {% endif %}
+    </div>
+    {% endif %}
+    {% if enable_debug_actions and detail.unexplored and player.account.django_user.is_staff and detail.selected_id and (detail.is_star or detail.is_fleet) %}
+    <div class="debug-actions panel-footer">
+        <form method="post" action="{% url 'dj4xol:admin_generate_report' game.short_id detail.selected_id %}" style="display:inline">
+            {% csrf_token %}
+            {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
+            {% if selection.y %}<input type="hidden" name="y" value="{{ selection.y }}">{% endif %}
+            {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
+            <button type="submit">Debug: Generate Report</button>
+        </form>
     </div>
     {% endif %}
 </div>
