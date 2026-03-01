@@ -3,6 +3,7 @@ from django.db.utils import IntegrityError
 from django import forms
 from django.contrib.auth import models as auth_models
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.exceptions import ValidationError
 from itertools import chain
 from .starnamer import StarNamer
 from .habitability_rules import HabitabilityRules
@@ -749,6 +750,103 @@ class Technology(UUIDMixin):
 
     def __str__(self):
         return '%s L%s: %s' % (self.category.name, self.level, self.name)
+
+
+class HullDesign(models.Model):
+    """Staff-authored hull blueprint prototype (no gameplay integration yet)."""
+    name = models.CharField(max_length=64, unique=True)
+    thumbnail_class = models.CharField(max_length=32, blank=True, default='scout')
+    offense_offset = models.FloatField(default=0.0)
+    defense_offset = models.FloatField(default=0.0)
+    ironium_cost = models.IntegerField(default=0)
+    boranium_cost = models.IntegerField(default=0)
+    germanium_cost = models.IntegerField(default=0)
+    cargo_capacity = models.IntegerField(default=0)
+    fuel_capacity = models.IntegerField(default=100)
+    cargo_hold_grid_width = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(24)])
+    cargo_hold_grid_height = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(24)])
+    grid_columns = models.IntegerField(default=8, validators=[MinValueValidator(1), MaxValueValidator(24)])
+    grid_rows = models.IntegerField(default=8, validators=[MinValueValidator(1), MaxValueValidator(24)])
+    enabled = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        super(HullDesign, self).clean()
+        hold_w = int(self.cargo_hold_grid_width or 0)
+        hold_h = int(self.cargo_hold_grid_height or 0)
+        if (hold_w == 0) != (hold_h == 0):
+            raise ValidationError('Set both cargo hold width and height to 0 to disable cargo hold.')
+        if hold_w > int(self.grid_columns or 1):
+            raise ValidationError('Cargo hold width cannot exceed hull grid columns.')
+        if hold_h > int(self.grid_rows or 1):
+            raise ValidationError('Cargo hold height cannot exceed hull grid rows.')
+
+    @property
+    def subgrid_columns(self):
+        return int(self.grid_columns) * 2
+
+    @property
+    def subgrid_rows(self):
+        return int(self.grid_rows) * 2
+
+
+class HullDesignSlot(models.Model):
+    """A 2x2 subgrid slot placed within a hull blueprint."""
+    SLOT_TECH_TYPE_CHOICES = [
+        ('ANY', 'Any'),
+        ('MISC', 'Misc'),
+        ('ANY_WEAPON', 'Any Weapon'),
+        ('SHIELD_OR_ARMOUR', 'Shield or Armour'),
+        ('PROPULSION', 'Propulsion'),
+        ('HULL', 'Hull'),
+        ('ENERGY_WEAPON', 'Energy Weapon'),
+        ('TORPEDO', 'Torpedo'),
+        ('SHIELD', 'Shield'),
+        ('ARMOUR', 'Armour'),
+        ('INFRASTRUCTURE', 'Infrastructure'),
+        ('ELECTRICAL', 'Electrical'),
+        ('MECHANICAL', 'Mechanical'),
+        ('OTHER', 'Other'),
+    ]
+
+    hull = models.ForeignKey(HullDesign, related_name='slots', on_delete=models.CASCADE)
+    # Top-left anchor in the doubled subgrid coordinate system.
+    x = models.IntegerField(default=0, validators=[MinValueValidator(0)])
+    y = models.IntegerField(default=0, validators=[MinValueValidator(0)])
+    tech_type = models.CharField(max_length=16, choices=SLOT_TECH_TYPE_CHOICES, default='OTHER')
+    item_count = models.IntegerField(default=1, validators=[MinValueValidator(1), MaxValueValidator(99)])
+    max_tech_level = models.IntegerField(default=5, validators=[MinValueValidator(0), MaxValueValidator(99)])
+    display_order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['display_order', 'id']
+        unique_together = [['hull', 'x', 'y']]
+
+    def __str__(self):
+        return '%s slot (%s,%s)' % (self.hull.name, self.x, self.y)
+
+    def clean(self):
+        if self.hull_id is None:
+            return
+
+        max_x = self.hull.subgrid_columns - 2
+        max_y = self.hull.subgrid_rows - 2
+        if self.x < 0 or self.y < 0 or self.x > max_x or self.y > max_y:
+            raise ValidationError('Slot position is outside hull grid bounds.')
+
+        # Slots occupy 2x2 in subgrid coordinates; prevent overlaps.
+        existing = HullDesignSlot.objects.filter(hull=self.hull)
+        if self.pk:
+            existing = existing.exclude(pk=self.pk)
+        for other in existing:
+            if (self.x < other.x + 2 and self.x + 2 > other.x and
+                    self.y < other.y + 2 and self.y + 2 > other.y):
+                raise ValidationError('Slot overlaps an existing slot.')
 
 
 class PlayerResearch(models.Model):

@@ -1,0 +1,77 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Hull Designs</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} single-panel-page">
+        <div class="title-bar">
+            <span class="title">Hull Designs</span>
+            <span class="tagline">Staff Prototype Tools</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='hull_designs' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="hulls">
+                    <h2><span>Hull Layout Editor</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-list">
+                            <p>Use this prototype to define hull layout slots and costs.</p>
+                            <ul class="game-list">
+                                {% for hull in hulls %}
+                                <li>
+                                    <span>{{ hull.name }}</span>
+                                    <span class="game-meta">{{ hull.thumbnail_class }} &middot; {{ hull.slots.count }} slot{{ hull.slots.count|pluralize }}</span>
+                                    <a href="{% url 'dj4xol:hull_design_edit' hull.id %}" class="action-link">Edit Layout</a>
+                                </li>
+                                {% empty %}
+                                <li>
+                                    <span>No hull designs created yet.</span>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </section>
+                        <div class="panel-footer">
+                            <a href="{% url 'dj4xol:hull_design_new' %}" class="action-link">Create New Hull</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+        (function() {
+            var hamburger = document.getElementById('hamburger-btn');
+            var dropdown = document.getElementById('nav-dropdown');
+            if (hamburger && dropdown) {
+                hamburger.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    dropdown.classList.toggle('open');
+                    hamburger.classList.toggle('open');
+                });
+                document.addEventListener('click', function(e) {
+                    if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                        dropdown.classList.remove('open');
+                        hamburger.classList.remove('open');
+                    }
+                });
+            }
+            var panels = document.querySelectorAll('.panel');
+            panels.forEach(function(panel) {
+                var header = panel.querySelector('h2');
+                if (!header) return;
+                header.addEventListener('click', function() {
+                    panel.classList.remove('no-transition');
+                    panel.classList.toggle('open');
+                });
+            });
+        })();
+        </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+    </body>
+</html>
