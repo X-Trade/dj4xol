@@ -14,7 +14,7 @@ from dj4xol.objectdetails import DetailBuilder
 
 from .models import (
     Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
-    FleetOrders, Star, ResearchCategory, Technology, HullDesign, HullDesignSlot,
+    FleetOrders, Star, Report, ResearchCategory, Technology, HullDesign, HullDesignSlot,
 )
 from .decorators import registration_required, player_only_view
 from .turn import GameTurn
@@ -124,6 +124,11 @@ def _allow_self_signup():
         # Backward-compatible fallback.
         value = ServerSettings.get('server_allow_registration', 'True')
     return _setting_enabled(value, default=True)
+
+
+def _debug_actions_enabled():
+    value = ServerSettings.get('enable_debug_actions', 'False')
+    return _setting_enabled(value, default=False)
 
 
 def gamelist(request):
@@ -459,6 +464,7 @@ def starmap(request, game_short_id):
         'movement_paths_json': json.dumps(movement_paths),
         'selected_fleet_short_id': selected_fleet_short_id or '',
         'selected_patrol_circles_json': json.dumps(selected_patrol_circles),
+        'enable_debug_actions': _debug_actions_enabled(),
     })
 
 
@@ -520,6 +526,10 @@ def debug_colonize(request, game_short_id, star_short_id):
     """Debug: instantly colonize a star with 1000 colonists."""
     from .models import Star
     game = Game.objects.get(short_id=game_short_id)
+    if not _debug_actions_enabled():
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Debug actions are disabled.'
+        })
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
     star = Star.objects.get(short_id=star_short_id, game=game)
@@ -536,6 +546,10 @@ def debug_create_fleet(request, game_short_id):
     """Debug: create a fleet at the current x/y location."""
     from .models import Fleet
     game = Game.objects.get(short_id=game_short_id)
+    if not _debug_actions_enabled():
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Debug actions are disabled.'
+        })
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
     if player.turned_in:
@@ -551,6 +565,57 @@ def debug_create_fleet(request, game_short_id):
         x=x,
         y=y,
     )
+
+    return _redirect_preserving_selection(request, game)
+
+
+@player_only_view()
+def admin_generate_report(request, game_short_id, object_short_id):
+    """Admin utility: generate/update a report for selected star or fleet."""
+    if request.method != 'POST':
+        return _redirect_preserving_selection(request, Game.objects.get(short_id=game_short_id))
+
+    if not _debug_actions_enabled():
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Debug actions are disabled.'
+        })
+
+    if not request.user.is_staff:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Staff access required.'
+        })
+
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    if not player:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'No player found for this game.'
+        })
+
+    target_obj = Star.objects.filter(game=game, short_id=object_short_id).first()
+    target_type = 'star'
+    if target_obj is None:
+        target_obj = Fleet.objects.filter(game=game, short_id=object_short_id).first()
+        target_type = 'fleet'
+    if target_obj is None:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Only stars and fleets can be reported from this panel.'
+        })
+
+    turn = GameTurn(game)
+    report_data = turn._build_report_data(player, target_obj, target_type)
+    report, _created = Report.objects.update_or_create(
+        player=player,
+        target_type=target_type,
+        target_id=target_obj.id,
+        defaults={
+            'game': game,
+            'year': game.year,
+        }
+    )
+    report.set_report_data(report_data)
+    report.save()
 
     return _redirect_preserving_selection(request, game)
 

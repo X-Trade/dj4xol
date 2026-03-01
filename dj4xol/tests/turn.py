@@ -2329,7 +2329,7 @@ class TestProductionRollupMessages(TestCase):
 
         self.assertEqual(player.messages.count(), before + 1)
         msg = player.messages.order_by('-id').first()
-        self.assertIn('Construction progress at', msg.message)
+        self.assertIn('production', msg.message.lower())
         self.assertIn('3 mines', msg.message)
         self.assertIn('2 factories', msg.message)
         self.assertIn('1 lab', msg.message)

@@ -215,6 +215,24 @@ class DetailBuilder():
                 detail['environmentals'] = self._build_env_from_report(data)
                 if detail['is_survivable'] is None:
                     detail['is_survivable'] = self._is_survivable_from_report(data)
+            if all(k in data for k in [
+                'mines', 'factories', 'factories_bp', 'labs', 'labs_rp',
+                'defenses', 'shipyards',
+            ]):
+                detail['infrastructure'] = {
+                    'Mines': data.get('mines'),
+                    'Factories': data.get('factories'),
+                    'FactoriesBP': data.get('factories_bp'),
+                    'Labs': data.get('labs'),
+                    'LabsRP': data.get('labs_rp'),
+                    'Defenses': data.get('defenses'),
+                    'DefensesTooltip': data.get('defenses_tooltip'),
+                    'Shipyards': data.get('shipyards'),
+                    'Jobs': {
+                        'count': data.get('jobs_count', 0),
+                        'employment': data.get('jobs_employment', 0.0),
+                    },
+                }
         elif target_type == 'fleet':
             detail['fleet_short_id'] = self.selected_obj.short_id
             if 'ship_count' in data:
@@ -228,7 +246,12 @@ class DetailBuilder():
         elif target_type == 'salvage':
             detail['salvage_short_id'] = self.selected_obj.short_id
             if 'total_minerals' in data:
-                detail['salvage_inventory'] = {'total': data['total_minerals']}
+                detail['salvage_inventory'] = {
+                    'ironium': data.get('ironium_inventory', 0),
+                    'boranium': data.get('boranium_inventory', 0),
+                    'germanium': data.get('germanium_inventory', 0),
+                    'total': data['total_minerals'],
+                }
 
         return detail
 

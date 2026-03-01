@@ -255,6 +255,11 @@ class ReportGenerationTest(TestCase):
     def test_report_contains_star_data(self):
         """Star reports contain expected data."""
         self.star1.colonists = 5000
+        self.star1.mines = 12
+        self.star1.factories = 9
+        self.star1.labs = 7
+        self.star1.defenses = 3
+        self.star1.shipyards = 2
         self.star1.gravity = 1.5
         self.star1.temperature = 0.8
         self.star1.radiation = 1.2
@@ -295,6 +300,13 @@ class ReportGenerationTest(TestCase):
         self.assertEqual(data['ironium_inventory'], 1200)
         self.assertEqual(data['boranium_inventory'], 800)
         self.assertEqual(data['germanium_inventory'], 600)
+        self.assertEqual(data['mines'], 12)
+        self.assertEqual(data['factories'], 9)
+        self.assertEqual(data['labs'], 7)
+        self.assertEqual(data['defenses'], 3)
+        self.assertEqual(data['shipyards'], 2)
+        self.assertIn('factories_bp', data)
+        self.assertIn('labs_rp', data)
 
     def test_report_overwrites_previous(self):
         """New reports overwrite previous ones for the same target."""
@@ -364,6 +376,43 @@ class ReportGenerationTest(TestCase):
         self.assertEqual(detail['resources']['Boranium']['yield'], 42)
         self.assertEqual(detail['resources']['Germanium']['yield'], 27)
 
+    def test_cached_star_detail_includes_infrastructure(self):
+        """Cached star detail should include infrastructure values from report."""
+        self.star1.mines = 11
+        self.star1.factories = 8
+        self.star1.labs = 6
+        self.star1.defenses = 4
+        self.star1.shipyards = 2
+        self.star1.colonists = 4500
+        self.star1.save()
+
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Explorer',
+            x=self.star1.x,
+            y=self.star1.y
+        )
+        GameTurn(self.game).generate_reports()
+
+        # Move fleet away so detail reads from cached report.
+        fleet = Fleet.objects.filter(game=self.game, player=self.player).first()
+        fleet.x = 1 if self.star1.x != 1 else 2
+        fleet.y = 1 if self.star1.y != 1 else 2
+        fleet.save()
+
+        detail = DetailBuilder(
+            self.game, x=self.star1.x, y=self.star1.y,
+            selected=self.star1.short_id.lower(), player=self.player
+        ).build_detail()
+
+        self.assertIn('infrastructure', detail)
+        self.assertEqual(detail['infrastructure']['Mines'], 11)
+        self.assertEqual(detail['infrastructure']['Factories'], 8)
+        self.assertEqual(detail['infrastructure']['Labs'], 6)
+        self.assertEqual(detail['infrastructure']['Defenses'], 4)
+        self.assertEqual(detail['infrastructure']['Shipyards'], 2)
+
     def test_reports_generated_for_all_objects_at_location(self):
         """Reports generated for multiple objects at the same location."""
         salvage = Salvage.objects.create(
@@ -399,6 +448,43 @@ class ReportGenerationTest(TestCase):
 
         self.assertIsNotNone(star_report)
         self.assertIsNotNone(salvage_report)
+
+    def test_cached_salvage_detail_includes_full_inventory(self):
+        """Cached salvage reports should preserve per-mineral inventory values."""
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=self.star1.x,
+            y=self.star1.y,
+            ironium_inventory=130,
+            boranium_inventory=70,
+            germanium_inventory=20,
+        )
+
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Explorer',
+            x=self.star1.x,
+            y=self.star1.y
+        )
+        GameTurn(self.game).generate_reports()
+
+        # Move fleet away so detail renders from cached report.
+        fleet = Fleet.objects.filter(game=self.game, player=self.player).first()
+        fleet.x = 1 if self.star1.x != 1 else 2
+        fleet.y = 1 if self.star1.y != 1 else 2
+        fleet.save()
+
+        detail = DetailBuilder(
+            self.game, x=self.star1.x, y=self.star1.y,
+            selected=salvage.short_id.lower(), player=self.player
+        ).build_detail()
+
+        self.assertIn('salvage_inventory', detail)
+        self.assertEqual(detail['salvage_inventory']['ironium'], 130)
+        self.assertEqual(detail['salvage_inventory']['boranium'], 70)
+        self.assertEqual(detail['salvage_inventory']['germanium'], 20)
+        self.assertEqual(detail['salvage_inventory']['total'], 220)
 
     def test_report_on_other_player_fleet(self):
         """Reports generated for enemy fleets at the same location."""
