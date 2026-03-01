@@ -2352,6 +2352,57 @@ class TestProductionRollupMessages(TestCase):
         })
         self.assertEqual(player.messages.count(), before)
 
+    def test_sends_queue_completed_message_when_orders_become_empty(self):
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.production_orders.all().delete()
+        star.ironium_inventory = max(star.ironium_inventory, 100)
+        star.save(update_fields=['ironium_inventory'])
+
+        ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='BUILD_MINE',
+            quantity=1,
+            position=1,
+            repeat=False,
+        )
+
+        before = player.messages.count()
+        GameTurn(game).production()
+        self.assertGreater(player.messages.count(), before)
+
+        messages = list(player.messages.order_by('-id').values_list('message', flat=True))
+        self.assertTrue(any(
+            ('production queue' in m.lower()) or ('queued production orders' in m.lower())
+            for m in messages
+        ))
+
+    def test_does_not_send_queue_completed_message_for_repeat_orders(self):
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.production_orders.all().delete()
+        star.ironium_inventory = max(star.ironium_inventory, 100)
+        star.save(update_fields=['ironium_inventory'])
+
+        ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='BUILD_MINE',
+            quantity=1,
+            position=1,
+            repeat=True,
+        )
+
+        GameTurn(game).production()
+        messages = list(player.messages.values_list('message', flat=True))
+        self.assertFalse(any(
+            ('production queue' in m.lower()) or ('queued production orders' in m.lower())
+            for m in messages
+        ))
+
 
 class TestFleetTransferOrders(TestCase):
     """Test fleet transfer order functionality."""
