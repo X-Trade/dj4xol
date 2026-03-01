@@ -1673,6 +1673,26 @@ def update_theme(request):
     return JsonResponse({'success': True, 'theme': theme})
 
 
+@registration_required()
+def update_email_preferences(request):
+    """Update account email preference checkboxes."""
+    from django.http import JsonResponse
+
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    account = request.user.dj4xol_account
+    account.email_game_updates = bool(request.POST.get('email_game_updates'))
+    account.email_newsletter = bool(request.POST.get('email_newsletter'))
+    account.save(update_fields=['email_game_updates', 'email_newsletter'])
+
+    return JsonResponse({
+        'success': True,
+        'email_game_updates': account.email_game_updates,
+        'email_newsletter': account.email_newsletter,
+    })
+
+
 @player_only_view()
 def objects_at_location(request, game_short_id, x, y):
     """API endpoint to get objects at specific coordinates."""

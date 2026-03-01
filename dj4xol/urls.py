@@ -17,6 +17,7 @@ urlpatterns = [
     url(r'^onboarding/race/$', views.onboarding_race, name='onboarding_race'),
     url(r'^profile/$', views.profile, name='profile'),
     url(r'^profile/theme/$', views.update_theme, name='update_theme'),
+    url(r'^profile/email-preferences/$', views.update_email_preferences, name='update_email_preferences'),
     url(r'^create-race/$', views.create_race, name='create_race'),
     url(r'^create-game/$', views.create_game, name='create_game'),
     url(r'^hulls/$', views.hull_design_list, name='hull_design_list'),
