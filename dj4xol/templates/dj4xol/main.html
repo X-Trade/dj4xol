@@ -295,6 +295,129 @@
                 });
             }
         })();
+        (function floatingTooltips() {
+            document.body.classList.add('floating-tooltips-enabled');
+
+            var tooltip = document.createElement('div');
+            tooltip.className = 'global-floating-tooltip';
+            document.body.appendChild(tooltip);
+
+            var activeTarget = null;
+
+            function clamp(val, min, max) {
+                return Math.max(min, Math.min(max, val));
+            }
+
+            function positionTooltip(target, clientX, clientY) {
+                if (!target) {
+                    return;
+                }
+                var viewportW = window.innerWidth || document.documentElement.clientWidth || 0;
+                var viewportH = window.innerHeight || document.documentElement.clientHeight || 0;
+                var margin = 8;
+
+                var rect = target.getBoundingClientRect();
+                var x = Number.isFinite(clientX) ? clientX : (rect.left + rect.width / 2);
+                var y = Number.isFinite(clientY) ? clientY : rect.top;
+
+                var prefLeft = x - (tooltip.offsetWidth / 2);
+                var left = clamp(prefLeft, margin, Math.max(margin, viewportW - tooltip.offsetWidth - margin));
+
+                // Prefer above pointer/target; fall back below if no room.
+                var aboveTop = y - tooltip.offsetHeight - 12;
+                var top = aboveTop;
+                if (top < margin) {
+                    top = rect.bottom + 10;
+                }
+                top = clamp(top, margin, Math.max(margin, viewportH - tooltip.offsetHeight - margin));
+
+                tooltip.style.left = left + 'px';
+                tooltip.style.top = top + 'px';
+            }
+
+            function showTooltip(target, clientX, clientY) {
+                if (!target) {
+                    return;
+                }
+                var text = target.getAttribute('data-tooltip');
+                if (!text) {
+                    return;
+                }
+                activeTarget = target;
+                tooltip.textContent = text;
+                tooltip.classList.add('visible');
+                positionTooltip(target, clientX, clientY);
+            }
+
+            function hideTooltip() {
+                activeTarget = null;
+                tooltip.classList.remove('visible');
+            }
+
+            document.addEventListener('mouseover', function(e) {
+                var target = e.target && e.target.closest ? e.target.closest('.has-tooltip') : null;
+                if (!target) {
+                    return;
+                }
+                showTooltip(target, e.clientX, e.clientY);
+            });
+
+            document.addEventListener('mousemove', function(e) {
+                if (!activeTarget) {
+                    return;
+                }
+                positionTooltip(activeTarget, e.clientX, e.clientY);
+            });
+
+            document.addEventListener('mouseout', function(e) {
+                if (!activeTarget) {
+                    return;
+                }
+                var next = e.relatedTarget;
+                if (next && next.closest && activeTarget.contains(next)) {
+                    return;
+                }
+                var leaving = e.target && e.target.closest ? e.target.closest('.has-tooltip') : null;
+                if (leaving && leaving === activeTarget) {
+                    hideTooltip();
+                }
+            });
+
+            document.addEventListener('focusin', function(e) {
+                var target = e.target && e.target.closest ? e.target.closest('.has-tooltip') : null;
+                if (target) {
+                    showTooltip(target);
+                }
+            });
+
+            document.addEventListener('focusout', function(e) {
+                if (!activeTarget) {
+                    return;
+                }
+                var target = e.target && e.target.closest ? e.target.closest('.has-tooltip') : null;
+                if (target && target === activeTarget) {
+                    hideTooltip();
+                }
+            });
+
+            document.addEventListener('touchstart', function(e) {
+                var target = e.target && e.target.closest ? e.target.closest('.has-tooltip') : null;
+                if (!target) {
+                    hideTooltip();
+                    return;
+                }
+                var touch = (e.touches && e.touches[0]) ? e.touches[0] : null;
+                showTooltip(target, touch ? touch.clientX : undefined, touch ? touch.clientY : undefined);
+            }, { passive: true });
+
+            document.addEventListener('touchend', hideTooltip, { passive: true });
+            document.addEventListener('scroll', hideTooltip, { passive: true });
+            window.addEventListener('resize', function() {
+                if (activeTarget) {
+                    positionTooltip(activeTarget);
+                }
+            });
+        })();
         </script>
         <script type="text/javascript" src="{% static 'dj4xol/js/thumb_pop.js' %}"></script>
         <script type="application/json" id="movement-paths-json">{{ movement_paths_json|safe }}</script>
