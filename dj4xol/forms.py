@@ -333,7 +333,18 @@ class RegistrationForm(forms.ModelForm):
 
     class Meta:
         model = Account
-        fields = ['alias', 'email', 'full_name', 'website_url']
+        fields = [
+            'alias',
+            'email',
+            'full_name',
+            'website_url',
+            'email_game_updates',
+            'email_newsletter',
+        ]
+        labels = {
+            'email_game_updates': 'Send me updates about my game progress',
+            'email_newsletter': 'Send me newsletters about DJ4XOL and the server',
+        }
 
     def __init__(self, user, *args, **kwargs):
         self.user = user if user and user.is_authenticated else None

@@ -207,6 +207,8 @@ class Account(models.Model):
     full_name = models.CharField(max_length=60)
     alias = models.CharField(max_length=30, unique=True)
     email = models.EmailField()
+    email_game_updates = models.BooleanField(default=True)
+    email_newsletter = models.BooleanField(default=True)
     theme = models.CharField(max_length=20, choices=THEME_CHOICES, default='classic')
     website_url = models.URLField(blank=True, default='')
 

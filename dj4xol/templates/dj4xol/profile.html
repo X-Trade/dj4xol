@@ -38,6 +38,14 @@
                                 <th>Email</th>
                                 <td>{{ account.email }}</td>
                             </tr>
+                            <tr>
+                                <th>Game Updates</th>
+                                <td>{% if account.email_game_updates %}Enabled{% else %}Disabled{% endif %}</td>
+                            </tr>
+                            <tr>
+                                <th>Newsletter</th>
+                                <td>{% if account.email_newsletter %}Enabled{% else %}Disabled{% endif %}</td>
+                            </tr>
                             {% if account.website_url %}
                             <tr>
                                 <th>Website</th>
@@ -49,6 +57,23 @@
                                 <td>{{ account.django_user.date_joined|date:"d M Y" }}</td>
                             </tr>
                         </table>
+                        <hr>
+                        <form id="email-preferences-form">
+                            {% csrf_token %}
+                            <label>
+                                <input type="checkbox" name="email_game_updates" {% if account.email_game_updates %}checked{% endif %}>
+                                Send me updates about my game progress
+                            </label>
+                            <br>
+                            <label>
+                                <input type="checkbox" name="email_newsletter" {% if account.email_newsletter %}checked{% endif %}>
+                                Send me newsletters about DJ4XOL and the server
+                            </label>
+                            <div class="panel-footer">
+                                <button type="submit">Save Preferences</button>
+                                <span id="email-pref-status"></span>
+                            </div>
+                        </form>
                         </section>
                     </div>
                 </div>
@@ -185,6 +210,8 @@
             // Theme selection
             var themeOptions = document.querySelectorAll('.theme-option');
             var themeStatus = document.getElementById('theme-status');
+            var emailPrefForm = document.getElementById('email-preferences-form');
+            var emailPrefStatus = document.getElementById('email-pref-status');
             var csrfToken = '{{ csrf_token }}';
 
             themeOptions.forEach(function(option) {
@@ -223,6 +250,45 @@
                     });
                 });
             });
+
+            if (emailPrefForm) {
+                emailPrefForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    if (emailPrefStatus) {
+                        emailPrefStatus.textContent = 'Saving...';
+                    }
+
+                    var params = new URLSearchParams();
+                    var gameUpdates = emailPrefForm.querySelector('input[name=\"email_game_updates\"]');
+                    var newsletter = emailPrefForm.querySelector('input[name=\"email_newsletter\"]');
+                    if (gameUpdates && gameUpdates.checked) {
+                        params.append('email_game_updates', 'on');
+                    }
+                    if (newsletter && newsletter.checked) {
+                        params.append('email_newsletter', 'on');
+                    }
+
+                    fetch('{% url \"dj4xol:update_email_preferences\" %}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRFToken': csrfToken
+                        },
+                        body: params.toString()
+                    })
+                    .then(function(response) { return response.json(); })
+                    .then(function(data) {
+                        if (emailPrefStatus) {
+                            emailPrefStatus.textContent = data.success ? 'Saved.' : ('Error: ' + (data.error || 'Failed to save'));
+                        }
+                    })
+                    .catch(function() {
+                        if (emailPrefStatus) {
+                            emailPrefStatus.textContent = 'Network error';
+                        }
+                    });
+                });
+            }
         })();
         </script>
         <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>

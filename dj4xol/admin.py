@@ -32,7 +32,10 @@ class ServerAdmin(admin.ModelAdmin):
 
 @admin.register(Account)
 class AccountAdmin(admin.ModelAdmin):
-    list_display = ('pk', 'django_user', 'full_name', 'alias', 'email')
+    list_display = (
+        'pk', 'django_user', 'full_name', 'alias', 'email',
+        'email_game_updates', 'email_newsletter'
+    )
 
     def get_readonly_fields(self, request, obj=None):
         if obj:  # Editing existing account
