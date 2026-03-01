@@ -350,6 +350,7 @@ body.map-dragging * {
     max-height: 64px;
     overflow: hidden;
     border-right: none;
+    padding-right: 8px;
 }
 
 .detail-header.detail-header-unexplored {
