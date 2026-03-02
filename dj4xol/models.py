@@ -266,6 +266,7 @@ class Game(UUIDMixin):
     turn_scheme = models.CharField(max_length=10, choices=TURN_SCHEME_CHOICES, default='QUORUM')
     years_per_turn = models.IntegerField(default=1)
     random_events = models.BooleanField(default=False)
+    anomalies_enabled = models.BooleanField(default=False)
     max_starting_tech_level = models.IntegerField(default=5)
     last_generated = models.DateTimeField(null=True, blank=True)
     next_generation = models.DateTimeField(null=True, blank=True)
@@ -281,13 +282,20 @@ class Game(UUIDMixin):
         return [star["name"] for star in self.stars.values("name").all()]
 
     def get_object_at(self, x, y):
-        return self.stars.filter(x=x, y=y).first() or self.fleets.filter(x=x, y=y).first() or None
+        return (
+            self.stars.filter(x=x, y=y).first()
+            or self.fleets.filter(x=x, y=y).first()
+            or self.salvages.filter(x=x, y=y).first()
+            or self.anomalys.filter(x=x, y=y).first()
+            or None
+        )
 
     def get_all_objects_at(self, x, y):
         return list(chain(
             self.stars.filter(x=x, y=y).all(),
             self.fleets.filter(x=x, y=y).all(),
-            self.salvages.filter(x=x, y=y).all()
+            self.salvages.filter(x=x, y=y).all(),
+            self.anomalys.filter(x=x, y=y).all(),
         ))
 
     def get_star_namer(self):
@@ -437,6 +445,30 @@ class Salvage(AbstractMapObject):
 
     class Meta:
         unique_together = [['game', 'x', 'y']]
+
+
+class Anomaly(AbstractMapObject):
+    """Non-standard map object used for anomalies/events."""
+    TYPE_NEBULA = 'NEBULA'
+    TYPE_COMET = 'COMET'
+    TYPE_RIFT = 'RIFT'
+    TYPE_ANOMALY = 'ANOMALY'
+    TYPE_CHOICES = [
+        (TYPE_NEBULA, 'Nebula'),
+        (TYPE_COMET, 'Comet'),
+        (TYPE_RIFT, 'Rift'),
+        (TYPE_ANOMALY, 'Anomaly'),
+    ]
+
+    name = models.CharField(max_length=30)
+    description = models.TextField(blank=True, default='')
+    anomaly_type = models.CharField(
+        max_length=24, choices=TYPE_CHOICES, blank=True, default=TYPE_ANOMALY
+    )
+
+    @property
+    def player(self):
+        return None
 
 
 class Fleet(AbstractMapObject):
@@ -639,6 +671,14 @@ class FleetOrders(AbstractGameObject):
                                      validators=[MinValueValidator(0), MaxValueValidator(14)])
     x = models.IntegerField(null=True)
     y = models.IntegerField(null=True)
+    TARGET_KIND_CHOICES = [
+        ('OBJECT', 'Object'),
+        ('SPACE', 'Space'),
+    ]
+    target_kind = models.CharField(
+        max_length=10, choices=TARGET_KIND_CHOICES, null=True, blank=True
+    )
+    target_short_id = models.CharField(max_length=12, null=True, blank=True, db_index=True)
     target_star = models.ForeignKey(Star, null=True, related_name='+',
             on_delete=models.CASCADE)
     target_fleet = models.ForeignKey(Fleet, null=True, related_name='+',
@@ -692,13 +732,16 @@ class FleetOrders(AbstractGameObject):
             return "Unknown destination"
 
     def target_is_star(self):
-        return self.target_star_id is not None
+        _obj, _x, _y, kind = self.get_actual_target()
+        return kind == 'star'
 
     def target_is_fleet(self):
-        return self.target_fleet_id is not None
+        _obj, _x, _y, kind = self.get_actual_target()
+        return kind == 'fleet'
 
     def target_is_salvage(self):
-        return self.target_salvage_id is not None
+        _obj, _x, _y, kind = self.get_actual_target()
+        return kind == 'salvage'
 
     def has_target_coordinates(self):
         return self.x is not None and self.y is not None
@@ -709,6 +752,32 @@ class FleetOrders(AbstractGameObject):
         Prefers explicit target objects when present and valid, otherwise falls
         back to explicit x/y coordinates. Returns (obj, x, y, kind).
         """
+        if (self.target_kind or '').upper() == 'SPACE':
+            if self.has_target_coordinates():
+                return None, self.x, self.y, 'space'
+            return None, None, None, 'none'
+
+        if self.target_short_id:
+            short_id = str(self.target_short_id).strip().lower()
+            if short_id:
+                obj = (
+                    Star.objects.filter(game=self.game, short_id=short_id).first()
+                    or Fleet.objects.filter(game=self.game, short_id=short_id).first()
+                    or Salvage.objects.filter(game=self.game, short_id=short_id).first()
+                    or Anomaly.objects.filter(game=self.game, short_id=short_id).first()
+                )
+                if obj is not None:
+                    if isinstance(obj, Star):
+                        return obj, obj.x, obj.y, 'star'
+                    if isinstance(obj, Fleet):
+                        return obj, obj.x, obj.y, 'fleet'
+                    if isinstance(obj, Salvage):
+                        return obj, obj.x, obj.y, 'salvage'
+                    return obj, obj.x, obj.y, 'anomaly'
+            if self.has_target_coordinates():
+                return None, self.x, self.y, 'space'
+            return None, None, None, 'none'
+
         if self.target_star_id:
             try:
                 obj = self.target_star
@@ -1066,6 +1135,7 @@ class Report(AbstractGameObject):
         ('star', 'Star'),
         ('fleet', 'Fleet'),
         ('salvage', 'Salvage'),
+        ('anomaly', 'Anomaly'),
     ]
 
     player = models.ForeignKey(Player, related_name='reports',

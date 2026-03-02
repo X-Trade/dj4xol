@@ -80,6 +80,7 @@
             <input type="hidden" name="target_star" value="{{ dest_star_id|default:'' }}">
             <input type="hidden" name="target_fleet" value="{{ dest_fleet_id|default:'' }}">
             <input type="hidden" name="target_salvage" value="{{ dest_salvage_id|default:'' }}">
+            <input type="hidden" name="target_anomaly" value="{{ dest_anomaly_id|default:'' }}">
             <input type="hidden" name="target_x" value="{{ dest_x|default:'' }}">
             <input type="hidden" name="target_y" value="{{ dest_y|default:'' }}">
             <input type="hidden" name="x" value="{{ selection.x }}">
@@ -119,7 +120,7 @@
                     <option value="PATROL"{% if request.GET.order_type == 'PATROL' %} selected{% endif %}>Patrol</option>
                 </select>
                 <label class="repeat-checkbox"><input type="checkbox" name="repeat" id="repeat-checkbox"> &#x21bb;</label>
-                <button type="submit" class="order-add-btn" id="add-order-btn" {% if not dest_star_id and not dest_fleet_id and not dest_salvage_id and not dest_x %}disabled{% endif %}>+</button>
+                <button type="submit" class="order-add-btn" id="add-order-btn" {% if not dest_star_id and not dest_fleet_id and not dest_salvage_id and not dest_anomaly_id and not dest_x %}disabled{% endif %}>+</button>
             </div>
 
             <div class="order-params">
@@ -138,6 +139,8 @@
                                         <option value="fleet:{{ obj.short_id }}"{% if destination_targets.selected_target == "fleet:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
                                     {% elif obj.type == 'salvage' %}
                                         <option value="salvage:{{ obj.short_id }}"{% if destination_targets.selected_target == "salvage:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }} (Salvage)</option>
+                                    {% elif obj.type == 'anomaly' %}
+                                        <option value="anomaly:{{ obj.short_id }}"{% if destination_targets.selected_target == "anomaly:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }} (Anomaly)</option>
                                     {% endif %}
                                 {% endfor %}
                             </select>
@@ -445,18 +448,21 @@
         var destStar = document.querySelector('input[name="target_star"]').value;
         var destFleet = document.querySelector('input[name="target_fleet"]').value;
         var destSalvage = document.querySelector('input[name="target_salvage"]').value;
+        var destAnomaly = document.querySelector('input[name="target_anomaly"]').value;
         var destX = document.querySelector('input[name="target_x"]').value;
 
-        addBtn.disabled = !destStar && !destFleet && !destSalvage && !destX;
+        addBtn.disabled = !destStar && !destFleet && !destSalvage && !destAnomaly && !destX;
     }
 
     function setMoveTargetInputs(targetValue, optionEl) {
         var starInput = document.querySelector('input[name="target_star"]');
         var fleetInput = document.querySelector('input[name="target_fleet"]');
         var salvageInput = document.querySelector('input[name="target_salvage"]');
+        var anomalyInput = document.querySelector('input[name="target_anomaly"]');
         if (starInput) starInput.value = '';
         if (fleetInput) fleetInput.value = '';
         if (salvageInput) salvageInput.value = '';
+        if (anomalyInput) anomalyInput.value = '';
         if (targetXInput) targetXInput.value = '';
         if (targetYInput) targetYInput.value = '';
 
@@ -482,6 +488,8 @@
             fleetInput.value = targetId;
         } else if (targetType === 'salvage' && salvageInput) {
             salvageInput.value = targetId;
+        } else if (targetType === 'anomaly' && anomalyInput) {
+            anomalyInput.value = targetId;
         }
     }
     

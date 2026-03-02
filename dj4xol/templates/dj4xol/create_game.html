@@ -36,16 +36,13 @@
                                         {% else %}
                                         {{ field }}
                                         {% endif %}
+                                        {% if field.name == 'race' %}
+                                        <div class="help-text"><a class="action-link" href="{% url 'dj4xol:create_race' %}">Create a new race</a></div>
+                                        {% endif %}
                                         {{ field.errors }}
                                         {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
                                     </td>
                                 </tr>
-                                {% if field.name == 'description' %}
-                                <tr>
-                                    <th></th>
-                                    <td><div class="help-text"><a class="action-link" href="{% url 'dj4xol:create_race' %}">Create a new race</a></div></td>
-                                </tr>
-                                {% endif %}
                                 {% endfor %}
                             </table>
                             <div class="form-nav">

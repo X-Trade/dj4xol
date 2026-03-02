@@ -1,7 +1,7 @@
 from datetime import timedelta
 from django.utils import timezone
 from dj4xol.starnamer import StarNamer
-from .models import Game, Star, Fleet, Player, Account
+from .models import Game, Star, Fleet, Player, Account, Anomaly
 from .research import get_player_tech_effects
 from .fleet_thumbnails import choose_fleet_thumbnail
 import random
@@ -66,7 +66,57 @@ class GameFactory():
             if not star.short_id:
                 star.short_id = self.game.short_id[:4] + star.id.hex[-8:]
         Star.objects.bulk_create(self.stars)
+        self._create_initial_anomalies()
         return self.game
+
+    def _create_initial_anomalies(self):
+        """Seed low-density anomalies for games where anomalies are enabled."""
+        if not bool(getattr(self.game, 'anomalies_enabled', False)):
+            return
+        stars = list(self.game.stars.all())
+        if not stars:
+            return
+        max_count = max(1, int(round(len(stars) * 0.15)))
+        count = max(1, int(round(len(stars) * 0.05)))
+        count = min(max_count, count)
+        occupied = {(star.x, star.y) for star in stars}
+        created = []
+        type_names = {
+            Anomaly.TYPE_NEBULA: 'Nebula',
+            Anomaly.TYPE_COMET: 'Comet',
+            Anomaly.TYPE_RIFT: 'Rift',
+        }
+        min_x = 1
+        min_y = 1
+        max_x = max(1, self.game.map_size_x - 1)
+        max_y = max(1, self.game.map_size_y - 1)
+        attempts = max(100, count * 40)
+        while len(created) < count and attempts > 0:
+            attempts -= 1
+            x = random.randint(min_x, max_x)
+            y = random.randint(min_y, max_y)
+            key = (x, y)
+            if key in occupied:
+                continue
+            anomaly_type = random.choice([
+                Anomaly.TYPE_NEBULA,
+                Anomaly.TYPE_COMET,
+                Anomaly.TYPE_RIFT,
+            ])
+            ordinal = len(created) + 1
+            created.append(Anomaly(
+                game=self.game,
+                x=x,
+                y=y,
+                anomaly_type=anomaly_type,
+                name='%s %s' % (type_names.get(anomaly_type, 'Anomaly'), ordinal),
+            ))
+            occupied.add(key)
+        if created:
+            for anomaly in created:
+                if not anomaly.short_id:
+                    anomaly.short_id = self.game.short_id[:4] + anomaly.id.hex[-8:]
+            Anomaly.objects.bulk_create(created)
     
     def set_year(self, year):
         self.game.year = year

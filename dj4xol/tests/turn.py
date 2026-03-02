@@ -15,7 +15,7 @@ from ..colony_rules import (
     COLONISTS_PER_JOB,
     BUILDPOINTS_PER_FACTORY,
 )
-from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Account, Player
+from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player
 from ..factory import GameFactory
 from django.test import TestCase
 from ._util import default_game, get_default_race, get_default_race_type
@@ -525,6 +525,171 @@ class TestRandomEvents(TestCase):
         homeworld.refresh_from_db()
         # Should have moved away from ideal
         self.assertNotEqual(homeworld.gravity, 1.0)
+
+
+class TestAnomalyInteractions(TestCase):
+    def test_roll_1_and_2_have_no_effect(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        fleet = game.fleets.first()
+        if fleet is None:
+            player = game.players.first()
+            fleet = Fleet.objects.create(
+                game=game,
+                player=player,
+                name='Anomaly Probe',
+                x=player.homeworld.x,
+                y=player.homeworld.y,
+            )
+        Anomaly.objects.create(
+            game=game,
+            x=fleet.x,
+            y=fleet.y,
+            name='Silent Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+        )
+        fleet.integrity = 87
+        fleet.ironium_inventory = 123
+        fleet.save(update_fields=['integrity', 'ironium_inventory'])
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.randint', return_value=1):
+            turn.anomaly_interactions()
+        with patch('dj4xol.turn.random.randint', return_value=2):
+            turn.anomaly_interactions()
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 87)
+        self.assertEqual(fleet.ironium_inventory, 123)
+        self.assertFalse(GameMessage.objects.filter(
+            game=game, player=fleet.player, category='RANDOM'
+        ).exists())
+
+    def test_anomaly_research_roll_sends_message(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Anomaly Probe',
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+        )
+        Anomaly.objects.create(
+            game=game,
+            x=fleet.x,
+            y=fleet.y,
+            name='Research Nebula',
+            anomaly_type=Anomaly.TYPE_NEBULA,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.randint', side_effect=[6, 250]):
+            with patch('dj4xol.turn.random.random', return_value=0.1):
+                turn.anomaly_interactions()
+        self.assertTrue(GameMessage.objects.filter(
+            game=game,
+            player=fleet.player,
+            category='RANDOM',
+            message__icontains='bonus RP',
+        ).exists())
+
+    def test_anomaly_damage_and_destroy_send_messages(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Fragile Scout',
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+            integrity=100,
+        )
+        Anomaly.objects.create(
+            game=game,
+            x=fleet.x,
+            y=fleet.y,
+            name='Deep Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.randint', side_effect=[3, 12]):
+            turn.anomaly_interactions()
+        self.assertTrue(GameMessage.objects.filter(
+            game=game,
+            player=player,
+            category='RANDOM',
+            message__icontains='integrity damage',
+        ).exists())
+        with patch('dj4xol.turn.random.randint', return_value=5):
+            turn.anomaly_interactions()
+        self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
+        self.assertTrue(GameMessage.objects.filter(
+            game=game,
+            player=player,
+            category='RANDOM',
+            message__icontains='lost whilst exploring',
+        ).exists())
+
+    def test_anomaly_reports_are_persisted(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        fleet = game.fleets.first()
+        if fleet is None:
+            fleet = Fleet.objects.create(
+                game=game,
+                player=player,
+                name='Surveyor',
+                x=player.homeworld.x,
+                y=player.homeworld.y,
+            )
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=fleet.x,
+            y=fleet.y,
+            name='Comet Trace',
+            anomaly_type=Anomaly.TYPE_COMET,
+        )
+        turn = GameTurn(game)
+        turn.generate_reports()
+        from ..models import Report
+        report = Report.objects.filter(
+            game=game,
+            player=player,
+            target_type='anomaly',
+            target_id=anomaly.id,
+        ).first()
+        self.assertIsNotNone(report)
+        data = report.get_report_data()
+        self.assertEqual(data.get('anomaly_type'), Anomaly.TYPE_COMET)
+        self.assertEqual(data.get('name'), 'Comet Trace')
+
+    def test_spawn_anomaly_respects_star_based_cap(self):
+        game = default_game(stars=10)
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        max_allowed = 2
+        for idx in range(max_allowed):
+            Anomaly.objects.create(
+                game=game,
+                x=player.homeworld.x + idx + 1,
+                y=player.homeworld.y + idx + 1,
+                name='Cap %s' % idx,
+                anomaly_type=Anomaly.TYPE_RIFT,
+            )
+        before = Anomaly.objects.filter(game=game).count()
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.random', return_value=0.0):
+            turn.spawn_anomalies()
+        after = Anomaly.objects.filter(game=game).count()
+        self.assertEqual(before, after)
 
 
 class TestEconomicCalculations(TestCase):
@@ -1526,6 +1691,48 @@ class TestFleetTransferOrderExecution(TestCase):
         self.assertIsNone(obj)
         self.assertEqual(kind, 'space')
         self.assertEqual((x, y), (target.x, target.y))
+
+    def test_get_actual_target_prefers_target_short_id_for_object(self):
+        game = default_game(stars=3)
+        player = game.players.first()
+        home = player.homeworld
+        target = game.stars.exclude(pk=home.pk).first()
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="ShortId Fleet", x=home.x, y=home.y
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            target_short_id=target.short_id,
+            target_kind='OBJECT',
+        )
+        obj, x, y, kind = order.get_actual_target()
+        self.assertEqual(kind, 'star')
+        self.assertEqual(obj.id, target.id)
+        self.assertEqual((x, y), (target.x, target.y))
+
+    def test_get_actual_target_resolves_anomaly_short_id(self):
+        game = default_game(stars=2)
+        player = game.players.first()
+        home = player.homeworld
+        anomaly = Anomaly.objects.create(
+            game=game, x=home.x + 2, y=home.y + 2, name='Spatial Rift'
+        )
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Anomaly Scanner", x=home.x, y=home.y
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            target_short_id=anomaly.short_id,
+            target_kind='OBJECT',
+        )
+        obj, x, y, kind = order.get_actual_target()
+        self.assertEqual(kind, 'anomaly')
+        self.assertEqual(obj.id, anomaly.id)
+        self.assertEqual((x, y), (anomaly.x, anomaly.y))
 
     def test_repeat_transfer_with_salvage_target_does_not_error(self):
         """Repeat transfer to salvage should not error when creating repeat order."""

@@ -1,5 +1,5 @@
 from django.db import models
-from dj4xol.models import Fleet, Star, Salvage, Report
+from dj4xol.models import Fleet, Star, Salvage, Anomaly, Report
 from dj4xol.turn import apply_population_change, KT_PER_MINE
 from dj4xol.research import get_player_colony_defense_level
 from dj4xol.colony_rules import (
@@ -95,6 +95,7 @@ class DetailBuilder():
                     'is_star': isinstance(self.selected_obj, Star),
                     'is_fleet': isinstance(self.selected_obj, Fleet),
                     'is_salvage': isinstance(self.selected_obj, Salvage),
+                    'is_anomaly': isinstance(self.selected_obj, Anomaly),
                 }
 
             if report_year is not None:
@@ -117,6 +118,7 @@ class DetailBuilder():
                      'is_star': isinstance(self.selected_obj, Star),
                      'is_fleet': isinstance(self.selected_obj, Fleet),
                      'is_salvage': isinstance(self.selected_obj, Salvage),
+                     'is_anomaly': isinstance(self.selected_obj, Anomaly),
                      'fleet_thumbnail': (
                          self.selected_obj.effective_thumbnail_path
                          if isinstance(self.selected_obj, Fleet) else None
@@ -128,6 +130,7 @@ class DetailBuilder():
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
                      'salvage_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Salvage) else None,
+                     'anomaly_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Anomaly) else None,
                      'salvage_inventory': self.build_salvage_inventory(),
                      'production_orders': self.get_production_orders(),
                      'fleet_orders': self.get_fleet_orders(),
@@ -172,6 +175,7 @@ class DetailBuilder():
             'is_star': target_type == 'star',
             'is_fleet': target_type == 'fleet',
             'is_salvage': target_type == 'salvage',
+            'is_anomaly': target_type == 'anomaly',
             'fleet_thumbnail': (
                 self.selected_obj.effective_thumbnail_path if target_type == 'fleet' else None
             ),
@@ -261,6 +265,10 @@ class DetailBuilder():
                     'germanium': data.get('germanium_inventory', 0),
                     'total': data['total_minerals'],
                 }
+        elif target_type == 'anomaly':
+            detail['anomaly_short_id'] = self.selected_obj.short_id
+            detail['anomaly_type'] = data.get('anomaly_type')
+            detail['description'] = data.get('description')
 
         return detail
 
@@ -290,6 +298,8 @@ class DetailBuilder():
                 obj_type = 'fleet'
             elif isinstance(obj, Salvage):
                 obj_type = 'salvage'
+            elif isinstance(obj, Anomaly):
+                obj_type = 'anomaly'
             else:
                 obj_type = 'unknown'
             result.append({
@@ -377,7 +387,8 @@ class DetailBuilder():
         stars = self.game.stars.filter(x=x, y=y).all()
         fleets = self.game.fleets.filter(x=x, y=y).all()
         salvages = self.game.salvages.filter(x=x, y=y).all()
-        self.at_cursor = list(chain(stars, fleets, salvages))
+        anomalies = self.game.anomalys.filter(x=x, y=y).all()
+        self.at_cursor = list(chain(stars, fleets, salvages, anomalies))
         return self.at_cursor
 
     def find_selected_from_coordinates(self, x, y):
@@ -393,7 +404,8 @@ class DetailBuilder():
             self.selected_obj = (
                 Star.objects.filter(game=self.game, short_id=short_id).first() or
                 Fleet.objects.filter(game=self.game, short_id=short_id).first() or
-                Salvage.objects.filter(game=self.game, short_id=short_id).first()
+                Salvage.objects.filter(game=self.game, short_id=short_id).first() or
+                Anomaly.objects.filter(game=self.game, short_id=short_id).first()
             )
             if self.selected_obj:
                 self.check_selected()
@@ -459,6 +471,8 @@ class DetailBuilder():
             return 'fleet'
         elif isinstance(obj, Salvage):
             return 'salvage'
+        elif isinstance(obj, Anomaly):
+            return 'anomaly'
         return 'unknown'
 
     def build_environmental_detail(self):
@@ -666,7 +680,7 @@ class DetailBuilder():
             target_link = None
             obj, x, y, kind = o.get_actual_target()
             eta_years = None
-            if kind in ['star', 'fleet', 'salvage'] and obj:
+            if kind in ['star', 'fleet', 'salvage', 'anomaly'] and obj:
                 target = obj.name
                 target_link = f'?x={obj.x}&y={obj.y}&sel={obj.short_id}&locate=1'
             elif kind == 'space':
@@ -822,6 +836,7 @@ class DetailBuilder():
             include_stars=True,
             include_fleets=True,
             include_salvage=True,
+            include_anomalies=True,
             include_empty=True,
             include_future_fleets=False,
             exclude_fleet_id=exclude_fleet_id,
@@ -886,6 +901,7 @@ class DetailBuilder():
         include_stars=True,
         include_fleets=True,
         include_salvage=False,
+        include_anomalies=False,
         include_empty=False,
         include_future_fleets=False,
         fleet_player=None,
@@ -908,6 +924,7 @@ class DetailBuilder():
             targets.append(target)
 
         stars_at_location = []
+        anomalies_at_location = []
         if include_stars:
             stars_at_location = list(self.game.stars.filter(x=x, y=y))
             for star in stars_at_location:
@@ -915,6 +932,15 @@ class DetailBuilder():
                     'name': star.name,
                     'short_id': star.short_id,
                     'type': 'star',
+                })
+
+        if include_anomalies:
+            anomalies_at_location = list(self.game.anomalys.filter(x=x, y=y))
+            for anomaly in anomalies_at_location:
+                add_target({
+                    'name': anomaly.name,
+                    'short_id': anomaly.short_id,
+                    'type': 'anomaly',
                 })
 
         if include_fleets:
@@ -944,12 +970,25 @@ class DetailBuilder():
             target_star_filter = None
             if stars_at_location:
                 target_star_filter = models.Q(target_star__in=stars_at_location)
+            object_short_ids = [
+                star.short_id for star in stars_at_location
+            ] + [
+                anomaly.short_id for anomaly in anomalies_at_location
+            ]
+            target_object_filter = None
+            if object_short_ids:
+                target_object_filter = models.Q(
+                    target_kind='OBJECT',
+                    target_short_id__in=object_short_ids,
+                )
 
             location_filter = models.Q(x=x, y=y)
+            combined_filter = location_filter
             if target_star_filter is not None:
-                orders_qs = orders_qs.filter(location_filter | target_star_filter)
-            else:
-                orders_qs = orders_qs.filter(location_filter)
+                combined_filter = combined_filter | target_star_filter
+            if target_object_filter is not None:
+                combined_filter = combined_filter | target_object_filter
+            orders_qs = orders_qs.filter(combined_filter)
 
             if exclude_fleet_id is not None:
                 orders_qs = orders_qs.exclude(fleet_id=exclude_fleet_id)
