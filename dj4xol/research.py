@@ -30,6 +30,7 @@ TECH_PARAM_LABELS = {
     'max_fuel': 'Fuel Capacity',
     'fuel_efficiency': 'Fuel Efficiency',
     'overmax_fuel_penalty': 'Overmax Fuel Penalty',
+    'wormhole_fuel_per_ly': 'Wormhole Fuel (mg/ly)',
     'hull_thumbnail_class': 'Hull Class',
     'offense_level': 'Offense Level',
     'defense_level': 'Defense Level',
@@ -65,6 +66,11 @@ def _format_param_value(key, value):
     if key in ('fuel_efficiency', 'overmax_fuel_penalty'):
         try:
             return '{}%'.format(int(round(float(value) * 100)))
+        except (TypeError, ValueError):
+            return value
+    if key == 'wormhole_fuel_per_ly':
+        try:
+            return '{:.2f}'.format(float(value))
         except (TypeError, ValueError):
             return value
     if key == 'hull_thumbnail_class':
@@ -486,6 +492,7 @@ def get_player_tech_effects(player):
         'max_fuel': 50.0,
         'fuel_efficiency': 1.0,
         'overmax_fuel_penalty': 1.0,
+        'wormhole_fuel_per_ly': 5.0,
         'hull_thumbnail_class': 'scout',
         'offense_level': 0.0,
         'defense_level': 0.0,
@@ -582,6 +589,12 @@ def get_player_tech_effects(player):
         if overmax_penalty is not None:
             try:
                 effects['overmax_fuel_penalty'] = max(0.1, float(overmax_penalty))
+            except (TypeError, ValueError):
+                pass
+        wormhole_fuel_per_ly = params.get('wormhole_fuel_per_ly')
+        if wormhole_fuel_per_ly is not None:
+            try:
+                effects['wormhole_fuel_per_ly'] = max(0.1, float(wormhole_fuel_per_ly))
             except (TypeError, ValueError):
                 pass
     return effects

@@ -1,4 +1,5 @@
 from django.test import TestCase
+import json
 
 from ..default_sync import sync_factory_defaults
 from ..models import ResearchCategory, ServerRaceType, Technology
@@ -27,6 +28,25 @@ class DefaultSyncTest(TestCase):
         )
         self.assertEqual(wormhole.category.code, 'METAPHYSICS')
         self.assertEqual(wormhole.level, 14)
+        self.assertEqual(
+            json.loads(wormhole.params_json).get('wormhole_fuel_per_ly'), 5.0
+        )
+        advanced_wormhole = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000112'
+        )
+        self.assertEqual(advanced_wormhole.category.code, 'METAPHYSICS')
+        self.assertEqual(advanced_wormhole.level, 18)
+        self.assertEqual(
+            json.loads(advanced_wormhole.params_json).get('wormhole_fuel_per_ly'), 4.0
+        )
+        wormhole_mk3 = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000113'
+        )
+        self.assertEqual(wormhole_mk3.category.code, 'ENERGY')
+        self.assertEqual(wormhole_mk3.level, 20)
+        self.assertEqual(
+            json.loads(wormhole_mk3.params_json).get('wormhole_fuel_per_ly'), 2.0
+        )
 
         # Drift values away from fixture defaults.
         race.name = 'Drifted Race'
