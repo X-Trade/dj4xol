@@ -662,6 +662,19 @@ class FleetOrders(AbstractGameObject):
     patrol_radius = models.IntegerField(default=0)
     intercept_speed = models.IntegerField(default=5)
 
+    # Bombing/remotemining completion parameters
+    BOMB_UNTIL_CHOICES = [
+        ('COLONISTS_ZERO', 'Until Zero Colonists'),
+        ('DEFENSES_ZERO', 'Until Zero Defenses'),
+        ('ONCE', 'Once'),
+    ]
+    bomb_until = models.CharField(
+        max_length=20,
+        choices=BOMB_UNTIL_CHOICES,
+        default='COLONISTS_ZERO',
+    )
+    mine_until_full = models.BooleanField(default=True)
+
     @property
     def target(self):
         """Return a string description of the order target."""

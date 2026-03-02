@@ -389,3 +389,78 @@ class TestFleetOrderViews(TestCase):
         self.assertEqual(response.status_code, 302)
         order.refresh_from_db()
         self.assertTrue(order.repeat)
+
+    def test_bomb_order_creation_persists_bomb_until_parameter(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.has_bombs = 'CONVENTIONAL'
+        fleet.save(update_fields=['has_bombs'])
+        target_star = game.stars.exclude(id=player.homeworld_id).first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'BOMB',
+                'bomb_target': target_star.short_id,
+                'bomb_until': 'DEFENSES_ZERO',
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        order = fleet.orders.filter(order_type='BOMB').first()
+        self.assertIsNotNone(order)
+        self.assertEqual(order.bomb_until, 'DEFENSES_ZERO')
+
+    def test_bomb_order_creation_accepts_once_completion(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.has_bombs = 'CONVENTIONAL'
+        fleet.save(update_fields=['has_bombs'])
+        target_star = game.stars.exclude(id=player.homeworld_id).first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'BOMB',
+                'bomb_target': target_star.short_id,
+                'bomb_until': 'ONCE',
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        order = fleet.orders.filter(order_type='BOMB').first()
+        self.assertIsNotNone(order)
+        self.assertEqual(order.bomb_until, 'ONCE')
+
+    def test_remotemine_order_creation_persists_mine_until_full_parameter(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.has_miners = 'SMALL'
+        fleet.save(update_fields=['has_miners'])
+        target_star = game.stars.exclude(id=player.homeworld_id).first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'REMOTEMINE',
+                'remotemine_target': target_star.short_id,
+                'mine_until_full': '0',
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        order = fleet.orders.filter(order_type='REMOTEMINE').first()
+        self.assertIsNotNone(order)
+        self.assertFalse(order.mine_until_full)

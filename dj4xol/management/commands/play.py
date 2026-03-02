@@ -511,10 +511,10 @@ class Command(BaseCommand):
                         "syntax": "/orders <fleet_id> add COLONISE <star_id>",
                     },
                     "BOMB": {
-                        "syntax": "/orders <fleet_id> add BOMB <star_id>",
+                        "syntax": "/orders <fleet_id> add BOMB <star_id> [bomb_until=colonists_zero|defenses_zero|once] [repeat]",
                     },
                     "REMOTEMINE": {
-                        "syntax": "/orders <fleet_id> add REMOTEMINE <star_id>",
+                        "syntax": "/orders <fleet_id> add REMOTEMINE <star_id> [mine_until_full=1|0] [repeat]",
                     },
                     "MERGE": {
                         "syntax": "/orders <fleet_id> add MERGE <fleet_id>",
@@ -664,6 +664,12 @@ class Command(BaseCommand):
             target_obj, _, _, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
             if kind != "star":
                 raise CommandError("BOMB target must be a star short_id.")
+            bomb_until = str(extras["kwargs"].get("bomb_until", "COLONISTS_ZERO")).strip().upper()
+            if bomb_until == "CONTINUOUS":
+                bomb_until = "ONCE"
+            if bomb_until not in ("COLONISTS_ZERO", "DEFENSES_ZERO", "ONCE"):
+                raise CommandError("BOMB bomb_until must be one of: colonists_zero, defenses_zero, once.")
+            order.bomb_until = bomb_until
             order.target_star = target_obj
 
         elif order_type == "REMOTEMINE":
@@ -674,6 +680,8 @@ class Command(BaseCommand):
             target_obj, _, _, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
             if kind != "star":
                 raise CommandError("REMOTEMINE target must be a star short_id.")
+            mine_until_full = str(extras["kwargs"].get("mine_until_full", "1")).strip().lower()
+            order.mine_until_full = mine_until_full not in ("0", "false", "off", "no")
             order.target_star = target_obj
 
         elif order_type == "MERGE":

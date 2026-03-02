@@ -244,6 +244,46 @@ class PlayCommandTest(TestCase):
         self.assertEqual(bomb_order.target_star_id, target_star.id)
         self.assertFalse(bomb_order.repeat)
 
+    def test_orders_add_bomb_accepts_bomb_until_parameter(self):
+        fleet = self.player1.fleets.first()
+        target_star = self.player2.homeworld
+        fleet.has_bombs = 'CONVENTIONAL'
+        fleet.save(update_fields=['has_bombs'])
+
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add BOMB %s bomb_until=defenses_zero' % (fleet.short_id, target_star.short_id),
+                '/exit',
+            ],
+        )
+        bomb_order = fleet.orders.filter(order_type='BOMB').first()
+        self.assertIsNotNone(bomb_order)
+        self.assertEqual(bomb_order.bomb_until, 'DEFENSES_ZERO')
+
+    def test_orders_add_bomb_accepts_once_parameter(self):
+        fleet = self.player1.fleets.first()
+        target_star = self.player2.homeworld
+        fleet.has_bombs = 'CONVENTIONAL'
+        fleet.save(update_fields=['has_bombs'])
+
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add BOMB %s bomb_until=once' % (fleet.short_id, target_star.short_id),
+                '/exit',
+            ],
+        )
+        bomb_order = fleet.orders.filter(order_type='BOMB').first()
+        self.assertIsNotNone(bomb_order)
+        self.assertEqual(bomb_order.bomb_until, 'ONCE')
+
     def test_orders_add_remotemine_requires_miners_and_targets_star(self):
         fleet = self.player1.fleets.first()
         target_star = self.player2.homeworld
@@ -277,6 +317,26 @@ class PlayCommandTest(TestCase):
         self.assertIsNotNone(order)
         self.assertEqual(order.target_star_id, target_star.id)
         self.assertFalse(order.repeat)
+
+    def test_orders_add_remotemine_accepts_mine_until_full_parameter(self):
+        fleet = self.player1.fleets.first()
+        target_star = self.player2.homeworld
+        fleet.has_miners = 'SMALL'
+        fleet.save(update_fields=['has_miners'])
+
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add REMOTEMINE %s mine_until_full=0' % (fleet.short_id, target_star.short_id),
+                '/exit',
+            ],
+        )
+        order = fleet.orders.filter(order_type='REMOTEMINE').first()
+        self.assertIsNotNone(order)
+        self.assertFalse(order.mine_until_full)
 
     def test_orders_add_and_clear_star_production(self):
         star = self.player1.homeworld

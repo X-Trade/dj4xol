@@ -958,8 +958,11 @@ class GameTurn():
 
             elif order.order_type == 'BOMB':
                 bomb_result = self._try_execute_bomb(fleet, order)
-                if bomb_result in ['executed', 'destroyed_star']:
-                    # Bombardment persists each year while completion criteria are unmet.
+                if bomb_result == 'executed':
+                    # Bombardment completed, removed, and may pass through.
+                    continue
+                elif bomb_result == 'blocked':
+                    # Bombardment remains active and blocks subsequent orders.
                     break
                 elif bomb_result == 'fleet_destroyed':
                     return None
@@ -968,10 +971,10 @@ class GameTurn():
             elif order.order_type == 'REMOTEMINE':
                 mining_result = self._try_execute_remote_mine(fleet, order)
                 if mining_result == 'executed':
-                    # Mining complete (cargo full or invalid order): passthrough.
+                    # Mining complete (single-cycle or inventory/full completion): passthrough.
                     continue
                 elif mining_result == 'blocked':
-                    # Mining queue lock until cargo is full.
+                    # Mining queue lock while completion criteria are unmet.
                     break
                 elif mining_result == 'fleet_destroyed':
                     return None
@@ -1480,6 +1483,8 @@ class GameTurn():
                 transfer_colonists=order.transfer_colonists,
                 patrol_radius=order.patrol_radius,
                 intercept_speed=order.intercept_speed,
+                bomb_until=order.bomb_until,
+                mine_until_full=order.mine_until_full,
             )
 
     def _execute_transfer_order(self, fleet, order):
@@ -2288,11 +2293,29 @@ class GameTurn():
                 defender_msg = defender_factory.new_message()
                 defender_msg.year = self.game.year
                 defender_msg.save()
-        # Bombing mission completes once population is reduced to zero.
-        if pre['colonists'] > 0 and int(star.colonists or 0) <= 0:
+
+        completion_mode = (getattr(order, 'bomb_until', None) or 'COLONISTS_ZERO').upper()
+        if completion_mode == 'CONTINUOUS':
+            completion_mode = 'ONCE'
+        completed = False
+        if star_destroyed:
+            completed = True
+        elif completion_mode == 'COLONISTS_ZERO':
+            # Only complete when population transitions from >0 to 0.
+            completed = pre['colonists'] > 0 and int(star.colonists or 0) <= 0
+        elif completion_mode == 'DEFENSES_ZERO':
+            completed = pre['defenses'] > 0 and int(star.defenses or 0) <= 0
+        elif completion_mode == 'ONCE':
+            completed = True
+        else:
+            completed = pre['colonists'] > 0 and int(star.colonists or 0) <= 0
+
+        if completed:
+            if order.repeat:
+                self._handle_repeating_order(order)
             order.delete()
             return 'executed'
-        return 'destroyed_star' if star_destroyed else 'executed'
+        return 'blocked'
 
     def _notify_star_vanished(self, star_name, x, y, attacking_fleet, former_owner_id=None):
         """Send ominous notifications when a star disappears."""
@@ -2397,6 +2420,7 @@ class GameTurn():
         if miner_units_per_ship <= 0:
             order.delete()
             return 'executed'
+        mine_until_full = bool(getattr(order, 'mine_until_full', True))
         if int(fleet.cargo_remaining or 0) <= 0:
             if order.repeat:
                 self._handle_repeating_order(order)
@@ -2464,12 +2488,14 @@ class GameTurn():
             'defenses', 'colonists', 'mines', 'factories', 'labs', 'shipyards',
             'ironium_yield', 'boranium_yield', 'germanium_yield',
         ])
-        if int(fleet.cargo_remaining or 0) <= 0:
-            if order.repeat:
-                self._handle_repeating_order(order)
-            order.delete()
-            return 'executed'
-        return 'blocked'
+
+        if mine_until_full and int(fleet.cargo_remaining or 0) > 0:
+            return 'blocked'
+
+        if order.repeat:
+            self._handle_repeating_order(order)
+        order.delete()
+        return 'executed'
 
     def _execute_colonise_order(self, fleet, order):
         """Execute a colonise order: transfer cargo, add bonus materials, delete fleet.
