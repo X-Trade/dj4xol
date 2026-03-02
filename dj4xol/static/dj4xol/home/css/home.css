@@ -14,6 +14,17 @@ body {
     flex-direction: column;
 }
 
+/* Normalize default browser form spacing for pages using home.css */
+form,
+fieldset,
+legend,
+input,
+select,
+textarea,
+button {
+    margin: 0;
+}
+
 /* Override flex layout for home/profile - panels stack naturally, columns scroll */
 .column {
     overflow: visible;
@@ -33,12 +44,26 @@ body {
     display: none;
 }
 
-body.home-page .panel.open .panel-scrollable-list,
-body.home-page .panel.open .panel-scrollable-text,
-body.profile-page .panel.open .panel-scrollable-list,
-body.profile-page .panel.open .panel-scrollable-text {
-    min-height: 25vh;
+body.home-page .columns.two-column .panel.open > .panel-content.panel-stack,
+body.profile-page .columns.two-column .panel.open > .panel-content.panel-stack {
+    min-height: 20vh;
     max-height: 25vh;
+}
+
+/* Two-column special cases: allow deeper primary summary panels. */
+body.home-page .columns.two-column .panel[data-panel="welcome"].open > .panel-content.panel-stack,
+body.profile-page .columns.two-column .panel[data-panel="account"].open > .panel-content.panel-stack {
+    min-height: 20vh;
+    max-height: 45vh;
+}
+
+/* In two-column home/profile, child scroll containers should fill panel-content space. */
+body.home-page .columns.two-column .panel.open .panel-scrollable-list,
+body.home-page .columns.two-column .panel.open .panel-scrollable-text,
+body.profile-page .columns.two-column .panel.open .panel-scrollable-list,
+body.profile-page .columns.two-column .panel.open .panel-scrollable-text {
+    min-height: 0;
+    max-height: none;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
 }
@@ -345,11 +370,16 @@ body.profile-page .panel.open .panel-scrollable-text {
         box-sizing: border-box;
     }
 
-    body.home-page .panel.open .panel-scrollable-list,
-    body.home-page .panel.open .panel-scrollable-text,
-    body.profile-page .panel.open .panel-scrollable-list,
-    body.profile-page .panel.open .panel-scrollable-text {
-        max-height: 50vh;
+    body.home-page .columns.two-column .panel.open > .panel-content.panel-stack,
+    body.profile-page .columns.two-column .panel.open > .panel-content.panel-stack {
+        min-height: 20vh;
+        max-height: 25vh;
+    }
+
+    body.home-page .columns.two-column .panel[data-panel="welcome"].open > .panel-content.panel-stack,
+    body.profile-page .columns.two-column .panel[data-panel="account"].open > .panel-content.panel-stack {
+        min-height: 20vh;
+        max-height: 45vh;
     }
 
     .onboarding .columns.single-column {

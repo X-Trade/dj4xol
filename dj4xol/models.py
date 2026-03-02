@@ -134,7 +134,7 @@ class UUIDMixin(models.Model):
 
 class ServerSettings(models.Model):
     key = models.CharField(max_length=30, primary_key=True, unique=True)
-    value = models.CharField(max_length=30)
+    value = models.CharField(max_length=30, blank=True, default='')
     long_value = models.TextField(blank=True, default='')
     description = models.CharField(max_length=60)
     modified = models.DateTimeField(auto_now=True, null=True)
