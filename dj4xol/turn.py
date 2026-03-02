@@ -71,6 +71,11 @@ from .research import (
     apply_research_bonus_rp,
 )
 from .fleet_thumbnails import choose_fleet_thumbnail
+from .chance_rules import (
+    roll_chance as chance_roll,
+    scaled_luck_roll,
+    luck_ratio_chance,
+)
 
 # Population carrying capacity constants now live in colony_rules.py
 
@@ -100,11 +105,13 @@ SALVAGE_DEGRADATION_MAX = 0.70  # Maximum 70% loss when creating salvage
 
 # Combat constants (MVP)
 COMBAT_COUNT_SOFTENING = 2.0    # Higher values mean stronger diminishing returns
-COMBAT_DAMAGE_SCALE = 60        # Total integrity points distributed across combatants
+COMBAT_DAMAGE_SCALE = 30        # Integrity damage per point of opponent strength
 COMBAT_SALVAGE_DAMAGE_CHANCE = 0.25
 COMBAT_SALVAGE_DAMAGE_FACTOR = 0.20
 COMBAT_SHIP_LOSS_MAX_CHANCE = 0.50
 COMBAT_LUCK_JITTER = 0.12
+COMBAT_ATTACK_ROLL_BEND = 1.0
+COMBAT_DEFENSE_ROLL_BEND = 1.0
 ORBITAL_DEFENSE_HAZARD_BASE_CHANCE = 0.15
 ORBITAL_DEFENSE_HAZARD_MIN_CHANCE = 0.10
 ORBITAL_DEFENSE_HAZARD_MAX_CHANCE = 0.20
@@ -118,7 +125,34 @@ BUSSARD_RECOVERY_MAX_MG = 5
 # Chance calculation functions (separated for testability)
 def roll_chance(threshold):
     """Return True if random roll is below threshold."""
-    return random.random() < threshold
+    return chance_roll(threshold)
+
+
+def roll_attack_scale(luck_multiplier):
+    """Roll a 0..1 attack scale, biased by luck.
+
+    Offense tech/race sets a maximum attack multiplier. Each engagement
+    samples a scale beneath that maximum. Luck > 1 biases higher rolls,
+    luck < 1 biases lower rolls.
+    """
+    # Keep offense chance-based without overwhelming deterministic strength deltas.
+    # Scale range is 0.5..1.0 where 1.0 is the configured maximum force.
+    return scaled_luck_roll(
+        luck_multiplier,
+        min_scale=0.5,
+        max_scale=1.0,
+        bend=COMBAT_ATTACK_ROLL_BEND,
+    )
+
+
+def roll_defense_scale(luck_multiplier):
+    """Roll defense effectiveness scale for the side taking damage."""
+    return scaled_luck_roll(
+        luck_multiplier,
+        min_scale=0.5,
+        max_scale=1.0,
+        bend=COMBAT_DEFENSE_ROLL_BEND,
+    )
 
 
 def calculate_integrity_loss(excess_warp):
@@ -204,11 +238,17 @@ def calculate_fleet_defense_multiplier(fleet):
     return race_mult * tech_level_to_multiplier(fleet.defense_level)
 
 
-def calculate_fleet_strength(fleet, opponent_defence_multiplier):
+def calculate_fleet_strength(fleet, opponent_defence_multiplier, attack_roll_scale=1.0):
     """Calculate fleet combat strength against opponent defenses."""
     count_norm = normalize_ship_count(fleet.ship_count)
     integrity_norm = max(0.0, min(1.0, fleet.integrity / 100.0))
     attack_mult = calculate_fleet_attack_multiplier(fleet)
+    try:
+        scale = float(attack_roll_scale)
+    except (TypeError, ValueError):
+        scale = 1.0
+    scale = max(0.0, min(1.0, scale))
+    attack_mult *= scale
     defence_factor = 1.0 / opponent_defence_multiplier if opponent_defence_multiplier else 1.0
     base = count_norm * attack_mult * defence_factor
     integrity_factor = (2.0 * integrity_norm) - (integrity_norm ** 2)
@@ -597,14 +637,24 @@ class GameTurn():
             if opponent_fleets:
                 total_enemy_ships = sum(max(1, f.ship_count) for f in opponent_fleets)
                 weighted_enemy_def = sum(
-                    calculate_fleet_defense_multiplier(f) * max(1, f.ship_count)
+                    calculate_fleet_defense_multiplier(f) *
+                    roll_defense_scale(
+                        getattr(f.player.race_type, 'luck_multiplier', 1.0)
+                    ) *
+                    max(1, f.ship_count)
                     for f in opponent_fleets
                 ) / float(total_enemy_ships)
                 opponent_defence = weighted_enemy_def
             else:
                 opponent_defence = 1.0
             strength_by_player[player] = sum(
-                calculate_fleet_strength(fleet, opponent_defence)
+                calculate_fleet_strength(
+                    fleet,
+                    opponent_defence,
+                    attack_roll_scale=roll_attack_scale(
+                        getattr(fleet.player.race_type, 'luck_multiplier', 1.0)
+                    ),
+                )
                 for fleet in fleets_by_player[player]
             )
 
@@ -668,7 +718,11 @@ class GameTurn():
         return players[-1]
 
     def _calculate_combat_damage(self, strength_by_player):
-        """Calculate damage each player takes, based on opponents' strength."""
+        """Calculate damage each player takes based on absolute opponents' strength.
+
+        This intentionally avoids a fixed shared damage pool, so overwhelming
+        strength can decisively destroy weaker fleets in a single engagement.
+        """
         total_strength = sum(strength_by_player.values())
         if total_strength <= 0:
             per_player = COMBAT_DAMAGE_SCALE / max(1, len(strength_by_player))
@@ -677,7 +731,9 @@ class GameTurn():
         damage_taken = {}
         for player, strength in strength_by_player.items():
             opponent_strength = total_strength - strength
-            damage_taken[player] = COMBAT_DAMAGE_SCALE * (opponent_strength / total_strength)
+            relative_share = max(0.0, opponent_strength / total_strength)
+            intensity = 1.0 + max(0.0, opponent_strength)
+            damage_taken[player] = COMBAT_DAMAGE_SCALE * relative_share * intensity
         return damage_taken
 
     def _apply_combat_damage(self, fleets_by_player, damage_taken):
@@ -1626,8 +1682,13 @@ class GameTurn():
 
         attacker_luck = max(0.1, float(getattr(attacker.race_type, 'luck_multiplier', 1.0) or 1.0))
         defender_luck = max(0.1, float(getattr(defender.race_type, 'luck_multiplier', 1.0) or 1.0))
-        chance = ORBITAL_DEFENSE_HAZARD_BASE_CHANCE * (defender_luck / attacker_luck)
-        chance = max(ORBITAL_DEFENSE_HAZARD_MIN_CHANCE, min(ORBITAL_DEFENSE_HAZARD_MAX_CHANCE, chance))
+        chance = luck_ratio_chance(
+            ORBITAL_DEFENSE_HAZARD_BASE_CHANCE,
+            source_luck=defender_luck,
+            target_luck=attacker_luck,
+            min_chance=ORBITAL_DEFENSE_HAZARD_MIN_CHANCE,
+            max_chance=ORBITAL_DEFENSE_HAZARD_MAX_CHANCE,
+        )
         if not roll_chance(chance):
             return
 
@@ -1635,7 +1696,11 @@ class GameTurn():
         colony_defense_level = get_player_colony_defense_level(defender)
         defender_defence_mult *= tech_level_to_multiplier(colony_defense_level)
 
-        attacker_strength = calculate_fleet_strength(fleet, defender_defence_mult)
+        attacker_strength = calculate_fleet_strength(
+            fleet,
+            defender_defence_mult,
+            attack_roll_scale=1.0,
+        )
         defender_strength = normalize_ship_count(effective_defenses)
         strength_by_player = {
             attacker: attacker_strength,
