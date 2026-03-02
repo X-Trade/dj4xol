@@ -1,0 +1,994 @@
+import getpass
+import shlex
+
+from django.contrib.auth import authenticate
+from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Max, Q
+
+from dj4xol.models import (
+    Account,
+    Fleet,
+    FleetOrders,
+    Game,
+    Player,
+    PRODUCTION_COSTS,
+    ProductionOrder,
+    ResearchCategory,
+    Report,
+    Salvage,
+    Star,
+)
+from dj4xol.colony_rules import calculate_habitability_factor
+from dj4xol.objectdetails import DetailBuilder
+from dj4xol.research import (
+    build_research_budget,
+    build_research_screen_data,
+    ensure_player_research_rows,
+    set_singular_allocation,
+    update_player_allocations,
+)
+
+try:
+    import yaml
+except Exception:  # pragma: no cover - fallback should be rare
+    yaml = None
+
+
+class Command(BaseCommand):
+    help = "Interactive CLI for playing a game as a player."
+
+    def add_arguments(self, parser):
+        parser.add_argument("game_short_id", help="Game short_id (e.g. abcdef66)")
+        parser.add_argument(
+            "--user",
+            dest="username",
+            help="Django username for authentication (prompted if omitted).",
+        )
+        parser.add_argument(
+            "--player",
+            dest="player_selector",
+            help="Player selector (short_id or exact player name).",
+        )
+        parser.add_argument(
+            "--account",
+            dest="account_selector",
+            help="Account selector (alias or username).",
+        )
+        parser.add_argument(
+            "--no-auth",
+            action="store_true",
+            help="Skip username/password authentication (local trusted use).",
+        )
+
+    def handle(self, *args, **options):
+        game = self._get_game(options["game_short_id"])
+        user = None
+        account = None
+        if not options["no_auth"]:
+            user = self._authenticate_user(options.get("username"))
+            account = getattr(user, "dj4xol_account", None)
+            if account is None:
+                raise CommandError("Authenticated user has no dj4xol account.")
+
+        player = self._resolve_player(
+            game=game,
+            account=account,
+            user=user,
+            player_selector=options.get("player_selector"),
+            account_selector=options.get("account_selector"),
+            no_auth=bool(options["no_auth"]),
+        )
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                "Connected: game=%s year=%s player=%s (%s)"
+                % (game.short_id, game.year, player.name, player.short_id)
+            )
+        )
+        self.stdout.write("Type /help for available commands.")
+        player.last_seen_year = game.year
+        player.save(update_fields=["last_seen_year"])
+
+        self._show_priority_messages(player, game)
+
+        while True:
+            try:
+                raw = input("play> ").strip()
+            except (KeyboardInterrupt, EOFError):
+                self.stdout.write("")
+                break
+
+            if not raw:
+                continue
+
+            if raw in ("/quit", "/exit"):
+                break
+            if raw == "/help":
+                self._print_help()
+                continue
+            if raw == "/colonies":
+                self._print_yaml(self._colonies_summary(player))
+                continue
+            if raw == "/fleets":
+                self._print_yaml(self._fleets_summary(player))
+                continue
+            if raw == "/stars":
+                self._print_yaml(self._stars_summary(game, player))
+                continue
+            if raw.startswith("/orders"):
+                self._handle_orders_command(raw, player)
+                continue
+            if raw.startswith("/research"):
+                self._handle_research_command(raw, player)
+                continue
+            if raw.startswith("/detail"):
+                self._handle_detail_command(raw, player)
+                continue
+            if raw.startswith("/messages"):
+                self._handle_messages_command(raw, player, game)
+                continue
+
+            self.stdout.write("Unknown command. Type /help.")
+
+        self.stdout.write("Disconnected.")
+
+    def _get_game(self, short_id):
+        game = Game.objects.filter(short_id=short_id).first()
+        if game is None:
+            raise CommandError("Game not found: %s" % short_id)
+        return game
+
+    def _authenticate_user(self, username):
+        if not username:
+            username = input("Username: ").strip()
+        if not username:
+            raise CommandError("Username is required.")
+        password = getpass.getpass("Password: ")
+        user = authenticate(username=username, password=password)
+        if user is None:
+            raise CommandError("Authentication failed.")
+        return user
+
+    def _resolve_player(self, game, account, user, player_selector,
+                        account_selector, no_auth):
+        qs = Player.objects.filter(game=game).select_related(
+            "account", "account__django_user"
+        )
+        player = None
+
+        if player_selector:
+            player = qs.filter(
+                Q(short_id=player_selector) | Q(name=player_selector)
+            ).first()
+            if player is None:
+                raise CommandError("Player not found: %s" % player_selector)
+
+        if account_selector:
+            target_account = Account.objects.filter(
+                Q(alias=account_selector) |
+                Q(django_user__username=account_selector)
+            ).first()
+            if target_account is None:
+                raise CommandError("Account not found: %s" % account_selector)
+            account_player = qs.filter(account=target_account).first()
+            if account_player is None:
+                raise CommandError(
+                    "Account %s has no player in game %s"
+                    % (account_selector, game.short_id)
+                )
+            if player and player.id != account_player.id:
+                raise CommandError("Conflicting --player and --account selectors.")
+            player = account_player
+
+        if player is None and account is not None:
+            player = qs.filter(account=account).first()
+
+        if player is None:
+            players = list(qs.order_by("name"))
+            if not players:
+                raise CommandError("Game has no players.")
+            self.stdout.write("Select player:")
+            for idx, p in enumerate(players, 1):
+                alias = p.account.alias if p.account_id else "no-account"
+                self.stdout.write(
+                    "  %d. %s (%s) [%s]" % (idx, p.name, p.short_id, alias)
+                )
+            choice = input("Player #> ").strip()
+            try:
+                index = int(choice)
+            except ValueError:
+                raise CommandError("Invalid player selection.")
+            if index < 1 or index > len(players):
+                raise CommandError("Invalid player selection.")
+            player = players[index - 1]
+
+        if not no_auth and user is not None and not user.is_staff:
+            if player.account_id != account.pk:
+                raise CommandError(
+                    "Authenticated user cannot play as another account's player."
+                )
+
+        return player
+
+    def _show_priority_messages(self, player, game):
+        qs = self._messages_base_queryset(player).filter(priority=True)
+        msgs = list(qs[:20])
+        if not msgs:
+            return
+        self.stdout.write(self.style.WARNING("Priority messages (year %s):" % game.year))
+        payload = {}
+        for msg in msgs:
+            payload[msg.short_id] = {
+                "year": msg.year,
+                "category": msg.category,
+                "message": msg.message,
+            }
+        self._print_yaml({"priority_messages": payload})
+
+    def _print_help(self):
+        self.stdout.write(
+            "\n".join([
+                "/help                    Show this help.",
+                "/colonies                YAML summary of your colonies.",
+                "/fleets                  YAML summary of your fleets.",
+                "/stars                   YAML summary of stars and known status.",
+                "/orders <id>             List orders for your fleet/star.",
+                "/orders <id> clear       Clear all orders for your fleet/star.",
+                "/orders <id> add         Show add syntax for this fleet/star.",
+                "/orders <id> add ...     Add an order (see add help).",
+                "/research                Budget + category levels/allocations.",
+                "/research <CODE>         Detail for one research category.",
+                "/research <CODE> <PCT>   Set allocation to PCT and rebalance.",
+                "/detail <object_id>      YAML detail panel data as visible to this player.",
+                "/messages [filters...]   YAML messages list (same defaults as game panel).",
+                "                         Filters: year=YYYY since=YYYY category=CAT",
+                "                                  priority=1|0 limit=N contains=text",
+                "/quit or /exit           Exit CLI.",
+            ])
+        )
+
+    def _colonies_summary(self, player):
+        stars = Star.objects.filter(
+            game=player.game, player=player
+        ).order_by("name", "x", "y")
+        data = {}
+        for star in stars:
+            data[star.short_id] = {
+                "name": star.name,
+                "position": "(%s, %s)" % (star.x, star.y),
+                "colonists_kt": star.colonists,
+                "resources": {
+                    "ironium_kt": star.ironium_inventory,
+                    "boranium_kt": star.boranium_inventory,
+                    "germanium_kt": star.germanium_inventory,
+                },
+                "infrastructure": {
+                    "mines": star.mines,
+                    "factories": star.factories,
+                    "labs": star.labs,
+                    "defenses": star.defenses,
+                    "shipyards": star.shipyards,
+                },
+            }
+        return data
+
+    def _stars_summary(self, game, player):
+        explored_star_ids = set(
+            Report.objects.filter(
+                game=game, player=player, target_type="star"
+            ).values_list("target_id", flat=True)
+        )
+        stars = Star.objects.filter(game=game).order_by("x", "y", "name")
+        data = {}
+        for star in stars:
+            explored = star.player_id == player.id or star.id in explored_star_ids
+            owner_player = None
+            if not explored:
+                status = "unknown"
+                habitable = None
+            elif star.player_id == player.id:
+                status = "colonised_owned"
+                habitable = calculate_habitability_factor(player, star) >= 0
+            elif star.player_id:
+                status = "colonised_other"
+                habitable = calculate_habitability_factor(player, star) >= 0
+                owner_player = star.player.name if star.player else None
+            else:
+                status = "known_uncolonised"
+                habitable = calculate_habitability_factor(player, star) >= 0
+
+            if habitable is True:
+                status = "%s, habitable" % status
+            data[star.short_id] = {
+                "name": star.name,
+                "position": "(%s, %s)" % (star.x, star.y),
+                "status": status,
+                "explored": bool(explored),
+                "owner_player": owner_player,
+            }
+        return data
+
+    def _fleets_summary(self, player):
+        fleets = player.fleets.order_by("name", "x", "y")
+        data = {}
+        for fleet in fleets:
+            data[fleet.short_id] = {
+                "name": fleet.name,
+                "position": "(%s, %s)" % (fleet.x, fleet.y),
+                "ship_count": fleet.ship_count,
+                "number_of_orders": fleet.orders.count(),
+                "integrity_pct": fleet.integrity,
+                "fuel_mg": float(fleet.fuel),
+                "cargo_capacity_kt": fleet.cargo_capacity,
+                "cargo": {
+                    "ironium_kt": fleet.ironium_inventory,
+                    "boranium_kt": fleet.boranium_inventory,
+                    "germanium_kt": fleet.germanium_inventory,
+                    "colonists_kt": fleet.colonists,
+                },
+                "max_safe_warp": fleet.max_safe_warp,
+            }
+        return data
+
+    def _handle_orders_command(self, raw, player):
+        try:
+            parts = shlex.split(raw)
+        except ValueError as exc:
+            self.stdout.write("Invalid command syntax: %s" % exc)
+            return
+        if len(parts) < 2:
+            self.stdout.write("Usage: /orders <fleet_or_star_short_id> [clear|add ...]")
+            return
+        object_short_id = parts[1].strip()
+        target, target_kind = self._resolve_orders_target(player, object_short_id)
+        if target is None:
+            self.stdout.write(
+                "Orders target not found for this player: %s" % object_short_id
+            )
+            return
+        if len(parts) == 2:
+            self._print_orders_list(target, target_kind)
+            return
+
+        action = parts[2].strip().lower()
+        if action == "list":
+            self._print_orders_list(target, target_kind)
+            return
+        if action == "clear":
+            if player.turned_in:
+                self.stdout.write("Orders are locked after turn-in.")
+                return
+            self._clear_orders(target, target_kind)
+            self._print_orders_list(target, target_kind)
+            return
+        if action == "add":
+            if player.turned_in:
+                self.stdout.write("Orders are locked after turn-in.")
+                return
+            if len(parts) == 3:
+                self._print_yaml(self._orders_add_help(target_kind))
+                return
+            self._add_order(target, target_kind, parts[3:])
+            self._print_orders_list(target, target_kind)
+            return
+
+        self.stdout.write(
+            "Unknown /orders action: %s (expected list|clear|add)" % parts[2]
+        )
+
+    def _resolve_orders_target(self, player, short_id):
+        fleet = Fleet.objects.filter(
+            game=player.game,
+            player=player,
+            short_id=short_id,
+        ).first()
+        if fleet is not None:
+            return fleet, "fleet"
+        star = Star.objects.filter(
+            game=player.game,
+            player=player,
+            short_id=short_id,
+        ).first()
+        if star is not None:
+            return star, "star"
+        return None, None
+
+    def _print_orders_list(self, target, target_kind):
+        if target_kind == "fleet":
+            self._print_yaml({target.short_id: self._fleet_orders_summary(target)})
+            return
+        self._print_yaml({target.short_id: self._star_orders_summary(target)})
+
+    def _star_orders_summary(self, star):
+        payload = {}
+        orders = star.production_orders.order_by("position", "id")
+        for order in orders:
+            payload[order.short_id] = {
+                "position": order.position,
+                "type": order.order_type,
+                "display": order.get_order_type_display(),
+                "quantity": order.quantity,
+                "completed": order.completed,
+                "repeat": bool(order.repeat),
+                "cost_per_item": PRODUCTION_COSTS.get(order.order_type, {}),
+            }
+        return payload
+
+    def _clear_orders(self, target, target_kind):
+        if target_kind == "fleet":
+            target.orders.all().delete()
+            return
+        target.production_orders.all().delete()
+
+    def _orders_add_help(self, target_kind):
+        if target_kind == "fleet":
+            return {
+                "fleet_order_types": {
+                    "MOVE": {
+                        "syntax": "/orders <fleet_id> add MOVE <(x,y)|target_id> [warp=N] [repeat]",
+                    },
+                    "INTERCEPT": {
+                        "syntax": "/orders <fleet_id> add INTERCEPT <fleet_id> [warp=N] [repeat]",
+                    },
+                    "TRANSFER": {
+                        "syntax": (
+                            "/orders <fleet_id> add TRANSFER <target_id|x,y> "
+                            "<load|unload|unload_all> "
+                            "[ironium=N] [boranium=N] [germanium=N] [colonists=N] [repeat]"
+                        ),
+                    },
+                    "COLONISE": {
+                        "syntax": "/orders <fleet_id> add COLONISE <star_id>",
+                    },
+                    "MERGE": {
+                        "syntax": "/orders <fleet_id> add MERGE <fleet_id>",
+                    },
+                    "SCUTTLE": {"syntax": "/orders <fleet_id> add SCUTTLE"},
+                    "PATROL": {
+                        "syntax": (
+                            "/orders <fleet_id> add PATROL <(x,y)|target_id> "
+                            "[radius=N] [intercept_speed=N] [repeat]"
+                        ),
+                    },
+                }
+            }
+        return {
+            "star_production_order_types": {
+                "BUILD_MINE": {"aliases": ["MINE"], "params": ["quantity", "repeat"]},
+                "BUILD_FACTORY": {"aliases": ["FACTORY"], "params": ["quantity", "repeat"]},
+                "BUILD_LAB": {"aliases": ["LAB"], "params": ["quantity", "repeat"]},
+                "BUILD_DEFENSE": {"aliases": ["DEFENSE"], "params": ["quantity", "repeat"]},
+                "BUILD_SHIPYARD": {"aliases": ["SHIPYARD"], "params": ["quantity", "repeat"]},
+                "BUILD_FLEET": {"aliases": ["FLEET"], "params": ["quantity", "repeat"]},
+                "TERRAFORM_GRAVITY": {"aliases": ["TERRAFORM_GRAVITY"], "params": ["quantity", "repeat"]},
+                "TERRAFORM_TEMPERATURE": {"aliases": ["TERRAFORM_TEMPERATURE"], "params": ["quantity", "repeat"]},
+                "TERRAFORM_RADIATION": {"aliases": ["TERRAFORM_RADIATION"], "params": ["quantity", "repeat"]},
+                "syntax": "/orders <star_id> add <type_or_alias> [quantity] [repeat]",
+            }
+        }
+
+    def _add_order(self, target, target_kind, args):
+        try:
+            if target_kind == "fleet":
+                self._add_fleet_order(target, args)
+            else:
+                self._add_star_order(target, args)
+        except CommandError as exc:
+            self.stdout.write(str(exc))
+
+    def _add_star_order(self, star, args):
+        if not args:
+            raise CommandError("Usage: /orders <star_id> add <type> [quantity] [repeat]")
+
+        order_token = args[0].strip().upper()
+        aliases = {
+            "MINE": "BUILD_MINE",
+            "FACTORY": "BUILD_FACTORY",
+            "LAB": "BUILD_LAB",
+            "DEFENSE": "BUILD_DEFENSE",
+            "SHIPYARD": "BUILD_SHIPYARD",
+            "FLEET": "BUILD_FLEET",
+        }
+        order_type = aliases.get(order_token, order_token)
+        valid_types = set(v for v, _ in ProductionOrder.ORDER_TYPES)
+        if order_type not in valid_types:
+            raise CommandError("Unknown production order type: %s" % order_token)
+
+        quantity = 1
+        repeat = False
+        for token in args[1:]:
+            lower = token.strip().lower()
+            if lower == "repeat":
+                repeat = True
+                continue
+            try:
+                quantity = max(1, int(token))
+            except ValueError:
+                raise CommandError("Invalid production quantity token: %s" % token)
+
+        max_pos = star.production_orders.aggregate(max_pos=Max("position"))["max_pos"] or 0
+        ProductionOrder.objects.create(
+            game=star.game,
+            star=star,
+            order_type=order_type,
+            position=max_pos + 1,
+            quantity=quantity,
+            repeat=repeat,
+        )
+
+    def _add_fleet_order(self, fleet, args):
+        if not args:
+            raise CommandError(
+                "Usage: /orders <fleet_id> add <type> <params...> [repeat]"
+            )
+        order_type = args[0].strip().upper()
+        valid_types = set(v for v, _ in FleetOrders.ORDER_TYPE_CHOICES)
+        if order_type not in valid_types:
+            raise CommandError("Unknown fleet order type: %s" % order_type)
+
+        extras = self._parse_order_extras(args[1:])
+        repeat = bool(extras["repeat"])
+
+        order = FleetOrders(
+            game=fleet.game,
+            fleet=fleet,
+            order_type=order_type,
+            repeat=repeat,
+        )
+
+        if order_type in ("MOVE", "INTERCEPT"):
+            if not extras["positionals"]:
+                raise CommandError("MOVE/INTERCEPT requires a target.")
+            target_token = extras["positionals"][0]
+            target_obj, x, y, kind = self._resolve_target_token(fleet.game, target_token)
+            warp = extras["kwargs"].get("warp", extras["kwargs"].get("warpfactor"))
+            order.warpfactor = self._parse_int_or_default(warp, fleet.max_safe_warp, "warp")
+            self._assign_fleet_order_target(order, target_obj, x, y, kind)
+            if order_type == "INTERCEPT":
+                if kind != "fleet":
+                    raise CommandError("INTERCEPT target must be a fleet short_id.")
+                order.target_fleet = target_obj
+
+        elif order_type == "TRANSFER":
+            if len(extras["positionals"]) < 2:
+                raise CommandError(
+                    "TRANSFER requires: <target> <load|unload|unload_all> [resources]"
+                )
+            target_token = extras["positionals"][0]
+            transfer_token = extras["positionals"][1].strip().upper()
+            transfer_aliases = {"LOAD": "LOAD", "UNLOAD": "UNLOAD", "UNLOAD_ALL": "UNLOAD_ALL"}
+            if transfer_token not in transfer_aliases:
+                raise CommandError("Invalid transfer type: %s" % extras["positionals"][1])
+            order.transfer_type = transfer_aliases[transfer_token]
+            target_obj, x, y, kind = self._resolve_target_token(fleet.game, target_token)
+            self._assign_fleet_order_target(order, target_obj, x, y, kind)
+            if kind == "fleet" and target_obj.player_id != fleet.player_id:
+                raise CommandError("TRANSFER to fleet requires one of your own fleets.")
+
+            order.transfer_ironium = self._parse_nonnegative_int(extras["kwargs"].get("ironium", 0), "ironium")
+            order.transfer_boranium = self._parse_nonnegative_int(extras["kwargs"].get("boranium", 0), "boranium")
+            order.transfer_germanium = self._parse_nonnegative_int(extras["kwargs"].get("germanium", 0), "germanium")
+            order.transfer_colonists = self._parse_nonnegative_int(extras["kwargs"].get("colonists", 0), "colonists")
+            self._apply_transfer_defaults_if_empty(order, target_obj, kind)
+
+        elif order_type == "COLONISE":
+            if not extras["positionals"]:
+                raise CommandError("COLONISE requires a star short_id target.")
+            target_obj, _, _, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
+            if kind != "star":
+                raise CommandError("COLONISE target must be a star short_id.")
+            order.repeat = False
+            order.target_star = target_obj
+
+        elif order_type == "MERGE":
+            if not extras["positionals"]:
+                raise CommandError("MERGE requires a target fleet short_id.")
+            target_obj, _, _, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
+            if kind != "fleet":
+                raise CommandError("MERGE target must be a fleet short_id.")
+            if target_obj.player_id != fleet.player_id:
+                raise CommandError("MERGE target must be one of your own fleets.")
+            order.repeat = False
+            order.target_fleet = target_obj
+
+        elif order_type == "SCUTTLE":
+            order.repeat = False
+
+        elif order_type == "PATROL":
+            if not extras["positionals"]:
+                raise CommandError("PATROL requires a target.")
+            target_obj, x, y, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
+            self._assign_fleet_order_target(order, target_obj, x, y, kind)
+            radius = extras["kwargs"].get("radius", extras["kwargs"].get("patrol_radius"))
+            intercept_speed = extras["kwargs"].get("intercept_speed")
+            order.patrol_radius = self._parse_int_or_default(radius, 15, "radius")
+            order.intercept_speed = self._parse_int_or_default(
+                intercept_speed, fleet.max_safe_warp, "intercept_speed"
+            )
+
+        order.save()
+
+    def _parse_order_extras(self, tokens):
+        positionals = []
+        kwargs = {}
+        repeat = False
+        for token in tokens:
+            lower = token.strip().lower()
+            if lower == "repeat":
+                repeat = True
+                continue
+            if "=" in token:
+                key, value = token.split("=", 1)
+                kwargs[key.strip().lower()] = value.strip()
+                continue
+            positionals.append(token.strip())
+        return {"positionals": positionals, "kwargs": kwargs, "repeat": repeat}
+
+    def _resolve_target_token(self, game, token):
+        coords = self._parse_coords_token(token)
+        if coords is not None:
+            return None, coords[0], coords[1], "space"
+        target_id = token.strip().lower()
+        star = Star.objects.filter(game=game, short_id=target_id).first()
+        if star is not None:
+            return star, star.x, star.y, "star"
+        fleet = Fleet.objects.filter(game=game, short_id=target_id).first()
+        if fleet is not None:
+            return fleet, fleet.x, fleet.y, "fleet"
+        salvage = Salvage.objects.filter(game=game, short_id=target_id).first()
+        if salvage is not None:
+            return salvage, salvage.x, salvage.y, "salvage"
+        raise CommandError("Unknown target token: %s" % token)
+
+    def _parse_coords_token(self, token):
+        stripped = token.strip().replace(" ", "")
+        if stripped.startswith("(") and stripped.endswith(")"):
+            stripped = stripped[1:-1]
+        if "," not in stripped:
+            return None
+        left, right = stripped.split(",", 1)
+        if not left or not right:
+            return None
+        try:
+            return int(left), int(right)
+        except ValueError:
+            return None
+
+    def _assign_fleet_order_target(self, order, target_obj, x, y, kind):
+        if kind == "star":
+            order.target_star = target_obj
+        elif kind == "fleet":
+            order.target_fleet = target_obj
+        elif kind == "salvage":
+            order.target_salvage = target_obj
+        elif kind == "space":
+            order.x = x
+            order.y = y
+        else:
+            raise CommandError("Invalid target kind: %s" % kind)
+
+    def _parse_int_or_default(self, raw, default, label):
+        if raw is None:
+            return int(default)
+        try:
+            return int(raw)
+        except ValueError:
+            raise CommandError("Invalid %s value: %s" % (label, raw))
+
+    def _parse_nonnegative_int(self, raw, label):
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            raise CommandError("Invalid %s value: %s" % (label, raw))
+        if value < 0:
+            raise CommandError("%s must be >= 0" % label)
+        return value
+
+    def _apply_transfer_defaults_if_empty(self, order, target_obj, target_kind):
+        if order.transfer_type != "LOAD":
+            return
+        total_requested = (
+            order.transfer_ironium
+            + order.transfer_boranium
+            + order.transfer_germanium
+            + order.transfer_colonists
+        )
+        if total_requested > 0:
+            return
+        if target_kind == "star":
+            order.transfer_ironium = int(target_obj.ironium_inventory)
+            order.transfer_boranium = int(target_obj.boranium_inventory)
+            order.transfer_germanium = int(target_obj.germanium_inventory)
+            order.transfer_colonists = int(target_obj.colonists // 1000)
+        elif target_kind == "fleet":
+            order.transfer_ironium = int(target_obj.ironium_inventory)
+            order.transfer_boranium = int(target_obj.boranium_inventory)
+            order.transfer_germanium = int(target_obj.germanium_inventory)
+            order.transfer_colonists = int(target_obj.colonists)
+        elif target_kind == "salvage":
+            order.transfer_ironium = int(target_obj.ironium_inventory)
+            order.transfer_boranium = int(target_obj.boranium_inventory)
+            order.transfer_germanium = int(target_obj.germanium_inventory)
+
+    def _fleet_orders_summary(self, fleet):
+        orders = fleet.orders.order_by("position", "id")
+        payload = {}
+        for order in orders:
+            target_obj, target_x, target_y, target_kind = order.get_actual_target()
+            payload[order.short_id] = {
+                "position": order.position,
+                "type": order.order_type,
+                "repeat": bool(order.repeat),
+                "target": {
+                    "kind": target_kind,
+                    "name": getattr(target_obj, "name", None),
+                    "id": getattr(target_obj, "short_id", None),
+                    "position": (
+                        "(%s, %s)" % (target_x, target_y)
+                        if target_x is not None and target_y is not None else None
+                    ),
+                },
+                "warpfactor": order.warpfactor,
+                "transfer": {
+                    "type": order.transfer_type,
+                    "ironium_kt": order.transfer_ironium,
+                    "boranium_kt": order.transfer_boranium,
+                    "germanium_kt": order.transfer_germanium,
+                    "colonists_kt": order.transfer_colonists,
+                },
+                "intercept_speed": order.intercept_speed,
+                "patrol_radius": order.patrol_radius,
+            }
+        return payload
+
+    def _handle_research_command(self, raw, player):
+        try:
+            parts = shlex.split(raw)
+        except ValueError as exc:
+            self.stdout.write("Invalid command syntax: %s" % exc)
+            return
+
+        if len(parts) == 1:
+            self._print_yaml(self._research_overview_summary(player))
+            return
+
+        code = parts[1].strip().upper()
+        category = ResearchCategory.objects.filter(enabled=True, code=code).first()
+        if category is None:
+            self.stdout.write("Unknown research category code: %s" % code)
+            return
+
+        if len(parts) == 2:
+            self._print_yaml(self._research_category_summary(player, category))
+            return
+
+        if len(parts) == 3:
+            if player.turned_in:
+                self.stdout.write("Research allocations are locked after turn-in.")
+                return
+            try:
+                requested_pct = float(parts[2])
+            except ValueError:
+                self.stdout.write("Invalid research allocation percentage: %s" % parts[2])
+                return
+            self._set_research_allocation(player, category, requested_pct)
+            self._print_yaml(self._research_category_summary(player, category))
+            return
+
+        self.stdout.write("Usage: /research [CODE [PERCENT]]")
+
+    def _research_overview_summary(self, player):
+        rows = ensure_player_research_rows(player)
+        budget = build_research_budget(player)
+        data = build_research_screen_data(player)
+        row_by_id = {row.id: row for row in data["rows"]}
+        categories = {}
+        for row in rows:
+            screen_row = row_by_id.get(row.id, row)
+            categories[row.category.code] = {
+                "name": row.category.name,
+                "current_level": float(row.current_level),
+                "stored_rp": float(row.stored_rp),
+                "allocation_percent": float(row.allocation_percent),
+                "next_level_cost_rp": int(getattr(screen_row, "next_level_cost", 0) or 0),
+                "next_level_progress_percent": int(
+                    getattr(screen_row, "progress_percent", 0) or 0
+                ),
+            }
+        return {
+            "budget": budget,
+            "singular_research": bool(player.singular_research),
+            "categories": categories,
+        }
+
+    def _research_category_summary(self, player, category):
+        data = build_research_screen_data(player, selected_category_id=category.id)
+        selected = data.get("selected_research")
+        upcoming = []
+        for item in data.get("next_level_items") or []:
+            upcoming.append({
+                "name": item.get("name"),
+                "description": item.get("description"),
+                "tech_type": item.get("tech_type"),
+                "params": item.get("params"),
+            })
+        payload = {
+            "name": category.name,
+            "current_level": (
+                float(selected.current_level) if selected is not None else 0.0
+            ),
+            "stored_rp": float(selected.stored_rp) if selected is not None else 0.0,
+            "allocation_percent": (
+                float(selected.allocation_percent) if selected is not None else 0.0
+            ),
+            "next_level": data.get("next_level_number"),
+            "next_level_cost_rp": data.get("next_level_cost"),
+            "next_level_progress_percent": data.get("next_level_progress_percent"),
+            "next_level_rp_per_year": data.get("next_level_rp_per_year"),
+            "next_level_eta_years": data.get("next_level_eta_years"),
+            "is_maxed": bool(data.get("selected_is_maxed")),
+            "upcoming_technologies": upcoming,
+        }
+        return {category.code: payload}
+
+    def _set_research_allocation(self, player, category, requested_pct):
+        rows = ensure_player_research_rows(player)
+        if not rows:
+            return
+
+        if player.singular_research:
+            if requested_pct > 0:
+                set_singular_allocation(player, category.id)
+            return
+
+        target_pct = max(0.0, min(100.0, float(requested_pct)))
+        row_by_cat = {row.category_id: row for row in rows}
+        if category.id not in row_by_cat:
+            raise CommandError("Category not available for player: %s" % category.code)
+
+        other_rows = [row for row in rows if row.category_id != category.id]
+        requested = {str(category.id): target_pct}
+        remaining = max(0.0, 100.0 - target_pct)
+        if not other_rows:
+            requested[str(category.id)] = 100.0
+            update_player_allocations(player, requested)
+            return
+
+        current_other_total = sum(float(row.allocation_percent or 0.0) for row in other_rows)
+        if current_other_total > 0:
+            for row in other_rows:
+                share = float(row.allocation_percent or 0.0) / current_other_total
+                requested[str(row.category_id)] = remaining * share
+        else:
+            even = remaining / float(len(other_rows))
+            for row in other_rows:
+                requested[str(row.category_id)] = even
+        update_player_allocations(player, requested)
+
+    def _handle_detail_command(self, raw, player):
+        try:
+            parts = shlex.split(raw)
+        except ValueError as exc:
+            self.stdout.write("Invalid command syntax: %s" % exc)
+            return
+        if len(parts) != 2:
+            self.stdout.write("Usage: /detail <object_short_id>")
+            return
+        selected = parts[1].strip().lower()
+
+        obj = (
+            Star.objects.filter(game=player.game, short_id=selected).first() or
+            Fleet.objects.filter(game=player.game, short_id=selected).first() or
+            player.game.salvages.filter(short_id=selected).first()
+        )
+        if obj is None:
+            self.stdout.write("Object not found in this game: %s" % selected)
+            return
+
+        builder = DetailBuilder(player.game, selected=selected, player=player)
+        detail = builder.build_detail()
+        if not detail:
+            self.stdout.write("No detail available for: %s" % selected)
+            return
+        detail = self._format_detail_for_cli(detail)
+        self._print_yaml({selected: detail})
+
+    def _format_detail_for_cli(self, detail):
+        """Apply CLI-friendly numeric formatting to detail payload."""
+        environmentals = detail.get("environmentals")
+        if not isinstance(environmentals, dict):
+            return detail
+        for _label, env_data in environmentals.items():
+            if not isinstance(env_data, dict):
+                continue
+            value = env_data.get("value")
+            if isinstance(value, (float, int)):
+                env_data["value"] = round(float(value), 2)
+            for key, val in list(env_data.items()):
+                if key.endswith("percent") and isinstance(val, (float, int)):
+                    env_data[key] = round(float(val), 1)
+        return detail
+
+    def _handle_messages_command(self, raw, player, game):
+        try:
+            parts = shlex.split(raw)
+        except ValueError as exc:
+            self.stdout.write("Invalid command syntax: %s" % exc)
+            return
+        filters = {}
+        for token in parts[1:]:
+            if "=" not in token:
+                self.stdout.write("Invalid filter token: %s" % token)
+                return
+            key, value = token.split("=", 1)
+            filters[key.strip().lower()] = value.strip()
+        try:
+            payload = self._messages_summary(player, game, filters)
+        except CommandError as exc:
+            self.stdout.write(str(exc))
+            return
+        self._print_yaml(payload)
+
+    def _messages_summary(self, player, game, filters):
+        qs = self._messages_base_queryset(player)
+
+        year = filters.get("year")
+        if year is not None:
+            try:
+                qs = qs.filter(year=int(year))
+            except ValueError:
+                raise CommandError("Invalid year filter: %s" % year)
+
+        since = filters.get("since")
+        if since is not None:
+            try:
+                qs = qs.filter(year__gte=int(since))
+            except ValueError:
+                raise CommandError("Invalid since filter: %s" % since)
+
+        category = filters.get("category")
+        if category:
+            qs = qs.filter(category=category.upper())
+
+        priority = filters.get("priority")
+        if priority is not None:
+            if priority.lower() in ("1", "true", "yes", "y"):
+                qs = qs.filter(priority=True)
+            elif priority.lower() in ("0", "false", "no", "n"):
+                qs = qs.filter(priority=False)
+            else:
+                raise CommandError("Invalid priority filter: %s" % priority)
+
+        contains = filters.get("contains")
+        if contains:
+            qs = qs.filter(message__icontains=contains)
+
+        limit = filters.get("limit", "50")
+        try:
+            limit = int(limit)
+        except ValueError:
+            raise CommandError("Invalid limit filter: %s" % limit)
+        limit = max(1, min(limit, 500))
+
+        payload = {}
+        for msg in qs[:limit]:
+            payload[msg.short_id] = {
+                "year": msg.year,
+                "category": msg.category,
+                "priority": bool(msg.priority),
+                "text": msg.message,
+            }
+        return payload
+
+    def _messages_base_queryset(self, player):
+        qs = player.messages.order_by("-priority", "-year", "-id")
+        if player.messages_seen_year is not None:
+            qs = qs.filter(year__gte=player.messages_seen_year)
+        return qs
+
+    def _print_yaml(self, payload):
+        if yaml is None:
+            self.stdout.write(str(payload))
+            return
+        dumped = yaml.safe_dump(payload, default_flow_style=False, sort_keys=False)
+        self.stdout.write(dumped.rstrip())
