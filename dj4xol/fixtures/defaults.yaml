@@ -464,13 +464,26 @@
   pk: "00000000-0000-0000-0000-000000000110"
   fields:
     short_id: "tech00000110"
-    category: 4
+    category: 1
     level: 11
     name: 'Shield-Drain Overdrive Injectors'
     description: 'Emergency overdrive unlocks Warp 11 but bleeds defensive shielding under sustained operation.'
     tech_type: 'PROPULSION'
     params_json: '{"max_warp_speed": 11, "defense_level": -0.6, "fuel_efficiency": 0.82, "overmax_fuel_penalty": 1.75}'
     display_order: 50
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000111"
+  fields:
+    short_id: "tech00000111"
+    category: 4
+    level: 14
+    name: 'Wormhole Drive'
+    description: 'A transdimensional jump system that enables risky wormhole traversal modes.'
+    tech_type: 'PROPULSION'
+    params_json: '{"max_warp_speed": 5, "defense_level": -0.6, "fuel_efficiency": 0.82, "overmax_fuel_penalty": 1.75, "has_wormhole_drive": true}'
+    display_order: 52
     enabled: True
 
 - model: dj4xol.Technology

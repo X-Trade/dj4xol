@@ -210,6 +210,39 @@ class PlayCommandTest(TestCase):
         self.assertTrue(orders[1].repeat)
         self.assertEqual(orders[1].transfer_ironium, 123)
 
+    def test_orders_add_move_wormhole_requires_drive(self):
+        fleet = self.player1.fleets.first()
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add MOVE (25,25) warp=wormhole' % fleet.short_id,
+                '/exit',
+            ],
+        )
+        self.assertIn('warp=wormhole requires a fleet with a wormhole drive.', output)
+
+    def test_orders_add_move_wormhole_sets_warpfactor_14(self):
+        fleet = self.player1.fleets.first()
+        fleet.has_wormhole_drive = True
+        fleet.save(update_fields=['has_wormhole_drive'])
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add MOVE (25,25) warp=wormhole repeat' % fleet.short_id,
+                '/exit',
+            ],
+        )
+        order = fleet.orders.filter(order_type='MOVE').first()
+        self.assertIsNotNone(order)
+        self.assertEqual(order.warpfactor, 14)
+        self.assertTrue(order.repeat)
+
     def test_orders_add_bomb_requires_bombs_and_targets_star(self):
         fleet = self.player1.fleets.first()
         target_star = self.player2.homeworld

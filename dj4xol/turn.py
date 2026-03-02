@@ -1,5 +1,5 @@
 from datetime import timedelta
-from math import atan2, ceil, degrees, log2
+from math import atan2, ceil, cos, degrees, log2, pi, sin
 from numpy import array as nparray, linalg
 from django.db import models
 from django.utils import timezone
@@ -29,6 +29,7 @@ from .messages import (
     FleetWarpDamageMessageFactory,
     FleetBussardRecoveryMessageFactory,
     FleetWarpDestroyedMessageFactory,
+    FleetWormholeDestroyedMessageFactory,
     FleetMergedMessageFactory,
     FleetOrdersCompletedMessageFactory,
     FleetBuildBlockedNoShipyardMessageFactory,
@@ -105,6 +106,14 @@ KT_PER_MINE = 10  # kt per mine per turn
 WARP_DESTRUCTION_THRESHOLD = 10  # Warp speed at which destruction becomes possible
 WARP_DESTRUCTION_CHANCE = 0.30   # 30% chance of instant destruction at warp >= 10
 WARP_DAMAGE_CHANCE_PER_EXCESS = 0.15  # 15% damage chance per excess warp factor
+WORMHOLE_WARPFACTOR = 14
+WORMHOLE_ARRIVAL_CHANCE = 0.60
+WORMHOLE_DEVIATION_CHANCE = 0.75
+WORMHOLE_DEVIATION_MIN_DISTANCE = 11.0
+WORMHOLE_DEVIATION_LY_PER_50 = 5.0
+WORMHOLE_INTEGRITY_DAMAGE_CHANCE = 0.20
+WORMHOLE_MAX_INTEGRITY_DAMAGE_PER_100_LY = 1
+WORMHOLE_DESTRUCTION_CHANCE = 0.10
 
 # Salvage constants
 SALVAGE_CHANCE_WARP = 0.66       # 66% chance of salvage from warp destruction
@@ -1068,9 +1077,20 @@ class GameTurn():
         # Check if fleet can reach destination this turn
         warp_speed = order.warpfactor if order.order_type in ['MOVE', 'INTERCEPT'] else 5
         if distance > 0:
-            warp_speed = self._resolve_movement_warp_with_fuel(fleet, order, warp_speed)
-            if warp_speed <= 0:
-                return False
+            if warp_speed == WORMHOLE_WARPFACTOR and bool(fleet.has_wormhole_drive):
+                # Wormhole jumps consume fuel at the fleet's normal safe-warp cruise.
+                safe_warp = max(1, int(fleet.max_safe_warp or 1))
+                fuel_speed = self._resolve_movement_warp_with_fuel(
+                    fleet, order, safe_warp
+                )
+                if fuel_speed <= 0:
+                    return False
+            else:
+                if warp_speed == WORMHOLE_WARPFACTOR:
+                    warp_speed = 13
+                warp_speed = self._resolve_movement_warp_with_fuel(fleet, order, warp_speed)
+                if warp_speed <= 0:
+                    return False
 
         # If target fleet is already within intercept range, snap directly to it.
         # This avoids "parking ahead" when predictive lead is unnecessary.
@@ -1087,6 +1107,19 @@ class GameTurn():
                 fleet.x = target_fleet.x
                 fleet.y = target_fleet.y
                 return True
+
+        if warp_speed == WORMHOLE_WARPFACTOR and bool(fleet.has_wormhole_drive):
+            jump_result = self._execute_wormhole_jump(fleet, order, x, y, distance)
+            if jump_result == 'destroyed':
+                return 'destroyed'
+            if jump_result == 'arrived':
+                if is_intercept:
+                    target = order.target_fleet
+                    if target and (fleet.x, fleet.y) == (target.x, target.y):
+                        return True
+                    return False
+                return True
+            return False
 
         # Check for warp damage before moving
         damage_result = self._check_warp_damage(fleet, warp_speed, order)
@@ -1129,6 +1162,64 @@ class GameTurn():
                 if target and (fleet.x, fleet.y) == (target.x, target.y):
                     return True
             return False
+
+    def _execute_wormhole_jump(self, fleet, order, target_x, target_y, distance):
+        """Resolve one wormhole jump attempt.
+
+        Returns:
+        - 'destroyed': fleet destroyed during jump
+        - 'arrived': fleet reached intended target
+        - 'deviated': fleet arrived off-target due to deviation
+        """
+        if roll_chance(WORMHOLE_DESTRUCTION_CHANCE):
+            self._handle_wormhole_destruction(
+                fleet, from_damage=False
+            )
+            return 'destroyed'
+
+        max_integrity_damage = int(
+            float(distance) / 100.0 * float(WORMHOLE_MAX_INTEGRITY_DAMAGE_PER_100_LY)
+        )
+        if max_integrity_damage > 0 and roll_chance(WORMHOLE_INTEGRITY_DAMAGE_CHANCE):
+            integrity_loss = random.randint(1, max_integrity_damage)
+            integrity_loss = min(integrity_loss, int(fleet.integrity or 0))
+            if integrity_loss > 0:
+                fleet.integrity -= integrity_loss
+                if fleet.integrity <= 0:
+                    self._handle_wormhole_destruction(
+                        fleet, from_damage=True
+                    )
+                    return 'destroyed'
+                self._create_warp_damage_message(
+                    fleet, WORMHOLE_WARPFACTOR, integrity_loss, {}, 0
+                )
+
+        arrived_exactly = roll_chance(WORMHOLE_ARRIVAL_CHANCE)
+
+        destination_x = int(target_x)
+        destination_y = int(target_y)
+        deviated = False
+        can_deviate = distance >= WORMHOLE_DEVIATION_MIN_DISTANCE
+        if can_deviate and (not arrived_exactly) and roll_chance(WORMHOLE_DEVIATION_CHANCE):
+            max_deviation = int(
+                round((float(distance) / 50.0) * WORMHOLE_DEVIATION_LY_PER_50)
+            )
+            max_deviation = max(1, max_deviation)
+            theta = random.uniform(0.0, 2.0 * pi)
+            radius = random.uniform(0.0, float(max_deviation))
+            dx = int(round(cos(theta) * radius))
+            dy = int(round(sin(theta) * radius))
+            destination_x += dx
+            destination_y += dy
+            deviated = True
+
+        destination_x = max(0, min(int(self.game.map_size_x), destination_x))
+        destination_y = max(0, min(int(self.game.map_size_y), destination_y))
+        fleet.x = destination_x
+        fleet.y = destination_y
+        if deviated and (destination_x, destination_y) != (int(target_x), int(target_y)):
+            return 'deviated'
+        return 'arrived'
 
     def _movement_fuel_cost(self, fleet, warp_speed):
         """Fuel used for one year of movement at the specified warp speed."""
@@ -1397,6 +1488,32 @@ class GameTurn():
         msg.save()
         fleet.delete()
 
+    def _handle_wormhole_destruction(self, fleet, from_damage=False):
+        """Destroy fleet during wormhole transit and send wormhole-specific message."""
+        salvage_created = False
+        salvage_location = None
+
+        if roll_chance(SALVAGE_CHANCE_WARP):
+            salvage_result = self._create_salvage_from_fleet(fleet)
+            if salvage_result:
+                salvage_created = True
+                salvage_location = salvage_result
+
+        factory = FleetWormholeDestroyedMessageFactory(
+            self.game,
+            fleet.player,
+            fleet.name,
+            fleet.x,
+            fleet.y,
+            from_damage,
+            salvage_created,
+            salvage_location,
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+        fleet.delete()
+
     def _create_salvage_from_fleet(self, fleet):
         """Create salvage from fleet destruction or scuttling.
 
@@ -1505,21 +1622,18 @@ class GameTurn():
             self._transfer_with_space(fleet, order, target_x, target_y)
             return 'executed'
 
-        if order.target_star:
-            target_obj = order.target_star
+        if target_kind == 'star' and target_obj is not None:
             # Stars don't move, so always available
             if target_obj.x != target_x or target_obj.y != target_y:
                 print(f"Warning: Star {target_obj.name} coordinates mismatch")
 
-        elif order.target_fleet:
-            target_obj = order.target_fleet
+        elif target_kind == 'fleet' and target_obj is not None:
             # Check if target fleet is at expected location
             if target_obj.x != target_x or target_obj.y != target_y:
                 print(f"Transfer waiting: Fleet {target_obj.name} not at expected location ({target_x}, {target_y})")
                 return 'waiting'  # Block and wait for target fleet to arrive
 
-        elif order.target_salvage:
-            target_obj = order.target_salvage
+        elif target_kind == 'salvage' and target_obj is not None:
             # Check if salvage still exists at expected location
             if target_obj.x != target_x or target_obj.y != target_y:
                 print(f"Warning: Salvage coordinates mismatch")
@@ -2238,7 +2352,11 @@ class GameTurn():
             destroyed_x = star.x
             destroyed_y = star.y
             destroyed_owner_id = star.player_id
+            destroyed_star_id = star.id
             star.delete()
+            self._retarget_or_remove_orders_for_destroyed_star(
+                destroyed_star_id, destroyed_x, destroyed_y, preserve_order_id=order.id
+            )
             self._notify_star_vanished(
                 destroyed_star_name, destroyed_x, destroyed_y, fleet,
                 former_owner_id=destroyed_owner_id
@@ -2333,6 +2451,24 @@ class GameTurn():
             msg = factory.new_message()
             msg.year = self.game.year
             msg.save()
+
+    def _retarget_or_remove_orders_for_destroyed_star(
+        self, destroyed_star_id, x, y, preserve_order_id=None
+    ):
+        """Convert movement targets to coordinates and remove other orders."""
+        from .models import FleetOrders
+
+        orders = FleetOrders.objects.filter(
+            game=self.game, target_star_id=destroyed_star_id
+        )
+        if preserve_order_id is not None:
+            orders = orders.exclude(id=preserve_order_id)
+
+        movement_types = ['MOVE', 'INTERCEPT', 'PATROL']
+        orders.filter(order_type__in=movement_types).update(
+            target_star=None, x=int(x), y=int(y)
+        )
+        orders.exclude(order_type__in=movement_types).delete()
 
     def _try_execute_remote_mine(self, fleet, order):
         """Try to execute a remote mining order at the targeted star."""
@@ -2506,21 +2642,18 @@ class GameTurn():
         from .models import Star
         from django.db import transaction
 
-        # Get the target star
-        star = None
-        if order.target_star:
-            star = order.target_star
-        else:
-            # Look for star at the fleet's location
-            _, dest_x, dest_y, _ = order.get_actual_target()
+        # Get the target star. Handle stale target_star references safely.
+        target_obj, dest_x, dest_y, target_kind = order.get_actual_target()
+        star = target_obj if target_kind == 'star' else None
+        if star is None:
+            # Look for star at the resolved destination coordinates.
             star = Star.objects.filter(game=self.game, x=dest_x, y=dest_y).first()
 
         if not star:
             # No star at location, cannot colonise - create message and delete order
-            _, dest_x, dest_y, _ = order.get_actual_target()
             factory = ColoniseFailedNoStarMessageFactory(
                 self.game, fleet.player, fleet.name, dest_x, dest_y,
-                target_star=order.target_star  # May be None if order used coordinates
+                target_star=None
             )
             msg = factory.new_message()
             msg.year = self.game.year

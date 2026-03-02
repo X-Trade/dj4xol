@@ -74,7 +74,7 @@
                 <div class="panel no-transition open" data-panel="allocations">
                     <h2><span>Allocations</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack research-panel-body">
-                        <form method="post" class="panel-scrollable-list">
+                        <form method="post" class="panel-scrollable-list" id="research-allocation-form">
                             {% csrf_token %}
                             {% if selected_category %}
                             <input type="hidden" name="category" value="{{ selected_category.id }}">
@@ -104,14 +104,12 @@
                             {% empty %}
                             <p>No research categories configured.</p>
                             {% endfor %}
+                            {% if not singular_research %}
                             <div class="allocation-actions">
-                                {% if singular_research %}
-                                <button type="submit" name="alloc_action" value="focus">Set Focus</button>
-                                {% else %}
                                 <button type="submit" name="alloc_action" value="even">Even Split</button>
                                 <button type="submit" name="alloc_action" value="update">Update Allocation</button>
-                                {% endif %}
                             </div>
+                            {% endif %}
                         </form>
                     </div>
                 </div>
@@ -275,6 +273,20 @@
             Array.prototype.forEach.call(panels, function(panel, index) {
                 panel.classList.remove('lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3');
                 panel.classList.add(variants[index % variants.length]);
+            });
+        })();
+        (function() {
+            var singularResearch = {% if singular_research %}true{% else %}false{% endif %};
+            if (!singularResearch) return;
+            var form = document.getElementById('research-allocation-form');
+            if (!form) return;
+            var radios = form.querySelectorAll('input[name=\"focus_category\"]');
+            Array.prototype.forEach.call(radios, function(radio) {
+                radio.addEventListener('change', function() {
+                    if (this.checked) {
+                        form.submit();
+                    }
+                });
             });
         })();
         </script>
