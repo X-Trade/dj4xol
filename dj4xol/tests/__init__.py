@@ -16,3 +16,4 @@ from .resource_generation import *
 from .onboarding import *
 from .help_pages import *
 from .default_sync import *
+from .play_cli import *
