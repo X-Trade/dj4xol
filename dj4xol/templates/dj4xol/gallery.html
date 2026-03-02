@@ -25,9 +25,10 @@
                 {% if server_tagline %}<span class="tagline">{{ server_tagline }}</span>{% endif %}
             </div>
             <nav class="landing-top-links" aria-label="Main">
-                <a href="{% url 'dj4xol:index' %}">Home</a>
-                <a href="{% url 'login' %}">Log In</a>
                 <a href="{{ github_url }}" target="_blank" rel="noopener">GitHub</a>
+                <a href="{% url 'dj4xol:index' %}">Home</a>
+                <a href="{% url 'dj4xol:signup' %}" class="primary-link">Sign Up</a>
+                <a href="{% url 'login' %}">Log In</a>
             </nav>
         </header>
 
@@ -35,7 +36,11 @@
             <section class="panel open no-transition" data-panel="gallery-intro">
                 <h2><span>Screenshot Gallery</span></h2>
                 <div class="panel-content panel-stack">
+                    {% if screenshots %}
+                    <p>Browse screenshots from live games and UI themes. Click any image to open the full-size version.</p>
+                    {% else %}
                     <p>Drop screenshots into <code>dj4xol/static/dj4xol/home/images/gallery/</code>. They will appear here automatically.</p>
+                    {% endif %}
                 </div>
             </section>
 
