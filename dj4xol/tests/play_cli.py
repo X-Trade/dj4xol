@@ -1,4 +1,5 @@
 from io import StringIO
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -437,3 +438,82 @@ class PlayCommandTest(TestCase):
         for row in rows:
             if row.category_id != category.id:
                 self.assertEqual(int(round(row.allocation_percent)), 0)
+
+    def test_one_shot_command_runs_and_exits_without_prompt(self):
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            '-c',
+            '/colonies',
+            input_values=[],
+        )
+        self.assertIn('Connected: game=', output)
+        self.assertIn('colonists_kt', output)
+        self.assertIn('Disconnected.', output)
+
+    def test_interactive_session_loads_and_saves_history(self):
+        calls = []
+
+        def _record(name):
+            def _inner(*args, **kwargs):
+                calls.append((name, args, kwargs))
+            return _inner
+
+        fake_readline = SimpleNamespace(
+            read_history_file=_record('read_history_file'),
+            write_history_file=_record('write_history_file'),
+            set_history_length=_record('set_history_length'),
+            add_history=_record('add_history'),
+        )
+        with patch('dj4xol.management.commands.play.readline', fake_readline):
+            self._run_play(
+                self.game.short_id,
+                '--no-auth',
+                '--player',
+                self.player1.short_id,
+                input_values=['/colonies', '/exit'],
+            )
+
+        names = [name for name, _args, _kwargs in calls]
+        self.assertIn('read_history_file', names)
+        self.assertIn('add_history', names)
+        self.assertIn('set_history_length', names)
+        self.assertIn('write_history_file', names)
+
+    def test_done_non_quorum_exits_without_turning_in(self):
+        self.game.turn_scheme = 'OWNER'
+        self.game.save(update_fields=['turn_scheme'])
+        self.player1.turned_in = False
+        self.player1.save(update_fields=['turned_in'])
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/done', '/colonies'],
+        )
+        self.player1.refresh_from_db()
+        self.assertFalse(self.player1.turned_in)
+        self.assertIn('Turn-in skipped: game turn scheme is OWNER.', output)
+        self.assertNotIn('colonists_kt', output)
+
+    def test_done_quorum_marks_player_turned_in_and_exits(self):
+        self.game.turn_scheme = 'QUORUM'
+        self.game.save(update_fields=['turn_scheme'])
+        self.player1.turned_in = False
+        self.player1.save(update_fields=['turned_in'])
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/done', '/colonies'],
+        )
+        self.player1.refresh_from_db()
+        self.assertTrue(self.player1.turned_in)
+        self.assertIn('Player marked ready for turn generation.', output)
+        self.assertNotIn('colonists_kt', output)
