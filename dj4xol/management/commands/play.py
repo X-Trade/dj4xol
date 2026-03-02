@@ -1,4 +1,5 @@
 import getpass
+import os
 import shlex
 
 from django.contrib.auth import authenticate
@@ -27,6 +28,12 @@ from dj4xol.research import (
     set_singular_allocation,
     update_player_allocations,
 )
+from dj4xol.turn import GameTurn
+
+try:  # Enables terminal history/editing for input() on supported platforms.
+    import readline  # noqa: F401
+except Exception:  # pragma: no cover - platform dependent
+    readline = None
 
 try:
     import yaml
@@ -36,6 +43,8 @@ except Exception:  # pragma: no cover - fallback should be rare
 
 class Command(BaseCommand):
     help = "Interactive CLI for playing a game as a player."
+    HISTORY_PATH = os.path.expanduser("~/.dj4xol_play_history")
+    HISTORY_LENGTH = 500
 
     def add_arguments(self, parser):
         parser.add_argument("game_short_id", help="Game short_id (e.g. abcdef66)")
@@ -58,6 +67,12 @@ class Command(BaseCommand):
             "--no-auth",
             action="store_true",
             help="Skip username/password authentication (local trusted use).",
+        )
+        parser.add_argument(
+            "-c",
+            "--command",
+            dest="one_shot_command",
+            help="Execute one CLI command and exit (non-interactive).",
         )
 
     def handle(self, *args, **options):
@@ -85,11 +100,18 @@ class Command(BaseCommand):
                 % (game.short_id, game.year, player.name, player.short_id)
             )
         )
-        self.stdout.write("Type /help for available commands.")
         player.last_seen_year = game.year
         player.save(update_fields=["last_seen_year"])
 
         self._show_priority_messages(player, game)
+        one_shot_command = (options.get("one_shot_command") or "").strip()
+        if one_shot_command:
+            self._execute_cli_command(one_shot_command, player, game)
+            self.stdout.write("Disconnected.")
+            return
+
+        self.stdout.write("Type /help for available commands.")
+        self._load_readline_history()
 
         while True:
             try:
@@ -103,34 +125,82 @@ class Command(BaseCommand):
 
             if raw in ("/quit", "/exit"):
                 break
-            if raw == "/help":
-                self._print_help()
-                continue
-            if raw == "/colonies":
-                self._print_yaml(self._colonies_summary(player))
-                continue
-            if raw == "/fleets":
-                self._print_yaml(self._fleets_summary(player))
-                continue
-            if raw == "/stars":
-                self._print_yaml(self._stars_summary(game, player))
-                continue
-            if raw.startswith("/orders"):
-                self._handle_orders_command(raw, player)
-                continue
-            if raw.startswith("/research"):
-                self._handle_research_command(raw, player)
-                continue
-            if raw.startswith("/detail"):
-                self._handle_detail_command(raw, player)
-                continue
-            if raw.startswith("/messages"):
-                self._handle_messages_command(raw, player, game)
-                continue
+            if raw == "/done":
+                self._handle_done_command(player, game)
+                break
+            if readline is not None:
+                readline.add_history(raw)
+            self._execute_cli_command(raw, player, game)
 
-            self.stdout.write("Unknown command. Type /help.")
-
+        self._save_readline_history()
         self.stdout.write("Disconnected.")
+
+    def _load_readline_history(self):
+        if readline is None:
+            return
+        try:
+            readline.read_history_file(self.HISTORY_PATH)
+        except Exception:
+            pass
+
+    def _save_readline_history(self):
+        if readline is None:
+            return
+        try:
+            readline.set_history_length(int(self.HISTORY_LENGTH))
+            readline.write_history_file(self.HISTORY_PATH)
+        except Exception:
+            pass
+
+    def _execute_cli_command(self, raw, player, game):
+        if raw == "/done":
+            self._handle_done_command(player, game)
+            return
+        if raw == "/help":
+            self._print_help()
+            return
+        if raw == "/colonies":
+            self._print_yaml(self._colonies_summary(player))
+            return
+        if raw == "/fleets":
+            self._print_yaml(self._fleets_summary(player))
+            return
+        if raw == "/stars":
+            self._print_yaml(self._stars_summary(game, player))
+            return
+        if raw.startswith("/orders"):
+            self._handle_orders_command(raw, player)
+            return
+        if raw.startswith("/research"):
+            self._handle_research_command(raw, player)
+            return
+        if raw.startswith("/detail"):
+            self._handle_detail_command(raw, player)
+            return
+        if raw.startswith("/messages"):
+            self._handle_messages_command(raw, player, game)
+            return
+        self.stdout.write("Unknown command. Type /help.")
+
+    def _handle_done_command(self, player, game):
+        if game.turn_scheme != "QUORUM":
+            self.stdout.write(
+                "Turn-in skipped: game turn scheme is %s." % game.turn_scheme
+            )
+            return
+        if game.is_generating:
+            self.stdout.write("Turn generation is already in progress.")
+            return
+
+        if not player.turned_in:
+            player.turned_in = True
+            player.save(update_fields=["turned_in"])
+        self.stdout.write("Player marked ready for turn generation.")
+
+        turn = GameTurn(game)
+        if turn.check_quorum():
+            self.stdout.write("Quorum met. Generating turn...")
+            turn.generate_turn()
 
     def _get_game(self, short_id):
         game = Game.objects.filter(short_id=short_id).first()
