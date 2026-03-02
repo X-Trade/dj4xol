@@ -389,6 +389,10 @@ input:focus {
     border-bottom: 1px solid #808080;
 }
 
+.win95 label {
+    margin-top: 0.5em;
+}
+
 /* ============================================
    Win95 Scrollbars
    ============================================ */

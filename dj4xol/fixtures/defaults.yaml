@@ -33,8 +33,9 @@
       Build your empire, explore the galaxy, and compete with other players
       for galactic domination. Create or join a game to get started.
 
-      New players should check the Help Index.
-      Returning players can check out the Version History.
+      New players should check out the [Help Index](/4x/help/), and
+      returning players can check out the
+      [Version History](/4x/help/version-history/).
 - model: dj4xol.ServerSettings
   fields:
     key: 'server_allow_registration'
