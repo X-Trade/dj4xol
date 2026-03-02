@@ -358,6 +358,10 @@ class GameFactory():
                 overmax_fuel_penalty=tech_effects.get('overmax_fuel_penalty', 1.0),
                 offense_level=tech_effects.get('offense_level', 0.0),
                 defense_level=tech_effects.get('defense_level', 0.0),
+                has_bombs=tech_effects.get('has_bombs'),
+                has_miners=tech_effects.get('has_miners'),
+                has_fuel_factory=bool(tech_effects.get('has_fuel_factory')),
+                has_wormhole_drive=bool(tech_effects.get('has_wormhole_drive')),
                 thumbnail_path=thumbnail_path,
             )
     

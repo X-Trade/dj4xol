@@ -43,7 +43,7 @@ def _build_player_movement_paths(game, player):
     if not player:
         return []
 
-    movement_types = {'MOVE', 'INTERCEPT', 'PATROL', 'COLONISE', 'MERGE'}
+    movement_types = {'MOVE', 'INTERCEPT', 'PATROL', 'COLONISE', 'BOMB', 'REMOTEMINE', 'MERGE'}
     segments = []
     fleets = (
         player.fleets.filter(game=game)
@@ -813,6 +813,21 @@ def add_fleet_order(request, game_short_id):
         # Colonise target must be a star
         if colonise_target:
             order.target_star = Star.objects.get(short_id=colonise_target, game=game)
+
+    elif order_type == 'BOMB':
+        # Bombardment persists and executes each year while queued.
+        if not fleet.has_bombs:
+            return _redirect_preserving_selection(request, game)
+        bomb_target = request.POST.get('bomb_target', '')
+        if bomb_target:
+            order.target_star = Star.objects.get(short_id=bomb_target, game=game)
+
+    elif order_type == 'REMOTEMINE':
+        if not fleet.has_miners:
+            return _redirect_preserving_selection(request, game)
+        remotemine_target = request.POST.get('remotemine_target', '')
+        if remotemine_target:
+            order.target_star = Star.objects.get(short_id=remotemine_target, game=game)
 
     elif order_type == 'MERGE':
         # Merge orders always have repeat=False (fleet is deleted on merge)

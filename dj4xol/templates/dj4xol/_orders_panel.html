@@ -33,6 +33,10 @@
                         {% endif %}
                     {% elif order.order_type == 'COLONISE' %}
                         <span>Colonise {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
+                    {% elif order.order_type == 'BOMB' %}
+                        <span>Bomb {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
+                    {% elif order.order_type == 'REMOTEMINE' %}
+                        <span>Remote Mine {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
                     {% elif order.order_type == 'MERGE' %}
                         <span>Merge into {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
                     {% elif order.order_type == 'SCUTTLE' %}
@@ -90,6 +94,8 @@
             <input type="hidden" name="transfer_germanium" id="transfer-germanium-input" value="0">
             <input type="hidden" name="transfer_colonists" id="transfer-colonists-input" value="0">
             <input type="hidden" name="colonise_target" id="colonise-target-input" value="">
+            <input type="hidden" name="bomb_target" id="bomb-target-input" value="">
+            <input type="hidden" name="remotemine_target" id="remotemine-target-input" value="">
             <input type="hidden" name="merge_target" id="merge-target-input" value="">
             <input type="hidden" name="patrol_radius" id="patrol-radius-input" value="15">
             <input type="hidden" name="intercept_speed" id="intercept-speed-input" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
@@ -100,6 +106,12 @@
                     <option value="INTERCEPT"{% if request.GET.order_type == 'INTERCEPT' %} selected{% endif %}>Intercept</option>
                     <option value="TRANSFER"{% if request.GET.order_type == 'TRANSFER' %} selected{% endif %}>Transfer</option>
                     <option value="COLONISE"{% if request.GET.order_type == 'COLONISE' %} selected{% endif %}>Colonise</option>
+                    {% if detail.fleet_cargo.has_bombs %}
+                    <option value="BOMB"{% if request.GET.order_type == 'BOMB' %} selected{% endif %}>Bomb</option>
+                    {% endif %}
+                    {% if detail.fleet_cargo.has_miners %}
+                    <option value="REMOTEMINE"{% if request.GET.order_type == 'REMOTEMINE' %} selected{% endif %}>Remote Mine</option>
+                    {% endif %}
                     <option value="MERGE"{% if request.GET.order_type == 'MERGE' %} selected{% endif %}>Merge Fleet</option>
                     <option value="SCUTTLE"{% if request.GET.order_type == 'SCUTTLE' %} selected{% endif %}>Scuttle</option>
                     <option value="PATROL"{% if request.GET.order_type == 'PATROL' %} selected{% endif %}>Patrol</option>
@@ -202,6 +214,36 @@
                             <!-- Multiple stars (rare) -->
                             <select id="colonise-target" class="transfer-target-select">
                                 {% for obj in detail.colonise_targets.targets %}
+                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}</option>
+                                {% endfor %}
+                            </select>
+                        {% endif %}
+                    </div>
+                    <div class="dest-display-row" id="bomb-destination" style="display: none;">
+                        {% if detail.bomb_targets.display_mode == 'single' %}
+                            <span class="dest-display">{{ detail.bomb_targets.default_target.name }}</span>
+                            <input type="hidden" id="bomb-single-target-value" data-target="{{ detail.bomb_targets.default_target.short_id }}">
+                        {% elif detail.bomb_targets.display_mode == 'empty' %}
+                            <span class="dest-display"><em>No star at location</em></span>
+                            <input type="hidden" id="bomb-empty-target-value" data-target="">
+                        {% else %}
+                            <select id="bomb-target" class="transfer-target-select">
+                                {% for obj in detail.bomb_targets.targets %}
+                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}</option>
+                                {% endfor %}
+                            </select>
+                        {% endif %}
+                    </div>
+                    <div class="dest-display-row" id="remotemine-destination" style="display: none;">
+                        {% if detail.remotemine_targets.display_mode == 'single' %}
+                            <span class="dest-display">{{ detail.remotemine_targets.default_target.name }}</span>
+                            <input type="hidden" id="remotemine-single-target-value" data-target="{{ detail.remotemine_targets.default_target.short_id }}">
+                        {% elif detail.remotemine_targets.display_mode == 'empty' %}
+                            <span class="dest-display"><em>No star at location</em></span>
+                            <input type="hidden" id="remotemine-empty-target-value" data-target="">
+                        {% else %}
+                            <select id="remotemine-target" class="transfer-target-select">
+                                {% for obj in detail.remotemine_targets.targets %}
                                     <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}</option>
                                 {% endfor %}
                             </select>
@@ -313,6 +355,18 @@
                     </div>
                 </div>
 
+                <div id="bomb-params" class="order-type-params" style="display: none;">
+                    <div class="colonise-warning" style="color: #c44; font-style: italic; padding: 8px 0;">
+                        This order will bombard <strong id="bomb-target-name">{% if detail.bomb_targets.default_target.name %}{{ detail.bomb_targets.default_target.name }}{% else %}the target star{% endif %}</strong> once per year while this order remains queued.
+                    </div>
+                </div>
+
+                <div id="remotemine-params" class="order-type-params" style="display: none;">
+                    <div class="colonise-warning" style="color: #c44; font-style: italic; padding: 8px 0;">
+                        This order will remote mine <strong id="remotemine-target-name">{% if detail.remotemine_targets.default_target.name %}{{ detail.remotemine_targets.default_target.name }}{% else %}the target star{% endif %}</strong> each year and block following orders until the fleet is full.
+                    </div>
+                </div>
+
                 <!-- Merge warning message -->
                 <div id="merge-params" class="order-type-params" style="display: none;">
                     <div class="colonise-warning" style="color: #c44; font-style: italic; padding: 8px 0;">
@@ -338,6 +392,8 @@
     var moveParams = document.getElementById('move-params');
     var transferParams = document.getElementById('transfer-params');
     var coloniseParams = document.getElementById('colonise-params');
+    var bombParams = document.getElementById('bomb-params');
+    var remotemineParams = document.getElementById('remotemine-params');
     var mergeParams = document.getElementById('merge-params');
     var scuttleParams = document.getElementById('scuttle-params');
     var patrolParams = document.getElementById('patrol-params');
@@ -545,6 +601,55 @@
         addBtn.disabled = !hasTarget;
     }
 
+    function initializeBombTarget() {
+        var bombTargetInput = document.getElementById('bomb-target-input');
+        if (!bombTargetInput) return;
+        var bombTargetSelect = document.getElementById('bomb-target');
+        if (bombTargetSelect) {
+            bombTargetInput.value = bombTargetSelect.value;
+            return;
+        }
+        var singleTargetValue = document.getElementById('bomb-single-target-value');
+        if (singleTargetValue) {
+            bombTargetInput.value = singleTargetValue.getAttribute('data-target');
+            return;
+        }
+        var emptyTargetValue = document.getElementById('bomb-empty-target-value');
+        if (emptyTargetValue) {
+            bombTargetInput.value = '';
+        }
+    }
+
+    function updateAddButtonStateBomb() {
+        var bombTargetInput = document.getElementById('bomb-target-input');
+        var hasTarget = bombTargetInput && bombTargetInput.value !== '';
+        addBtn.disabled = !hasTarget;
+    }
+
+    function initializeRemoteMineTarget() {
+        var input = document.getElementById('remotemine-target-input');
+        if (!input) return;
+        var select = document.getElementById('remotemine-target');
+        if (select) {
+            input.value = select.value;
+            return;
+        }
+        var single = document.getElementById('remotemine-single-target-value');
+        if (single) {
+            input.value = single.getAttribute('data-target');
+            return;
+        }
+        var empty = document.getElementById('remotemine-empty-target-value');
+        if (empty) {
+            input.value = '';
+        }
+    }
+
+    function updateAddButtonStateRemoteMine() {
+        var input = document.getElementById('remotemine-target-input');
+        addBtn.disabled = !(input && input.value !== '');
+    }
+
     // Initialize merge target input based on display mode
     function initializeMergeTarget() {
         var mergeTargetInput = document.getElementById('merge-target-input');
@@ -652,13 +757,22 @@
         var moveDestination = document.getElementById('move-destination');
         var transferDestination = document.getElementById('transfer-destination');
         var coloniseDestination = document.getElementById('colonise-destination');
+        var bombDestination = document.getElementById('bomb-destination');
+        var remotemineDestination = document.getElementById('remotemine-destination');
         var mergeDestination = document.getElementById('merge-destination');
         var patrolDestination = document.getElementById('patrol-destination');
+        var destRow = document.getElementById('destination-row');
+
+        if (destRow && currentType !== 'SCUTTLE') {
+            destRow.style.display = '';
+        }
 
         if (currentType === 'TRANSFER') {
             moveParams.style.display = 'none';
             transferParams.style.display = 'block';
             if (coloniseParams) coloniseParams.style.display = 'none';
+            if (bombParams) bombParams.style.display = 'none';
+            if (remotemineParams) remotemineParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'none';
             if (scuttleParams) scuttleParams.style.display = 'none';
             if (patrolParams) patrolParams.style.display = 'none';
@@ -668,6 +782,8 @@
             if (moveDestination) moveDestination.style.display = 'none';
             if (transferDestination) transferDestination.style.display = 'flex';
             if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (bombDestination) bombDestination.style.display = 'none';
+            if (remotemineDestination) remotemineDestination.style.display = 'none';
             if (mergeDestination) mergeDestination.style.display = 'none';
             if (patrolDestination) patrolDestination.style.display = 'none';
 
@@ -678,6 +794,8 @@
             moveParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'block';
+            if (bombParams) bombParams.style.display = 'none';
+            if (remotemineParams) remotemineParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'none';
             if (scuttleParams) scuttleParams.style.display = 'none';
             if (patrolParams) patrolParams.style.display = 'none';
@@ -687,16 +805,62 @@
             if (moveDestination) moveDestination.style.display = 'none';
             if (transferDestination) transferDestination.style.display = 'none';
             if (coloniseDestination) coloniseDestination.style.display = 'flex';
+            if (bombDestination) bombDestination.style.display = 'none';
+            if (remotemineDestination) remotemineDestination.style.display = 'none';
             if (mergeDestination) mergeDestination.style.display = 'none';
             if (patrolDestination) patrolDestination.style.display = 'none';
 
             // Initialize colonise target input
             initializeColoniseTarget();
             updateAddButtonStateColonise();
+        } else if (currentType === 'BOMB') {
+            moveParams.style.display = 'none';
+            transferParams.style.display = 'none';
+            if (coloniseParams) coloniseParams.style.display = 'none';
+            if (bombParams) bombParams.style.display = 'block';
+            if (remotemineParams) remotemineParams.style.display = 'none';
+            if (mergeParams) mergeParams.style.display = 'none';
+            if (scuttleParams) scuttleParams.style.display = 'none';
+            if (patrolParams) patrolParams.style.display = 'none';
+
+            if (destTargetLabel) destTargetLabel.textContent = 'Target';
+            if (moveDestination) moveDestination.style.display = 'none';
+            if (transferDestination) transferDestination.style.display = 'none';
+            if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (bombDestination) bombDestination.style.display = 'flex';
+            if (remotemineDestination) remotemineDestination.style.display = 'none';
+            if (mergeDestination) mergeDestination.style.display = 'none';
+            if (patrolDestination) patrolDestination.style.display = 'none';
+
+            initializeBombTarget();
+            updateAddButtonStateBomb();
+        } else if (currentType === 'REMOTEMINE') {
+            moveParams.style.display = 'none';
+            transferParams.style.display = 'none';
+            if (coloniseParams) coloniseParams.style.display = 'none';
+            if (bombParams) bombParams.style.display = 'none';
+            if (remotemineParams) remotemineParams.style.display = 'block';
+            if (mergeParams) mergeParams.style.display = 'none';
+            if (scuttleParams) scuttleParams.style.display = 'none';
+            if (patrolParams) patrolParams.style.display = 'none';
+
+            if (destTargetLabel) destTargetLabel.textContent = 'Target';
+            if (moveDestination) moveDestination.style.display = 'none';
+            if (transferDestination) transferDestination.style.display = 'none';
+            if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (bombDestination) bombDestination.style.display = 'none';
+            if (remotemineDestination) remotemineDestination.style.display = 'flex';
+            if (mergeDestination) mergeDestination.style.display = 'none';
+            if (patrolDestination) patrolDestination.style.display = 'none';
+
+            initializeRemoteMineTarget();
+            updateAddButtonStateRemoteMine();
         } else if (currentType === 'MERGE') {
             moveParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
+            if (bombParams) bombParams.style.display = 'none';
+            if (remotemineParams) remotemineParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'block';
             if (scuttleParams) scuttleParams.style.display = 'none';
             if (patrolParams) patrolParams.style.display = 'none';
@@ -706,6 +870,8 @@
             if (moveDestination) moveDestination.style.display = 'none';
             if (transferDestination) transferDestination.style.display = 'none';
             if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (bombDestination) bombDestination.style.display = 'none';
+            if (remotemineDestination) remotemineDestination.style.display = 'none';
             if (mergeDestination) mergeDestination.style.display = 'flex';
             if (patrolDestination) patrolDestination.style.display = 'none';
 
@@ -716,33 +882,39 @@
             moveParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
+            if (bombParams) bombParams.style.display = 'none';
+            if (remotemineParams) remotemineParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'none';
             if (scuttleParams) scuttleParams.style.display = 'block';
             if (patrolParams) patrolParams.style.display = 'none';
 
             // Hide destination row for scuttle
-            var destRow = document.getElementById('destination-row');
             if (destRow) destRow.style.display = 'none';
 
             // Scuttle doesn't require a target - always enabled
             addBtn.disabled = false;
+            if (bombDestination) bombDestination.style.display = 'none';
+            if (remotemineDestination) remotemineDestination.style.display = 'none';
             if (patrolDestination) patrolDestination.style.display = 'none';
         } else if (currentType === 'PATROL') {
             moveParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
+            if (bombParams) bombParams.style.display = 'none';
+            if (remotemineParams) remotemineParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'none';
             if (scuttleParams) scuttleParams.style.display = 'none';
             if (patrolParams) patrolParams.style.display = 'block';
 
             // Show destination row
-            var destRow = document.getElementById('destination-row');
             if (destRow) destRow.style.display = '';
 
             if (destTargetLabel) destTargetLabel.textContent = 'Target';
             if (moveDestination) moveDestination.style.display = 'none';
             if (transferDestination) transferDestination.style.display = 'none';
             if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (bombDestination) bombDestination.style.display = 'none';
+            if (remotemineDestination) remotemineDestination.style.display = 'none';
             if (mergeDestination) mergeDestination.style.display = 'none';
             if (patrolDestination) patrolDestination.style.display = 'flex';
 
@@ -752,6 +924,8 @@
             moveParams.style.display = 'block';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
+            if (bombParams) bombParams.style.display = 'none';
+            if (remotemineParams) remotemineParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'none';
             if (scuttleParams) scuttleParams.style.display = 'none';
             if (patrolParams) patrolParams.style.display = 'none';
@@ -760,6 +934,8 @@
             if (moveDestination) moveDestination.style.display = 'flex';
             if (transferDestination) transferDestination.style.display = 'none';
             if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (bombDestination) bombDestination.style.display = 'none';
+            if (remotemineDestination) remotemineDestination.style.display = 'none';
             if (mergeDestination) mergeDestination.style.display = 'none';
             if (patrolDestination) patrolDestination.style.display = 'none';
 
@@ -771,12 +947,13 @@
             moveParams.style.display = 'block';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
+            if (bombParams) bombParams.style.display = 'none';
+            if (remotemineParams) remotemineParams.style.display = 'none';
             if (mergeParams) mergeParams.style.display = 'none';
             if (scuttleParams) scuttleParams.style.display = 'none';
             if (patrolParams) patrolParams.style.display = 'none';
 
             // Show destination row
-            var destRow = document.getElementById('destination-row');
             if (destRow) destRow.style.display = '';
 
             // Switch from target to destination
@@ -784,6 +961,8 @@
             if (moveDestination) moveDestination.style.display = 'flex';
             if (transferDestination) transferDestination.style.display = 'none';
             if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (bombDestination) bombDestination.style.display = 'none';
+            if (remotemineDestination) remotemineDestination.style.display = 'none';
             if (mergeDestination) mergeDestination.style.display = 'none';
             if (patrolDestination) patrolDestination.style.display = 'none';
 
@@ -801,168 +980,8 @@
     // Order type switching
     if (orderType) {
         orderType.addEventListener('change', function() {
-            var type = this.value;
-            orderTypeInput.value = type;
-
-            updateDestinationLink(type);
-
-            var destTargetLabel = document.getElementById('dest-target-label');
-            var moveDestination = document.getElementById('move-destination');
-            var transferDestination = document.getElementById('transfer-destination');
-            var coloniseDestination = document.getElementById('colonise-destination');
-            var mergeDestination = document.getElementById('merge-destination');
-            var patrolDestination = document.getElementById('patrol-destination');
-
-            var destRow = document.getElementById('destination-row');
-
-            if (type === 'MOVE') {
-                moveParams.style.display = 'block';
-                transferParams.style.display = 'none';
-                if (coloniseParams) coloniseParams.style.display = 'none';
-                if (mergeParams) mergeParams.style.display = 'none';
-                if (scuttleParams) scuttleParams.style.display = 'none';
-                if (patrolParams) patrolParams.style.display = 'none';
-
-                // Show destination row
-                if (destRow) destRow.style.display = '';
-
-                // Switch from target to destination
-                if (destTargetLabel) destTargetLabel.textContent = 'Destination';
-                if (moveDestination) moveDestination.style.display = 'flex';
-                if (transferDestination) transferDestination.style.display = 'none';
-                if (coloniseDestination) coloniseDestination.style.display = 'none';
-                if (mergeDestination) mergeDestination.style.display = 'none';
-                if (patrolDestination) patrolDestination.style.display = 'none';
-
-                if (moveTargetSelect) {
-                    setMoveTargetInputs(moveTargetSelect.value, moveTargetSelect.options[moveTargetSelect.selectedIndex]);
-                }
-                updateAddButtonState();
-            } else if (type === 'INTERCEPT') {
-                moveParams.style.display = 'block';
-                transferParams.style.display = 'none';
-                if (coloniseParams) coloniseParams.style.display = 'none';
-                if (mergeParams) mergeParams.style.display = 'none';
-                if (scuttleParams) scuttleParams.style.display = 'none';
-                if (patrolParams) patrolParams.style.display = 'none';
-
-                if (destRow) destRow.style.display = '';
-
-                if (destTargetLabel) destTargetLabel.textContent = 'Target';
-                if (moveDestination) moveDestination.style.display = 'flex';
-                if (transferDestination) transferDestination.style.display = 'none';
-                if (coloniseDestination) coloniseDestination.style.display = 'none';
-                if (mergeDestination) mergeDestination.style.display = 'none';
-                if (patrolDestination) patrolDestination.style.display = 'none';
-
-                if (moveTargetSelect) {
-                    setMoveTargetInputs(moveTargetSelect.value, moveTargetSelect.options[moveTargetSelect.selectedIndex]);
-                }
-                updateAddButtonState();
-            } else if (type === 'TRANSFER') {
-                moveParams.style.display = 'none';
-                transferParams.style.display = 'block';
-                if (coloniseParams) coloniseParams.style.display = 'none';
-                if (mergeParams) mergeParams.style.display = 'none';
-                if (scuttleParams) scuttleParams.style.display = 'none';
-                if (patrolParams) patrolParams.style.display = 'none';
-
-                // Show destination row
-                if (destRow) destRow.style.display = '';
-
-                // Switch from destination to target
-                if (destTargetLabel) destTargetLabel.textContent = 'Target';
-                if (moveDestination) moveDestination.style.display = 'none';
-                if (transferDestination) transferDestination.style.display = 'flex';
-                if (coloniseDestination) coloniseDestination.style.display = 'none';
-                if (mergeDestination) mergeDestination.style.display = 'none';
-                if (patrolDestination) patrolDestination.style.display = 'none';
-                if (patrolDestination) patrolDestination.style.display = 'none';
-
-                // Initialize transfer target input with appropriate value
-                initializeTransferTarget();
-                updateAddButtonStateTransfer();
-            } else if (type === 'COLONISE') {
-                moveParams.style.display = 'none';
-                transferParams.style.display = 'none';
-                if (coloniseParams) coloniseParams.style.display = 'block';
-                if (mergeParams) mergeParams.style.display = 'none';
-                if (scuttleParams) scuttleParams.style.display = 'none';
-                if (patrolParams) patrolParams.style.display = 'none';
-
-                // Show destination row
-                if (destRow) destRow.style.display = '';
-
-                // Switch to target for colonise
-                if (destTargetLabel) destTargetLabel.textContent = 'Target';
-                if (moveDestination) moveDestination.style.display = 'none';
-                if (transferDestination) transferDestination.style.display = 'none';
-                if (coloniseDestination) coloniseDestination.style.display = 'flex';
-                if (mergeDestination) mergeDestination.style.display = 'none';
-                if (patrolDestination) patrolDestination.style.display = 'none';
-                if (patrolDestination) patrolDestination.style.display = 'none';
-
-                // Initialize colonise target input
-                initializeColoniseTarget();
-                updateAddButtonStateColonise();
-            } else if (type === 'MERGE') {
-                moveParams.style.display = 'none';
-                transferParams.style.display = 'none';
-                if (coloniseParams) coloniseParams.style.display = 'none';
-                if (mergeParams) mergeParams.style.display = 'block';
-                if (scuttleParams) scuttleParams.style.display = 'none';
-                if (patrolParams) patrolParams.style.display = 'none';
-
-                // Show destination row
-                if (destRow) destRow.style.display = '';
-
-                // Switch to target for merge
-                if (destTargetLabel) destTargetLabel.textContent = 'Merge Into';
-                if (moveDestination) moveDestination.style.display = 'none';
-                if (transferDestination) transferDestination.style.display = 'none';
-                if (coloniseDestination) coloniseDestination.style.display = 'none';
-                if (mergeDestination) mergeDestination.style.display = 'flex';
-                if (patrolDestination) patrolDestination.style.display = 'none';
-                if (patrolDestination) patrolDestination.style.display = 'none';
-
-                // Initialize merge target input
-                initializeMergeTarget();
-                updateAddButtonStateMerge();
-            } else if (type === 'SCUTTLE') {
-                moveParams.style.display = 'none';
-                transferParams.style.display = 'none';
-                if (coloniseParams) coloniseParams.style.display = 'none';
-                if (mergeParams) mergeParams.style.display = 'none';
-                if (scuttleParams) scuttleParams.style.display = 'block';
-                if (patrolParams) patrolParams.style.display = 'none';
-
-                // Hide destination row for scuttle
-                if (destRow) destRow.style.display = 'none';
-
-                // Scuttle doesn't require a target - always enabled
-                addBtn.disabled = false;
-                if (patrolDestination) patrolDestination.style.display = 'none';
-            } else if (type === 'PATROL') {
-                moveParams.style.display = 'none';
-                transferParams.style.display = 'none';
-                if (coloniseParams) coloniseParams.style.display = 'none';
-                if (mergeParams) mergeParams.style.display = 'none';
-                if (scuttleParams) scuttleParams.style.display = 'none';
-                if (patrolParams) patrolParams.style.display = 'block';
-
-                if (destRow) destRow.style.display = '';
-
-                if (destTargetLabel) destTargetLabel.textContent = 'Target';
-                if (moveDestination) moveDestination.style.display = 'none';
-                if (transferDestination) transferDestination.style.display = 'none';
-                if (coloniseDestination) coloniseDestination.style.display = 'none';
-                if (mergeDestination) mergeDestination.style.display = 'none';
-                if (patrolDestination) patrolDestination.style.display = 'flex';
-
-                initializePatrolTarget();
-                updateAddButtonStatePatrol();
-            }
-            emitPatrolPreview();
+            orderTypeInput.value = this.value;
+            initializeOrderType();
         });
     }
 
@@ -1037,6 +1056,24 @@
         coloniseTargetSelect.addEventListener('change', function() {
             coloniseTargetInput.value = this.value;
             updateAddButtonStateColonise();
+        });
+    }
+
+    var bombTargetSelect = document.getElementById('bomb-target');
+    var bombTargetInput = document.getElementById('bomb-target-input');
+    if (bombTargetSelect && bombTargetInput) {
+        bombTargetSelect.addEventListener('change', function() {
+            bombTargetInput.value = this.value;
+            updateAddButtonStateBomb();
+        });
+    }
+
+    var remotemineTargetSelect = document.getElementById('remotemine-target');
+    var remotemineTargetInput = document.getElementById('remotemine-target-input');
+    if (remotemineTargetSelect && remotemineTargetInput) {
+        remotemineTargetSelect.addEventListener('change', function() {
+            remotemineTargetInput.value = this.value;
+            updateAddButtonStateRemoteMine();
         });
     }
 

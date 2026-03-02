@@ -132,6 +132,8 @@ class DetailBuilder():
                      'fleet_inventory': self.build_fleet_inventory(),
                      'transfer_targets': self.get_transfer_targets(),
                      'colonise_targets': self.get_colonise_targets(),
+                     'bomb_targets': self.get_bomb_targets(),
+                     'remotemine_targets': self.get_remotemine_targets(),
                      'merge_targets': self.get_merge_targets(),
                      'patrol_targets': self.get_patrol_targets(),
                      'effective_location': self.get_fleet_effective_location() if isinstance(self.selected_obj, Fleet) else None,
@@ -242,6 +244,10 @@ class DetailBuilder():
                     'integrity': data.get('integrity'),
                     'offense_modifier': data.get('offense_modifier'),
                     'defense_modifier': data.get('defense_modifier'),
+                    'has_bombs': data.get('has_bombs'),
+                    'has_miners': data.get('has_miners'),
+                    'has_fuel_factory': data.get('has_fuel_factory'),
+                    'has_wormhole_drive': data.get('has_wormhole_drive'),
                 }
         elif target_type == 'salvage':
             detail['salvage_short_id'] = self.selected_obj.short_id
@@ -730,6 +736,10 @@ class DetailBuilder():
             'ship_count': fleet.ship_count,
             'offense_modifier': f'{offense_mod:+d}',
             'defense_modifier': f'{defense_mod:+d}',
+            'has_bombs': fleet.has_bombs,
+            'has_miners': fleet.has_miners,
+            'has_fuel_factory': bool(fleet.has_fuel_factory),
+            'has_wormhole_drive': bool(fleet.has_wormhole_drive),
         }
 
     def build_fleet_inventory(self):
@@ -1103,6 +1113,82 @@ class DetailBuilder():
                 'display_mode': 'multiple',
                 'default_target': targets[0]
             }
+
+    def get_bomb_targets(self):
+        """Get available bombardment targets at the fleet's effective location."""
+        if not isinstance(self.selected_obj, Fleet):
+            return {'targets': [], 'location': (0, 0), 'display_mode': 'empty', 'default_target': None}
+        if not self.selected_obj.has_bombs:
+            return {'targets': [], 'location': (0, 0), 'display_mode': 'empty', 'default_target': None}
+
+        effective_x, effective_y = self.get_fleet_effective_location()
+        targets = []
+        stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
+        for star in stars_at_location:
+            targets.append({
+                'name': star.name,
+                'short_id': star.short_id,
+                'type': 'star'
+            })
+
+        if not targets:
+            return {
+                'targets': [],
+                'location': (effective_x, effective_y),
+                'display_mode': 'empty',
+                'default_target': None
+            }
+        if len(targets) == 1:
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'single',
+                'default_target': targets[0]
+            }
+        return {
+            'targets': targets,
+            'location': (effective_x, effective_y),
+            'display_mode': 'multiple',
+            'default_target': targets[0]
+        }
+
+    def get_remotemine_targets(self):
+        """Get available remote mining targets at the fleet's effective location."""
+        if not isinstance(self.selected_obj, Fleet):
+            return {'targets': [], 'location': (0, 0), 'display_mode': 'empty', 'default_target': None}
+        if not self.selected_obj.has_miners:
+            return {'targets': [], 'location': (0, 0), 'display_mode': 'empty', 'default_target': None}
+
+        effective_x, effective_y = self.get_fleet_effective_location()
+        targets = []
+        stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
+        for star in stars_at_location:
+            targets.append({
+                'name': star.name,
+                'short_id': star.short_id,
+                'type': 'star'
+            })
+
+        if not targets:
+            return {
+                'targets': [],
+                'location': (effective_x, effective_y),
+                'display_mode': 'empty',
+                'default_target': None
+            }
+        if len(targets) == 1:
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'single',
+                'default_target': targets[0]
+            }
+        return {
+            'targets': targets,
+            'location': (effective_x, effective_y),
+            'display_mode': 'multiple',
+            'default_target': targets[0]
+        }
 
     def get_merge_targets(self):
         """Get available merge targets at the fleet's effective location.

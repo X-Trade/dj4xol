@@ -984,7 +984,7 @@
   pk: "00000000-0000-0000-0000-000000000506"
   fields:
     short_id: "tech00000506"
-    category: 5
+    category: 3
     level: 10
     name: 'Capital Hull'
     description: 'Standardised ship-of-the-line with compartments for everything. Extra armour included as standard.'
@@ -997,11 +997,89 @@
   pk: "00000000-0000-0000-0000-000000000507"
   fields:
     short_id: "tech00000507"
-    category: 4
-    level: 12
+    category: 5
+    level: 13
     name: 'City Hull'
     description: 'Mobile megastructure for empires at scale.'
     tech_type: 'HULL'
     params_json: '{"max_cargo_capacity": 10000, "max_fuel": 10000, "hull_thumbnail_class": "city", "defense_level": 1.2}'
     display_order: 240
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000600"
+  fields:
+    short_id: "tech00000600"
+    category: 2
+    level: 6
+    name: 'Basic Remote Miners'
+    description: 'Compact remote mining rigs that can extract minerals without a colony.'
+    tech_type: 'MECHANICAL'
+    params_json: '{"has_miners": "SMALL"}'
+    display_order: 245
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000601"
+  fields:
+    short_id: "tech00000601"
+    category: 5
+    level: 8
+    name: 'Improved Remote Miners'
+    description: 'Expanded remote mining arrays improve off-world extraction throughput.'
+    tech_type: 'MECHANICAL'
+    params_json: '{"has_miners": "MEDIUM"}'
+    display_order: 246
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000602"
+  fields:
+    short_id: "tech00000602"
+    category: 3
+    level: 11
+    name: 'Advanced Remote Miners'
+    description: 'Heavy industrial remote mining complexes for deep-field extraction.'
+    tech_type: 'MECHANICAL'
+    params_json: '{"has_miners": "LARGE"}'
+    display_order: 247
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000603"
+  fields:
+    short_id: "tech00000603"
+    category: 3
+    level: 6
+    name: 'Conventional Bombs'
+    description: 'Basic orbital bombardment munitions for colony suppression.'
+    tech_type: 'BOMB'
+    params_json: '{"has_bombs": "CONVENTIONAL"}'
+    display_order: 248
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000604"
+  fields:
+    short_id: "tech00000604"
+    category: 2
+    level: 10
+    name: 'Smart Bombs'
+    description: 'Guided bombardment payloads focused on defenses and population centers.'
+    tech_type: 'BOMB'
+    params_json: '{"has_bombs": "SMART"}'
+    display_order: 249
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000605"
+  fields:
+    short_id: "tech00000605"
+    category: 1
+    level: 14
+    name: 'Nova Bombs'
+    description: 'Unstable stellar-devastation weapons with catastrophic potential.'
+    tech_type: 'BOMB'
+    params_json: '{"has_bombs": "NOVA"}'
+    display_order: 250
     enabled: True

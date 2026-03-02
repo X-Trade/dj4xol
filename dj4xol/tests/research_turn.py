@@ -420,3 +420,69 @@ class ResearchTurnTest(TestCase):
         self.assertAlmostEqual(
             get_player_colony_defense_level(self.player), 0.7, places=4
         )
+
+    def test_tech_effects_pick_highest_bomb_and_miner_by_tech_type(self):
+        self._reset_research_catalog()
+        energy = ResearchCategory.objects.create(code='ENB', name='Energy-B', enabled=True)
+        electronics = ResearchCategory.objects.create(code='ELB', name='Electronics-B', enabled=True)
+        materials = ResearchCategory.objects.create(code='MAB', name='Materials-B', enabled=True)
+        construction = ResearchCategory.objects.create(code='COB', name='Construction-B', enabled=True)
+
+        Technology.objects.create(
+            category=materials,
+            level=6,
+            name='Conventional Bombs',
+            tech_type='BOMB',
+            params_json='{"has_bombs":"CONVENTIONAL"}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=electronics,
+            level=10,
+            name='Smart Bombs',
+            tech_type='BOMB',
+            params_json='{"has_bombs":"SMART"}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=energy,
+            level=14,
+            name='Nova Bombs',
+            tech_type='BOMB',
+            params_json='{"has_bombs":"NOVA"}',
+            enabled=True,
+        )
+
+        Technology.objects.create(
+            category=electronics,
+            level=6,
+            name='Basic Remote Miners',
+            tech_type='MECHANICAL',
+            params_json='{"has_miners":"SMALL"}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=construction,
+            level=8,
+            name='Improved Remote Miners',
+            tech_type='MECHANICAL',
+            params_json='{"has_miners":"MEDIUM"}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=materials,
+            level=11,
+            name='Advanced Remote Miners',
+            tech_type='MECHANICAL',
+            params_json='{"has_miners":"LARGE"}',
+            enabled=True,
+        )
+
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 14.0
+            row.save(update_fields=['current_level'])
+
+        effects = get_player_tech_effects(self.player)
+        self.assertEqual(effects['has_bombs'], 'NOVA')
+        self.assertEqual(effects['has_miners'], 'LARGE')

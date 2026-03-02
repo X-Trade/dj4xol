@@ -4,6 +4,7 @@ import math
 from django.db import models, transaction
 
 from .colony_rules import calculate_available_buildpoints, calculate_available_researchpoints
+from .bombardment_rules import normalize_bomb_type, normalize_miner_type
 from .models import (
     DefaultResearchLevelRequirement,
     PlayerResearch,
@@ -488,6 +489,10 @@ def get_player_tech_effects(player):
         'hull_thumbnail_class': 'scout',
         'offense_level': 0.0,
         'defense_level': 0.0,
+        'has_bombs': None,
+        'has_miners': None,
+        'has_fuel_factory': False,
+        'has_wormhole_drive': False,
     }
     unlocked = list(get_player_unlocked_technologies(player))
     if not unlocked:
@@ -536,6 +541,16 @@ def get_player_tech_effects(player):
                 effects['defense_level'] += float(defense_level)
             except (TypeError, ValueError):
                 pass
+        bomb_type = normalize_bomb_type(params.get('has_bombs'))
+        if bomb_type is not None:
+            effects['has_bombs'] = bomb_type
+        miner_type = normalize_miner_type(params.get('has_miners'))
+        if miner_type is not None:
+            effects['has_miners'] = miner_type
+        if bool(params.get('has_fuel_factory')):
+            effects['has_fuel_factory'] = True
+        if bool(params.get('has_wormhole_drive')):
+            effects['has_wormhole_drive'] = True
 
     if selected_hull is not None:
         params = _safe_params(selected_hull)

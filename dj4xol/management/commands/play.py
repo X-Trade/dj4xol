@@ -510,6 +510,12 @@ class Command(BaseCommand):
                     "COLONISE": {
                         "syntax": "/orders <fleet_id> add COLONISE <star_id>",
                     },
+                    "BOMB": {
+                        "syntax": "/orders <fleet_id> add BOMB <star_id>",
+                    },
+                    "REMOTEMINE": {
+                        "syntax": "/orders <fleet_id> add REMOTEMINE <star_id>",
+                    },
                     "MERGE": {
                         "syntax": "/orders <fleet_id> add MERGE <fleet_id>",
                     },
@@ -648,6 +654,26 @@ class Command(BaseCommand):
             if kind != "star":
                 raise CommandError("COLONISE target must be a star short_id.")
             order.repeat = False
+            order.target_star = target_obj
+
+        elif order_type == "BOMB":
+            if not fleet.has_bombs:
+                raise CommandError("BOMB requires a fleet with bombs.")
+            if not extras["positionals"]:
+                raise CommandError("BOMB requires a star short_id target.")
+            target_obj, _, _, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
+            if kind != "star":
+                raise CommandError("BOMB target must be a star short_id.")
+            order.target_star = target_obj
+
+        elif order_type == "REMOTEMINE":
+            if not fleet.has_miners:
+                raise CommandError("REMOTEMINE requires a fleet with remote miners.")
+            if not extras["positionals"]:
+                raise CommandError("REMOTEMINE requires a star short_id target.")
+            target_obj, _, _, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
+            if kind != "star":
+                raise CommandError("REMOTEMINE target must be a star short_id.")
             order.target_star = target_obj
 
         elif order_type == "MERGE":
