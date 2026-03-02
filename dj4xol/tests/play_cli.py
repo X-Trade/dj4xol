@@ -210,6 +210,74 @@ class PlayCommandTest(TestCase):
         self.assertTrue(orders[1].repeat)
         self.assertEqual(orders[1].transfer_ironium, 123)
 
+    def test_orders_add_bomb_requires_bombs_and_targets_star(self):
+        fleet = self.player1.fleets.first()
+        target_star = self.player2.homeworld
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add BOMB %s' % (fleet.short_id, target_star.short_id),
+                '/exit',
+            ],
+        )
+        self.assertIn('BOMB requires a fleet with bombs.', output)
+        self.assertFalse(fleet.orders.filter(order_type='BOMB').exists())
+
+        fleet.has_bombs = 'CONVENTIONAL'
+        fleet.save(update_fields=['has_bombs'])
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add BOMB %s' % (fleet.short_id, target_star.short_id),
+                '/exit',
+            ],
+        )
+        bomb_order = fleet.orders.filter(order_type='BOMB').first()
+        self.assertIsNotNone(bomb_order)
+        self.assertEqual(bomb_order.target_star_id, target_star.id)
+        self.assertFalse(bomb_order.repeat)
+
+    def test_orders_add_remotemine_requires_miners_and_targets_star(self):
+        fleet = self.player1.fleets.first()
+        target_star = self.player2.homeworld
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add REMOTEMINE %s' % (fleet.short_id, target_star.short_id),
+                '/exit',
+            ],
+        )
+        self.assertIn('REMOTEMINE requires a fleet with remote miners.', output)
+        self.assertFalse(fleet.orders.filter(order_type='REMOTEMINE').exists())
+
+        fleet.has_miners = 'SMALL'
+        fleet.save(update_fields=['has_miners'])
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add REMOTEMINE %s' % (fleet.short_id, target_star.short_id),
+                '/exit',
+            ],
+        )
+        order = fleet.orders.filter(order_type='REMOTEMINE').first()
+        self.assertIsNotNone(order)
+        self.assertEqual(order.target_star_id, target_star.id)
+        self.assertFalse(order.repeat)
+
     def test_orders_add_and_clear_star_production(self):
         star = self.player1.homeworld
         self._run_play(

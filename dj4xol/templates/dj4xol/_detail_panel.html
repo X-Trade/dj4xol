@@ -140,6 +140,22 @@
                 <span class="env-label">Defence</span>
                 <span class="env-value">{% if detail.fleet_cargo.defense_modifier %}{{ detail.fleet_cargo.defense_modifier }}{% else %}???{% endif %}</span>
             </div>
+            <div class="env-row">
+                <span class="env-label">Bombs</span>
+                <span class="env-value">{% if detail.fleet_cargo.has_bombs %}{{ detail.fleet_cargo.has_bombs|title }}{% else %}None{% endif %}</span>
+            </div>
+            <div class="env-row">
+                <span class="env-label">Miners</span>
+                <span class="env-value">{% if detail.fleet_cargo.has_miners %}{{ detail.fleet_cargo.has_miners|title }}{% else %}None{% endif %}</span>
+            </div>
+            <div class="env-row">
+                <span class="env-label">Fuel Factory</span>
+                <span class="env-value">{% if detail.fleet_cargo.has_fuel_factory %}Yes{% else %}No{% endif %}</span>
+            </div>
+            <div class="env-row">
+                <span class="env-label">Wormhole Drive</span>
+                <span class="env-value">{% if detail.fleet_cargo.has_wormhole_drive %}Yes{% else %}No{% endif %}</span>
+            </div>
         </div>
     </div>
     {% endif %}

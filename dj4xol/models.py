@@ -64,6 +64,25 @@ def random_surface_germanium_init():
     return mineral_rules.random_surface_germanium_init()
 
 
+BOMB_TYPE_CONVENTIONAL = 'CONVENTIONAL'
+BOMB_TYPE_SMART = 'SMART'
+BOMB_TYPE_NOVA = 'NOVA'
+BOMB_TYPE_CHOICES = [
+    (BOMB_TYPE_CONVENTIONAL, 'Conventional'),
+    (BOMB_TYPE_SMART, 'Smart'),
+    (BOMB_TYPE_NOVA, 'Nova'),
+]
+
+MINER_TYPE_SMALL = 'SMALL'
+MINER_TYPE_MEDIUM = 'MEDIUM'
+MINER_TYPE_LARGE = 'LARGE'
+MINER_TYPE_CHOICES = [
+    (MINER_TYPE_SMALL, 'Small'),
+    (MINER_TYPE_MEDIUM, 'Medium'),
+    (MINER_TYPE_LARGE, 'Large'),
+]
+
+
 class HabitabilityMixin(models.Model):
     """Mixin providing habitability range fields and methods."""
     HABITABILITY_BUDGET = 6.0
@@ -443,11 +462,34 @@ class Fleet(AbstractMapObject):
     overmax_fuel_penalty = models.FloatField(default=1.0)  # Exponential burn multiplier above safe warp
     offense_level = models.FloatField(default=0.0)
     defense_level = models.FloatField(default=0.0)
+    has_bombs = models.CharField(max_length=16, choices=BOMB_TYPE_CHOICES,
+                                 null=True, blank=True, default=None)
+    has_miners = models.CharField(max_length=16, choices=MINER_TYPE_CHOICES,
+                                  null=True, blank=True, default=None)
+    has_fuel_factory = models.BooleanField(default=False)
+    has_wormhole_drive = models.BooleanField(default=False)
     thumbnail_path = models.CharField(max_length=255, blank=True, default='')
     integrity = models.IntegerField(default=100,
             validators=[MinValueValidator(0), MaxValueValidator(100)])
 
+    @staticmethod
+    def _normalize_choice_or_none(value, allowed_values):
+        if value in (None, False, '', 'False', 'false', 'NONE', 'none'):
+            return None
+        normalised = str(value).strip().upper()
+        if normalised in allowed_values:
+            return normalised
+        return None
+
     def save(self, *args, **kwargs):
+        self.has_bombs = self._normalize_choice_or_none(
+            self.has_bombs,
+            {choice for choice, _label in BOMB_TYPE_CHOICES},
+        )
+        self.has_miners = self._normalize_choice_or_none(
+            self.has_miners,
+            {choice for choice, _label in MINER_TYPE_CHOICES},
+        )
         if not self.thumbnail_path:
             self.thumbnail_path = choose_fleet_thumbnail(self.id or self.short_id or self.name)
         super(Fleet, self).save(*args, **kwargs)
@@ -578,6 +620,8 @@ class FleetOrders(AbstractGameObject):
         ('INTERCEPT', 'Intercept'),
         ('TRANSFER', 'Transfer'),
         ('COLONISE', 'Colonise'),
+        ('BOMB', 'Bomb'),
+        ('REMOTEMINE', 'Remote Mine'),
         ('MERGE', 'Merge'),
         ('SCUTTLE', 'Scuttle'),
         ('PATROL', 'Patrol'),
@@ -730,6 +774,8 @@ class Technology(UUIDMixin):
         ('SHIELD', 'Shield'),
         ('ARMOUR', 'Armour'),
         ('INFRASTRUCTURE', 'Infrastructure'),
+        ('MECHANICAL', 'Mechanical'),
+        ('BOMB', 'Bomb'),
         ('OTHER', 'Other'),
     ]
 

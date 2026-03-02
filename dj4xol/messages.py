@@ -630,6 +630,125 @@ class ColoniseFailedNoStarMessageFactory(MessageFactory):
             )
 
 
+class BombardFailedNoStarMessageFactory(MessageFactory):
+    """Messages for failed bombardment attempts (no star at location)."""
+    category = 'EXCEPTION'
+    priority = True
+    templates = [
+        "{fleet} aborted bombardment at {location} - no star was found.",
+        "Bombardment order for {fleet} failed: no target star at {location}.",
+        "{fleet} reached {location}, but there was no star to bombard.",
+    ]
+
+    def __init__(self, game, player, fleet_name, x, y, message=None):
+        super().__init__(game, player, message, intensity=-0.2)
+        self.fleet_name = fleet_name
+        self.x = x
+        self.y = y
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=self.fleet_name,
+            location=format_location(x=self.x, y=self.y, link=True, game=self.game),
+        )
+
+
+class FleetBombardmentReportMessageFactory(MessageFactory):
+    """Messages summarizing one year of bombardment effects."""
+    category = 'COMBAT'
+    priority = True
+
+    def __init__(
+        self, game, player, fleet, star_name, bomb_type,
+        defenses_lost, colonists_lost, mines_lost, factories_lost, labs_lost, shipyards_lost,
+        integrity_lost=0, ships_lost=0, star_destroyed=False,
+        perspective='attacker', attacker_fleet_name=None, message=None
+    ):
+        super().__init__(game, player, message, intensity=-0.5)
+        self.fleet = fleet
+        self.star_name = star_name or "unknown star"
+        self.bomb_type = bomb_type or "CONVENTIONAL"
+        self.defenses_lost = int(defenses_lost or 0)
+        self.colonists_lost = int(colonists_lost or 0)
+        self.mines_lost = int(mines_lost or 0)
+        self.factories_lost = int(factories_lost or 0)
+        self.labs_lost = int(labs_lost or 0)
+        self.shipyards_lost = int(shipyards_lost or 0)
+        self.integrity_lost = int(integrity_lost or 0)
+        self.ships_lost = int(ships_lost or 0)
+        self.star_destroyed = bool(star_destroyed)
+        self.perspective = perspective
+        self.attacker_fleet_name = attacker_fleet_name or getattr(fleet, 'name', 'Unknown Fleet')
+
+    def format_message(self):
+        infra = []
+        if self.mines_lost > 0:
+            infra.append(f"{self.mines_lost} mines")
+        if self.factories_lost > 0:
+            infra.append(f"{self.factories_lost} factories")
+        if self.labs_lost > 0:
+            infra.append(f"{self.labs_lost} labs")
+        if self.shipyards_lost > 0:
+            infra.append(f"{self.shipyards_lost} shipyards")
+        infra_text = ", ".join(infra) if infra else "no infrastructure"
+
+        if self.perspective == 'defender':
+            msg = (
+                f"{escape(self.attacker_fleet_name)} bombarded {escape(self.star_name)} "
+                f"({escape(self.bomb_type.title())} bombs): "
+                f"we lost {self.defenses_lost} defenses, "
+                f"{self.colonists_lost:,} colonists, and {infra_text}."
+            )
+        else:
+            msg = (
+                f"{format_map_object(self.fleet)} bombarded {escape(self.star_name)} "
+                f"({escape(self.bomb_type.title())} bombs): "
+                f"{self.defenses_lost} defenses destroyed, "
+                f"{self.colonists_lost:,} colonists killed, "
+                f"{infra_text} damaged."
+            )
+
+        if self.integrity_lost > 0 or self.ships_lost > 0:
+            if self.perspective == 'defender':
+                msg += (
+                    f" Defensive fire inflicted {self.integrity_lost}% integrity loss"
+                    f" and {self.ships_lost} ships lost on the attacker."
+                )
+            else:
+                msg += (
+                    f" Defensive fire inflicted {self.integrity_lost}% integrity loss"
+                    f" and {self.ships_lost} ships lost."
+                )
+        if self.star_destroyed:
+            msg += f" {escape(self.star_name)} was annihilated."
+        return msg
+
+
+class StarVanishedOminousMessageFactory(MessageFactory):
+    """Public warning message for star disappearance."""
+    category = 'RANDOM'
+    priority = False
+
+    def __init__(self, game, player, star_name, x, y, fleet_name=None, priority=False, message=None):
+        super().__init__(game, player, message, intensity=-0.9)
+        self.star_name = star_name or "Unknown Star"
+        self.x = x
+        self.y = y
+        self.fleet_name = fleet_name
+        self.priority = bool(priority)
+
+    def format_message(self):
+        if self.fleet_name:
+            return (
+                f"Astronomers report that they can no longer locate "
+                f"{escape(self.star_name)}. {escape(self.fleet_name)} "
+                "was recently seen at its vicinity."
+            )
+        return (
+            f"Astronomers report that {escape(self.star_name)} has mysteriously vanished."
+        )
+
+
 class ColoniseFailedNoColonistsMessageFactory(MessageFactory):
     """Messages for failed colonisation attempts (no colonists aboard)."""
     category = 'EXCEPTION'

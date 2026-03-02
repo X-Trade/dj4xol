@@ -34,6 +34,9 @@ from .messages import (
     FleetBuildBlockedNoShipyardMessageFactory,
     FleetRepairedMessageFactory,
     OrbitalDefenseHitMessageFactory,
+    FleetBombardmentReportMessageFactory,
+    BombardFailedNoStarMessageFactory,
+    StarVanishedOminousMessageFactory,
     ResearchLevelUnlockedMessageFactory,
     ResearchBreakthroughMessageFactory,
 )
@@ -75,6 +78,12 @@ from .chance_rules import (
     roll_chance as chance_roll,
     scaled_luck_roll,
     luck_ratio_chance,
+)
+from .bombardment_rules import (
+    bombardment_damage_k,
+    normalize_bomb_type,
+    normalize_miner_type,
+    smart_bombs_only_target_defenses_and_population,
 )
 
 # Population carrying capacity constants now live in colony_rules.py
@@ -120,6 +129,16 @@ MERGE_COMBAT_RETENTION = 0.95
 BUSSARD_RECOVERY_CHANCE = 0.5
 BUSSARD_RECOVERY_MIN_MG = 1
 BUSSARD_RECOVERY_MAX_MG = 5
+NOVA_STAR_DESTRUCTION_CHANCE = 0.40
+STAR_VANISH_FLEET_MENTION_CHANCE = 0.35
+REMOTE_MINER_UNITS_BY_TYPE = {
+    'SMALL': 1,
+    'MEDIUM': 2,
+    'LARGE': 4,
+}
+REMOTE_MINE_HARASS_CHANCE = 0.35
+REMOTE_MINE_HARASS_DAMAGE_FACTOR = 0.25
+REMOTE_MINE_DEFENSE_DAMAGE_MULTIPLIER = 1.25
 
 
 # Chance calculation functions (separated for testability)
@@ -412,6 +431,10 @@ class GameTurn():
                 'integrity': obj.integrity,
                 'offense_modifier': f'{offense_mod:+d}',
                 'defense_modifier': f'{defense_mod:+d}',
+                'has_bombs': obj.has_bombs,
+                'has_miners': obj.has_miners,
+                'has_fuel_factory': bool(obj.has_fuel_factory),
+                'has_wormhole_drive': bool(obj.has_wormhole_drive),
             }
         elif target_type == 'salvage':
             return {
@@ -932,6 +955,28 @@ class GameTurn():
                     return None
                 elif colonise_result == 'waiting':
                     break  # Wait for fleet to reach destination
+
+            elif order.order_type == 'BOMB':
+                bomb_result = self._try_execute_bomb(fleet, order)
+                if bomb_result in ['executed', 'destroyed_star']:
+                    # Bombardment persists each year while completion criteria are unmet.
+                    break
+                elif bomb_result == 'fleet_destroyed':
+                    return None
+                elif bomb_result == 'waiting':
+                    break
+            elif order.order_type == 'REMOTEMINE':
+                mining_result = self._try_execute_remote_mine(fleet, order)
+                if mining_result == 'executed':
+                    # Mining complete (cargo full or invalid order): passthrough.
+                    continue
+                elif mining_result == 'blocked':
+                    # Mining queue lock until cargo is full.
+                    break
+                elif mining_result == 'fleet_destroyed':
+                    return None
+                elif mining_result == 'waiting':
+                    break
 
             elif order.order_type == 'MERGE':
                 merge_result = self._execute_merge_order(fleet, order)
@@ -2044,6 +2089,388 @@ class GameTurn():
         # Fleet is at destination, execute colonise
         return self._execute_colonise_order(fleet, order)
 
+    def _try_execute_bomb(self, fleet, order):
+        """Try to execute a bombardment order at the targeted star."""
+        _, dest_x, dest_y, kind = order.get_actual_target()
+        if kind == 'none':
+            order.delete()
+            return 'executed'
+        if fleet.x != dest_x or fleet.y != dest_y:
+            return 'waiting'
+        return self._execute_bomb_order(fleet, order)
+
+    def _resolve_planetary_defense_fire_against_fleet(self, star, fleet, damage_multiplier=1.0):
+        """Apply colony defense fire to a hostile fleet before bombardment."""
+        if not star.player or star.player == fleet.player:
+            return {'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
+
+        effective_defenses = calculate_effective_defenses(star)
+        if effective_defenses <= 0:
+            return {'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
+
+        defender = star.player
+        defender_defence_mult = float(getattr(defender.race_type, 'defence_multiplier', 1.0) or 1.0)
+        defender_defence_mult *= tech_level_to_multiplier(get_player_colony_defense_level(defender))
+
+        attacker_strength = calculate_fleet_strength(fleet, defender_defence_mult)
+        defender_strength = normalize_ship_count(effective_defenses)
+        strength_by_player = {
+            fleet.player: attacker_strength,
+            defender: defender_strength,
+        }
+        damage_taken = self._calculate_combat_damage(strength_by_player)
+        try:
+            mult = float(damage_multiplier)
+        except (TypeError, ValueError):
+            mult = 1.0
+        mult = max(0.0, mult)
+        if mult != 1.0:
+            damage_taken[fleet.player] = float(damage_taken.get(fleet.player, 0.0)) * mult
+        results = self._apply_combat_damage(
+            {fleet.player: [fleet], defender: []},
+            damage_taken
+        )
+        result = results.get(fleet.player, {}) or {}
+        return {
+            'destroyed': bool(result.get('fleets_destroyed', 0)),
+            'integrity_lost': int(result.get('integrity_lost', 0) or 0),
+            'ships_lost': int(result.get('ships_lost', 0) or 0),
+            'defense_mult': max(1.0, defender_defence_mult),
+        }
+
+    def _execute_bomb_order(self, fleet, order):
+        """Execute one year of bombardment damage."""
+        from .models import Star
+
+        star = None
+        if order.target_star_id:
+            star = Star.objects.filter(id=order.target_star_id, game=self.game).first()
+        if star is None:
+            _, target_x, target_y, _ = order.get_actual_target()
+            star = Star.objects.filter(game=self.game, x=target_x, y=target_y).first()
+
+        if star is None:
+            _, target_x, target_y, _ = order.get_actual_target()
+            factory = BombardFailedNoStarMessageFactory(
+                self.game, fleet.player, fleet.name, target_x, target_y
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+            order.delete()
+            return 'executed'
+
+        bomb_type = normalize_bomb_type(getattr(fleet, 'has_bombs', None))
+        if bomb_type is None:
+            order.delete()
+            return 'executed'
+
+        defense_fire = self._resolve_planetary_defense_fire_against_fleet(star, fleet)
+        if defense_fire.get('destroyed'):
+            factory = FleetBombardmentReportMessageFactory(
+                self.game,
+                fleet.player,
+                fleet=fleet,
+                star_name=star.name,
+                bomb_type=bomb_type,
+                defenses_lost=0,
+                colonists_lost=0,
+                mines_lost=0,
+                factories_lost=0,
+                labs_lost=0,
+                shipyards_lost=0,
+                integrity_lost=defense_fire.get('integrity_lost', 0),
+                ships_lost=defense_fire.get('ships_lost', 0),
+                star_destroyed=False,
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+            return 'fleet_destroyed'
+
+        defending_player = star.player if star.player and star.player != fleet.player else None
+        pre = {
+            'defenses': int(star.defenses or 0),
+            'colonists': int(star.colonists or 0),
+            'mines': int(star.mines or 0),
+            'factories': int(star.factories or 0),
+            'labs': int(star.labs or 0),
+            'shipyards': int(star.shipyards or 0),
+        }
+        effective_defenses = max(0.0, float(calculate_effective_defenses(star)))
+        luck_multiplier = float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0)
+        damage_k = bombardment_damage_k(
+            fleet.ship_count,
+            fleet.offense_level,
+            effective_defenses * defense_fire.get('defense_mult', 1.0),
+            luck_multiplier,
+            bomb_type,
+        )
+
+        defenses_lost = min(pre['defenses'], damage_k)
+        colonists_lost = min(pre['colonists'], damage_k * 1000)
+        star.defenses = max(0, pre['defenses'] - defenses_lost)
+        star.colonists = max(0, pre['colonists'] - colonists_lost)
+
+        mines_lost = 0
+        factories_lost = 0
+        labs_lost = 0
+        shipyards_lost = 0
+        if not smart_bombs_only_target_defenses_and_population(bomb_type):
+            mines_lost = min(pre['mines'], damage_k)
+            factories_lost = min(pre['factories'], damage_k)
+            labs_lost = min(pre['labs'], damage_k)
+            shipyards_lost = min(pre['shipyards'], damage_k)
+            star.mines = max(0, pre['mines'] - mines_lost)
+            star.factories = max(0, pre['factories'] - factories_lost)
+            star.labs = max(0, pre['labs'] - labs_lost)
+            star.shipyards = max(0, pre['shipyards'] - shipyards_lost)
+
+        star_destroyed = False
+        destroyed_star_name = star.name
+        if bomb_type == 'NOVA' and roll_chance(NOVA_STAR_DESTRUCTION_CHANCE):
+            star_destroyed = True
+            destroyed_x = star.x
+            destroyed_y = star.y
+            destroyed_owner_id = star.player_id
+            star.delete()
+            self._notify_star_vanished(
+                destroyed_star_name, destroyed_x, destroyed_y, fleet,
+                former_owner_id=destroyed_owner_id
+            )
+        else:
+            star.save(update_fields=['defenses', 'colonists', 'mines', 'factories', 'labs', 'shipyards'])
+
+        factory = FleetBombardmentReportMessageFactory(
+            self.game,
+            fleet.player,
+            fleet=fleet,
+            star_name=destroyed_star_name,
+            bomb_type=bomb_type,
+            defenses_lost=defenses_lost,
+            colonists_lost=colonists_lost,
+            mines_lost=mines_lost,
+            factories_lost=factories_lost,
+            labs_lost=labs_lost,
+            shipyards_lost=shipyards_lost,
+            integrity_lost=defense_fire.get('integrity_lost', 0),
+            ships_lost=defense_fire.get('ships_lost', 0),
+            star_destroyed=star_destroyed,
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+        if defending_player is not None:
+            total_losses = (
+                defenses_lost + colonists_lost +
+                mines_lost + factories_lost + labs_lost + shipyards_lost
+            )
+            if total_losses > 0 or star_destroyed:
+                defender_factory = FleetBombardmentReportMessageFactory(
+                    self.game,
+                    defending_player,
+                    fleet=fleet,
+                    star_name=destroyed_star_name,
+                    bomb_type=bomb_type,
+                    defenses_lost=defenses_lost,
+                    colonists_lost=colonists_lost,
+                    mines_lost=mines_lost,
+                    factories_lost=factories_lost,
+                    labs_lost=labs_lost,
+                    shipyards_lost=shipyards_lost,
+                    integrity_lost=defense_fire.get('integrity_lost', 0),
+                    ships_lost=defense_fire.get('ships_lost', 0),
+                    star_destroyed=star_destroyed,
+                    perspective='defender',
+                    attacker_fleet_name=fleet.name,
+                )
+                defender_msg = defender_factory.new_message()
+                defender_msg.year = self.game.year
+                defender_msg.save()
+        # Bombing mission completes once population is reduced to zero.
+        if pre['colonists'] > 0 and int(star.colonists or 0) <= 0:
+            order.delete()
+            return 'executed'
+        return 'destroyed_star' if star_destroyed else 'executed'
+
+    def _notify_star_vanished(self, star_name, x, y, attacking_fleet, former_owner_id=None):
+        """Send ominous notifications when a star disappears."""
+        for player in self.game.players.all():
+            mention_fleet = random.random() < STAR_VANISH_FLEET_MENTION_CHANCE
+            factory = StarVanishedOminousMessageFactory(
+                self.game,
+                player,
+                star_name=star_name,
+                x=x,
+                y=y,
+                fleet_name=attacking_fleet.name if mention_fleet else None,
+                priority=(former_owner_id is not None and player.id == former_owner_id),
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
+    def _try_execute_remote_mine(self, fleet, order):
+        """Try to execute a remote mining order at the targeted star."""
+        _, dest_x, dest_y, kind = order.get_actual_target()
+        if kind == 'none':
+            order.delete()
+            return 'executed'
+        if fleet.x != dest_x or fleet.y != dest_y:
+            return 'waiting'
+        return self._execute_remote_mine_order(fleet, order)
+
+    def _extract_minerals_with_standard_rules(self, star, total_extraction):
+        """Extract minerals from a star using standard mining/depletion mechanics.
+
+        Returns per-resource extracted whole kt:
+        {'ironium': int, 'boranium': int, 'germanium': int}
+        and updates star yield fields in-place.
+        """
+        total_extraction = max(0.0, float(total_extraction or 0.0))
+        if total_extraction <= 0:
+            return {'ironium': 0, 'boranium': 0, 'germanium': 0}
+
+        total_yield = int(star.ironium_yield or 0) + int(star.boranium_yield or 0) + int(star.germanium_yield or 0)
+        if total_yield <= 0:
+            return {'ironium': 0, 'boranium': 0, 'germanium': 0}
+
+        is_homeworld = star.homeworld_of.exists()
+        min_yield = HOMEWORLD_MIN_YIELD if is_homeworld else 0
+        produced = {'ironium': 0, 'boranium': 0, 'germanium': 0}
+
+        for resource in ['ironium_yield', 'boranium_yield', 'germanium_yield']:
+            yield_val = int(getattr(star, resource) or 0)
+            if yield_val <= 0:
+                continue
+
+            extraction = total_extraction * yield_val / total_yield
+            whole_kt = int(extraction)
+            fractional = extraction - whole_kt
+            if fractional > 0 and random.random() < fractional:
+                whole_kt += 1
+
+            resource_key = resource.replace('_yield', '')
+            produced[resource_key] = whole_kt
+
+            if whole_kt <= 0:
+                continue
+
+            sustainable_extraction = max(1.0, float(yield_val))
+            overmining_ratio = max(
+                0.0,
+                (float(extraction) - sustainable_extraction) / sustainable_extraction
+            )
+            depletion_rate = (
+                YIELD_DEPLETION_RATE * (
+                    1.0 + (overmining_ratio * OVERMINING_DEPLETION_MULTIPLIER)
+                )
+            )
+            depletion = whole_kt * depletion_rate
+            whole_depletion = int(depletion)
+            depletion_fraction = depletion - whole_depletion
+            if depletion_fraction > 0 and random.random() < depletion_fraction:
+                whole_depletion += 1
+            if whole_depletion > 0:
+                new_yield = max(min_yield, yield_val - whole_depletion)
+                setattr(star, resource, new_yield)
+
+        return produced
+
+    def _execute_remote_mine_order(self, fleet, order):
+        """Execute one year of remote mining into fleet cargo with surface overflow."""
+        from .models import Star
+
+        star = None
+        if order.target_star_id:
+            star = Star.objects.filter(id=order.target_star_id, game=self.game).first()
+        if star is None:
+            _, target_x, target_y, _ = order.get_actual_target()
+            star = Star.objects.filter(game=self.game, x=target_x, y=target_y).first()
+        if star is None:
+            order.delete()
+            return 'executed'
+
+        miner_type = normalize_miner_type(getattr(fleet, 'has_miners', None))
+        miner_units_per_ship = REMOTE_MINER_UNITS_BY_TYPE.get(miner_type, 0)
+        if miner_units_per_ship <= 0:
+            order.delete()
+            return 'executed'
+        if int(fleet.cargo_remaining or 0) <= 0:
+            if order.repeat:
+                self._handle_repeating_order(order)
+            order.delete()
+            return 'executed'
+
+        if star.player and star.player != fleet.player:
+            defense_fire = self._resolve_planetary_defense_fire_against_fleet(
+                star,
+                fleet,
+                damage_multiplier=REMOTE_MINE_DEFENSE_DAMAGE_MULTIPLIER,
+            )
+            if defense_fire.get('destroyed'):
+                return 'fleet_destroyed'
+            if roll_chance(REMOTE_MINE_HARASS_CHANCE):
+                effective_defenses = max(0.0, float(calculate_effective_defenses(star)))
+                luck_multiplier = float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0)
+                conventional_damage = bombardment_damage_k(
+                    fleet.ship_count,
+                    fleet.offense_level,
+                    effective_defenses * defense_fire.get('defense_mult', 1.0),
+                    luck_multiplier,
+                    'CONVENTIONAL',
+                )
+                harass_damage = max(0, int(conventional_damage * REMOTE_MINE_HARASS_DAMAGE_FACTOR))
+                if harass_damage > 0:
+                    defenses_lost = min(int(star.defenses or 0), harass_damage)
+                    colonists_lost = min(int(star.colonists or 0), harass_damage * 1000)
+                    mines_lost = min(int(star.mines or 0), harass_damage)
+                    factories_lost = min(int(star.factories or 0), harass_damage)
+                    labs_lost = min(int(star.labs or 0), harass_damage)
+                    shipyards_lost = min(int(star.shipyards or 0), harass_damage)
+                    star.defenses = max(0, int(star.defenses or 0) - defenses_lost)
+                    star.colonists = max(0, int(star.colonists or 0) - colonists_lost)
+                    star.mines = max(0, int(star.mines or 0) - mines_lost)
+                    star.factories = max(0, int(star.factories or 0) - factories_lost)
+                    star.labs = max(0, int(star.labs or 0) - labs_lost)
+                    star.shipyards = max(0, int(star.shipyards or 0) - shipyards_lost)
+
+        virtual_mines = max(0, int(fleet.ship_count or 0)) * miner_units_per_ship
+        total_extraction = float(virtual_mines) * KT_PER_MINE
+        produced = self._extract_minerals_with_standard_rules(star, total_extraction)
+
+        remaining_capacity = max(0, int(fleet.cargo_remaining or 0))
+        fleet_iron = min(produced['ironium'], remaining_capacity)
+        remaining_capacity -= fleet_iron
+        fleet_bor = min(produced['boranium'], remaining_capacity)
+        remaining_capacity -= fleet_bor
+        fleet_germ = min(produced['germanium'], remaining_capacity)
+
+        surface_iron = produced['ironium'] - fleet_iron
+        surface_bor = produced['boranium'] - fleet_bor
+        surface_germ = produced['germanium'] - fleet_germ
+
+        fleet.ironium_inventory += fleet_iron
+        fleet.boranium_inventory += fleet_bor
+        fleet.germanium_inventory += fleet_germ
+        star.ironium_inventory += surface_iron
+        star.boranium_inventory += surface_bor
+        star.germanium_inventory += surface_germ
+
+        fleet.save(update_fields=['ironium_inventory', 'boranium_inventory', 'germanium_inventory'])
+        star.save(update_fields=[
+            'ironium_inventory', 'boranium_inventory', 'germanium_inventory',
+            'defenses', 'colonists', 'mines', 'factories', 'labs', 'shipyards',
+            'ironium_yield', 'boranium_yield', 'germanium_yield',
+        ])
+        if int(fleet.cargo_remaining or 0) <= 0:
+            if order.repeat:
+                self._handle_repeating_order(order)
+            order.delete()
+            return 'executed'
+        return 'blocked'
+
     def _execute_colonise_order(self, fleet, order):
         """Execute a colonise order: transfer cargo, add bonus materials, delete fleet.
 
@@ -2241,6 +2668,23 @@ class GameTurn():
         target_fleet.offense_level = merged_offense_level
         target_fleet.defense_level = merged_defense_level
         target_fleet.integrity = avg_integrity
+        source_bomb = normalize_bomb_type(source_fleet.has_bombs)
+        target_bomb = normalize_bomb_type(target_fleet.has_bombs)
+        bomb_priority = {'CONVENTIONAL': 1, 'SMART': 2, 'NOVA': 3}
+        if bomb_priority.get(source_bomb, 0) > bomb_priority.get(target_bomb, 0):
+            target_fleet.has_bombs = source_bomb
+
+        source_miner = str(source_fleet.has_miners or '').strip().upper() or None
+        target_miner = str(target_fleet.has_miners or '').strip().upper() or None
+        miner_priority = {'SMALL': 1, 'MEDIUM': 2, 'LARGE': 3}
+        if miner_priority.get(source_miner, 0) > miner_priority.get(target_miner, 0):
+            target_fleet.has_miners = source_miner
+        target_fleet.has_fuel_factory = bool(
+            source_fleet.has_fuel_factory or target_fleet.has_fuel_factory
+        )
+        target_fleet.has_wormhole_drive = bool(
+            source_fleet.has_wormhole_drive or target_fleet.has_wormhole_drive
+        )
 
         # Transfer cargo (may exceed capacity - intentional for merge)
         target_fleet.ironium_inventory += source_fleet.ironium_inventory
@@ -2487,50 +2931,10 @@ class GameTurn():
             productivity = calculate_productivity_multiplier(staffing_ratio)
             total_extraction = star.mines * KT_PER_MINE * productivity
 
-            # Check if this is a homeworld (yields don't drop below minimum)
-            is_homeworld = star.homeworld_of.exists()
-            min_yield = HOMEWORLD_MIN_YIELD if is_homeworld else 0
-
-            # Process each resource
-            for resource in ['ironium_yield', 'boranium_yield', 'germanium_yield']:
-                yield_val = getattr(star, resource)
-                if yield_val == 0:
-                    continue
-
-                # Calculate extraction for this resource
-                extraction = total_extraction * yield_val / total_yield
-
-                # Handle fractional amounts with random chance
-                whole_kt = int(extraction)
-                fractional = extraction - whole_kt
-                if fractional > 0 and random.random() < fractional:
-                    whole_kt += 1
-
-                if whole_kt > 0:
-                    # Add to surface inventory - map yield field to inventory field
-                    inventory_field = resource.replace('_yield', '_inventory')
-                    setattr(star, inventory_field, getattr(star, inventory_field) + whole_kt)
-
-                    # Baseline depletion plus explicit over-mining acceleration.
-                    # Treat yield % as a rough sustainable annual extraction rate.
-                    sustainable_extraction = max(1.0, float(yield_val))
-                    overmining_ratio = max(
-                        0.0,
-                        (float(extraction) - sustainable_extraction) / sustainable_extraction
-                    )
-                    depletion_rate = (
-                        YIELD_DEPLETION_RATE * (
-                            1.0 + (overmining_ratio * OVERMINING_DEPLETION_MULTIPLIER)
-                        )
-                    )
-                    depletion = whole_kt * depletion_rate
-                    whole_depletion = int(depletion)
-                    fractional = depletion - whole_depletion
-                    if fractional > 0 and random.random() < fractional:
-                        whole_depletion += 1
-                    if whole_depletion > 0:
-                        new_yield = max(min_yield, yield_val - whole_depletion)
-                        setattr(star, resource, new_yield)
+            produced = self._extract_minerals_with_standard_rules(star, total_extraction)
+            star.ironium_inventory += produced['ironium']
+            star.boranium_inventory += produced['boranium']
+            star.germanium_inventory += produced['germanium']
 
             star.save()
 
@@ -2736,6 +3140,10 @@ class GameTurn():
             overmax_fuel_penalty=tech_effects.get('overmax_fuel_penalty', 1.0),
             offense_level=tech_effects['offense_level'],
             defense_level=tech_effects['defense_level'],
+            has_bombs=tech_effects.get('has_bombs'),
+            has_miners=tech_effects.get('has_miners'),
+            has_fuel_factory=bool(tech_effects.get('has_fuel_factory')),
+            has_wormhole_drive=bool(tech_effects.get('has_wormhole_drive')),
             thumbnail_path=thumbnail_path,
         )
 
