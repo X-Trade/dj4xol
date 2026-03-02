@@ -390,6 +390,58 @@ class TestFleetOrderViews(TestCase):
         order.refresh_from_db()
         self.assertTrue(order.repeat)
 
+    def test_intercept_order_wormhole_speed_is_clamped_to_13(self):
+        game = default_game(stars=5, fleets=2)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        target_fleet = player.fleets.exclude(id=fleet.id).first()
+        fleet.has_wormhole_drive = True
+        fleet.save(update_fields=['has_wormhole_drive'])
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'INTERCEPT',
+                'target_fleet': target_fleet.short_id,
+                'warpfactor': '14',
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        order = fleet.orders.filter(order_type='INTERCEPT').first()
+        self.assertIsNotNone(order)
+        self.assertEqual(order.warpfactor, 13)
+
+    def test_patrol_order_wormhole_intercept_speed_is_clamped_to_13(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        target_star = game.stars.exclude(id=player.homeworld_id).first()
+        fleet.has_wormhole_drive = True
+        fleet.save(update_fields=['has_wormhole_drive'])
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'PATROL',
+                'patrol_target': 'star:%s' % target_star.short_id,
+                'target_star': target_star.short_id,
+                'intercept_speed': '14',
+                'patrol_radius': '15',
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        order = fleet.orders.filter(order_type='PATROL').first()
+        self.assertIsNotNone(order)
+        self.assertEqual(order.intercept_speed, 13)
+
     def test_bomb_order_creation_persists_bomb_until_parameter(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
