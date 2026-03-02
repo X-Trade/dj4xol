@@ -731,6 +731,9 @@ def add_fleet_order(request, game_short_id):
         target_x = request.POST.get('target_x')
         target_y = request.POST.get('target_y')
         warpfactor = int(request.POST.get('warpfactor', fleet.max_safe_warp))
+        warpfactor = max(0, min(14, warpfactor))
+        if warpfactor == 14 and not fleet.has_wormhole_drive:
+            warpfactor = 13
         order.warpfactor = warpfactor
 
         if target_star_id:
@@ -756,7 +759,11 @@ def add_fleet_order(request, game_short_id):
         patrol_target = request.POST.get('patrol_target', '')
 
         order.patrol_radius = int(request.POST.get('patrol_radius', 15))
-        order.intercept_speed = int(request.POST.get('intercept_speed', fleet.max_safe_warp))
+        intercept_speed = int(request.POST.get('intercept_speed', fleet.max_safe_warp))
+        intercept_speed = max(0, min(14, intercept_speed))
+        if intercept_speed == 14 and not fleet.has_wormhole_drive:
+            intercept_speed = 13
+        order.intercept_speed = intercept_speed
 
         if patrol_target and ':' in patrol_target:
             target_type, target_id = patrol_target.split(':', 1)

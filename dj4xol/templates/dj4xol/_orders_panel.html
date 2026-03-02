@@ -7,12 +7,12 @@
                 <div class="order-item">
                     <div class="order-info">
                     {% if order.order_type == 'MOVE' or not order.order_type %}
-                        <span>Warp {{ order.warpfactor }} to {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
+                        <span>{% if order.warpfactor == 14 %}Wormhole{% else %}Warp {{ order.warpfactor }}{% endif %} to {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
                         {% if order.eta_years is not None %}
                         <div class="order-tooltip"><span>ETA: {{ order.eta_years }} year{{ order.eta_years|pluralize }}</span></div>
                         {% endif %}
                     {% elif order.order_type == 'INTERCEPT' %}
-                        <span>Intercept {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %} at warp {{ order.warpfactor }}</span>
+                        <span>Intercept {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %} at {% if order.warpfactor == 14 %}Wormhole{% else %}warp {{ order.warpfactor }}{% endif %}</span>
                         {% if order.eta_years is not None %}
                         <div class="order-tooltip"><span>ETA: {{ order.eta_years }} year{{ order.eta_years|pluralize }}</span></div>
                         {% endif %}
@@ -276,7 +276,7 @@
                     <div class="order-param-row">
                         <label for="warp-slider">Speed</label>
                         <div class="speed-row">
-                            <input type="range" id="warp-slider" min="0" max="13" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
+                            <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}">
                             <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.max_safe_warp|default:5 }}</span>
                         </div>
                     </div>
@@ -294,7 +294,7 @@
                     <div class="order-param-row">
                         <label for="intercept-speed-slider">Intercept Speed</label>
                         <div class="speed-row">
-                            <input type="range" id="intercept-speed-slider" min="0" max="13" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
+                            <input type="range" id="intercept-speed-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}">
                             <span id="intercept-speed-value" class="warp-value">Warp {{ detail.fleet_cargo.max_safe_warp|default:5 }}</span>
                         </div>
                     </div>
@@ -1140,12 +1140,21 @@
     // Warp factor slider
     if (warpSlider && warpDisplay && warpInput) {
         var maxSafeWarp = parseInt(warpSlider.dataset.maxSafeWarp) || 5;
+        var hasWormholeDrive = warpSlider.dataset.hasWormholeDrive === '1';
         function updateWarpDisplay() {
             var val = parseInt(warpSlider.value);
-            warpDisplay.textContent = val === 0 ? 'Stopped' : 'Warp ' + val;
+            if (val === 0) {
+                warpDisplay.textContent = 'Stopped';
+            } else if (val === 14 && hasWormholeDrive) {
+                warpDisplay.textContent = 'Wormhole';
+            } else {
+                warpDisplay.textContent = 'Warp ' + val;
+            }
             warpInput.value = val;
             warpDisplay.classList.remove('warp-warning', 'warp-danger');
-            if (val > maxSafeWarp) {
+            if (val === 14 && hasWormholeDrive) {
+                warpDisplay.classList.add('warp-danger');
+            } else if (val > maxSafeWarp) {
                 if (val >= 10) {
                     warpDisplay.classList.add('warp-danger');
                 } else {
@@ -1172,12 +1181,21 @@
 
     if (interceptSpeedSlider && interceptSpeedDisplay && interceptSpeedInput) {
         var maxSafeIntercept = parseInt(interceptSpeedSlider.dataset.maxSafeWarp) || 5;
+        var hasWormholeIntercept = interceptSpeedSlider.dataset.hasWormholeDrive === '1';
         function updateInterceptDisplay() {
             var val = parseInt(interceptSpeedSlider.value);
-            interceptSpeedDisplay.textContent = val === 0 ? 'Stopped' : 'Warp ' + val;
+            if (val === 0) {
+                interceptSpeedDisplay.textContent = 'Stopped';
+            } else if (val === 14 && hasWormholeIntercept) {
+                interceptSpeedDisplay.textContent = 'Wormhole';
+            } else {
+                interceptSpeedDisplay.textContent = 'Warp ' + val;
+            }
             interceptSpeedInput.value = val;
             interceptSpeedDisplay.classList.remove('warp-warning', 'warp-danger');
-            if (val > maxSafeIntercept) {
+            if (val === 14 && hasWormholeIntercept) {
+                interceptSpeedDisplay.classList.add('warp-danger');
+            } else if (val > maxSafeIntercept) {
                 if (val >= 10) {
                     interceptSpeedDisplay.classList.add('warp-danger');
                 } else {

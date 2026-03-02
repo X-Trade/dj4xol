@@ -1,4 +1,5 @@
 from ..turn import GameTurn, KT_PER_MINE, HOMEWORLD_MIN_YIELD, calculate_fleet_strength
+from ..objectdetails import DetailBuilder
 from ..colony_rules import (
     habitability_proportion,
     calculate_growth_factor,
@@ -14,11 +15,11 @@ from ..colony_rules import (
     COLONISTS_PER_JOB,
     BUILDPOINTS_PER_FACTORY,
 )
-from ..models import ProductionOrder, GameMessage, Fleet, Star, Salvage, Account, Player
+from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Account, Player
 from ..factory import GameFactory
 from django.test import TestCase
 from ._util import default_game, get_default_race, get_default_race_type
-from unittest.mock import patch
+from unittest.mock import patch, PropertyMock
 from django.contrib.auth.models import User
 import random
 
@@ -72,6 +73,12 @@ class TestGameTurn(TestCase):
                 GameTurn(game).generate_turn()
         game.refresh_from_db()
         self.assertTrue(game.is_generating)
+
+
+class TestDetailBuilderEta(TestCase):
+    def test_wormhole_eta_is_always_one_year(self):
+        eta = DetailBuilder._estimate_eta_years(0, 0, 1000, 1000, 14)
+        self.assertEqual(eta, 1)
 
 
 class TestHabitabilityProportion(TestCase):
@@ -1458,6 +1465,67 @@ class TestFleetTransferOrderExecution(TestCase):
 
         # Should not include fleet1 itself
         self.assertNotIn(fleet1.name, target_names)
+
+    def test_get_fleet_orders_handles_missing_target_star_relation(self):
+        """Detail builder should not crash if target_star relation becomes stale."""
+        game = default_game(stars=3)
+        player = game.players.first()
+        home = player.homeworld
+        target = game.stars.exclude(pk=home.pk).first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="UI Safe Fleet",
+            x=home.x,
+            y=home.y,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='BOMB',
+            target_star=target,
+            x=target.x,
+            y=target.y,
+        )
+
+        builder = DetailBuilder(game, fleet.x, fleet.y, fleet.short_id, player)
+        with patch.object(FleetOrders, 'target_star', new_callable=PropertyMock, side_effect=Star.DoesNotExist):
+            orders = builder.get_fleet_orders()
+
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders[0]['order_type'], 'BOMB')
+
+    def test_get_actual_target_handles_cached_none_target_star(self):
+        """Order target resolution should handle cached missing star relation."""
+        game = default_game(stars=3)
+        player = game.players.first()
+        home = player.homeworld
+        target = game.stars.exclude(pk=home.pk).first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Cached None Fleet",
+            x=home.x,
+            y=home.y,
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            target_star=target,
+            x=target.x,
+            y=target.y,
+            warpfactor=5,
+        )
+
+        # Simulate a stale related-object cache where FK id remains but object cache is None.
+        order._target_star_cache = None
+        obj, x, y, kind = order.get_actual_target()
+        self.assertIsNone(obj)
+        self.assertEqual(kind, 'space')
+        self.assertEqual((x, y), (target.x, target.y))
 
     def test_repeat_transfer_with_salvage_target_does_not_error(self):
         """Repeat transfer to salvage should not error when creating repeat order."""
@@ -4875,6 +4943,199 @@ class TestWarpDamage(TestCase):
         self.assertEqual(order.warpfactor, 3)
 
 
+class TestWormholeDriveMovement(TestCase):
+    def test_wormhole_jump_can_arrive_exactly(self):
+        game = default_game(stars=2)
+        game.random_events = False
+        game.save(update_fields=['random_events'])
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Wormhole Scout',
+            x=0,
+            y=0,
+            has_wormhole_drive=True,
+            fuel=999.0,
+            max_fuel=999.0,
+            max_safe_warp=5,
+        )
+        order = FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE', x=40, y=40, warpfactor=14
+        )
+
+        def roll_map(chance):
+            if abs(chance - 0.10) < 1e-9:
+                return False
+            if abs(chance - 0.20) < 1e-9:
+                return False
+            if abs(chance - 0.60) < 1e-9:
+                return True
+            if abs(chance - 0.75) < 1e-9:
+                return False
+            return False
+
+        with patch('dj4xol.turn.roll_chance', side_effect=roll_map):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual((fleet.x, fleet.y), (40, 40))
+        self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
+
+    def test_wormhole_jump_can_deviate(self):
+        game = default_game(stars=2)
+        game.random_events = False
+        game.save(update_fields=['random_events'])
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Wormhole Drifter',
+            x=0,
+            y=0,
+            has_wormhole_drive=True,
+            fuel=999.0,
+            max_fuel=999.0,
+            max_safe_warp=5,
+        )
+        order = FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE', x=50, y=50, warpfactor=14
+        )
+
+        def roll_map(chance):
+            if abs(chance - 0.10) < 1e-9:
+                return False
+            if abs(chance - 0.20) < 1e-9:
+                return False
+            if abs(chance - 0.60) < 1e-9:
+                return False
+            if abs(chance - 0.75) < 1e-9:
+                return True
+            return False
+
+        with patch('dj4xol.turn.roll_chance', side_effect=roll_map), \
+             patch('dj4xol.turn.random.uniform', side_effect=[0.0, 7.0]):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual((fleet.x, fleet.y), (57, 50))
+        self.assertTrue(FleetOrders.objects.filter(id=order.id).exists())
+
+    def test_wormhole_non_arrival_no_longer_stalls_movement(self):
+        game = default_game(stars=2)
+        game.random_events = False
+        game.save(update_fields=['random_events'])
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Wormhole Reliable',
+            x=0,
+            y=0,
+            has_wormhole_drive=True,
+            fuel=999.0,
+            max_fuel=999.0,
+            max_safe_warp=5,
+        )
+        order = FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE', x=40, y=40, warpfactor=14
+        )
+
+        def roll_map(chance):
+            if abs(chance - 0.10) < 1e-9:
+                return False
+            if abs(chance - 0.20) < 1e-9:
+                return False
+            if abs(chance - 0.60) < 1e-9:
+                return False
+            if abs(chance - 0.75) < 1e-9:
+                return False
+            return False
+
+        with patch('dj4xol.turn.roll_chance', side_effect=roll_map):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual((fleet.x, fleet.y), (40, 40))
+        self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
+
+    def test_wormhole_jump_can_take_integrity_damage(self):
+        game = default_game(stars=2)
+        game.random_events = False
+        game.save(update_fields=['random_events'])
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Wormhole Bruiser',
+            x=0,
+            y=0,
+            has_wormhole_drive=True,
+            integrity=100,
+            fuel=999.0,
+            max_fuel=999.0,
+            max_safe_warp=5,
+        )
+        order = FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE', x=100, y=0, warpfactor=14
+        )
+
+        def roll_map(chance):
+            if abs(chance - 0.10) < 1e-9:
+                return False
+            if abs(chance - 0.20) < 1e-9:
+                return True
+            if abs(chance - 0.60) < 1e-9:
+                return False
+            return False
+
+        with patch('dj4xol.turn.roll_chance', side_effect=roll_map), \
+             patch('dj4xol.turn.random.randint', return_value=1):
+            result = GameTurn(game)._execute_wormhole_jump(
+                fleet, order, 100, 0, 100.0
+            )
+
+        self.assertEqual(result, 'arrived')
+        self.assertEqual(fleet.integrity, 99)
+
+    def test_wormhole_jump_can_destroy_fleet(self):
+        game = default_game(stars=2)
+        game.random_events = False
+        game.save(update_fields=['random_events'])
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Wormhole Casualty',
+            x=0,
+            y=0,
+            has_wormhole_drive=True,
+            fuel=999.0,
+            max_fuel=999.0,
+            max_safe_warp=5,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE', x=60, y=60, warpfactor=14
+        )
+
+        def roll_map(chance):
+            if abs(chance - 0.10) < 1e-9:
+                return True
+            return False
+
+        with patch('dj4xol.turn.roll_chance', side_effect=roll_map):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
+        msg = player.messages.latest('id')
+        self.assertIn('wormhole', msg.message.lower())
+
+
 class TestFleetFuel(TestCase):
     def test_fuel_cost_scales_with_ship_count(self):
         from ..models import Fleet
@@ -6088,6 +6349,73 @@ class TestBombardmentOrders(TestCase):
                 message__icontains='Astronomers report',
             ).exists()
         )
+
+    def test_destroyed_star_retargets_movement_orders_and_deletes_other_orders(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=3)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_cleanup_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10_000
+        star.defenses = 0
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+        target_x, target_y = star.x, star.y
+
+        bomber = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Nova Cleaner',
+            x=target_x,
+            y=target_y,
+            ship_count=10,
+            has_bombs='NOVA',
+        )
+        bomb_order = FleetOrders.objects.create(
+            game=game, fleet=bomber, order_type='BOMB', target_star=star
+        )
+
+        mover = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Mover',
+            x=0,
+            y=0,
+            ship_count=1,
+        )
+        move_order = FleetOrders.objects.create(
+            game=game, fleet=mover, order_type='MOVE', target_star=star, warpfactor=5
+        )
+
+        remoter = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Remote Miner',
+            x=max(0, target_x - 10),
+            y=max(0, target_y - 10),
+            ship_count=1,
+            has_miners='SMALL',
+        )
+        remote_order = FleetOrders.objects.create(
+            game=game, fleet=remoter, order_type='REMOTEMINE', target_star=star
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=True), patch(
+            'dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet',
+            return_value={'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
+        ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Star.objects.filter(id=star.id).exists())
+        self.assertFalse(FleetOrders.objects.filter(id=remote_order.id).exists())
+        self.assertFalse(FleetOrders.objects.filter(id=bomb_order.id).exists())
+        self.assertFalse(FleetOrders.objects.filter(target_star_id=star.id).exists())
+
+        converted_move = FleetOrders.objects.filter(id=move_order.id).first()
+        if converted_move is not None:
+            self.assertIsNone(converted_move.target_star_id)
+            self.assertEqual((converted_move.x, converted_move.y), (target_x, target_y))
 
     def test_bomb_order_completes_when_population_reaches_zero(self):
         from ..models import FleetOrders

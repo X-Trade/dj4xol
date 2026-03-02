@@ -635,7 +635,7 @@ class FleetOrders(AbstractGameObject):
 
     # Movement parameters
     warpfactor = models.IntegerField(default=0,
-                                     validators=[MinValueValidator(0), MaxValueValidator(13)])
+                                     validators=[MinValueValidator(0), MaxValueValidator(14)])
     x = models.IntegerField(null=True)
     y = models.IntegerField(null=True)
     target_star = models.ForeignKey(Star, null=True, related_name='+',
@@ -678,13 +678,14 @@ class FleetOrders(AbstractGameObject):
     @property
     def target(self):
         """Return a string description of the order target."""
-        if self.target_star:
-            return self.target_star.name
-        elif self.target_fleet:
-            return f"Fleet {self.target_fleet.name}"
-        elif self.target_salvage:
-            return f"Salvage ({self.target_salvage.x}, {self.target_salvage.y})"
-        elif self.x is not None and self.y is not None:
+        obj, x, y, kind = self.get_actual_target()
+        if kind == 'star' and obj:
+            return obj.name
+        elif kind == 'fleet' and obj:
+            return f"Fleet {obj.name}"
+        elif kind == 'salvage' and obj:
+            return f"Salvage ({obj.x}, {obj.y})"
+        elif kind == 'space' and x is not None and y is not None:
             return f"({self.x}, {self.y})"
         else:
             return "Unknown destination"
@@ -710,6 +711,8 @@ class FleetOrders(AbstractGameObject):
         if self.target_star_id:
             try:
                 obj = self.target_star
+                if obj is None:
+                    raise Star.DoesNotExist()
                 return obj, obj.x, obj.y, 'star'
             except Star.DoesNotExist:
                 if self.has_target_coordinates():
@@ -718,6 +721,8 @@ class FleetOrders(AbstractGameObject):
         if self.target_fleet_id:
             try:
                 obj = self.target_fleet
+                if obj is None:
+                    raise Fleet.DoesNotExist()
                 return obj, obj.x, obj.y, 'fleet'
             except Fleet.DoesNotExist:
                 if self.has_target_coordinates():
@@ -726,6 +731,8 @@ class FleetOrders(AbstractGameObject):
         if self.target_salvage_id:
             try:
                 obj = self.target_salvage
+                if obj is None:
+                    raise Salvage.DoesNotExist()
                 return obj, obj.x, obj.y, 'salvage'
             except Salvage.DoesNotExist:
                 if self.has_target_coordinates():
@@ -741,16 +748,12 @@ class FleetOrders(AbstractGameObject):
         Uses the same logic as turn.py move_fleet() method.
         Returns tuple (x, y) or raises exception if no valid destination.
         """
-        if self.target_star:
-            return self.target_star.x, self.target_star.y
-        elif self.target_fleet:
-            return self.target_fleet.x, self.target_fleet.y
-        elif self.target_salvage:
-            return self.target_salvage.x, self.target_salvage.y
-        elif self.has_target_coordinates():
-            return self.x, self.y
-        else:
-            raise ValueError(f"Invalid order {self.id} - no valid destination")
+        obj, x, y, kind = self.get_actual_target()
+        if kind in ['star', 'fleet', 'salvage'] and obj:
+            return obj.x, obj.y
+        if kind == 'space' and x is not None and y is not None:
+            return x, y
+        raise ValueError(f"Invalid order {self.id} - no valid destination")
 
     def save(self, *args, **kwargs):
         if self.pk is None and (self.position is None or self.position == 0):

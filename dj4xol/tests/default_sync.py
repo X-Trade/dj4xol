@@ -18,6 +18,15 @@ class DefaultSyncTest(TestCase):
             id='00000000-0000-0000-0000-000000000101'
         )
         self.assertEqual(tech.tech_type, 'PROPULSION')
+        overdrive = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000110'
+        )
+        self.assertEqual(overdrive.category.code, 'ENERGY')
+        wormhole = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000111'
+        )
+        self.assertEqual(wormhole.category.code, 'METAPHYSICS')
+        self.assertEqual(wormhole.level, 14)
 
         # Drift values away from fixture defaults.
         race.name = 'Drifted Race'

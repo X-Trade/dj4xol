@@ -738,14 +738,16 @@ class StarVanishedOminousMessageFactory(MessageFactory):
         self.priority = bool(priority)
 
     def format_message(self):
+        location = format_location(x=self.x, y=self.y, link=True, game=self.game)
         if self.fleet_name:
             return (
-                f"Astronomers report that they can no longer locate "
-                f"{escape(self.star_name)}. {escape(self.fleet_name)} "
-                "was recently seen at its vicinity."
+                f"Our astronomers report that {escape(self.star_name)} can no longer "
+                f"be found in the night sky. It was previously located at {location}. "
+                f"{escape(self.fleet_name)} was recently seen in the vicinity."
             )
         return (
-            f"Astronomers report that {escape(self.star_name)} has mysteriously vanished."
+            f"Astronomers report that {escape(self.star_name)} has mysteriously "
+            f"vanished into {location}."
         )
 
 
@@ -1060,6 +1062,63 @@ class FleetWarpDestroyedMessageFactory(MessageFactory):
         )
 
         # Append salvage info if created
+        if self.salvage_created and self.salvage_location:
+            if isinstance(self.salvage_location, Star):
+                msg += self.salvage_suffix_star.format(
+                    star=format_map_object(self.salvage_location)
+                )
+            else:
+                msg += self.salvage_suffix_space.format(
+                    location=format_salvage(self.x, self.y)
+                )
+
+        return msg
+
+
+class FleetWormholeDestroyedMessageFactory(MessageFactory):
+    """Messages for fleets lost to wormhole instability."""
+    category = 'GENERAL'
+    priority = True
+    templates_instant = [
+        "{fleet} was lost to wormhole instability {location}.",
+        "{fleet} failed to re-emerge from wormhole transit {location}.",
+        "{fleet} vanished during wormhole transit {location}.",
+    ]
+    templates_accumulated = [
+        "{fleet} broke apart under wormhole transit stresses {location}.",
+        "{fleet} suffered cascading hull failures in wormhole transit {location} and was lost.",
+        "{fleet} was destroyed by wormhole instability after prior structural damage {location}.",
+    ]
+    salvage_suffix_star = " Salvage deposited on {star}."
+    salvage_suffix_space = " Salvage left at {location}."
+
+    def __init__(self, game, player, fleet_name, x, y,
+                 from_damage=False, salvage_created=False, salvage_location=None,
+                 message=None):
+        super().__init__(game, player, message, intensity=-0.8)
+        self.fleet_name = fleet_name
+        self.x = x
+        self.y = y
+        self.from_damage = from_damage
+        self.salvage_created = salvage_created
+        self.salvage_location = salvage_location
+
+    def _format_location(self):
+        """Format the location as a star link or empty space coordinates."""
+        from .models import Star
+        star = Star.objects.filter(game=self.game, x=self.x, y=self.y).first()
+        if star:
+            return f"near {format_map_object(star)}"
+        return f"in {format_location(x=self.x, y=self.y, link=True, game=self.game)}"
+
+    def format_message(self):
+        from .models import Star
+        templates = self.templates_accumulated if self.from_damage else self.templates_instant
+        msg = random.choice(templates).format(
+            fleet=self.fleet_name,
+            location=self._format_location()
+        )
+
         if self.salvage_created and self.salvage_location:
             if isinstance(self.salvage_location, Star):
                 msg += self.salvage_suffix_star.format(

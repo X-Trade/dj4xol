@@ -60,6 +60,15 @@ class ResearchViewTest(TestCase):
         self.assertEqual(rows[self.electronics.id], 100.0)
         self.assertEqual(rows[self.energy.id], 0.0)
 
+    def test_singular_research_view_hides_set_focus_button(self):
+        self.player.singular_research = True
+        self.player.save(update_fields=['singular_research'])
+        response = self.client.get(
+            reverse('dj4xol:research', args=[self.game.short_id])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Set Focus')
+
     def test_turn_in_from_research_redirects_back_to_research(self):
         response = self.client.post(
             reverse('dj4xol:turn_in', args=[self.game.short_id]),

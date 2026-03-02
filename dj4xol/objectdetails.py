@@ -51,6 +51,9 @@ class DetailBuilder():
         speed = max(0, int(warp or 0))
         if speed <= 0:
             return None
+        if speed == 14:
+            # Wormhole jump mode is always resolved within one year.
+            return 1
         return max(1, int(ceil(distance / float(speed))))
 
     def __init__(self, game, x=None, y=None, selected=None, player=None):
@@ -699,8 +702,8 @@ class DetailBuilder():
                 'transfer_boranium': o.transfer_boranium,
                 'transfer_germanium': o.transfer_germanium,
                 'transfer_colonists': o.transfer_colonists,
-                'target_star': o.target_star,  # For template access
-                'target_salvage': o.target_salvage,  # For template access
+                'target_star': obj if kind == 'star' else None,  # For template access
+                'target_salvage': obj if kind == 'salvage' else None,  # For template access
             })
         return orders
 
