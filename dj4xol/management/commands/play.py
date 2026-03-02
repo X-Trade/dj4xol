@@ -498,7 +498,7 @@ class Command(BaseCommand):
                         "syntax": "/orders <fleet_id> add MOVE <(x,y)|target_id> [warp=N|wormhole] [repeat]",
                     },
                     "INTERCEPT": {
-                        "syntax": "/orders <fleet_id> add INTERCEPT <fleet_id> [warp=N|wormhole] [repeat]",
+                        "syntax": "/orders <fleet_id> add INTERCEPT <fleet_id> [warp=N] [repeat]",
                     },
                     "TRANSFER": {
                         "syntax": (
@@ -523,7 +523,7 @@ class Command(BaseCommand):
                     "PATROL": {
                         "syntax": (
                             "/orders <fleet_id> add PATROL <(x,y)|target_id> "
-                            "[radius=N] [intercept_speed=N|wormhole] [repeat]"
+                            "[radius=N] [intercept_speed=N] [repeat]"
                         ),
                     },
                 }
@@ -618,7 +618,9 @@ class Command(BaseCommand):
             target_token = extras["positionals"][0]
             target_obj, x, y, kind = self._resolve_target_token(fleet.game, target_token)
             warp = extras["kwargs"].get("warp", extras["kwargs"].get("warpfactor"))
-            order.warpfactor = self._parse_warp_value(warp, fleet.max_safe_warp, fleet)
+            order.warpfactor = self._parse_warp_value(
+                warp, fleet.max_safe_warp, fleet, allow_wormhole=(order_type == "MOVE")
+            )
             self._assign_fleet_order_target(order, target_obj, x, y, kind)
             if order_type == "INTERCEPT":
                 if kind != "fleet":
@@ -707,7 +709,7 @@ class Command(BaseCommand):
             intercept_speed = extras["kwargs"].get("intercept_speed")
             order.patrol_radius = self._parse_int_or_default(radius, 15, "radius")
             order.intercept_speed = self._parse_warp_value(
-                intercept_speed, fleet.max_safe_warp, fleet, "intercept_speed"
+                intercept_speed, fleet.max_safe_warp, fleet, "intercept_speed", False
             )
 
         order.save()
@@ -779,7 +781,7 @@ class Command(BaseCommand):
         except ValueError:
             raise CommandError("Invalid %s value: %s" % (label, raw))
 
-    def _parse_warp_value(self, raw, default, fleet, label="warp"):
+    def _parse_warp_value(self, raw, default, fleet, label="warp", allow_wormhole=True):
         if raw is None:
             value = int(default)
         else:
@@ -792,6 +794,8 @@ class Command(BaseCommand):
                 except ValueError:
                     raise CommandError("Invalid %s value: %s" % (label, raw))
         value = max(0, min(14, value))
+        if value == 14 and not allow_wormhole:
+            raise CommandError("%s=wormhole is only supported for MOVE orders." % label)
         if value == 14 and not fleet.has_wormhole_drive:
             raise CommandError("%s=wormhole requires a fleet with a wormhole drive." % label)
         return value

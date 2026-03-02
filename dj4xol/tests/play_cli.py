@@ -243,6 +243,42 @@ class PlayCommandTest(TestCase):
         self.assertEqual(order.warpfactor, 14)
         self.assertTrue(order.repeat)
 
+    def test_orders_add_intercept_wormhole_is_rejected(self):
+        fleet = self.player1.fleets.first()
+        fleet.has_wormhole_drive = True
+        fleet.save(update_fields=['has_wormhole_drive'])
+        target = self.player1.fleets.exclude(id=fleet.id).first()
+        if target is None:
+            target = self.player2.fleets.first()
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add INTERCEPT %s warp=wormhole' % (fleet.short_id, target.short_id),
+                '/exit',
+            ],
+        )
+        self.assertIn('warp=wormhole is only supported for MOVE orders.', output)
+
+    def test_orders_add_patrol_wormhole_intercept_speed_is_rejected(self):
+        fleet = self.player1.fleets.first()
+        fleet.has_wormhole_drive = True
+        fleet.save(update_fields=['has_wormhole_drive'])
+        target_star = self.player1.homeworld
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add PATROL %s intercept_speed=wormhole' % (fleet.short_id, target_star.short_id),
+                '/exit',
+            ],
+        )
+        self.assertIn('intercept_speed=wormhole is only supported for MOVE orders.', output)
+
     def test_orders_add_bomb_requires_bombs_and_targets_star(self):
         fleet = self.player1.fleets.first()
         target_star = self.player2.homeworld

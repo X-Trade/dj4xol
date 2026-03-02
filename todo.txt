@@ -1,12 +1,10 @@
 ============= MAIN TODO =============
-1. remote miners
-2. bombs
+2. Anomolies (nebula, asteroid field, ancient debris, comet, wormhole, black hole, rift)
 3. rebalance production costs, tech costs, & fuel consumption
 4. unlockable terraforming
 5. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
 6. Secret resources
 7. fuel factory
-8. wormhole drive
 9. fleet-to-fleet Refuelling
 10. Ship Design (Basic)
 11. Instant merge/split fleets (dedicated interactive screen)

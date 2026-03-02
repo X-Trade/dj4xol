@@ -5929,6 +5929,30 @@ class TestInterceptPatrolOrders(TestCase):
         fleet.refresh_from_db()
         self.assertNotEqual((fleet.x, fleet.y), (10, 10))
 
+    def test_intercept_wormhole_warp_is_clamped_to_13(self):
+        """Legacy INTERCEPT orders at warp 14 should be clamped to warp 13."""
+        from ..models import FleetOrders
+
+        game, player1, _ = self._create_two_player_game()
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Interceptor",
+            x=10, y=10, ship_count=1, integrity=100, has_wormhole_drive=True,
+            max_safe_warp=13
+        )
+        target = Fleet.objects.create(
+            game=game, player=player1, name="Target",
+            x=24, y=10, ship_count=1, integrity=100
+        )
+
+        order = FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='INTERCEPT',
+            target_fleet=target, warpfactor=14
+        )
+
+        GameTurn(game).generate_turn()
+        order.refresh_from_db()
+        self.assertEqual(order.warpfactor, 13)
+
     def test_intercept_ahead_targets_current_position(self):
         """Interceptor ahead of moving target should fly directly toward it."""
         from ..models import FleetOrders

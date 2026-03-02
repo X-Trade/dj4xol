@@ -1076,6 +1076,11 @@ class GameTurn():
 
         # Check if fleet can reach destination this turn
         warp_speed = order.warpfactor if order.order_type in ['MOVE', 'INTERCEPT'] else 5
+        if is_intercept and warp_speed == WORMHOLE_WARPFACTOR:
+            warp_speed = 13
+            if int(order.warpfactor or 0) == WORMHOLE_WARPFACTOR:
+                order.warpfactor = 13
+                order.save(update_fields=['warpfactor'])
         if distance > 0:
             if warp_speed == WORMHOLE_WARPFACTOR and bool(fleet.has_wormhole_drive):
                 if not self._consume_wormhole_jump_fuel(fleet, distance):
@@ -2930,6 +2935,10 @@ class GameTurn():
 
         If repeat is enabled, a new patrol order is appended to the queue.
         """
+        if int(order.intercept_speed or 0) == WORMHOLE_WARPFACTOR:
+            order.intercept_speed = 13
+            order.save(update_fields=['intercept_speed'])
+
         target_x, target_y = self._get_patrol_target_coordinates(order)
         enemy_fleet = self._find_patrol_enemy(
             fleet.player, target_x, target_y, order.patrol_radius, order.target_fleet
