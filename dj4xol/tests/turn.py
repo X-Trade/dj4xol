@@ -5374,7 +5374,7 @@ class TestMergeFleet(TestCase):
         )
         fleet2 = Fleet.objects.create(
             game=game, player=player2, name="Enemy Fleet",
-            x=star.x, y=star.y
+            x=min(star.x + 1, game.map_size_x - 1), y=star.y
         )
 
         # Try to merge with enemy fleet (should be invalid)
@@ -6123,6 +6123,91 @@ class TestBombardmentOrders(TestCase):
         self.assertEqual(star.colonists, 0)
         self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
 
+    def test_bomb_order_defenses_zero_completion_allows_passthrough(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=3)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_defenses_zero_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 500_000
+        star.defenses = 5
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Defense Breaker',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='CONVENTIONAL',
+        )
+        bomb_order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='BOMB',
+            target_star=star,
+            bomb_until='DEFENSES_ZERO',
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE', x=star.x + 1, y=star.y, warpfactor=1
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=5):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        star.refresh_from_db()
+        self.assertEqual(star.defenses, 0)
+        self.assertGreater(star.colonists, 0)
+        self.assertFalse(FleetOrders.objects.filter(id=bomb_order.id).exists())
+        self.assertEqual((fleet.x, fleet.y), (star.x + 1, star.y))
+
+    def test_bomb_order_once_completes_and_allows_passthrough(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=3)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_once_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 100_000
+        star.defenses = 10
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Continuous Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='CONVENTIONAL',
+        )
+        bomb_order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='BOMB',
+            target_star=star,
+            bomb_until='ONCE',
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE', x=star.x + 1, y=star.y, warpfactor=1
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertFalse(FleetOrders.objects.filter(id=bomb_order.id).exists())
+        self.assertEqual((fleet.x, fleet.y), (star.x + 1, star.y))
+
     def test_bombardment_sends_defender_loss_message(self):
         from ..models import FleetOrders
 
@@ -6207,6 +6292,46 @@ class TestRemoteMineOrders(TestCase):
         fleet.refresh_from_db()
         self.assertEqual(fleet.ironium_inventory, 20)
         self.assertFalse(FleetOrders.objects.filter(id=mine_order.id).exists())
+        self.assertEqual((fleet.x, fleet.y), (star.x + 1, star.y))
+
+    def test_remote_mine_single_cycle_completion_allows_passthrough(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        star = game.stars.exclude(pk=player.homeworld.pk).first()
+        star.player = None
+        star.ironium_yield = 100
+        star.boranium_yield = 0
+        star.germanium_yield = 0
+        star.save(update_fields=['player', 'ironium_yield', 'boranium_yield', 'germanium_yield'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Cycle Miner',
+            x=star.x,
+            y=star.y,
+            ship_count=1,
+            has_miners='SMALL',
+            cargo_capacity=50,
+            ironium_inventory=0,
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='REMOTEMINE',
+            target_star=star,
+            mine_until_full=False,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE', x=star.x + 1, y=star.y, warpfactor=1
+        )
+
+        GameTurn(game).generate_turn()
+        fleet.refresh_from_db()
+        self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
+        self.assertEqual(fleet.ironium_inventory, 10)
         self.assertEqual((fleet.x, fleet.y), (star.x + 1, star.y))
 
     def test_remote_mine_size_and_ship_count_multiplier(self):

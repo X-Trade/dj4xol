@@ -818,6 +818,12 @@ def add_fleet_order(request, game_short_id):
         # Bombardment persists and executes each year while queued.
         if not fleet.has_bombs:
             return _redirect_preserving_selection(request, game)
+        bomb_until = (request.POST.get('bomb_until', 'COLONISTS_ZERO') or '').strip().upper()
+        if bomb_until == 'CONTINUOUS':
+            bomb_until = 'ONCE'
+        if bomb_until not in {'COLONISTS_ZERO', 'DEFENSES_ZERO', 'ONCE'}:
+            bomb_until = 'COLONISTS_ZERO'
+        order.bomb_until = bomb_until
         bomb_target = request.POST.get('bomb_target', '')
         if bomb_target:
             order.target_star = Star.objects.get(short_id=bomb_target, game=game)
@@ -825,6 +831,8 @@ def add_fleet_order(request, game_short_id):
     elif order_type == 'REMOTEMINE':
         if not fleet.has_miners:
             return _redirect_preserving_selection(request, game)
+        mine_until_full_raw = (request.POST.get('mine_until_full', '1') or '').strip().lower()
+        order.mine_until_full = mine_until_full_raw not in {'0', 'false', 'off', 'no'}
         remotemine_target = request.POST.get('remotemine_target', '')
         if remotemine_target:
             order.target_star = Star.objects.get(short_id=remotemine_target, game=game)

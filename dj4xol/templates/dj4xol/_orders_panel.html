@@ -95,7 +95,9 @@
             <input type="hidden" name="transfer_colonists" id="transfer-colonists-input" value="0">
             <input type="hidden" name="colonise_target" id="colonise-target-input" value="">
             <input type="hidden" name="bomb_target" id="bomb-target-input" value="">
+            <input type="hidden" name="bomb_until" id="bomb-until-input" value="COLONISTS_ZERO">
             <input type="hidden" name="remotemine_target" id="remotemine-target-input" value="">
+            <input type="hidden" name="mine_until_full" id="mine-until-full-input" value="1">
             <input type="hidden" name="merge_target" id="merge-target-input" value="">
             <input type="hidden" name="patrol_radius" id="patrol-radius-input" value="15">
             <input type="hidden" name="intercept_speed" id="intercept-speed-input" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
@@ -359,11 +361,25 @@
                     <div class="colonise-warning" style="color: #c44; font-style: italic; padding: 8px 0;">
                         This order will bombard <strong id="bomb-target-name">{% if detail.bomb_targets.default_target.name %}{{ detail.bomb_targets.default_target.name }}{% else %}the target star{% endif %}</strong> once per year while this order remains queued.
                     </div>
+                    <div class="order-param-row">
+                        <label>Completion</label>
+                        <div class="transfer-type-row">
+                            <label><input type="radio" name="bomb_until_radio" value="COLONISTS_ZERO" checked> Until 0 colonists</label>
+                            <label><input type="radio" name="bomb_until_radio" value="DEFENSES_ZERO"> Until 0 defenses</label>
+                            <label><input type="radio" name="bomb_until_radio" value="ONCE"> Once</label>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="remotemine-params" class="order-type-params" style="display: none;">
                     <div class="colonise-warning" style="color: #c44; font-style: italic; padding: 8px 0;">
                         This order will remote mine <strong id="remotemine-target-name">{% if detail.remotemine_targets.default_target.name %}{{ detail.remotemine_targets.default_target.name }}{% else %}the target star{% endif %}</strong> each year and block following orders until the fleet is full.
+                    </div>
+                    <div class="order-param-row">
+                        <label for="mine-until-full-checkbox">Mine Until Full</label>
+                        <div class="transfer-type-row">
+                            <label><input type="checkbox" id="mine-until-full-checkbox" checked> Block queue until cargo is full</label>
+                        </div>
                     </div>
                 </div>
 
@@ -398,6 +414,8 @@
     var scuttleParams = document.getElementById('scuttle-params');
     var patrolParams = document.getElementById('patrol-params');
     var transferTypeInput = document.getElementById('transfer-type-input');
+    var bombUntilInput = document.getElementById('bomb-until-input');
+    var mineUntilFullInput = document.getElementById('mine-until-full-input');
     var addBtn = document.getElementById('add-order-btn');
     
     // Warp factor slider elements
@@ -650,6 +668,20 @@
         addBtn.disabled = !(input && input.value !== '');
     }
 
+    function initializeBombCompletionMode() {
+        var selected = document.querySelector('input[name="bomb_until_radio"]:checked');
+        if (bombUntilInput && selected) {
+            bombUntilInput.value = selected.value;
+        }
+    }
+
+    function initializeRemoteMineCompletionMode() {
+        var mineCheckbox = document.getElementById('mine-until-full-checkbox');
+        if (mineUntilFullInput && mineCheckbox) {
+            mineUntilFullInput.value = mineCheckbox.checked ? '1' : '0';
+        }
+    }
+
     // Initialize merge target input based on display mode
     function initializeMergeTarget() {
         var mergeTargetInput = document.getElementById('merge-target-input');
@@ -833,6 +865,7 @@
             if (patrolDestination) patrolDestination.style.display = 'none';
 
             initializeBombTarget();
+            initializeBombCompletionMode();
             updateAddButtonStateBomb();
         } else if (currentType === 'REMOTEMINE') {
             moveParams.style.display = 'none';
@@ -854,6 +887,7 @@
             if (patrolDestination) patrolDestination.style.display = 'none';
 
             initializeRemoteMineTarget();
+            initializeRemoteMineCompletionMode();
             updateAddButtonStateRemoteMine();
         } else if (currentType === 'MERGE') {
             moveParams.style.display = 'none';
@@ -1074,6 +1108,22 @@
         remotemineTargetSelect.addEventListener('change', function() {
             remotemineTargetInput.value = this.value;
             updateAddButtonStateRemoteMine();
+        });
+    }
+
+    var bombUntilRadios = document.querySelectorAll('input[name="bomb_until_radio"]');
+    bombUntilRadios.forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            if (bombUntilInput) {
+                bombUntilInput.value = this.value;
+            }
+        });
+    });
+
+    var mineUntilFullCheckbox = document.getElementById('mine-until-full-checkbox');
+    if (mineUntilFullCheckbox && mineUntilFullInput) {
+        mineUntilFullCheckbox.addEventListener('change', function() {
+            mineUntilFullInput.value = this.checked ? '1' : '0';
         });
     }
 
