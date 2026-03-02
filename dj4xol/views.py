@@ -9,12 +9,13 @@ from django.utils import timezone
 from datetime import timedelta
 import os
 import json
+import random
 
 from dj4xol.objectdetails import DetailBuilder
 
 from .models import (
     Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
-    FleetOrders, Star, Report, ResearchCategory, Technology, HullDesign, HullDesignSlot,
+    FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology, HullDesign, HullDesignSlot,
 )
 from .decorators import registration_required, player_only_view
 from .turn import GameTurn
@@ -368,6 +369,7 @@ def starmap(request, game_short_id):
     dest_star_id = request.GET.get('dest_star', None)
     dest_fleet_id = request.GET.get('dest_fleet', None)
     dest_salvage_id = request.GET.get('dest_salvage', None)
+    dest_anomaly_id = request.GET.get('dest_anomaly', None)
     dest_x = request.GET.get('dest_x', None)
     dest_y = request.GET.get('dest_y', None)
 
@@ -382,19 +384,23 @@ def starmap(request, game_short_id):
             dest_location = (dest_star.x, dest_star.y)
             dest_selected_target = f'star:{dest_star.short_id}'
     elif dest_fleet_id:
-        from .models import Salvage
         dest_obj = Fleet.objects.filter(short_id=dest_fleet_id, game=game).first()
         if dest_obj:
             dest_name = dest_obj.name
             dest_location = (dest_obj.x, dest_obj.y)
             dest_selected_target = f'fleet:{dest_obj.short_id}'
     elif dest_salvage_id:
-        from .models import Salvage
         dest_obj = Salvage.objects.filter(short_id=dest_salvage_id, game=game).first()
         if dest_obj:
             dest_name = dest_obj.name
             dest_location = (dest_obj.x, dest_obj.y)
             dest_selected_target = f'salvage:{dest_obj.short_id}'
+    elif dest_anomaly_id:
+        dest_obj = Anomaly.objects.filter(short_id=dest_anomaly_id, game=game).first()
+        if dest_obj:
+            dest_name = dest_obj.name
+            dest_location = (dest_obj.x, dest_obj.y)
+            dest_selected_target = f'anomaly:{dest_obj.short_id}'
     elif dest_x and dest_y:
         try:
             dest_location = (int(dest_x), int(dest_y))
@@ -457,6 +463,7 @@ def starmap(request, game_short_id):
         'dest_star_id': dest_star_id,
         'dest_fleet_id': dest_fleet_id,
         'dest_salvage_id': dest_salvage_id,
+        'dest_anomaly_id': dest_anomaly_id,
         'dest_name': dest_name,
         'dest_x': dest_x,
         'dest_y': dest_y,
@@ -569,6 +576,56 @@ def debug_create_fleet(request, game_short_id):
     return _redirect_preserving_selection(request, game)
 
 
+def _spawn_random_anomaly_at(game, x, y):
+    anomaly_type = random.choice([
+        Anomaly.TYPE_NEBULA,
+        Anomaly.TYPE_COMET,
+        Anomaly.TYPE_RIFT,
+    ])
+    labels = {
+        Anomaly.TYPE_NEBULA: 'Nebula',
+        Anomaly.TYPE_COMET: 'Comet',
+        Anomaly.TYPE_RIFT: 'Rift',
+    }
+    return Anomaly.objects.create(
+        game=game,
+        x=int(x),
+        y=int(y),
+        anomaly_type=anomaly_type,
+        name='%s %s' % (labels.get(anomaly_type, 'Anomaly'), game.anomalys.count() + 1),
+    )
+
+
+@player_only_view()
+def debug_create_anomaly(request, game_short_id, fleet_short_id):
+    """Debug: spawn a random anomaly directly on the selected fleet."""
+    game = Game.objects.get(short_id=game_short_id)
+    if not _debug_actions_enabled():
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Debug actions are disabled.'
+        })
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    if not player:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'No player found for this game.'
+        })
+    if player.turned_in:
+        return _redirect_preserving_selection(request, game)
+    fleet = Fleet.objects.filter(
+        game=game,
+        short_id=fleet_short_id,
+        player=player,
+    ).first()
+    if fleet is None:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Fleet not found.'
+        })
+
+    _spawn_random_anomaly_at(game, fleet.x, fleet.y)
+    return _redirect_preserving_selection(request, game)
+
+
 @player_only_view()
 def admin_generate_report(request, game_short_id, object_short_id):
     """Admin utility: generate/update a report for selected star or fleet."""
@@ -599,8 +656,14 @@ def admin_generate_report(request, game_short_id, object_short_id):
         target_obj = Fleet.objects.filter(game=game, short_id=object_short_id).first()
         target_type = 'fleet'
     if target_obj is None:
+        target_obj = Salvage.objects.filter(game=game, short_id=object_short_id).first()
+        target_type = 'salvage'
+    if target_obj is None:
+        target_obj = Anomaly.objects.filter(game=game, short_id=object_short_id).first()
+        target_type = 'anomaly'
+    if target_obj is None:
         return render(request, 'dj4xol/forbidden.html', {
-            'message': 'Only stars and fleets can be reported from this panel.'
+            'message': 'Object not found in this game.'
         })
 
     turn = GameTurn(game)
@@ -724,10 +787,10 @@ def add_fleet_order(request, game_short_id):
     order = FleetOrders(game=game, fleet=fleet, order_type=order_type, repeat=repeat)
     
     if order_type in ['MOVE', 'INTERCEPT']:
-        from .models import Salvage
         target_star_id = request.POST.get('target_star')
         target_fleet_id = request.POST.get('target_fleet')
         target_salvage_id = request.POST.get('target_salvage')
+        target_anomaly_id = request.POST.get('target_anomaly')
         target_x = request.POST.get('target_x')
         target_y = request.POST.get('target_y')
         warpfactor = int(request.POST.get('warpfactor', fleet.max_safe_warp))
@@ -744,6 +807,9 @@ def add_fleet_order(request, game_short_id):
             order.target_fleet = Fleet.objects.get(short_id=target_fleet_id, game=game)
         elif target_salvage_id:
             order.target_salvage = Salvage.objects.get(short_id=target_salvage_id, game=game)
+        elif target_anomaly_id:
+            order.target_kind = 'OBJECT'
+            order.target_short_id = target_anomaly_id
         elif target_x and target_y:
             order.x = int(target_x)
             order.y = int(target_y)
@@ -752,10 +818,10 @@ def add_fleet_order(request, game_short_id):
             order.order_type = 'MOVE'
     
     elif order_type == 'PATROL':
-        from .models import Salvage
         target_star_id = request.POST.get('target_star')
         target_fleet_id = request.POST.get('target_fleet')
         target_salvage_id = request.POST.get('target_salvage')
+        target_anomaly_id = request.POST.get('target_anomaly')
         target_x = request.POST.get('target_x')
         target_y = request.POST.get('target_y')
         patrol_target = request.POST.get('patrol_target', '')
@@ -773,6 +839,11 @@ def add_fleet_order(request, game_short_id):
                 order.target_star = Star.objects.get(short_id=target_id, game=game)
             elif target_type == 'fleet':
                 order.target_fleet = Fleet.objects.get(short_id=target_id, game=game)
+            elif target_type == 'salvage':
+                order.target_salvage = Salvage.objects.get(short_id=target_id, game=game)
+            elif target_type == 'anomaly':
+                order.target_kind = 'OBJECT'
+                order.target_short_id = target_id
         elif patrol_target in ['empty', 'space'] and target_x and target_y:
             order.x = int(target_x)
             order.y = int(target_y)
@@ -782,13 +853,15 @@ def add_fleet_order(request, game_short_id):
             order.target_fleet = Fleet.objects.get(short_id=target_fleet_id, game=game)
         elif target_salvage_id:
             order.target_salvage = Salvage.objects.get(short_id=target_salvage_id, game=game)
+        elif target_anomaly_id:
+            order.target_kind = 'OBJECT'
+            order.target_short_id = target_anomaly_id
         elif target_x and target_y:
             order.x = int(target_x)
             order.y = int(target_y)
 
     
     elif order_type == 'TRANSFER':
-        from .models import Salvage
         transfer_type = request.POST.get('transfer_type', 'LOAD')
         transfer_target = request.POST.get('transfer_target', '')
 
@@ -860,6 +933,19 @@ def add_fleet_order(request, game_short_id):
     elif order_type == 'SCUTTLE':
         # Scuttle orders always have repeat=False (fleet is destroyed)
         order.repeat = False
+
+    target_obj, target_x, target_y, target_kind = order.get_actual_target()
+    if target_kind in ('star', 'fleet', 'salvage', 'anomaly') and target_obj is not None:
+        order.target_kind = 'OBJECT'
+        order.target_short_id = target_obj.short_id
+    elif target_kind == 'space':
+        order.target_kind = 'SPACE'
+        order.target_short_id = None
+        order.x = target_x
+        order.y = target_y
+    else:
+        order.target_kind = None
+        order.target_short_id = None
 
     order.save()
 
@@ -943,6 +1029,7 @@ def create_game(request):
             factory.game.turn_scheme = d['turn_scheme']
             factory.game.years_per_turn = d['years_per_turn']
             factory.game.random_events = d.get('random_events', False)
+            factory.game.anomalies_enabled = d.get('anomalies_enabled', False)
             factory.game.max_starting_tech_level = int(
                 d.get('max_starting_tech_level') or 5
             )

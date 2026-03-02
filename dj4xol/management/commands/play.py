@@ -8,6 +8,7 @@ from django.db.models import Max, Q
 
 from dj4xol.models import (
     Account,
+    Anomaly,
     Fleet,
     FleetOrders,
     Game,
@@ -712,6 +713,19 @@ class Command(BaseCommand):
                 intercept_speed, fleet.max_safe_warp, fleet, "intercept_speed", False
             )
 
+        target_obj, target_x, target_y, target_kind = order.get_actual_target()
+        if target_kind in ("star", "fleet", "salvage", "anomaly") and target_obj is not None:
+            order.target_kind = "OBJECT"
+            order.target_short_id = target_obj.short_id
+        elif target_kind == "space":
+            order.target_kind = "SPACE"
+            order.target_short_id = None
+            order.x = target_x
+            order.y = target_y
+        else:
+            order.target_kind = None
+            order.target_short_id = None
+
         order.save()
 
     def _parse_order_extras(self, tokens):
@@ -744,6 +758,9 @@ class Command(BaseCommand):
         salvage = Salvage.objects.filter(game=game, short_id=target_id).first()
         if salvage is not None:
             return salvage, salvage.x, salvage.y, "salvage"
+        anomaly = Anomaly.objects.filter(game=game, short_id=target_id).first()
+        if anomaly is not None:
+            return anomaly, anomaly.x, anomaly.y, "anomaly"
         raise CommandError("Unknown target token: %s" % token)
 
     def _parse_coords_token(self, token):
@@ -761,15 +778,33 @@ class Command(BaseCommand):
             return None
 
     def _assign_fleet_order_target(self, order, target_obj, x, y, kind):
+        order.target_star = None
+        order.target_fleet = None
+        order.target_salvage = None
+        order.target_short_id = None
+        order.target_kind = None
+        order.x = None
+        order.y = None
+
         if kind == "star":
             order.target_star = target_obj
+            order.target_short_id = target_obj.short_id
+            order.target_kind = "OBJECT"
         elif kind == "fleet":
             order.target_fleet = target_obj
+            order.target_short_id = target_obj.short_id
+            order.target_kind = "OBJECT"
         elif kind == "salvage":
             order.target_salvage = target_obj
+            order.target_short_id = target_obj.short_id
+            order.target_kind = "OBJECT"
+        elif kind == "anomaly":
+            order.target_short_id = target_obj.short_id
+            order.target_kind = "OBJECT"
         elif kind == "space":
             order.x = x
             order.y = y
+            order.target_kind = "SPACE"
         else:
             raise CommandError("Invalid target kind: %s" % kind)
 

@@ -73,6 +73,7 @@ from .research import (
     get_player_tech_effects,
     get_player_colony_defense_level,
     apply_research_bonus_rp,
+    ensure_player_research_rows,
 )
 from .fleet_thumbnails import choose_fleet_thumbnail
 from .chance_rules import (
@@ -148,6 +149,16 @@ REMOTE_MINER_UNITS_BY_TYPE = {
 REMOTE_MINE_HARASS_CHANCE = 0.35
 REMOTE_MINE_HARASS_DAMAGE_FACTOR = 0.25
 REMOTE_MINE_DEFENSE_DAMAGE_MULTIPLIER = 1.25
+ANOMALY_DAMAGE_MIN = 8
+ANOMALY_DAMAGE_MAX = 30
+ANOMALY_CARGO_LOSS_MIN = 0.10
+ANOMALY_CARGO_LOSS_MAX = 0.45
+ANOMALY_BONUS_RP_MIN = 150
+ANOMALY_BONUS_RP_MAX = 400
+ANOMALY_MAJOR_PROGRESS_RP_MIN = 500
+ANOMALY_MAJOR_PROGRESS_RP_MAX = 900
+ANOMALY_SPAWN_CHANCE_PER_YEAR = 0.01
+ANOMALY_MAX_STAR_RATIO = 0.15
 
 
 # Chance calculation functions (separated for testability)
@@ -310,6 +321,7 @@ class GameTurn():
     def _process_year(self):
         """Process a single year of game time."""
         self.fleet_movements()
+        self.anomaly_interactions()
         self.check_lost_fleets()
         self.check_damaged_fleets()
         self.first_contact_checks()
@@ -320,10 +332,175 @@ class GameTurn():
         self.research()
         self.population_growth()
         self.random_events()
+        self.spawn_anomalies()
         self.clear_empty_planets()
         self.check_join_deadline()
         self.generate_reports()
         self.game.year += 1
+
+    def anomaly_interactions(self):
+        """Apply anomaly outcomes to fleets co-located with anomalies."""
+        if not bool(getattr(self.game, 'anomalies_enabled', False)):
+            return
+        from .models import Fleet, Anomaly
+        anomalies = list(Anomaly.objects.filter(game=self.game))
+        if not anomalies:
+            return
+        anomaly_positions = {(a.x, a.y): a for a in anomalies}
+        fleets = list(Fleet.objects.filter(game=self.game))
+        for fleet in fleets:
+            anomaly = anomaly_positions.get((fleet.x, fleet.y))
+            if anomaly is None:
+                continue
+            # D6 table: 1-2 no effect (2/6), 3 damage, 4 cargo loss, 5 destroyed, 6 research boon.
+            roll = random.randint(1, 6)
+            if roll in (1, 2):
+                continue
+            if roll == 3:
+                self._apply_anomaly_damage(fleet, anomaly)
+                continue
+            if roll == 4:
+                self._apply_anomaly_cargo_loss(fleet, anomaly)
+                continue
+            if roll == 5:
+                self._apply_anomaly_destruction(fleet, anomaly)
+                continue
+            self._apply_anomaly_research_boon(fleet, anomaly)
+
+    def spawn_anomalies(self):
+        """Very rarely spawn a new anomaly, respecting per-game cap."""
+        if not bool(getattr(self.game, 'anomalies_enabled', False)):
+            return
+        if random.random() >= ANOMALY_SPAWN_CHANCE_PER_YEAR:
+            return
+        from .models import Anomaly, Star, Fleet, Salvage
+        star_count = int(Star.objects.filter(game=self.game).count())
+        if star_count <= 0:
+            return
+        max_allowed = max(1, int(round(star_count * ANOMALY_MAX_STAR_RATIO)))
+        current = int(Anomaly.objects.filter(game=self.game).count())
+        if current >= max_allowed:
+            return
+
+        occupied = set(Star.objects.filter(game=self.game).values_list('x', 'y'))
+        occupied.update(Fleet.objects.filter(game=self.game).values_list('x', 'y'))
+        occupied.update(Salvage.objects.filter(game=self.game).values_list('x', 'y'))
+        occupied.update(Anomaly.objects.filter(game=self.game).values_list('x', 'y'))
+        min_x = 1
+        min_y = 1
+        max_x = max(1, int(self.game.map_size_x) - 1)
+        max_y = max(1, int(self.game.map_size_y) - 1)
+        for _ in range(120):
+            x = random.randint(min_x, max_x)
+            y = random.randint(min_y, max_y)
+            if (x, y) in occupied:
+                continue
+            anomaly_type = random.choice([
+                Anomaly.TYPE_NEBULA,
+                Anomaly.TYPE_COMET,
+                Anomaly.TYPE_RIFT,
+            ])
+            name = '%s %s' % (
+                anomaly_type.title(),
+                current + 1,
+            )
+            Anomaly.objects.create(
+                game=self.game,
+                x=x,
+                y=y,
+                anomaly_type=anomaly_type,
+                name=name,
+            )
+            break
+
+    def _create_anomaly_message(self, player, text, priority=False):
+        from .models import GameMessage
+        GameMessage.objects.create(
+            game=self.game,
+            player=player,
+            message=text,
+            year=self.game.year,
+            category='RANDOM',
+            priority=bool(priority),
+        )
+
+    def _apply_anomaly_damage(self, fleet, anomaly):
+        damage = random.randint(ANOMALY_DAMAGE_MIN, ANOMALY_DAMAGE_MAX)
+        before = int(fleet.integrity or 0)
+        fleet.integrity = max(0, before - damage)
+        fleet.save(update_fields=['integrity'])
+        text = (
+            "%s took %s%% integrity damage whilst exploring %s at (%s, %s)."
+            % (fleet.name, damage, anomaly.name, anomaly.x, anomaly.y)
+        )
+        self._create_anomaly_message(fleet.player, text, priority=True)
+
+    def _apply_anomaly_cargo_loss(self, fleet, anomaly):
+        loss_ratio = random.uniform(ANOMALY_CARGO_LOSS_MIN, ANOMALY_CARGO_LOSS_MAX)
+        iron_loss = int((fleet.ironium_inventory or 0) * loss_ratio)
+        bor_loss = int((fleet.boranium_inventory or 0) * loss_ratio)
+        germ_loss = int((fleet.germanium_inventory or 0) * loss_ratio)
+        colonist_loss = int((fleet.colonists or 0) * loss_ratio)
+        fleet.ironium_inventory = max(0, int(fleet.ironium_inventory or 0) - iron_loss)
+        fleet.boranium_inventory = max(0, int(fleet.boranium_inventory or 0) - bor_loss)
+        fleet.germanium_inventory = max(0, int(fleet.germanium_inventory or 0) - germ_loss)
+        fleet.colonists = max(0, int(fleet.colonists or 0) - colonist_loss)
+        fleet.save(update_fields=[
+            'ironium_inventory', 'boranium_inventory', 'germanium_inventory', 'colonists',
+        ])
+        losses = []
+        if iron_loss:
+            losses.append('%skt Ironium' % iron_loss)
+        if bor_loss:
+            losses.append('%skt Boranium' % bor_loss)
+        if germ_loss:
+            losses.append('%skt Germanium' % germ_loss)
+        if colonist_loss:
+            losses.append('%sk colonists' % colonist_loss)
+        loss_text = ', '.join(losses) if losses else 'no significant cargo'
+        text = (
+            "Anomaly encounter at %s (%s, %s) disrupted %s cargo: %s lost."
+            % (anomaly.name, anomaly.x, anomaly.y, fleet.name, loss_text)
+        )
+        self._create_anomaly_message(fleet.player, text, priority=True)
+
+    def _apply_anomaly_destruction(self, fleet, anomaly):
+        fleet_name = fleet.name
+        player = fleet.player
+        fleet.delete()
+        text = (
+            "%s was lost whilst exploring %s at (%s, %s)."
+            % (fleet_name, anomaly.name, anomaly.x, anomaly.y)
+        )
+        self._create_anomaly_message(player, text, priority=True)
+
+    def _apply_anomaly_research_boon(self, fleet, anomaly):
+        player = fleet.player
+        rows = ensure_player_research_rows(player)
+        if not rows:
+            return
+        row = random.choice(rows)
+        category = row.category
+        if random.random() < 0.5:
+            bonus_rp = random.randint(ANOMALY_BONUS_RP_MIN, ANOMALY_BONUS_RP_MAX)
+            result = apply_research_bonus_rp(player, category.id, bonus_rp)
+            text = (
+                "Anomaly data from %s (%s, %s) granted %s bonus RP in %s."
+                % (anomaly.name, anomaly.x, anomaly.y, bonus_rp, category.name)
+            )
+            if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
+                text += " Level increased to %s." % int(result['new_level'])
+            self._create_anomaly_message(player, text, priority=False)
+            return
+        progress_rp = random.randint(ANOMALY_MAJOR_PROGRESS_RP_MIN, ANOMALY_MAJOR_PROGRESS_RP_MAX)
+        result = apply_research_bonus_rp(player, category.id, progress_rp)
+        text = (
+            "Major anomaly breakthrough at %s (%s, %s): %s RP applied to %s."
+            % (anomaly.name, anomaly.x, anomaly.y, progress_rp, category.name)
+        )
+        if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
+            text += " Level increased to %s." % int(result['new_level'])
+        self._create_anomaly_message(player, text, priority=False)
 
     def _calculate_next_generation(self):
         """Calculate next generation time based on turn scheme."""
@@ -345,7 +522,7 @@ class GameTurn():
 
     def _generate_reports_for_fleet(self, fleet):
         """Generate reports for all objects at fleet's location."""
-        from .models import Star, Salvage, Fleet
+        from .models import Star, Salvage, Fleet, Anomaly
 
         x, y = fleet.x, fleet.y
         player = fleet.player
@@ -364,6 +541,9 @@ class GameTurn():
         # Report on all salvage at this location
         for salvage in Salvage.objects.filter(game=self.game, x=x, y=y):
             self._create_or_update_report(player, 'salvage', salvage, year)
+
+        for anomaly in Anomaly.objects.filter(game=self.game, x=x, y=y):
+            self._create_or_update_report(player, 'anomaly', anomaly, year)
 
     def _create_or_update_report(self, player, target_type, obj, year):
         """Create or update a report for an object."""
@@ -454,6 +634,14 @@ class GameTurn():
                 'boranium_inventory': obj.boranium_inventory,
                 'germanium_inventory': obj.germanium_inventory,
                 'total_minerals': obj.total_minerals,
+            }
+        elif target_type == 'anomaly':
+            return {
+                'name': obj.name,
+                'x': obj.x,
+                'y': obj.y,
+                'anomaly_type': obj.anomaly_type,
+                'description': obj.description,
             }
         return {}
 
@@ -1606,6 +1794,8 @@ class GameTurn():
                 warpfactor=order.warpfactor,
                 x=order.x,
                 y=order.y,
+                target_kind=order.target_kind,
+                target_short_id=order.target_short_id,
                 target_star_id=order.target_star_id,
                 target_fleet_id=order.target_fleet_id,
                 target_salvage_id=order.target_salvage_id,
@@ -2369,9 +2559,11 @@ class GameTurn():
             destroyed_y = star.y
             destroyed_owner_id = star.player_id
             destroyed_star_id = star.id
+            destroyed_star_short_id = star.short_id
             star.delete()
             self._retarget_or_remove_orders_for_destroyed_star(
-                destroyed_star_id, destroyed_x, destroyed_y, preserve_order_id=order.id
+                destroyed_star_id, destroyed_star_short_id, destroyed_x, destroyed_y,
+                preserve_order_id=order.id
             )
             self._notify_star_vanished(
                 destroyed_star_name, destroyed_x, destroyed_y, fleet,
@@ -2469,20 +2661,28 @@ class GameTurn():
             msg.save()
 
     def _retarget_or_remove_orders_for_destroyed_star(
-        self, destroyed_star_id, x, y, preserve_order_id=None
+        self, destroyed_star_id, destroyed_star_short_id, x, y, preserve_order_id=None
     ):
         """Convert movement targets to coordinates and remove other orders."""
         from .models import FleetOrders
+        from django.db.models import Q
 
         orders = FleetOrders.objects.filter(
-            game=self.game, target_star_id=destroyed_star_id
+            game=self.game
+        ).filter(
+            Q(target_star_id=destroyed_star_id) |
+            Q(target_kind='OBJECT', target_short_id=destroyed_star_short_id)
         )
         if preserve_order_id is not None:
             orders = orders.exclude(id=preserve_order_id)
 
         movement_types = ['MOVE', 'INTERCEPT', 'PATROL']
         orders.filter(order_type__in=movement_types).update(
-            target_star=None, x=int(x), y=int(y)
+            target_star=None,
+            target_kind='SPACE',
+            target_short_id=None,
+            x=int(x),
+            y=int(y),
         )
         orders.exclude(order_type__in=movement_types).delete()
 
@@ -2877,7 +3077,9 @@ class GameTurn():
         # Update orders from other fleets that target the source fleet
         # Use explicit ID to avoid any object reference issues with CASCADE
         FleetOrders.objects.filter(target_fleet_id=source_fleet.id).update(
-            target_fleet_id=target_fleet.id
+            target_fleet_id=target_fleet.id,
+            target_kind='OBJECT',
+            target_short_id=target_fleet.short_id,
         )
 
         # Delete source fleet (cascades its orders)
@@ -2986,6 +3188,8 @@ class GameTurn():
             intercept_speed=order.intercept_speed,
             x=order.x,
             y=order.y,
+            target_kind=order.target_kind,
+            target_short_id=order.target_short_id,
             target_star_id=order.target_star_id,
             target_fleet_id=order.target_fleet_id,
             target_salvage_id=order.target_salvage_id,

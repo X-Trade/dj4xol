@@ -260,6 +260,15 @@
             <button type="submit">Debug: Create Fleet</button>
         </form>
         {% endif %}
+        {% if detail.is_fleet and detail.fleet_short_id %}
+        <form method="post" action="{% url 'dj4xol:debug_create_anomaly' game.short_id detail.fleet_short_id %}" style="display:inline">
+            {% csrf_token %}
+            {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
+            {% if selection.y %}<input type="hidden" name="y" value="{{ selection.y }}">{% endif %}
+            {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
+            <button type="submit">Debug: Create Anomaly</button>
+        </form>
+        {% endif %}
     </div>
     {% endif %}
     {% if enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id %}

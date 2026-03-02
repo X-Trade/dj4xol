@@ -23,6 +23,7 @@ function submitDestination(objectId, x, y, objectType) {
     params.delete('dest_star');
     params.delete('dest_fleet');
     params.delete('dest_salvage');
+    params.delete('dest_anomaly');
     params.delete('dest_x');
     params.delete('dest_y');
     // Set appropriate param based on object type
@@ -30,6 +31,8 @@ function submitDestination(objectId, x, y, objectType) {
         params.set('dest_fleet', objectId);
     } else if (objectType === 'salvage') {
         params.set('dest_salvage', objectId);
+    } else if (objectType === 'anomaly') {
+        params.set('dest_anomaly', objectId);
     } else {
         // Default to star for backwards compatibility
         params.set('dest_star', objectId);
@@ -47,6 +50,9 @@ function submitCoordinateDestination(x, y) {
     var params = new URLSearchParams(window.location.search);
     params.delete('mode');  // Exit destination mode
     params.delete('dest_star');
+    params.delete('dest_fleet');
+    params.delete('dest_salvage');
+    params.delete('dest_anomaly');
     params.set('dest_x', x);
     params.set('dest_y', y);
     window.location.search = params.toString();

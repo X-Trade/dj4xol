@@ -1,7 +1,7 @@
 from ..factory import GameFactory
 from ..starnamer import StarNamer
 from django.test import TestCase
-from ..models import Game, Account, ServerRaceType, ServerRace, ResearchCategory, Technology
+from ..models import Game, Account, ServerRaceType, ServerRace, ResearchCategory, Technology, Anomaly
 from ..research import get_player_tech_effects
 from django.contrib.auth.models import User
 
@@ -265,6 +265,19 @@ class testGameFactory(TestCase):
         self.assertAlmostEqual(fleet.offense_level, effects['offense_level'], places=4)
         self.assertAlmostEqual(fleet.defense_level, effects['defense_level'], places=4)
         self.assertIn('/capital/', fleet.thumbnail_path)
+
+    def test_initial_anomalies_have_unique_short_ids(self):
+        gf = GameFactory()
+        gf.set_map_size(180, 180)
+        gf.set_owner(self.accounts[0])
+        gf.game.anomalies_enabled = True
+        gf.create_stars(80)
+        game = gf.save()
+        anomalies = list(Anomaly.objects.filter(game=game))
+        self.assertTrue(len(anomalies) > 0)
+        short_ids = [a.short_id for a in anomalies]
+        self.assertEqual(len(short_ids), len(set(short_ids)))
+        self.assertTrue(all(bool(sid) and len(sid) == 12 for sid in short_ids))
 
 
 class testStarNamer(TestCase):

@@ -210,6 +210,11 @@ class NewGameForm(forms.Form):
         required=False,
         help_text="Enable random events affecting colonies"
     )
+    anomalies_enabled = forms.BooleanField(
+        label="Anomalies",
+        required=False,
+        help_text="Enable anomalies and anomaly interactions for fleets"
+    )
     max_starting_tech_level = forms.IntegerField(
         label="Max Starting Tech Level",
         min_value=0,
@@ -247,6 +252,7 @@ class NewGameForm(forms.Form):
             'turn_scheme',
             'years_per_turn',
             'random_events',
+            'anomalies_enabled',
             'max_starting_tech_level',
             'invitations',
         ])
