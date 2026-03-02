@@ -5234,6 +5234,58 @@ class TestFleetFuel(TestCase):
         self.assertIn('ordered warp 6', msg.message)
         self.assertTrue(('warp 4' in msg.message) or ('warp 5' in msg.message))
 
+    def test_wormhole_jump_fuel_cost_basic_drive_is_5_mg_per_ly(self):
+        from ..models import Fleet
+
+        game = default_game()
+        player = game.players.first()
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Basic Wormhole",
+            x=1, y=1, has_wormhole_drive=True, max_safe_warp=5, fuel=999.0, max_fuel=999.0
+        )
+
+        turn = GameTurn(game)
+        self.assertAlmostEqual(turn._wormhole_jump_fuel_cost(fleet, 10.0), 50.0, places=4)
+
+    def test_wormhole_jump_fuel_cost_advanced_drive_is_4_mg_per_ly(self):
+        from ..models import Fleet
+
+        game = default_game()
+        player = game.players.first()
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Advanced Wormhole",
+            x=1, y=1, has_wormhole_drive=True, max_safe_warp=9,
+            wormhole_fuel_per_ly=4.0, fuel=999.0, max_fuel=999.0
+        )
+
+        turn = GameTurn(game)
+        self.assertAlmostEqual(turn._wormhole_jump_fuel_cost(fleet, 10.0), 40.0, places=4)
+
+    def test_wormhole_jump_blocks_when_insufficient_fuel_for_distance(self):
+        from ..models import FleetOrders, Fleet
+
+        game = default_game(stars=2)
+        game.random_events = False
+        game.save(update_fields=['random_events'])
+        player = game.players.first()
+        star = player.homeworld
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Dry Wormhole Fleet",
+            x=star.x, y=star.y, has_wormhole_drive=True, max_safe_warp=5,
+            fuel=20.0, max_fuel=20.0
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=star.x + 10, y=star.y, warpfactor=14
+        )
+
+        GameTurn(game).generate_turn()
+        fleet.refresh_from_db()
+        self.assertEqual((fleet.x, fleet.y), (star.x, star.y))
+        self.assertAlmostEqual(fleet.fuel, 20.0, places=4)
+        self.assertEqual(fleet.orders.count(), 1)
+
     def test_refuels_in_friendly_shipyard_orbit(self):
         from ..models import Fleet
 

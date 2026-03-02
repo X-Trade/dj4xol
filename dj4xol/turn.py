@@ -1078,12 +1078,7 @@ class GameTurn():
         warp_speed = order.warpfactor if order.order_type in ['MOVE', 'INTERCEPT'] else 5
         if distance > 0:
             if warp_speed == WORMHOLE_WARPFACTOR and bool(fleet.has_wormhole_drive):
-                # Wormhole jumps consume fuel at the fleet's normal safe-warp cruise.
-                safe_warp = max(1, int(fleet.max_safe_warp or 1))
-                fuel_speed = self._resolve_movement_warp_with_fuel(
-                    fleet, order, safe_warp
-                )
-                if fuel_speed <= 0:
+                if not self._consume_wormhole_jump_fuel(fleet, distance):
                     return False
             else:
                 if warp_speed == WORMHOLE_WARPFACTOR:
@@ -1245,6 +1240,22 @@ class GameTurn():
 
         per_ship_cost = max(0.05, (cruise_cost + overmax_cost) / fuel_efficiency)
         return per_ship_cost * ship_count
+
+    def _wormhole_jump_fuel_cost(self, fleet, distance):
+        """Fuel required for one wormhole jump based on distance."""
+        distance = max(0.0, float(distance or 0.0))
+        if distance <= 0.0:
+            return 0.0
+        per_ly = max(0.1, float(getattr(fleet, 'wormhole_fuel_per_ly', 5.0) or 5.0))
+        return per_ly * distance
+
+    def _consume_wormhole_jump_fuel(self, fleet, distance):
+        """Consume fuel for a wormhole jump; return False when fuel is insufficient."""
+        cost = self._wormhole_jump_fuel_cost(fleet, distance)
+        if float(fleet.fuel) < cost:
+            return False
+        fleet.fuel = max(0.0, float(fleet.fuel) - cost)
+        return True
 
     def _resolve_movement_warp_with_fuel(self, fleet, order, requested_warp):
         """Resolve usable warp for this movement turn based on available fuel."""
@@ -2812,6 +2823,10 @@ class GameTurn():
             (source_fleet.overmax_fuel_penalty * source_fleet.ship_count) +
             (target_fleet.overmax_fuel_penalty * target_fleet.ship_count)
         ) / float(total_ships)
+        bottleneck_wormhole_fuel_per_ly = max(
+            float(source_fleet.wormhole_fuel_per_ly or 5.0),
+            float(target_fleet.wormhole_fuel_per_ly or 5.0),
+        )
 
         # Merge attributes into target fleet
         target_fleet.ship_count = total_ships
@@ -2824,6 +2839,7 @@ class GameTurn():
         )
         target_fleet.fuel_efficiency = weighted_fuel_efficiency
         target_fleet.overmax_fuel_penalty = weighted_overmax_fuel_penalty
+        target_fleet.wormhole_fuel_per_ly = bottleneck_wormhole_fuel_per_ly
         target_fleet.offense_level = merged_offense_level
         target_fleet.defense_level = merged_defense_level
         target_fleet.integrity = avg_integrity
@@ -3297,6 +3313,7 @@ class GameTurn():
             max_safe_warp=tech_effects['max_warp_speed'],
             fuel_efficiency=tech_effects.get('fuel_efficiency', 1.0),
             overmax_fuel_penalty=tech_effects.get('overmax_fuel_penalty', 1.0),
+            wormhole_fuel_per_ly=tech_effects.get('wormhole_fuel_per_ly', 5.0),
             offense_level=tech_effects['offense_level'],
             defense_level=tech_effects['defense_level'],
             has_bombs=tech_effects.get('has_bombs'),
