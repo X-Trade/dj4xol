@@ -1290,6 +1290,14 @@ def help_research_labs(request):
 
 
 @registration_required()
+def help_anomalies(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_anomalies.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
 def help_space_combat(request):
     account = request.user.dj4xol_account
     return render(request, 'dj4xol/help_space_combat.html', {

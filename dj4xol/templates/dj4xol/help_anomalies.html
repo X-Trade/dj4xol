@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-        <title>Help</title>
+        <title>Anomalies Help</title>
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
@@ -13,28 +13,43 @@
     </head>
     <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index single-panel-page">
         <div class="title-bar">
-            <span class="title">Help</span>
-            <span class="tagline">Reference & Tools</span>
-            {% include 'dj4xol/_nav_menu.html' with current_page='help_index' %}
+            <span class="title">Anomalies</span>
+            <span class="tagline">Unusual Phenomena</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_anomalies' %}
         </div>
         <div class="columns single-column">
             <div class="column">
-                <div class="panel no-transition open" data-panel="help-home">
-                    <h2><span>Help Index</span><span class="panel-toggle"></span></h2>
+                <div class="panel no-transition open" data-panel="help-anomalies">
+                    <h2><span>Anomalies</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
-                        <section class="panel-scrollable-list">
-                        <p>Choose a help tool:</p>
-                        <ul class="game-list">
-                            <li><a href="{% url 'dj4xol:help_technology' %}">Technology Directory</a>Browse configured technologies by category and level.</li>
-                            <li><a href="{% url 'dj4xol:help_fleet_composition' %}">Fleet Composition</a> See how hulls, tech modifiers, fuel, and commissioning shape fleet stats (MVP, subject to change).</li>
-                            <li><a href="{% url 'dj4xol:help_research_labs' %}">Research &amp; Labs</a> Understand lab RP, category allocation, and research unlock flow.</li>
-                            <li><a href="{% url 'dj4xol:help_anomalies' %}">Anomalies</a> Learn anomaly types, map behavior, and exploration outcomes.</li>
-                            <li><a href="{% url 'dj4xol:help_space_combat' %}">Space Combat</a> Learn how fleet strength, damage, and battle outcomes are resolved.</li>
-                            <li><a href="{% url 'dj4xol:help_invasion' %}">Invasion</a> Understand colony defence fire, ground-force arithmetic, and capture outcomes.</li>
-                            <li><a href="{% url 'dj4xol:help_colony' %}">Colony Calculator</a> Simulate growth, productivity, and resource output.</li>
-                            <li><a href="{% url 'dj4xol:help_version_history' %}">Version History</a> See a summary of recent development changes.</li>
-                        </ul>
+                        <section class="panel-scrollable-text">
+                        <h4>What Are Anomalies?</h4>
+                        <p>
+                            Anomalies are non-standard map objects that can appear when a game is created with anomalies enabled.
+                            They can also spawn very rarely during play.
+                        </p>
+                        <h4>Types</h4>
+                        <p>
+                            Current anomaly types include Nebula, Comet, and Rift. They are visual map markers that fleets can target like other map objects.
+                        </p>
+                        <h4>Interaction Rule</h4>
+                        <p>
+                            If a fleet ends a year on an anomaly location, an anomaly interaction roll is applied.
+                            Outcomes include no effect, integrity damage, cargo disruption, fleet loss, or research gains.
+                        </p>
+                        <h4>Research Outcomes</h4>
+                        <p>
+                            Positive anomaly outcomes can grant bonus RP or major category progress immediately.
+                            These apply in addition to normal lab output.
+                        </p>
+                        <h4>Visibility &amp; Reports</h4>
+                        <p>
+                            Anomalies can be selected on the starmap and are recorded in standard exploration reports when observed.
+                        </p>
                         </section>
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                        </div>
                     </div>
                 </div>
             </div>
