@@ -204,6 +204,11 @@
             </div>
         </div>
         <script>
+        window.playerTurnedIn = {{ player.turned_in|yesno:'true,false' }};
+        window.currentYear = {{ game.year }};
+        window.gameStatusUrl = "{% url 'dj4xol:game_status' game.short_id %}";
+        window.turnIsDue = false;
+
         (function() {
             var hamburger = document.getElementById('hamburger-btn');
             var dropdown = document.getElementById('nav-dropdown');
@@ -249,8 +254,14 @@
             }
             function renderCountdown() {
                 var remainingMs = targetMs - Date.now();
-                if (remainingMs <= 0) {
-                    countdownEl.textContent = '<1m';
+                if (remainingMs <= 60000) {
+                    countdownEl.textContent = 'Due';
+                    if (!window.turnIsDue) {
+                        window.turnIsDue = true;
+                        if (window.__startTurnPoll) {
+                            window.__startTurnPoll();
+                        }
+                    }
                     return;
                 }
                 var totalMinutes = Math.floor(remainingMs / 60000);
@@ -264,6 +275,47 @@
             }
             renderCountdown();
             setInterval(renderCountdown, 15000);
+        })();
+        (function pollForNextTurn() {
+            function startTurnPoll() {
+                if (!window.gameStatusUrl) {
+                    return;
+                }
+                if (!window.playerTurnedIn && !window.turnIsDue) {
+                    return;
+                }
+                if (window.__turnPollStarted) {
+                    return;
+                }
+                window.__turnPollStarted = true;
+
+                var minDelay = 29 * 1000;
+                var maxDelay = 61 * 1000;
+                var firstDelay = 1000;
+
+                function scheduleNext(delay) {
+                    var url = window.gameStatusUrl + '?ts=' + Date.now();
+                    fetch(url, { credentials: 'same-origin', cache: 'no-store' })
+                        .then(function(resp) { return resp.json(); })
+                        .then(function(data) {
+                            if (data && data.year && data.year > window.currentYear) {
+                                window.location.reload();
+                            } else {
+                                var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+                                setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
+                            }
+                        })
+                        .catch(function() {
+                            var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+                            setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
+                        });
+                }
+
+                setTimeout(function() { scheduleNext(firstDelay); }, firstDelay);
+            }
+
+            window.__startTurnPoll = startTurnPoll;
+            startTurnPoll();
         })();
         (function() {
             var columns = document.querySelector('.research-columns');

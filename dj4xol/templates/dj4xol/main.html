@@ -15,6 +15,7 @@
             window.playerTurnedIn = {{ player.turned_in|yesno:'true,false' }};
             window.currentYear = {{ game.year }};
             window.gameStatusUrl = "{% url 'dj4xol:game_status' game.short_id %}";
+            window.turnIsDue = false;
         </script>
     </head>
     <body{% if user_theme %} class="{{ user_theme }}"{% endif %}>
@@ -138,42 +139,54 @@
             });
         })();
         (function() {
-            if (!window.playerTurnedIn) {
-                return;
+            function applyTurnLock() {
+                if (window.__turnLockApplied) {
+                    return;
+                }
+                if (!window.playerTurnedIn && !window.turnIsDue) {
+                    return;
+                }
+                window.__turnLockApplied = true;
+
+                document.body.classList.add('turned-in');
+                if (window.turnIsDue) {
+                    document.body.classList.add('turn-due');
+                }
+
+                var disableSelectors = [
+                    '.order-form',
+                    '.order-remove-btn',
+                    '.order-add-btn',
+                    '#dest-set-link',
+                    '.rename-btn',
+                    '#rename-popover button',
+                    '#rename-input'
+                ];
+
+                disableSelectors.forEach(function(selector) {
+                    document.querySelectorAll(selector).forEach(function(el) {
+                        if (el.tagName === 'A') {
+                            el.classList.add('disabled');
+                            el.removeAttribute('href');
+                            return;
+                        }
+                        el.disabled = true;
+                    });
+                });
+
+                document.querySelectorAll('.order-form input, .order-form select, .order-form button').forEach(function(el) {
+                    el.disabled = true;
+                });
+
+                document.querySelectorAll('form[action*="remove_fleet_order"], form[action*="remove_production"]').forEach(function(form) {
+                    form.querySelectorAll('button, input, select').forEach(function(el) {
+                        el.disabled = true;
+                    });
+                });
             }
 
-            document.body.classList.add('turned-in');
-
-            var disableSelectors = [
-                '.order-form',
-                '.order-remove-btn',
-                '.order-add-btn',
-                '#dest-set-link',
-                '.rename-btn',
-                '#rename-popover button',
-                '#rename-input'
-            ];
-
-            disableSelectors.forEach(function(selector) {
-                document.querySelectorAll(selector).forEach(function(el) {
-                    if (el.tagName === 'A') {
-                        el.classList.add('disabled');
-                        el.removeAttribute('href');
-                        return;
-                    }
-                    el.disabled = true;
-                });
-            });
-
-            document.querySelectorAll('.order-form input, .order-form select, .order-form button').forEach(function(el) {
-                el.disabled = true;
-            });
-
-            document.querySelectorAll('form[action*="remove_fleet_order"], form[action*="remove_production"]').forEach(function(form) {
-                form.querySelectorAll('button, input, select').forEach(function(el) {
-                    el.disabled = true;
-                });
-            });
+            window.__applyTurnLock = applyTurnLock;
+            applyTurnLock();
         })();
 
         (function nextTurnCountdown() {
@@ -196,8 +209,17 @@
 
             function renderCountdown() {
                 var remainingMs = targetMs - Date.now();
-                if (remainingMs <= 0) {
-                    countdownEl.textContent = '<1m';
+                if (remainingMs <= 60000) {
+                    countdownEl.textContent = 'Due';
+                    if (!window.turnIsDue) {
+                        window.turnIsDue = true;
+                        if (window.__applyTurnLock) {
+                            window.__applyTurnLock();
+                        }
+                        if (window.__startTurnPoll) {
+                            window.__startTurnPoll();
+                        }
+                    }
                     return;
                 }
 
@@ -218,52 +240,61 @@
         })();
 
         (function pollForNextTurn() {
-            if (!window.playerTurnedIn || !window.gameStatusUrl) {
-                return;
-            }
-            if (window.__turnPollStarted) {
-                return;
-            }
-            window.__turnPollStarted = true;
-            var minDelay = 29 * 1000;
-            var maxDelay = 61 * 1000;
-            var firstDelay = 1000;
-
-            function scheduleNext(delay) {
-                var url = window.gameStatusUrl + '?ts=' + Date.now();
-                if (window.jQuery && window.jQuery.getJSON) {
-                    window.jQuery.getJSON(url)
-                        .done(function(data) {
-                            if (data && data.year && data.year > window.currentYear) {
-                                window.location.reload();
-                            } else {
-                                var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-                                setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
-                            }
-                        })
-                        .fail(function() {
-                            var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-                            setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
-                        });
-                } else {
-                    fetch(url, { credentials: 'same-origin', cache: 'no-store' })
-                        .then(function(resp) { return resp.json(); })
-                        .then(function(data) {
-                            if (data && data.year && data.year > window.currentYear) {
-                                window.location.reload();
-                            } else {
-                                var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-                                setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
-                            }
-                        })
-                        .catch(function() {
-                            var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-                            setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
-                        });
+            function startTurnPoll() {
+                if (!window.gameStatusUrl) {
+                    return;
                 }
+                if (!window.playerTurnedIn && !window.turnIsDue) {
+                    return;
+                }
+                if (window.__turnPollStarted) {
+                    return;
+                }
+                window.__turnPollStarted = true;
+
+                var minDelay = 29 * 1000;
+                var maxDelay = 61 * 1000;
+                var firstDelay = 1000;
+
+                function scheduleNext(delay) {
+                    var url = window.gameStatusUrl + '?ts=' + Date.now();
+                    if (window.jQuery && window.jQuery.getJSON) {
+                        window.jQuery.getJSON(url)
+                            .done(function(data) {
+                                if (data && data.year && data.year > window.currentYear) {
+                                    window.location.reload();
+                                } else {
+                                    var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+                                    setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
+                                }
+                            })
+                            .fail(function() {
+                                var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+                                setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
+                            });
+                    } else {
+                        fetch(url, { credentials: 'same-origin', cache: 'no-store' })
+                            .then(function(resp) { return resp.json(); })
+                            .then(function(data) {
+                                if (data && data.year && data.year > window.currentYear) {
+                                    window.location.reload();
+                                } else {
+                                    var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+                                    setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
+                                }
+                            })
+                            .catch(function() {
+                                var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+                                setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
+                            });
+                    }
+                }
+
+                setTimeout(function() { scheduleNext(firstDelay); }, firstDelay);
             }
 
-            setTimeout(function() { scheduleNext(firstDelay); }, firstDelay);
+            window.__startTurnPoll = startTurnPoll;
+            startTurnPoll();
         })();
         (function() {
             var isMobile = window.matchMedia &&

@@ -145,6 +145,7 @@ MERGE_COMBAT_RETENTION = 0.95
 BUSSARD_RECOVERY_CHANCE = 0.5
 BUSSARD_RECOVERY_MIN_MG = 1
 BUSSARD_RECOVERY_MAX_MG = 5
+FUEL_CONSUMPTION_MULTIPLIER = 2.0
 NOVA_STAR_DESTRUCTION_CHANCE = 0.40
 NOVA_BLACK_HOLE_SPAWN_CHANCE = 0.01
 STAR_VANISH_FLEET_MENTION_CHANCE = 0.35
@@ -2154,7 +2155,7 @@ class GameTurn():
 
         normalised = speed / max_warp
         cruise_normalised = min(normalised, 1.0)
-        # Baseline curve: low warp is cheap, safe warp is around 1.5mg per ship-year.
+        # Baseline curve: low warp is cheap, safe warp is around 3.0mg per ship-year.
         cruise_cost = 0.15 + 1.35 * (cruise_normalised ** 1.4)
 
         overmax_cost = 0.0
@@ -2164,6 +2165,7 @@ class GameTurn():
             overmax_cost = overmax_penalty * 0.6 * ((2.0 ** (over * 1.6)) - 1.0)
 
         per_ship_cost = max(0.05, (cruise_cost + overmax_cost) / fuel_efficiency)
+        per_ship_cost *= FUEL_CONSUMPTION_MULTIPLIER
         return per_ship_cost * ship_count
 
     def _wormhole_jump_fuel_cost(self, fleet, distance):

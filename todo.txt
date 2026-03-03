@@ -1,22 +1,18 @@
 ============= MAIN TODO =============
-1. More anomolies (asteroid field, ancient debris, wormhole, black hole)
+1. More anomolies (asteroid field, ancient debris)
 2. rebalance production costs, tech costs, & fuel consumption
 3. unlockable terraforming
-4. moving comets?
-5. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
-6. Secret resources
-7. fuel factory
-9. fleet-to-fleet Refuelling
-10. Ship Design (Basic)
-11. Instant merge/split fleets (dedicated interactive screen)
-12. Custom server help pages (wiki/cms)
-13. radar system (ties to #11). Players cannot see ships beyond their ships or planets sensor range
-14. protect unnecessary/unsporting information from being delivered to the wrong owner-player
-   for example, a player cannot see the orders of another player's vessel
-15. Diplomacy
-16. Trade Contracts/Negotiation
-17. Ship Design (Advanced)
-18. LLM/AI integration
+4. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
+5. Secret resources
+6. fuel factory
+7. fleet-to-fleet Refuelling
+8. Ship Design (Basic)
+9. Instant merge/split fleets (dedicated interactive screen)
+10. Custom server help pages (wiki/cms)
+11. Diplomacy
+12. Trade Contracts/Negotiation
+13. Ship Design (Advanced)
+14. LLM/AI integration
 
 =============== GUI =================
 1. Hull design

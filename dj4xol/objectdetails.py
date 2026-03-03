@@ -140,6 +140,7 @@ class DetailBuilder():
                      'production_orders': self.get_production_orders(),
                      'fleet_orders': self.get_fleet_orders(),
                      'fleet_cargo': self.get_fleet_cargo(),
+                     'fleet_capabilities': self.get_fleet_capabilities(),
                      'fleet_inventory': self.build_fleet_inventory(),
                      'transfer_targets': self.get_transfer_targets(),
                      'colonise_targets': self.get_colonise_targets(),
@@ -262,6 +263,16 @@ class DetailBuilder():
                     'has_fuel_factory': data.get('has_fuel_factory'),
                     'has_wormhole_drive': data.get('has_wormhole_drive'),
                 }
+                if data.get('report_tier') == 'encounter':
+                    detail['fleet_capabilities'] = self._build_fleet_capabilities(
+                        data.get('has_bombs'),
+                        data.get('has_miners'),
+                        bool(data.get('has_fuel_factory')),
+                        bool(data.get('has_wormhole_drive')),
+                        data.get('basic_scanner_range', 0),
+                        data.get('advanced_scanner_range', 0),
+                        include_scanners=True,
+                    )
             if 'cargo_capacity' in data and data.get('cargo_capacity') is not None:
                 detail['fleet_inventory'] = self._build_fleet_inventory_from_report(data)
         elif target_type == 'salvage':
@@ -777,6 +788,20 @@ class DetailBuilder():
             })
         return cargo
 
+    def get_fleet_capabilities(self):
+        """Get capability details for selected fleet."""
+        if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
+            return None
+        return self._build_fleet_capabilities(
+            self.selected_obj.has_bombs,
+            self.selected_obj.has_miners,
+            bool(self.selected_obj.has_fuel_factory),
+            bool(self.selected_obj.has_wormhole_drive),
+            getattr(self.selected_obj, 'basic_scanner_range', 0),
+            getattr(self.selected_obj, 'advanced_scanner_range', 0),
+            include_scanners=True,
+        )
+
     def _build_fleet_composition(self, fleet):
         """Build non-cargo fleet composition fields."""
         offense_mod = int(round(float(fleet.offense_level) * 10.0))
@@ -792,6 +817,61 @@ class DetailBuilder():
             'has_fuel_factory': bool(fleet.has_fuel_factory),
             'has_wormhole_drive': bool(fleet.has_wormhole_drive),
         }
+
+    def _build_fleet_capabilities(
+        self,
+        bombs,
+        miners,
+        has_fuel_factory,
+        has_wormhole_drive,
+        basic_scanner_range,
+        advanced_scanner_range,
+        include_scanners=False,
+    ):
+        """Build list of capability label/value pairs."""
+        capabilities = []
+        if bombs:
+            capabilities.append({
+                'label': 'Bombs',
+                'value': str(bombs).title(),
+            })
+        if miners:
+            capabilities.append({
+                'label': 'Miners',
+                'value': str(miners).title(),
+            })
+        if has_fuel_factory:
+            capabilities.append({
+                'label': 'Fuel Factory',
+                'value': 'Yes',
+            })
+        if has_wormhole_drive:
+            capabilities.append({
+                'label': 'Wormhole Drive',
+                'value': 'Yes',
+            })
+        if include_scanners:
+            scanner_display = self._format_scanner_range(basic_scanner_range, advanced_scanner_range)
+            if scanner_display:
+                capabilities.append({
+                    'label': 'Scanner Range',
+                    'value': scanner_display,
+                })
+        return capabilities or None
+
+    def _format_scanner_range(self, basic, advanced):
+        """Format scanner range display or return None when no scanners are present."""
+        try:
+            basic_val = int(basic or 0)
+        except (TypeError, ValueError):
+            basic_val = 0
+        try:
+            advanced_val = int(advanced or 0)
+        except (TypeError, ValueError):
+            advanced_val = 0
+        if basic_val <= 0 and advanced_val <= 0:
+            return None
+        return f'{basic_val}ly/{advanced_val}ly'
 
     def build_fleet_inventory(self):
         """Build fleet cargo inventory data for progress bar display."""
