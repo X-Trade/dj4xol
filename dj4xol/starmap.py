@@ -301,6 +301,10 @@ class StarMap():
             render_heading = heading - 90.0
             # Anchor at comet nucleus center (::before center), not the tail body.
             offset_x, offset_y = (-21, -2)
+        elif anomaly_type == Anomaly.TYPE_BLACK_HOLE:
+            type_class = 'mapanomaly-blackhole'
+            # Match star-sized footprint.
+            offset_x, offset_y = (0, 0)
         elif anomaly_type == Anomaly.TYPE_RIFT:
             type_class = 'mapanomaly-rift'
             # Center on average of full visual bounds including pseudo-elements.

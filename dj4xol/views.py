@@ -582,11 +582,13 @@ def _spawn_random_anomaly_at(game, x, y):
         Anomaly.TYPE_NEBULA,
         Anomaly.TYPE_COMET,
         Anomaly.TYPE_RIFT,
+        Anomaly.TYPE_BLACK_HOLE,
     ])
     labels = {
         Anomaly.TYPE_NEBULA: 'Nebula',
         Anomaly.TYPE_COMET: 'Comet',
         Anomaly.TYPE_RIFT: 'Rift',
+        Anomaly.TYPE_BLACK_HOLE: 'Black Hole',
     }
     return Anomaly.objects.create(
         game=game,
@@ -817,7 +819,7 @@ def add_fleet_order(request, game_short_id):
             order.x = int(target_x)
             order.y = int(target_y)
 
-        if order_type == 'INTERCEPT' and not order.target_fleet:
+        if order_type == 'INTERCEPT' and not order.target_fleet and not order.target_short_id:
             order.order_type = 'MOVE'
     
     elif order_type == 'PATROL':

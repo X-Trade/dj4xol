@@ -161,6 +161,9 @@ ANOMALY_SPAWN_CHANCE_PER_YEAR = 0.01
 ANOMALY_MAX_STAR_RATIO = 0.15
 ANOMALY_COMET_DRIFT_WARP = 1.0
 ANOMALY_MAX_RISK_REWARD_BONUS = 0.50
+BLACK_HOLE_RESEARCH_MULTIPLIER = 2.0
+BLACK_HOLE_DAMAGE_MIN = 50
+BLACK_HOLE_DAMAGE_MAX = 100
 
 
 # Chance calculation functions (separated for testability)
@@ -384,7 +387,7 @@ class GameTurn():
             if changed:
                 anomaly.save(update_fields=['stability'])
 
-    def _quantized_axis_step(self, component, comet_short_id, axis_key):
+    def _quantized_axis_step(self, component, comet_short_id, axis_key, year=None):
         """Convert a sub-integer movement component into deterministic yearly tile steps."""
         try:
             value = float(component)
@@ -396,7 +399,9 @@ class GameTurn():
         sid = str(comet_short_id or '')
         seed = sum((idx + 1) * ord(ch) for idx, ch in enumerate('%s:%s' % (sid, axis_key)))
         phase = (seed % 997) / 997.0
-        year = float(self.game.year or 0)
+        if year is None:
+            year = self.game.year
+        year = float(year or 0)
         before = int((year + phase) * magnitude)
         after = int((year + 1.0 + phase) * magnitude)
         step = max(0, after - before)
@@ -520,6 +525,9 @@ class GameTurn():
             anomaly = anomaly_positions.get((fleet.x, fleet.y))
             if anomaly is None:
                 continue
+            if getattr(anomaly, 'anomaly_type', None) == Anomaly.TYPE_BLACK_HOLE:
+                self._apply_black_hole_interaction(fleet, anomaly)
+                continue
             # D6 table: 1-2 no effect (2/6), 3 damage, 4 cargo loss, 5 destroyed, 6 research boon.
             roll = random.randint(1, 6)
             if roll in (1, 2):
@@ -569,6 +577,7 @@ class GameTurn():
                 Anomaly.TYPE_NEBULA,
                 Anomaly.TYPE_COMET,
                 Anomaly.TYPE_RIFT,
+                Anomaly.TYPE_BLACK_HOLE,
             ])
             name = '%s %s' % (
                 anomaly_type.title(),
@@ -670,8 +679,12 @@ class GameTurn():
             return
         row = random.choice(rows)
         category = row.category
+        extra_multiplier = 1.0
+        if getattr(anomaly, 'anomaly_type', None) == 'BLACK_HOLE':
+            extra_multiplier = BLACK_HOLE_RESEARCH_MULTIPLIER
         if random.random() < 0.5:
             bonus_rp = random.randint(ANOMALY_BONUS_RP_MIN, ANOMALY_BONUS_RP_MAX)
+            bonus_rp = int(round(float(bonus_rp) * extra_multiplier))
             bonus_rp = int(round(float(bonus_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
             result = apply_research_bonus_rp(player, category.id, bonus_rp)
             text = (
@@ -683,6 +696,7 @@ class GameTurn():
             self._create_anomaly_message(player, text, priority=False)
             return
         progress_rp = random.randint(ANOMALY_MAJOR_PROGRESS_RP_MIN, ANOMALY_MAJOR_PROGRESS_RP_MAX)
+        progress_rp = int(round(float(progress_rp) * extra_multiplier))
         progress_rp = int(round(float(progress_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
         result = apply_research_bonus_rp(player, category.id, progress_rp)
         text = (
@@ -692,6 +706,32 @@ class GameTurn():
         if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
             text += " Level increased to %s." % int(result['new_level'])
         self._create_anomaly_message(player, text, priority=False)
+
+    def _apply_black_hole_interaction(self, fleet, anomaly):
+        """Resolve black hole interactions with a custom high-danger D6 table.
+
+        1: Research boon
+        2-4: Destruction
+        5-6: Heavy integrity damage (50%+)
+        """
+        roll = random.randint(1, 6)
+        if roll == 1:
+            self._apply_anomaly_research_boon(fleet, anomaly)
+            return
+        if roll in (2, 3, 4):
+            self._apply_anomaly_destruction(fleet, anomaly)
+            return
+        damage = random.randint(BLACK_HOLE_DAMAGE_MIN, BLACK_HOLE_DAMAGE_MAX)
+        damage = int(round(float(damage) * self._anomaly_risk_reward_multiplier(anomaly)))
+        damage = max(BLACK_HOLE_DAMAGE_MIN, min(100, damage))
+        before = int(fleet.integrity or 0)
+        fleet.integrity = max(0, before - damage)
+        fleet.save(update_fields=['integrity'])
+        text = (
+            "%s suffered %s%% integrity damage from the black hole %s at (%s, %s)."
+            % (fleet.name, damage, anomaly.name, anomaly.x, anomaly.y)
+        )
+        self._create_anomaly_message(fleet.player, text, priority=True)
 
     def _calculate_next_generation(self):
         """Calculate next generation time based on turn scheme."""
@@ -1433,7 +1473,7 @@ class GameTurn():
             False if still moving
             'destroyed' if fleet was destroyed by warp damage
         """
-        is_intercept = order.order_type == 'INTERCEPT' and order.target_fleet
+        is_intercept = order.order_type == 'INTERCEPT'
         try:
             if is_intercept:
                 x, y = self._get_intercept_destination(order)
@@ -1475,18 +1515,28 @@ class GameTurn():
 
         # If target fleet is already within intercept range, snap directly to it.
         # This avoids "parking ahead" when predictive lead is unnecessary.
-        if is_intercept and order.target_fleet:
-            target_fleet = order.target_fleet
+        if is_intercept:
+            target_obj, target_x, target_y, _target_kind = self._get_live_intercept_target(order)
+            if target_x is None or target_y is None:
+                target_obj = None
+            target_position = (
+                nparray([target_x, target_y]) if target_obj is not None else None
+            )
+        else:
+            target_obj = None
+            target_position = None
+
+        if is_intercept and target_position is not None:
             live_distance = linalg.norm(
-                nparray([target_fleet.x, target_fleet.y]) - position
+                target_position - position
             )
             if self._is_within_intercept_snap_range(live_distance, warp_speed):
-                live_vector = nparray([target_fleet.x, target_fleet.y]) - position
+                live_vector = target_position - position
                 if linalg.norm(live_vector) > 0:
                     dx, dy = live_vector[0], live_vector[1]
                     fleet.heading = degrees(atan2(dx, -dy)) % 360
-                fleet.x = target_fleet.x
-                fleet.y = target_fleet.y
+                fleet.x = int(target_x)
+                fleet.y = int(target_y)
                 return True
 
         if warp_speed == WORMHOLE_WARPFACTOR and bool(fleet.has_wormhole_drive):
@@ -1495,10 +1545,7 @@ class GameTurn():
                 return 'destroyed'
             if jump_result == 'arrived':
                 if is_intercept:
-                    target = order.target_fleet
-                    if target and (fleet.x, fleet.y) == (target.x, target.y):
-                        return True
-                    return False
+                    return self._intercept_target_matched(order, fleet)
                 return True
             return False
 
@@ -1512,10 +1559,7 @@ class GameTurn():
             fleet.x = x
             fleet.y = y
             if is_intercept:
-                target = order.target_fleet
-                if target and (fleet.x, fleet.y) == (target.x, target.y):
-                    return True
-                return False
+                return self._intercept_target_matched(order, fleet)
             return True
         else:
             # Fleet moves toward destination but doesn't reach it
@@ -1533,14 +1577,10 @@ class GameTurn():
             fleet.y = new_y
             if (fleet.x, fleet.y) == (x, y):
                 if is_intercept:
-                    target = order.target_fleet
-                    if target and (fleet.x, fleet.y) == (target.x, target.y):
-                        return True
-                    return False
+                    return self._intercept_target_matched(order, fleet)
                 return True
             if is_intercept:
-                target = order.target_fleet
-                if target and (fleet.x, fleet.y) == (target.x, target.y):
+                if self._intercept_target_matched(order, fleet):
                     return True
             return False
 
@@ -1705,13 +1745,20 @@ class GameTurn():
         self._locked_fleet_ids_for_year.add(target.id)
 
     def _get_intercept_destination(self, order):
-        """Calculate intercept destination based on target fleet movement."""
+        """Calculate intercept destination based on moving target prediction."""
         from math import radians, sin, cos
 
+        target_obj, x, y, kind = order.get_actual_target()
+        if kind in ['invalid', 'none']:
+            return order.fleet.x, order.fleet.y
+
+        if kind == 'anomaly' and target_obj is not None:
+            from .models import Anomaly
+            if getattr(target_obj, 'anomaly_type', None) == Anomaly.TYPE_COMET:
+                return self._predict_comet_intercept_destination(order.fleet, order, target_obj)
+            return target_obj.x, target_obj.y
+
         if not order.target_fleet:
-            _, x, y, kind = order.get_actual_target()
-            if kind in ['invalid', 'none']:
-                return order.fleet.x, order.fleet.y
             return x, y
 
         target_fleet = order.target_fleet
@@ -1740,6 +1787,59 @@ class GameTurn():
         intercept_x = int(target_fleet.x + dx * target_speed)
         intercept_y = int(target_fleet.y + dy * target_speed)
         return intercept_x, intercept_y
+
+    def _predict_comet_position(self, comet, years_ahead):
+        """Project comet position assuming heading continues as-is."""
+        from math import radians, sin, cos
+        years = max(0, int(years_ahead or 0))
+        x = int(comet.x)
+        y = int(comet.y)
+        heading = self._normalize_heading(getattr(comet, 'heading', 0.0))
+        theta = radians(heading)
+        dx = sin(theta) * ANOMALY_COMET_DRIFT_WARP
+        dy = -cos(theta) * ANOMALY_COMET_DRIFT_WARP
+        max_x = max(1, int(self.game.map_size_x) - 1)
+        max_y = max(1, int(self.game.map_size_y) - 1)
+        for year_offset in range(years):
+            step_x = self._quantized_axis_step(dx, comet.short_id, 'x', year=self.game.year + year_offset)
+            step_y = self._quantized_axis_step(dy, comet.short_id, 'y', year=self.game.year + year_offset)
+            next_x = x + step_x
+            next_y = y + step_y
+            if next_x < 1 or next_x > max_x or next_y < 1 or next_y > max_y:
+                # Comet is expected to collapse out of map bounds; intercept best-known position.
+                return x, y
+            x = int(next_x)
+            y = int(next_y)
+        return x, y
+
+    def _predict_comet_intercept_destination(self, interceptor, order, comet):
+        """Lead comet intercept point based on interceptor speed and comet heading."""
+        warp_speed = max(1, int(getattr(order, 'warpfactor', 1) or 1))
+        ix, iy = int(interceptor.x), int(interceptor.y)
+        px, py = int(comet.x), int(comet.y)
+        for _ in range(4):
+            distance = linalg.norm(nparray([px, py]) - nparray([ix, iy]))
+            years = max(0, int(ceil(distance / float(warp_speed))))
+            projected_x, projected_y = self._predict_comet_position(comet, years)
+            if (projected_x, projected_y) == (px, py):
+                break
+            px, py = projected_x, projected_y
+        return int(px), int(py)
+
+    def _get_live_intercept_target(self, order):
+        """Return current live target tuple for intercept checks."""
+        if order.target_fleet:
+            target = order.target_fleet
+            return target, target.x, target.y, 'fleet'
+        obj, x, y, kind = order.get_actual_target()
+        return obj, x, y, kind
+
+    def _intercept_target_matched(self, order, fleet):
+        """Return True when interceptor is co-located with current target location."""
+        _obj, tx, ty, _kind = self._get_live_intercept_target(order)
+        if tx is None or ty is None:
+            return False
+        return (int(fleet.x), int(fleet.y)) == (int(tx), int(ty))
 
     def _is_interceptor_ahead_of_target(self, interceptor, target_fleet):
         """Return True when interceptor is ahead along target's movement vector."""

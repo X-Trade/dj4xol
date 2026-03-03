@@ -88,6 +88,7 @@ class GameFactory():
             Anomaly.TYPE_NEBULA: 'Nebula',
             Anomaly.TYPE_COMET: 'Comet',
             Anomaly.TYPE_RIFT: 'Rift',
+            Anomaly.TYPE_BLACK_HOLE: 'Black Hole',
         }
         min_x = 1
         min_y = 1
@@ -105,6 +106,7 @@ class GameFactory():
                 Anomaly.TYPE_NEBULA,
                 Anomaly.TYPE_COMET,
                 Anomaly.TYPE_RIFT,
+                Anomaly.TYPE_BLACK_HOLE,
             ])
             ordinal = len(created) + 1
             created.append(Anomaly(
