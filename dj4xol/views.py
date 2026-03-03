@@ -683,7 +683,9 @@ def _spawn_random_anomaly_at(game, x, y):
     }
     if anomaly_type == Anomaly.TYPE_WORMHOLE:
         from .models import random_wormhole_stability_init
-        wormhole_name = '%s %s' % (labels.get(anomaly_type, 'Anomaly'), game.anomalys.count() + 1)
+        base_index = game.anomalys.count() + 1
+        wormhole_name = '%s %s' % (labels.get(anomaly_type, 'Anomaly'), base_index)
+        wormhole_pair_name = '%s %s' % (labels.get(anomaly_type, 'Anomaly'), base_index + 1)
         endpoint = Anomaly.objects.create(
             game=game,
             x=int(x),
@@ -710,7 +712,7 @@ def _spawn_random_anomaly_at(game, x, y):
                 x=px,
                 y=py,
                 anomaly_type=anomaly_type,
-                name=wormhole_name,
+                name=wormhole_pair_name,
                 heading=random.random() * 360.0,
                 stability=random_wormhole_stability_init(),
             )

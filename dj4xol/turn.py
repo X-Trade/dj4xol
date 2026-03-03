@@ -721,10 +721,11 @@ class GameTurn():
                 Anomaly.TYPE_BLACK_HOLE: 'Black Hole',
                 Anomaly.TYPE_WORMHOLE: 'Wormhole',
             }
-            name = '%s %s' % (type_labels.get(anomaly_type, 'Anomaly'), current + 1)
             if anomaly_type == Anomaly.TYPE_WORMHOLE:
                 if current + 2 > max_allowed:
                     continue
+                name = '%s %s' % (type_labels.get(anomaly_type, 'Anomaly'), current + 1)
+                pair_name = '%s %s' % (type_labels.get(anomaly_type, 'Anomaly'), current + 2)
                 pair_x = pair_y = None
                 for _ in range(120):
                     px = random.randint(min_x, max_x)
@@ -750,7 +751,7 @@ class GameTurn():
                     x=pair_x,
                     y=pair_y,
                     anomaly_type=anomaly_type,
-                    name=name,
+                    name=pair_name,
                     heading=random.random() * 360.0,
                     stability=random_wormhole_stability_init(),
                     wormhole_pair=a,
@@ -758,6 +759,7 @@ class GameTurn():
                 a.wormhole_pair = b
                 a.save(update_fields=['wormhole_pair'])
             else:
+                name = '%s %s' % (type_labels.get(anomaly_type, 'Anomaly'), current + 1)
                 Anomaly.objects.create(
                     game=self.game,
                     x=x,
