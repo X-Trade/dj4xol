@@ -39,8 +39,9 @@
     <div class="unexplored-notice">{% if detail.is_star %}Unexplored{% else %}???{% endif %}</div>
     {% if detail.is_anomaly %}
     <p class="unexplored-hint">Potential navigational hazard. Send a fleet to collect research.</p>
-    {% endif %}
+    {% else %}
     <p class="unexplored-hint">Send a fleet to this location to gather intelligence.</p>
+    {% endif %}
     {% else %}
     {% if not detail.is_current %}
     <div class="report-age"><span class="has-tooltip" data-tooltip="{{ detail.report_age }} year{{ detail.report_age|pluralize }} old">Year {{ detail.report_year }} Report</span></div>

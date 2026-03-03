@@ -40,6 +40,8 @@ from .messages import (
     StarVanishedOminousMessageFactory,
     ResearchLevelUnlockedMessageFactory,
     ResearchBreakthroughMessageFactory,
+    format_map_object,
+    format_location,
 )
 import random
 
@@ -710,7 +712,14 @@ class GameTurn():
                 Anomaly.TYPE_BLACK_HOLE,
                 Anomaly.TYPE_WORMHOLE,
             ])
-            name = '%s %s' % (anomaly_type.title(), current + 1)
+            type_labels = {
+                Anomaly.TYPE_NEBULA: 'Nebula',
+                Anomaly.TYPE_COMET: 'Comet',
+                Anomaly.TYPE_RIFT: 'Rift',
+                Anomaly.TYPE_BLACK_HOLE: 'Black Hole',
+                Anomaly.TYPE_WORMHOLE: 'Wormhole',
+            }
+            name = '%s %s' % (type_labels.get(anomaly_type, 'Anomaly'), current + 1)
             if anomaly_type == Anomaly.TYPE_WORMHOLE:
                 if current + 2 > max_allowed:
                     continue
@@ -775,10 +784,23 @@ class GameTurn():
         damage = max(1, min(100, damage))
         before = int(fleet.integrity or 0)
         fleet.integrity = max(0, before - damage)
+        if fleet.integrity <= 0:
+            self._apply_anomaly_destruction(
+                fleet,
+                anomaly,
+                reason=(
+                    "%s was destroyed by anomaly-induced structural failure near %s."
+                    % (fleet.name, format_map_object(anomaly))
+                ),
+            )
+            return
         fleet.save(update_fields=['integrity'])
+        location = format_location(
+            obj=anomaly, link=True, game=self.game
+        )
         text = (
-            "%s took %s%% integrity damage whilst exploring %s at (%s, %s)."
-            % (fleet.name, damage, anomaly.name, anomaly.x, anomaly.y)
+            "%s took %s%% integrity damage whilst exploring %s near %s."
+            % (fleet.name, damage, format_map_object(anomaly), location)
         )
         self._create_anomaly_message(fleet.player, text, priority=True)
 
@@ -812,28 +834,45 @@ class GameTurn():
             damage = max(1, min(100, damage))
             before = int(fleet.integrity or 0)
             fleet.integrity = max(0, before - damage)
+            if fleet.integrity <= 0:
+                self._apply_anomaly_destruction(
+                    fleet,
+                    anomaly,
+                    reason=(
+                        "%s was destroyed after catastrophic hull stress near %s."
+                        % (fleet.name, format_map_object(anomaly))
+                    ),
+                )
+                return
             fleet.save(update_fields=['integrity'])
             text = (
-                "Anomaly encounter at %s (%s, %s) found no cargo on %s; hull stress caused %s%% integrity damage."
-                % (anomaly.name, anomaly.x, anomaly.y, fleet.name, damage)
+                "Anomaly encounter near %s found no cargo on %s; hull stress caused %s%% integrity damage."
+                % (format_map_object(anomaly), fleet.name, damage)
             )
             self._create_anomaly_message(fleet.player, text, priority=True)
             return
         loss_text = ', '.join(losses) if losses else 'no significant cargo'
         text = (
-            "Anomaly encounter at %s (%s, %s) disrupted %s cargo: %s lost."
-            % (anomaly.name, anomaly.x, anomaly.y, fleet.name, loss_text)
+            "Anomaly encounter near %s disrupted %s cargo: %s lost."
+            % (format_map_object(anomaly), fleet.name, loss_text)
         )
         self._create_anomaly_message(fleet.player, text, priority=True)
 
-    def _apply_anomaly_destruction(self, fleet, anomaly):
+    def _apply_anomaly_destruction(self, fleet, anomaly, reason=None):
         fleet_name = fleet.name
         player = fleet.player
         fleet.delete()
-        text = (
-            "%s was lost whilst exploring %s at (%s, %s)."
-            % (fleet_name, anomaly.name, anomaly.x, anomaly.y)
-        )
+        if reason:
+            text = reason
+        else:
+            text = (
+                "%s was lost whilst exploring %s near %s."
+                % (
+                    fleet_name,
+                    format_map_object(anomaly),
+                    format_location(obj=anomaly, link=True, game=self.game),
+                )
+            )
         self._create_anomaly_message(player, text, priority=True)
 
     def _apply_anomaly_research_boon(self, fleet, anomaly):
@@ -852,8 +891,8 @@ class GameTurn():
             bonus_rp = int(round(float(bonus_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
             result = apply_research_bonus_rp(player, category.id, bonus_rp)
             text = (
-                "Anomaly data from %s (%s, %s) granted %s bonus RP in %s."
-                % (anomaly.name, anomaly.x, anomaly.y, bonus_rp, category.name)
+                "Anomaly data from %s granted %s bonus RP in %s."
+                % (format_map_object(anomaly), bonus_rp, category.name)
             )
             if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
                 text += " Level increased to %s." % int(result['new_level'])
@@ -864,8 +903,8 @@ class GameTurn():
         progress_rp = int(round(float(progress_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
         result = apply_research_bonus_rp(player, category.id, progress_rp)
         text = (
-            "Major anomaly breakthrough at %s (%s, %s): %s RP applied to %s."
-            % (anomaly.name, anomaly.x, anomaly.y, progress_rp, category.name)
+            "Major anomaly breakthrough at %s: %s RP applied to %s."
+            % (format_map_object(anomaly), progress_rp, category.name)
         )
         if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
             text += " Level increased to %s." % int(result['new_level'])
@@ -890,10 +929,20 @@ class GameTurn():
         damage = max(BLACK_HOLE_DAMAGE_MIN, min(100, damage))
         before = int(fleet.integrity or 0)
         fleet.integrity = max(0, before - damage)
+        if fleet.integrity <= 0:
+            self._apply_anomaly_destruction(
+                fleet,
+                anomaly,
+                reason=(
+                    "%s was destroyed by the black hole %s."
+                    % (fleet.name, format_map_object(anomaly))
+                ),
+            )
+            return
         fleet.save(update_fields=['integrity'])
         text = (
-            "%s suffered %s%% integrity damage from the black hole %s at (%s, %s)."
-            % (fleet.name, damage, anomaly.name, anomaly.x, anomaly.y)
+            "%s suffered %s%% integrity damage from the black hole %s."
+            % (fleet.name, damage, format_map_object(anomaly))
         )
         self._create_anomaly_message(fleet.player, text, priority=True)
 
@@ -919,8 +968,8 @@ class GameTurn():
                 player = fleet.player
                 fleet.delete()
                 text = (
-                    "%s was destroyed in catastrophic wormhole transit at %s (%s, %s)."
-                    % (fleet_name, endpoint.name, endpoint.x, endpoint.y)
+                    "%s was destroyed in catastrophic wormhole transit through %s."
+                    % (fleet_name, format_map_object(endpoint))
                 )
                 self._create_anomaly_message(player, text, priority=True)
                 return
@@ -951,13 +1000,13 @@ class GameTurn():
 
         if took_damage:
             text = (
-                "%s traversed wormhole %s at (%s, %s), suffered %s%% integrity damage, and emerged near %s at (%s, %s)."
-                % (fleet.name, endpoint.name, endpoint.x, endpoint.y, damage, pair.name, pair.x, pair.y)
+                "%s traversed wormhole %s, suffered %s%% integrity damage, and emerged near %s."
+                % (fleet.name, format_map_object(endpoint), damage, format_map_object(pair))
             )
         else:
             text = (
-                "%s traversed wormhole %s at (%s, %s) and emerged near %s at (%s, %s)."
-                % (fleet.name, endpoint.name, endpoint.x, endpoint.y, pair.name, pair.x, pair.y)
+                "%s traversed wormhole %s and emerged near %s."
+                % (fleet.name, format_map_object(endpoint), format_map_object(pair))
             )
         self._create_anomaly_message(fleet.player, text, priority=True)
 

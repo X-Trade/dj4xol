@@ -56,7 +56,10 @@ def format_location(obj=None, x=None, y=None, link=True, game=None):
         return format_map_object(obj, link=link)
     if x is not None and y is not None:
         if game is not None:
-            from .models import Star
+            from .models import Anomaly, Star
+            anomaly = Anomaly.objects.filter(game=game, x=x, y=y).first()
+            if anomaly is not None:
+                return format_map_object(anomaly, link=link)
             star = Star.objects.filter(game=game, x=x, y=y).first()
             if star is not None:
                 return format_map_object(star, link=link)
