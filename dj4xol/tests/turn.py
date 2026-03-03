@@ -938,6 +938,94 @@ class TestAnomalyInteractions(TestCase):
             message__icontains='integrity damage',
         ).exists())
 
+    def test_black_hole_roll_destroys_fleet_on_2_to_4(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Doomed Scout',
+            x=27,
+            y=27,
+            integrity=100,
+        )
+        Anomaly.objects.create(
+            game=game,
+            x=27,
+            y=27,
+            name='Abyss',
+            anomaly_type=Anomaly.TYPE_BLACK_HOLE,
+            stability=100,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.randint', return_value=3):
+            turn.anomaly_interactions()
+        self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
+
+    def test_black_hole_roll_heavy_damage_is_at_least_50(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Heavy Hit',
+            x=28,
+            y=28,
+            integrity=100,
+        )
+        Anomaly.objects.create(
+            game=game,
+            x=28,
+            y=28,
+            name='Maw',
+            anomaly_type=Anomaly.TYPE_BLACK_HOLE,
+            stability=100,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.randint', side_effect=[5, 50]):
+            turn.anomaly_interactions()
+        fleet.refresh_from_db()
+        self.assertLessEqual(fleet.integrity, 50)
+
+    def test_black_hole_research_reward_is_doubled(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Brave Probe',
+            x=29,
+            y=29,
+            integrity=100,
+        )
+        Anomaly.objects.create(
+            game=game,
+            x=29,
+            y=29,
+            name='Scholar\'s End',
+            anomaly_type=Anomaly.TYPE_BLACK_HOLE,
+            stability=100,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.randint', side_effect=[1, 200]):
+            with patch('dj4xol.turn.random.random', return_value=0.1):
+                turn.anomaly_interactions()
+        self.assertTrue(GameMessage.objects.filter(
+            game=game,
+            player=player,
+            category='RANDOM',
+            message__icontains='400 bonus RP',
+        ).exists())
+
 
 class TestEconomicCalculations(TestCase):
     """Tests for economic factor calculations."""
@@ -6357,7 +6445,8 @@ class TestInterceptPatrolOrders(TestCase):
             x=50, y=50, patrol_radius=10, intercept_speed=3
         )
 
-        GameTurn(game).generate_turn()
+        with patch.object(GameTurn, '_find_patrol_enemy', return_value=None):
+            GameTurn(game).generate_turn()
 
         patrol_orders = fleet.orders.filter(order_type='PATROL')
         move_orders = fleet.orders.filter(order_type='MOVE')
@@ -6537,6 +6626,68 @@ class TestInterceptPatrolOrders(TestCase):
         # Target should have moved; stacked start must not lock it in place.
         self.assertNotEqual((target.x, target.y), (10, 10))
         self.assertNotEqual((interceptor.x, interceptor.y), (target.x, target.y))
+
+    def test_intercept_destination_predicts_comet_heading(self):
+        from ..models import FleetOrders
+
+        game, player1, _ = self._create_two_player_game()
+        game.stars.all().delete()
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Comet Chaser",
+            x=10, y=10, ship_count=1, integrity=100, max_safe_warp=13
+        )
+        comet = Anomaly.objects.create(
+            game=game,
+            x=20,
+            y=10,
+            name='Test Comet',
+            anomaly_type=Anomaly.TYPE_COMET,
+            heading=90.0,
+            stability=100,
+        )
+        intercept_order = FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='INTERCEPT',
+            target_kind='OBJECT', target_short_id=comet.short_id, warpfactor=5
+        )
+
+        x, y = GameTurn(game)._get_intercept_destination(intercept_order)
+        self.assertGreater(x, comet.x)
+        self.assertEqual(y, comet.y)
+
+    def test_intercept_order_can_catch_moving_comet(self):
+        from ..models import FleetOrders
+
+        game, player1, _ = self._create_two_player_game()
+        game.stars.all().delete()
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Comet Chaser",
+            x=10, y=10, ship_count=1, integrity=100, max_safe_warp=13
+        )
+        comet = Anomaly.objects.create(
+            game=game,
+            x=20,
+            y=10,
+            name='Runner Comet',
+            anomaly_type=Anomaly.TYPE_COMET,
+            heading=90.0,
+            stability=100,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='INTERCEPT',
+            target_kind='OBJECT', target_short_id=comet.short_id, warpfactor=5
+        )
+
+        caught = False
+        for _ in range(8):
+            GameTurn(game).generate_turn()
+            interceptor.refresh_from_db()
+            if not Anomaly.objects.filter(id=comet.id).exists():
+                break
+            comet.refresh_from_db()
+            if (interceptor.x, interceptor.y) == (comet.x, comet.y):
+                caught = True
+                break
+        self.assertTrue(caught)
 
     def test_patrol_order_detail_includes_patrol_radius(self):
         """Detail payload should include patrol radius for PATROL orders."""

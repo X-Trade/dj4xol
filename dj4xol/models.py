@@ -464,11 +464,13 @@ class Anomaly(AbstractMapObject):
     TYPE_NEBULA = 'NEBULA'
     TYPE_COMET = 'COMET'
     TYPE_RIFT = 'RIFT'
+    TYPE_BLACK_HOLE = 'BLACK_HOLE'
     TYPE_ANOMALY = 'ANOMALY'
     TYPE_CHOICES = [
         (TYPE_NEBULA, 'Nebula'),
         (TYPE_COMET, 'Comet'),
         (TYPE_RIFT, 'Rift'),
+        (TYPE_BLACK_HOLE, 'Black Hole'),
         (TYPE_ANOMALY, 'Anomaly'),
     ]
 
