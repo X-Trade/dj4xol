@@ -1,6 +1,7 @@
 from math import cos, sin, radians
 from html import escape
 from .models import Game, Player, Fleet, Star, Salvage, Anomaly, Report
+from .scanners import get_scanner_sources_for_player, fleet_visible_to_player
 
 class StarMap():
     MAP_SCALE = 6
@@ -40,16 +41,35 @@ class StarMap():
         self.player = player
         self.dest_mode = dest_mode
         self.stars = game.stars.all()
-        self.fleets = game.fleets.all()
+        self._scanner_sources = get_scanner_sources_for_player(game, player) if player else []
+        fleets = list(game.fleets.all())
+        if player:
+            fleets = [
+                fleet for fleet in fleets
+                if fleet_visible_to_player(fleet, player, sources=self._scanner_sources)
+            ]
+        self.fleets = fleets
         self.salvages = game.salvages.all()
         self.anomalies = game.anomalys.all()
-        self.explored_star_ids = set(
-            Report.objects.filter(
+        self.star_report_tiers = {}
+        self.explored_star_ids = set()
+        if self.player:
+            reports = list(Report.objects.filter(
                 game=self.game,
                 player=self.player,
                 target_type='star',
-            ).values_list('target_id', flat=True)
-        )
+            ))
+            self.explored_star_ids = set(
+                report.target_id for report in reports
+            )
+            for report in reports:
+                tier = 'advanced'
+                try:
+                    data = report.get_report_data()
+                    tier = data.get('report_tier') or 'advanced'
+                except Exception:
+                    tier = 'advanced'
+                self.star_report_tiers[report.target_id] = tier
         self.homeworld_star_ids = set(
             game.players.exclude(homeworld=None).values_list('homeworld_id', flat=True)
         )
@@ -173,7 +193,12 @@ class StarMap():
     def _resolve_group_class(self, stars):
         """Determine CSS class for a group of stars based on ownership mix."""
         has_owned = any(s.player == self.player for s in stars)
-        has_enemy = any(s.player is not None and s.player != self.player for s in stars)
+        has_enemy = any(
+            s.player is not None
+            and s.player != self.player
+            and self._can_reveal_star_owner(s)
+            for s in stars
+        )
 
         if has_owned and has_enemy:
             return "mapstar-mixed"  # Yellow - mix of ours and enemy
@@ -199,7 +224,9 @@ class StarMap():
         else:
             html_class = ""
 
-        if object.player == self.player:
+        if isinstance(object, Star) and not self._can_reveal_star_owner(object):
+            class_additional = ""
+        elif object.player == self.player:
             class_additional = "-owned"
         elif object.player is not None:
             class_additional = "-enemy"
@@ -271,11 +298,22 @@ class StarMap():
             return "mapstar-explored"
         return "mapstar-unexplored"
 
+    def _can_reveal_star_owner(self, star):
+        """Return True if current player can see ownership of the star."""
+        if not self.player:
+            return False
+        if star.player == self.player:
+            return True
+        tier = self.star_report_tiers.get(star.id)
+        if tier is None:
+            return False
+        return tier != 'basic'
+
     def _get_satellite_class(self, star):
         """Get CSS class for satellite star based on ownership."""
         if star.player == self.player:
             return "mapstar-satellite-owned"
-        elif star.player is not None:
+        elif star.player is not None and self._can_reveal_star_owner(star):
             return "mapstar-satellite-enemy"
         else:
             return "mapstar-satellite"

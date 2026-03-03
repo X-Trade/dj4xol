@@ -1,7 +1,12 @@
-from ..starmap import StarMap
-from ..models import Report, Anomaly
-from ._util import default_game
+import json
+
+from django.contrib.auth.models import User
 from django.test import TestCase
+
+from ..factory import GameFactory
+from ..models import Account, Report, Anomaly
+from ..starmap import StarMap
+from ._util import default_game, get_default_race
 
 
 class TestStarMap(TestCase):
@@ -76,3 +81,79 @@ class TestStarMap(TestCase):
         html = starmap.render_map()
         self.assertIn(f'data-object-id="{rift.short_id}"', html)
         self.assertIn('--rift-height:', html)
+
+    def test_basic_star_reports_hide_enemy_ownership_on_map(self):
+        factory = GameFactory()
+        factory.set_map_size(100, 100)
+        user1 = User.objects.create_user('scanner_map_1', 's1@test.com', 'pass')
+        account1 = Account.objects.create(django_user=user1)
+        factory.set_owner(account1)
+        factory.create_stars(12)
+        game = factory.save()
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+
+        player1 = factory.join_player(account1, get_default_race())
+        user2 = User.objects.create_user('scanner_map_2', 's2@test.com', 'pass')
+        account2 = Account.objects.create(django_user=user2)
+        player2 = factory.join_player(account2, get_default_race())
+        enemy_star = player2.homeworld
+
+        occupied = set(
+            game.stars.exclude(id=enemy_star.id).values_list('x', 'y')
+        )
+        target = None
+        for x in range(1, int(game.map_size_x)):
+            for y in range(1, int(game.map_size_y)):
+                if (x, y) not in occupied:
+                    target = (x, y)
+                    break
+            if target:
+                break
+        self.assertIsNotNone(target)
+        enemy_star.x, enemy_star.y = target
+        enemy_star.save(update_fields=['x', 'y'])
+
+        Report.objects.create(
+            game=game,
+            player=player1,
+            year=game.year,
+            target_type='star',
+            target_id=enemy_star.id,
+            cached_report=json.dumps({
+                'name': enemy_star.name,
+                'x': enemy_star.x,
+                'y': enemy_star.y,
+                'report_tier': 'basic',
+            }),
+        )
+        starmap = StarMap(game, player1)
+        html = starmap.render_map()
+        needle = f'data-object-id="{enemy_star.short_id}"'
+        idx = html.find(needle)
+        self.assertNotEqual(idx, -1)
+        start = html.rfind('<', 0, idx)
+        end = html.find('>', idx)
+        tag = html[start:end]
+        self.assertIn('mapstar', tag)
+        self.assertNotIn('mapstar-enemy', tag)
+
+        Report.objects.filter(
+            game=game,
+            player=player1,
+            target_type='star',
+            target_id=enemy_star.id,
+        ).update(cached_report=json.dumps({
+            'name': enemy_star.name,
+            'x': enemy_star.x,
+            'y': enemy_star.y,
+            'report_tier': 'advanced',
+        }))
+        starmap = StarMap(game, player1)
+        html = starmap.render_map()
+        idx = html.find(needle)
+        self.assertNotEqual(idx, -1)
+        start = html.rfind('<', 0, idx)
+        end = html.find('>', idx)
+        tag = html[start:end]
+        self.assertIn('mapstar-enemy', tag)

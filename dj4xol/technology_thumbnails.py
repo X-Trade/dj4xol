@@ -11,6 +11,7 @@ TECH_TYPE_PLACEHOLDERS = {
     'TORPEDO': 'dj4xol/images/thumbs/tech/torpedo.svg',
     'SHIELD': 'dj4xol/images/thumbs/tech/shield.svg',
     'ARMOUR': 'dj4xol/images/thumbs/tech/armour.svg',
+    'SCANNER': 'dj4xol/images/thumbs/tech/other.svg',
     'INFRASTRUCTURE': 'dj4xol/images/thumbs/tech/infrastructure.svg',
     'OTHER': 'dj4xol/images/thumbs/tech/other.svg',
 }

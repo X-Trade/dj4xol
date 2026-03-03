@@ -89,6 +89,7 @@ from .bombardment_rules import (
     normalize_miner_type,
     smart_bombs_only_target_defenses_and_population,
 )
+from .scanners import get_scanner_sources_for_player, position_in_scanner_range
 
 # Population carrying capacity constants now live in colony_rules.py
 
@@ -354,6 +355,7 @@ class GameTurn():
         self.spawn_anomalies()
         self.clear_empty_planets()
         self.check_join_deadline()
+        self.generate_scanner_reports()
         self.generate_reports()
         self.game.year += 1
 
@@ -885,10 +887,20 @@ class GameTurn():
         extra_multiplier = 1.0
         if getattr(anomaly, 'anomaly_type', None) == 'BLACK_HOLE':
             extra_multiplier = BLACK_HOLE_RESEARCH_MULTIPLIER
+        basic_range = int(getattr(fleet, 'basic_scanner_range', 0) or 0)
+        advanced_range = int(getattr(fleet, 'advanced_scanner_range', 0) or 0)
+        scanner_multiplier = 1.0
+        if advanced_range > 0:
+            scanner_multiplier = 1.0
+        elif basic_range > 0:
+            scanner_multiplier = 0.5
+        else:
+            scanner_multiplier = 0.2
         if random.random() < 0.5:
             bonus_rp = random.randint(ANOMALY_BONUS_RP_MIN, ANOMALY_BONUS_RP_MAX)
             bonus_rp = int(round(float(bonus_rp) * extra_multiplier))
             bonus_rp = int(round(float(bonus_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
+            bonus_rp = int(round(float(bonus_rp) * scanner_multiplier))
             result = apply_research_bonus_rp(player, category.id, bonus_rp)
             text = (
                 "Anomaly data from %s granted %s bonus RP in %s."
@@ -901,6 +913,7 @@ class GameTurn():
         progress_rp = random.randint(ANOMALY_MAJOR_PROGRESS_RP_MIN, ANOMALY_MAJOR_PROGRESS_RP_MAX)
         progress_rp = int(round(float(progress_rp) * extra_multiplier))
         progress_rp = int(round(float(progress_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
+        progress_rp = int(round(float(progress_rp) * scanner_multiplier))
         result = apply_research_bonus_rp(player, category.id, progress_rp)
         text = (
             "Major anomaly breakthrough at %s: %s RP applied to %s."
@@ -1028,6 +1041,71 @@ class GameTurn():
         for fleet in Fleet.objects.filter(game=self.game):
             self._generate_reports_for_fleet(fleet)
 
+    def generate_scanner_reports(self):
+        """Generate scanner-based reports for stars and fleets within sensor range."""
+        from .models import Star, Fleet, Salvage, Anomaly
+
+        for player in self.game.players.all():
+            sources = get_scanner_sources_for_player(self.game, player)
+            if not sources:
+                continue
+
+            has_basic = any(int(src.get('basic') or 0) > 0 for src in sources)
+            has_advanced = any(int(src.get('advanced') or 0) > 0 for src in sources)
+            if not has_basic and not has_advanced:
+                continue
+
+            # Stars: advanced reports override basic reports.
+            for star in Star.objects.filter(game=self.game):
+                if star.player_id == player.id:
+                    continue
+                if has_advanced and position_in_scanner_range(
+                    star.x, star.y, sources, range_key='advanced'
+                ):
+                    self._create_or_update_report(
+                        player, 'star', star, self.game.year, report_tier='advanced'
+                    )
+                    continue
+                if has_basic and position_in_scanner_range(
+                    star.x, star.y, sources, range_key='basic'
+                ):
+                    self._create_or_update_report(
+                        player, 'star', star, self.game.year, report_tier='basic'
+                    )
+
+            # Fleets: basic scans confirm presence, advanced scans reveal details.
+            for fleet in Fleet.objects.filter(game=self.game).exclude(player=player):
+                if has_advanced and position_in_scanner_range(
+                    fleet.x, fleet.y, sources, range_key='advanced'
+                ):
+                    self._create_or_update_report(
+                        player, 'fleet', fleet, self.game.year, report_tier='advanced'
+                    )
+                    continue
+                if has_basic and position_in_scanner_range(
+                    fleet.x, fleet.y, sources, range_key='basic'
+                ):
+                    self._create_or_update_report(
+                        player, 'fleet', fleet, self.game.year, report_tier='basic'
+                    )
+
+            # Salvage and anomalies: advanced scans reveal contents/traits.
+            if has_advanced:
+                for salvage in Salvage.objects.filter(game=self.game):
+                    if position_in_scanner_range(
+                        salvage.x, salvage.y, sources, range_key='advanced'
+                    ):
+                        self._create_or_update_report(
+                            player, 'salvage', salvage, self.game.year, report_tier='advanced'
+                        )
+                for anomaly in Anomaly.objects.filter(game=self.game):
+                    if position_in_scanner_range(
+                        anomaly.x, anomaly.y, sources, range_key='advanced'
+                    ):
+                        self._create_or_update_report(
+                            player, 'anomaly', anomaly, self.game.year, report_tier='advanced'
+                        )
+
     def _generate_reports_for_fleet(self, fleet):
         """Generate reports for all objects at fleet's location."""
         from .models import Star, Salvage, Fleet, Anomaly
@@ -1038,27 +1116,27 @@ class GameTurn():
 
         # Report on all stars at this location
         for star in Star.objects.filter(game=self.game, x=x, y=y):
-            self._create_or_update_report(player, 'star', star, year)
+            self._create_or_update_report(player, 'star', star, year, report_tier='encounter')
 
         # Report on other players' fleets at this location
         for other_fleet in Fleet.objects.filter(
             game=self.game, x=x, y=y
         ).exclude(player=player):
-            self._create_or_update_report(player, 'fleet', other_fleet, year)
+            self._create_or_update_report(player, 'fleet', other_fleet, year, report_tier='encounter')
 
         # Report on all salvage at this location
         for salvage in Salvage.objects.filter(game=self.game, x=x, y=y):
-            self._create_or_update_report(player, 'salvage', salvage, year)
+            self._create_or_update_report(player, 'salvage', salvage, year, report_tier='encounter')
 
         for anomaly in Anomaly.objects.filter(game=self.game, x=x, y=y):
-            self._create_or_update_report(player, 'anomaly', anomaly, year)
+            self._create_or_update_report(player, 'anomaly', anomaly, year, report_tier='encounter')
 
-    def _create_or_update_report(self, player, target_type, obj, year):
+    def _create_or_update_report(self, player, target_type, obj, year, report_tier='advanced'):
         """Create or update a report for an object."""
         from .models import Report, Fleet
         from .messages import HabitableWorldMessageFactory
 
-        report_data = self._build_report_data(player, obj, target_type)
+        report_data = self._build_report_data(player, obj, target_type, report_tier=report_tier)
 
         report, created = Report.objects.update_or_create(
             player=player,
@@ -1080,59 +1158,88 @@ class GameTurn():
                 msg.year = self.game.year
                 msg.save()
 
-    def _build_report_data(self, player, obj, target_type):
+    def _build_report_data(self, player, obj, target_type, report_tier='advanced'):
         """Build the data dict to cache in a report."""
         if target_type == 'star':
-            jobs = ((obj.mines + obj.factories + obj.labs + obj.defenses) * COLONISTS_PER_JOB
-                    + obj.shipyards * COLONISTS_PER_SHIPYARD)
-            employment = calculate_employment_percent(obj)
-            return {
+            base = {
                 'name': obj.name,
                 'x': obj.x,
                 'y': obj.y,
+                'gravity': obj.gravity,
+                'temperature': obj.temperature,
+                'radiation': obj.radiation,
+                'report_tier': report_tier,
+            }
+            if report_tier == 'basic':
+                return base
+            base.update({
                 'colonists': obj.colonists,
                 'capacity': effective_capacity(player, obj),
                 'is_survivable': calculate_habitability_factor(player, obj) >= 0,
                 'player_name': obj.player.name if obj.player else None,
-                'gravity': obj.gravity,
-                'temperature': obj.temperature,
-                'radiation': obj.radiation,
                 'ironium_yield': obj.ironium_yield,
                 'boranium_yield': obj.boranium_yield,
                 'germanium_yield': obj.germanium_yield,
                 'ironium_inventory': obj.ironium_inventory,
                 'boranium_inventory': obj.boranium_inventory,
                 'germanium_inventory': obj.germanium_inventory,
-                # Infrastructure snapshot (matches visible Detail panel values).
-                'mines': obj.mines,
-                'factories': obj.factories,
-                'factories_bp': calculate_available_buildpoints(obj),
-                'labs': obj.labs,
-                'labs_rp': calculate_available_researchpoints(obj),
-                'defenses': obj.defenses,
-                'defenses_tooltip': None,
-                'shipyards': obj.shipyards,
-                'jobs_count': jobs,
-                'jobs_employment': employment,
-            }
+            })
+            if report_tier == 'encounter':
+                jobs = ((obj.mines + obj.factories + obj.labs + obj.defenses) * COLONISTS_PER_JOB
+                        + obj.shipyards * COLONISTS_PER_SHIPYARD)
+                employment = calculate_employment_percent(obj)
+                base.update({
+                    # Infrastructure snapshot (matches visible Detail panel values).
+                    'mines': obj.mines,
+                    'factories': obj.factories,
+                    'factories_bp': calculate_available_buildpoints(obj),
+                    'labs': obj.labs,
+                    'labs_rp': calculate_available_researchpoints(obj),
+                    'defenses': obj.defenses,
+                    'defenses_tooltip': None,
+                    'shipyards': obj.shipyards,
+                    'jobs_count': jobs,
+                    'jobs_employment': employment,
+                })
+            return base
         elif target_type == 'fleet':
-            offense_mod = int(round(float(obj.offense_level) * 10.0))
-            defense_mod = int(round(float(obj.defense_level) * 10.0))
-            return {
+            data = {
                 'name': obj.name,
                 'x': obj.x,
                 'y': obj.y,
+                'report_tier': report_tier,
+            }
+            if report_tier == 'basic':
+                return data
+            data.update({
                 'player_name': obj.player.name if obj.player else None,
                 'ship_count': obj.ship_count,
-                'max_safe_warp': obj.max_safe_warp,
                 'integrity': obj.integrity,
-                'offense_modifier': f'{offense_mod:+d}',
-                'defense_modifier': f'{defense_mod:+d}',
-                'has_bombs': obj.has_bombs,
-                'has_miners': obj.has_miners,
-                'has_fuel_factory': bool(obj.has_fuel_factory),
-                'has_wormhole_drive': bool(obj.has_wormhole_drive),
-            }
+                'cargo_capacity': getattr(obj, 'cargo_capacity', None),
+                'cargo_used': getattr(obj, 'cargo_used', None),
+                'cargo_remaining': getattr(obj, 'cargo_remaining', None),
+                'fuel': getattr(obj, 'fuel', None),
+                'max_fuel': getattr(obj, 'max_fuel', None),
+                'ironium_inventory': getattr(obj, 'ironium_inventory', None),
+                'boranium_inventory': getattr(obj, 'boranium_inventory', None),
+                'germanium_inventory': getattr(obj, 'germanium_inventory', None),
+                'colonists': getattr(obj, 'colonists', None),
+            })
+            if report_tier == 'encounter':
+                offense_mod = int(round(float(obj.offense_level) * 10.0))
+                defense_mod = int(round(float(obj.defense_level) * 10.0))
+                data.update({
+                    'max_safe_warp': obj.max_safe_warp,
+                    'offense_modifier': f'{offense_mod:+d}',
+                    'defense_modifier': f'{defense_mod:+d}',
+                    'has_bombs': obj.has_bombs,
+                    'has_miners': obj.has_miners,
+                    'has_fuel_factory': bool(obj.has_fuel_factory),
+                    'has_wormhole_drive': bool(obj.has_wormhole_drive),
+                    'basic_scanner_range': getattr(obj, 'basic_scanner_range', 0),
+                    'advanced_scanner_range': getattr(obj, 'advanced_scanner_range', 0),
+                })
+            return data
         elif target_type == 'salvage':
             return {
                 'name': obj.name,
@@ -1142,6 +1249,7 @@ class GameTurn():
                 'boranium_inventory': obj.boranium_inventory,
                 'germanium_inventory': obj.germanium_inventory,
                 'total_minerals': obj.total_minerals,
+                'report_tier': report_tier,
             }
         elif target_type == 'anomaly':
             return {
@@ -1155,6 +1263,7 @@ class GameTurn():
                 'wormhole_pair_short_id': (
                     obj.wormhole_pair.short_id if getattr(obj, 'wormhole_pair', None) else None
                 ),
+                'report_tier': report_tier,
             }
         return {}
 
@@ -4200,6 +4309,8 @@ class GameTurn():
             has_miners=tech_effects.get('has_miners'),
             has_fuel_factory=bool(tech_effects.get('has_fuel_factory')),
             has_wormhole_drive=bool(tech_effects.get('has_wormhole_drive')),
+            basic_scanner_range=tech_effects.get('basic_scanner_range', 0),
+            advanced_scanner_range=tech_effects.get('advanced_scanner_range', 0),
             thumbnail_path=thumbnail_path,
         )
 

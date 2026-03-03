@@ -91,6 +91,14 @@ body.lcars .maparea a.mapstar-name {
     top: 0;
     left: 0;
     pointer-events: none;
+    z-index: 1;
+}
+
+.scanner-range-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
     z-index: 0;
 }
 
@@ -136,6 +144,22 @@ body.lcars .maparea a.mapstar-name {
     stroke-width: 1;
     stroke-dasharray: 2 4;
     opacity: 0.45;
+}
+
+.scanner-range-basic-group {
+    opacity: 0.28;
+}
+
+.scanner-range-advanced-group {
+    opacity: 0.30;
+}
+
+.scanner-range-basic {
+    fill: rgb(118, 90, 48);
+}
+
+.scanner-range-advanced {
+    fill: rgb(64, 156, 96);
 }
 
 /* Keep map object visuals stable; no generic link hover styling on stars/fleets. */
@@ -573,6 +597,43 @@ body.lcars .maparea a.mapstar-name {
 
 .starmap-controls button#starmap-movement-paths {
     padding: 0;
+}
+
+.starmap-controls button#starmap-scanners {
+    position: relative;
+    padding: 0;
+}
+
+.starmap-controls button#starmap-scanners::before,
+.starmap-controls button#starmap-scanners::after {
+    content: "";
+    position: absolute;
+    border: 2px solid #d8d8d8;
+    border-radius: 50%;
+    box-sizing: border-box;
+}
+
+.starmap-controls button#starmap-scanners::before {
+    width: 18px;
+    height: 18px;
+    left: 50%;
+    top: 50%;
+    margin-left: -9px;
+    margin-top: -9px;
+}
+
+.starmap-controls button#starmap-scanners::after {
+    width: 10px;
+    height: 10px;
+    left: 50%;
+    top: 50%;
+    margin-left: -5px;
+    margin-top: -5px;
+}
+
+.starmap-controls button#starmap-scanners.active::before,
+.starmap-controls button#starmap-scanners.active::after {
+    border-color: #cfe6a0;
 }
 
 .movement-toggle-icon {

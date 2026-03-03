@@ -533,6 +533,8 @@ class Fleet(AbstractMapObject):
                                   null=True, blank=True, default=None)
     has_fuel_factory = models.BooleanField(default=False)
     has_wormhole_drive = models.BooleanField(default=False)
+    basic_scanner_range = models.IntegerField(default=0)
+    advanced_scanner_range = models.IntegerField(default=0)
     thumbnail_path = models.CharField(max_length=255, blank=True, default='')
     integrity = models.IntegerField(default=100,
             validators=[MinValueValidator(0), MaxValueValidator(100)])
@@ -557,6 +559,18 @@ class Fleet(AbstractMapObject):
         )
         if not self.thumbnail_path:
             self.thumbnail_path = choose_fleet_thumbnail(self.id or self.short_id or self.name)
+        try:
+            basic = int(self.basic_scanner_range or 0)
+        except (TypeError, ValueError):
+            basic = 0
+        try:
+            advanced = int(self.advanced_scanner_range or 0)
+        except (TypeError, ValueError):
+            advanced = 0
+        if advanced > basic:
+            basic = advanced
+        self.basic_scanner_range = max(0, basic)
+        self.advanced_scanner_range = max(0, advanced)
         super(Fleet, self).save(*args, **kwargs)
 
     @property
@@ -891,6 +905,7 @@ class Technology(UUIDMixin):
         ('TORPEDO', 'Torpedo'),
         ('SHIELD', 'Shield'),
         ('ARMOUR', 'Armour'),
+        ('SCANNER', 'Scanner'),
         ('INFRASTRUCTURE', 'Infrastructure'),
         ('MECHANICAL', 'Mechanical'),
         ('BOMB', 'Bomb'),

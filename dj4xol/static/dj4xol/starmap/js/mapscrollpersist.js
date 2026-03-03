@@ -63,6 +63,7 @@ $(document).ready(function() {
     var $maparea = $("#maparea");
     var $sizer = $("#maparea-sizer");
     var $movementOverlay = $("#fleet-movement-overlay");
+    var $scannerOverlay = $("#scanner-range-overlay");
 
     // Prevent accidental link-drag when star names are visible; preserves click navigation.
     document.addEventListener('dragstart', function(ev) {
@@ -139,13 +140,17 @@ $(document).ready(function() {
     var wormholeLinks = [];
     var selectedPatrolCircles = [];
     var patrolPreviewCircle = null;
+    var scannerBasic = [];
+    var scannerAdvanced = [];
     var movementStateValues = ['off', 'selected', 'all'];
     var movementState = localStorage.getItem(storageKey + ':movementPaths') || 'selected';
     if (movementStateValues.indexOf(movementState) < 0) {
         movementState = 'selected';
     }
     var $movementBtn = $('#starmap-movement-paths');
+    var $scannerBtn = $('#starmap-scanners');
     var $starNamesBtn = $('#starmap-star-names');
+    var scannersEnabled = localStorage.getItem(storageKey + ':scannerRanges') === 'true';
 
     (function loadMovementPaths() {
         var el = document.getElementById('movement-paths-json');
@@ -157,6 +162,30 @@ $(document).ready(function() {
             }
         } catch (e) {
             movementPaths = [];
+        }
+    })();
+    (function loadScannerRanges() {
+        var el = document.getElementById('scanner-basic-json');
+        if (el) {
+            try {
+                var parsed = JSON.parse(el.textContent || '[]');
+                if (Array.isArray(parsed)) {
+                    scannerBasic = parsed;
+                }
+            } catch (e) {
+                scannerBasic = [];
+            }
+        }
+        var adv = document.getElementById('scanner-advanced-json');
+        if (adv) {
+            try {
+                var parsedAdv = JSON.parse(adv.textContent || '[]');
+                if (Array.isArray(parsedAdv)) {
+                    scannerAdvanced = parsedAdv;
+                }
+            } catch (e) {
+                scannerAdvanced = [];
+            }
         }
     })();
     (function loadSelectedPatrolCircles() {
@@ -226,6 +255,77 @@ $(document).ready(function() {
             $movementBtn.attr('title', 'Show Orders: Selected');
         }
         $movementBtn.attr('aria-label', 'Show Orders: ' + movementStateLabel(movementState));
+    }
+
+    function updateScannerButton() {
+        if (!$scannerBtn.length) {
+            return;
+        }
+        $scannerBtn.toggleClass('active', scannersEnabled);
+        $scannerBtn.attr('title', scannersEnabled ? 'Scanner Ranges: On' : 'Scanner Ranges: Off');
+        $scannerBtn.attr('aria-label', scannersEnabled ? 'Scanner ranges on' : 'Scanner ranges off');
+    }
+
+    function drawScannerRanges() {
+        if (!$scannerOverlay.length) {
+            return;
+        }
+        var overlay = $scannerOverlay.get(0);
+        if (!overlay) {
+            return;
+        }
+        while (overlay.firstChild) {
+            overlay.removeChild(overlay.firstChild);
+        }
+        if (!scannersEnabled) {
+            return;
+        }
+        var ns = 'http://www.w3.org/2000/svg';
+        var cxOffset = 2.5;
+        var basicGroup = document.createElementNS(ns, 'g');
+        basicGroup.setAttribute('class', 'scanner-range-basic-group');
+        var advancedGroup = document.createElementNS(ns, 'g');
+        advancedGroup.setAttribute('class', 'scanner-range-advanced-group');
+        if (scannerBasic.length) {
+            for (var i = 0; i < scannerBasic.length; i++) {
+                var entry = scannerBasic[i] || {};
+                var x = (parseInt(entry.center_x, 10) * mapScale) + borderOffset + cxOffset;
+                var y = (parseInt(entry.center_y, 10) * mapScale) + borderOffset + cxOffset;
+                var radius = parseInt(entry.radius, 10);
+                if (!isFinite(x) || !isFinite(y) || !isFinite(radius) || radius <= 0) {
+                    continue;
+                }
+                var circle = document.createElementNS(ns, 'circle');
+                circle.setAttribute('cx', x);
+                circle.setAttribute('cy', y);
+                circle.setAttribute('r', radius * mapScale);
+                circle.setAttribute('class', 'scanner-range-basic');
+                basicGroup.appendChild(circle);
+            }
+        }
+        if (scannerAdvanced.length) {
+            for (var j = 0; j < scannerAdvanced.length; j++) {
+                var adv = scannerAdvanced[j] || {};
+                var ax = (parseInt(adv.center_x, 10) * mapScale) + borderOffset + cxOffset;
+                var ay = (parseInt(adv.center_y, 10) * mapScale) + borderOffset + cxOffset;
+                var ar = parseInt(adv.radius, 10);
+                if (!isFinite(ax) || !isFinite(ay) || !isFinite(ar) || ar <= 0) {
+                    continue;
+                }
+                var advCircle = document.createElementNS(ns, 'circle');
+                advCircle.setAttribute('cx', ax);
+                advCircle.setAttribute('cy', ay);
+                advCircle.setAttribute('r', ar * mapScale);
+                advCircle.setAttribute('class', 'scanner-range-advanced');
+                advancedGroup.appendChild(advCircle);
+            }
+        }
+        if (basicGroup.childNodes.length) {
+            overlay.appendChild(basicGroup);
+        }
+        if (advancedGroup.childNodes.length) {
+            overlay.appendChild(advancedGroup);
+        }
     }
 
     function appendPatrolCircle(overlay, ns, circleData, className) {
@@ -343,7 +443,9 @@ $(document).ready(function() {
     }
 
     updateMovementButton();
+    updateScannerButton();
     drawMovementPaths();
+    drawScannerRanges();
 
     $movementBtn.on('click', function(e) {
         e.preventDefault();
@@ -355,6 +457,14 @@ $(document).ready(function() {
         localStorage.setItem(storageKey + ':movementPaths', movementState);
         updateMovementButton();
         drawMovementPaths();
+    });
+
+    $scannerBtn.on('click', function(e) {
+        e.preventDefault();
+        scannersEnabled = !scannersEnabled;
+        localStorage.setItem(storageKey + ':scannerRanges', scannersEnabled ? 'true' : 'false');
+        updateScannerButton();
+        drawScannerRanges();
     });
 
     window.addEventListener('dj4xol:patrolPreview', function(e) {

@@ -1,8 +1,10 @@
 """Tests for the exploration reports feature."""
+import json
+
 from django.test import TestCase
 from django.contrib.auth.models import User
 from ..models import (
-    Account, Star, Fleet, Salvage, Report
+    Account, Star, Fleet, Salvage, Report, Anomaly
 )
 from ..factory import GameFactory
 from ..objectdetails import DetailBuilder
@@ -730,3 +732,284 @@ class CachedReportDisplayTest(TestCase):
         self.assertTrue(detail['is_current'])
         self.assertEqual(detail['name'], 'Current Name')
         self.assertEqual(detail['population'], 5000)
+
+
+class ScannerReportTest(TestCase):
+    def setUp(self):
+        get_default_race_type()
+        self.user1 = User.objects.create_user('scanner_p1', 'sp1@test.com', 'pass')
+        self.account1 = Account.objects.create(django_user=self.user1)
+        self.user2 = User.objects.create_user('scanner_p2', 'sp2@test.com', 'pass')
+        self.account2 = Account.objects.create(django_user=self.user2)
+
+        factory = GameFactory()
+        factory.set_map_size(100, 100)
+        factory.set_owner(self.account1)
+        factory.create_stars(12)
+        self.game = factory.save()
+        self.game.joinable = True
+        self.game.save(update_fields=['joinable'])
+        self.player1 = factory.join_player(self.account1, get_default_race())
+        self.player2 = factory.join_player(self.account2, get_default_race())
+
+        self.enemy_star = self.player2.homeworld
+
+    def _find_empty_coord(self, exclude_star=None):
+        occupied = set(
+            self.game.stars.exclude(id=getattr(exclude_star, 'id', None)).values_list('x', 'y')
+        )
+        for x in range(1, int(self.game.map_size_x)):
+            for y in range(1, int(self.game.map_size_y)):
+                if (x, y) not in occupied:
+                    return x, y
+        return None, None
+
+    def _place_enemy_star_near(self, x, y, distance=4):
+        target = (x + distance, y)
+        occupied = set(
+            self.game.stars.exclude(id=self.enemy_star.id).values_list('x', 'y')
+        )
+        if target in occupied:
+            tx, ty = self._find_empty_coord(exclude_star=self.enemy_star)
+        else:
+            tx, ty = target
+        self.enemy_star.x = tx
+        self.enemy_star.y = ty
+        self.enemy_star.save(update_fields=['x', 'y'])
+        return self.enemy_star
+
+    def _create_scanner_fleet(self, basic, advanced, x=10, y=10):
+        return Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Scanner Fleet',
+            x=x,
+            y=y,
+            basic_scanner_range=basic,
+            advanced_scanner_range=advanced,
+        )
+
+    def test_basic_scanner_reports_star_environment_only(self):
+        fleet = self._create_scanner_fleet(basic=6, advanced=0, x=10, y=10)
+        star = self._place_enemy_star_near(fleet.x, fleet.y, distance=4)
+
+        GameTurn(self.game).generate_scanner_reports()
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=star.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'basic')
+        self.assertIn('gravity', data)
+        self.assertIn('temperature', data)
+        self.assertIn('radiation', data)
+        self.assertNotIn('ironium_yield', data)
+        self.assertNotIn('player_name', data)
+        self.assertNotIn('colonists', data)
+
+    def test_advanced_scanner_reports_star_minerals_no_infrastructure(self):
+        fleet = self._create_scanner_fleet(basic=6, advanced=6, x=12, y=12)
+        star = self._place_enemy_star_near(fleet.x, fleet.y, distance=4)
+
+        GameTurn(self.game).generate_scanner_reports()
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=star.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'advanced')
+        self.assertIn('ironium_yield', data)
+        self.assertIn('ironium_inventory', data)
+        self.assertIn('player_name', data)
+        self.assertIn('colonists', data)
+        self.assertNotIn('mines', data)
+        self.assertNotIn('factories', data)
+
+    def test_basic_scanner_reports_fleet_presence_only(self):
+        fleet = self._create_scanner_fleet(basic=6, advanced=0, x=10, y=10)
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Enemy Scout',
+            x=fleet.x + 3,
+            y=fleet.y,
+            ship_count=4,
+            integrity=77,
+        )
+
+        GameTurn(self.game).generate_scanner_reports()
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'basic')
+        self.assertNotIn('ship_count', data)
+        self.assertNotIn('integrity', data)
+
+    def test_advanced_scanner_reports_fleet_composition_and_cargo_only(self):
+        fleet = self._create_scanner_fleet(basic=6, advanced=6, x=15, y=15)
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Enemy Hauler',
+            x=fleet.x + 3,
+            y=fleet.y,
+            ship_count=6,
+            integrity=55,
+            cargo_capacity=300,
+            ironium_inventory=90,
+            boranium_inventory=40,
+            germanium_inventory=20,
+            colonists=10,
+            max_safe_warp=9,
+            has_bombs='CONVENTIONAL',
+        )
+
+        GameTurn(self.game).generate_scanner_reports()
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'advanced')
+        self.assertEqual(data.get('ship_count'), 6)
+        self.assertEqual(data.get('integrity'), 55)
+        self.assertEqual(data.get('ironium_inventory'), 90)
+        self.assertNotIn('max_safe_warp', data)
+        self.assertNotIn('has_bombs', data)
+        self.assertNotIn('offense_modifier', data)
+
+    def test_advanced_scanner_reports_salvage_and_anomaly(self):
+        fleet = self._create_scanner_fleet(basic=6, advanced=6, x=20, y=20)
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=fleet.x + 2,
+            y=fleet.y,
+            ironium_inventory=10,
+            boranium_inventory=5,
+            germanium_inventory=2,
+        )
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=fleet.x + 3,
+            y=fleet.y,
+            name='Scanner Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+        )
+
+        GameTurn(self.game).generate_scanner_reports()
+        salvage_report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='salvage',
+            target_id=salvage.id,
+        )
+        anomaly_report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='anomaly',
+            target_id=anomaly.id,
+        )
+        self.assertEqual(salvage_report.get_report_data().get('report_tier'), 'advanced')
+        self.assertEqual(anomaly_report.get_report_data().get('report_tier'), 'advanced')
+
+    def test_encounter_reports_include_infrastructure_and_capabilities(self):
+        x, y = self._find_empty_coord(exclude_star=self.enemy_star)
+        self.enemy_star.x = x
+        self.enemy_star.y = y
+        self.enemy_star.mines = 4
+        self.enemy_star.factories = 3
+        self.enemy_star.labs = 2
+        self.enemy_star.defenses = 1
+        self.enemy_star.shipyards = 1
+        self.enemy_star.save()
+
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Encounter Fleet',
+            x=x,
+            y=y,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Enemy Combat',
+            x=x,
+            y=y,
+            ship_count=5,
+            integrity=88,
+            max_safe_warp=7,
+            has_bombs='CONVENTIONAL',
+            has_miners='SMALL',
+            has_wormhole_drive=True,
+        )
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=x,
+            y=y,
+            ironium_inventory=11,
+            boranium_inventory=7,
+            germanium_inventory=3,
+        )
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=x,
+            y=y,
+            name='Encounter Nebula',
+            anomaly_type=Anomaly.TYPE_NEBULA,
+        )
+
+        GameTurn(self.game).generate_reports()
+
+        star_report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=self.enemy_star.id,
+        )
+        star_data = star_report.get_report_data()
+        self.assertEqual(star_data.get('report_tier'), 'encounter')
+        self.assertEqual(star_data.get('mines'), 4)
+        self.assertEqual(star_data.get('factories'), 3)
+        self.assertEqual(star_data.get('labs'), 2)
+        self.assertEqual(star_data.get('defenses'), 1)
+        self.assertEqual(star_data.get('shipyards'), 1)
+
+        fleet_report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        )
+        fleet_data = fleet_report.get_report_data()
+        self.assertEqual(fleet_data.get('report_tier'), 'encounter')
+        self.assertEqual(fleet_data.get('max_safe_warp'), 7)
+        self.assertEqual(fleet_data.get('has_bombs'), 'CONVENTIONAL')
+        self.assertEqual(fleet_data.get('has_miners'), 'SMALL')
+        self.assertTrue(fleet_data.get('has_wormhole_drive'))
+
+        salvage_report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='salvage',
+            target_id=salvage.id,
+        )
+        self.assertEqual(salvage_report.get_report_data().get('report_tier'), 'encounter')
+
+        anomaly_report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='anomaly',
+            target_id=anomaly.id,
+        )
+        self.assertEqual(anomaly_report.get_report_data().get('report_tier'), 'encounter')

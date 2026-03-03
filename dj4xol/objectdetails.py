@@ -1,5 +1,6 @@
 from django.db import models
 from dj4xol.models import Fleet, Star, Salvage, Anomaly, Report
+from dj4xol.scanners import get_scanner_sources_for_player, fleet_visible_to_player
 from dj4xol.turn import apply_population_change, KT_PER_MINE
 from dj4xol.research import get_player_colony_defense_level
 from dj4xol.colony_rules import (
@@ -59,6 +60,7 @@ class DetailBuilder():
     def __init__(self, game, x=None, y=None, selected=None, player=None):
         self.game = game
         self.player = player
+        self._scanner_sources = get_scanner_sources_for_player(game, player) if player else []
         self.set_coordinates(x, y)
         self.find(x, y, selected)
 
@@ -189,6 +191,7 @@ class DetailBuilder():
             'report_age': self.game.year - report_year,
             'is_current': False,
             'is_owned': False,
+            'report_tier': data.get('report_tier'),
         }
 
         # Add player name from cached data
@@ -259,6 +262,8 @@ class DetailBuilder():
                     'has_fuel_factory': data.get('has_fuel_factory'),
                     'has_wormhole_drive': data.get('has_wormhole_drive'),
                 }
+            if 'cargo_capacity' in data and data.get('cargo_capacity') is not None:
+                detail['fleet_inventory'] = self._build_fleet_inventory_from_report(data)
         elif target_type == 'salvage':
             detail['salvage_short_id'] = self.selected_obj.short_id
             if 'total_minerals' in data:
@@ -291,6 +296,25 @@ class DetailBuilder():
                 'radiation', rad, '%dmR' % int(rad * 50)
             ),
         }
+
+    def _build_fleet_inventory_from_report(self, data):
+        """Build fleet cargo inventory data from report for display."""
+        try:
+            capacity = float(data.get('cargo_capacity') or 0)
+        except (TypeError, ValueError):
+            capacity = 0.0
+        try:
+            fuel_cap = float(data.get('max_fuel') or 0)
+        except (TypeError, ValueError):
+            fuel_cap = 0.0
+        inventory = {
+            'Fuel': self._build_cargo_data(data.get('fuel') or 0, fuel_cap, 'mg'),
+            'Ironium': self._build_cargo_data(data.get('ironium_inventory') or 0, capacity, 'kt'),
+            'Boranium': self._build_cargo_data(data.get('boranium_inventory') or 0, capacity, 'kt'),
+            'Germanium': self._build_cargo_data(data.get('germanium_inventory') or 0, capacity, 'kt'),
+            'Colonists': self._build_cargo_data(data.get('colonists') or 0, capacity, 'k'),
+        }
+        return inventory
 
     def get_objects_here(self):
         """Return list of dicts with name, short_id, and type for all objects at cursor."""
@@ -393,7 +417,12 @@ class DetailBuilder():
         fleets = self.game.fleets.filter(x=x, y=y).all()
         salvages = self.game.salvages.filter(x=x, y=y).all()
         anomalies = self.game.anomalys.filter(x=x, y=y).all()
-        self.at_cursor = list(chain(stars, fleets, salvages, anomalies))
+        visible_fleets = []
+        if self.player:
+            for fleet in fleets:
+                if fleet_visible_to_player(fleet, self.player, sources=self._scanner_sources):
+                    visible_fleets.append(fleet)
+        self.at_cursor = list(chain(stars, visible_fleets, salvages, anomalies))
         return self.at_cursor
 
     def find_selected_from_coordinates(self, x, y):

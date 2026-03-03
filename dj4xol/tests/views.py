@@ -1,8 +1,12 @@
+import json
+
 from django.test import TestCase, Client
 from django.urls import reverse
-from ..models import FleetOrders, GameMessage, ProductionOrder
+from django.contrib.auth.models import User
+from ..models import FleetOrders, GameMessage, ProductionOrder, Report, Fleet, Account
 from ..turn import GameTurn
-from ._util import default_game, get_default_user
+from ..factory import GameFactory
+from ._util import default_game, get_default_user, get_default_race
 
 
 class TestMessageFiltering(TestCase):
@@ -223,6 +227,191 @@ class TestGameDetailRendering(TestCase):
         self.assertEqual(response.status_code, 302)
         order.refresh_from_db()
         self.assertFalse(order.repeat)
+
+
+class TestDetailPanelReportTiers(TestCase):
+    def setUp(self):
+        self.game = default_game(stars=8, fleets=0)
+        self.player = self.game.players.first()
+        self.star = self.game.stars.filter(player__isnull=True).first()
+        self.user, _ = get_default_user()
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def _get_detail_response(self, obj):
+        return self.client.get(
+            reverse('dj4xol:game', args=[self.game.short_id]),
+            {'x': obj.x, 'y': obj.y, 'sel': obj.short_id},
+        )
+
+    def test_basic_star_report_shows_environment_only(self):
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='star',
+            target_id=self.star.id,
+            cached_report=json.dumps({
+                'name': self.star.name,
+                'x': self.star.x,
+                'y': self.star.y,
+                'gravity': self.star.gravity,
+                'temperature': self.star.temperature,
+                'radiation': self.star.radiation,
+                'report_tier': 'basic',
+            }),
+        )
+        response = self._get_detail_response(self.star)
+        self.assertContains(response, 'data-section="environmentals"')
+        self.assertNotContains(response, 'data-section="resources"')
+        self.assertNotContains(response, 'data-section="infrastructure"')
+
+    def test_advanced_star_report_shows_resources_no_infrastructure(self):
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='star',
+            target_id=self.star.id,
+            cached_report=json.dumps({
+                'name': self.star.name,
+                'x': self.star.x,
+                'y': self.star.y,
+                'gravity': self.star.gravity,
+                'temperature': self.star.temperature,
+                'radiation': self.star.radiation,
+                'player_name': 'Enemy',
+                'colonists': 1000,
+                'ironium_yield': 50,
+                'boranium_yield': 40,
+                'germanium_yield': 30,
+                'ironium_inventory': 200,
+                'boranium_inventory': 150,
+                'germanium_inventory': 100,
+                'report_tier': 'advanced',
+            }),
+        )
+        response = self._get_detail_response(self.star)
+        self.assertContains(response, 'data-section="resources"')
+        self.assertNotContains(response, 'data-section="infrastructure"')
+
+    def test_encounter_star_report_shows_infrastructure(self):
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='star',
+            target_id=self.star.id,
+            cached_report=json.dumps({
+                'name': self.star.name,
+                'x': self.star.x,
+                'y': self.star.y,
+                'gravity': self.star.gravity,
+                'temperature': self.star.temperature,
+                'radiation': self.star.radiation,
+                'player_name': 'Enemy',
+                'colonists': 1200,
+                'ironium_yield': 50,
+                'boranium_yield': 40,
+                'germanium_yield': 30,
+                'ironium_inventory': 200,
+                'boranium_inventory': 150,
+                'germanium_inventory': 100,
+                'mines': 3,
+                'factories': 4,
+                'factories_bp': 12,
+                'labs': 2,
+                'labs_rp': 8,
+                'defenses': 1,
+                'defenses_tooltip': None,
+                'shipyards': 1,
+                'jobs_count': 10,
+                'jobs_employment': 0.5,
+                'report_tier': 'encounter',
+            }),
+        )
+        response = self._get_detail_response(self.star)
+        self.assertContains(response, 'data-section="infrastructure"')
+
+    def test_advanced_fleet_report_hides_capabilities(self):
+        self.game.joinable = True
+        self.game.save(update_fields=['joinable'])
+        other_user = User.objects.create_user('detail_enemy', 'de@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        factory = GameFactory(game=self.game)
+        enemy_player = factory.join_player(other_account, get_default_race())
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=enemy_player,
+            name='Enemy Fleet',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            integrity=90,
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report=json.dumps({
+                'name': enemy_fleet.name,
+                'x': enemy_fleet.x,
+                'y': enemy_fleet.y,
+                'ship_count': 6,
+                'integrity': 90,
+                'cargo_capacity': 100,
+                'fuel': 50.0,
+                'max_fuel': 50.0,
+                'report_tier': 'advanced',
+            }),
+        )
+        response = self._get_detail_response(enemy_fleet)
+        self.assertContains(response, 'data-section="composition"')
+        self.assertNotContains(response, 'Bombs')
+        self.assertNotContains(response, 'Wormhole Drive')
+
+    def test_encounter_fleet_report_shows_capabilities(self):
+        self.game.joinable = True
+        self.game.save(update_fields=['joinable'])
+        other_user = User.objects.create_user('detail_enemy2', 'de2@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        factory = GameFactory(game=self.game)
+        enemy_player = factory.join_player(other_account, get_default_race())
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=enemy_player,
+            name='Enemy Fleet',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            integrity=90,
+            max_safe_warp=8,
+            has_bombs='CONVENTIONAL',
+            has_wormhole_drive=True,
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report=json.dumps({
+                'name': enemy_fleet.name,
+                'x': enemy_fleet.x,
+                'y': enemy_fleet.y,
+                'ship_count': 6,
+                'integrity': 90,
+                'max_safe_warp': 8,
+                'has_bombs': 'CONVENTIONAL',
+                'has_wormhole_drive': True,
+                'report_tier': 'encounter',
+            }),
+        )
+        response = self._get_detail_response(enemy_fleet)
+        self.assertContains(response, 'Bombs')
+        self.assertContains(response, 'Wormhole Drive')
 
 
 class TestFleetOrderViews(TestCase):
