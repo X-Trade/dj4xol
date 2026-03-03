@@ -114,6 +114,8 @@ def _build_selected_fleet_patrol_circles(selected_obj, player):
 
 
 def _build_scanner_circles(game, player):
+    if getattr(game, 'no_scanners', False):
+        return [], []
     sources = get_scanner_sources_for_player(game, player) if player else []
     basic = []
     advanced = []
@@ -1174,6 +1176,7 @@ def create_game(request):
             factory.game.years_per_turn = d['years_per_turn']
             factory.game.random_events = d.get('random_events', False)
             factory.game.anomalies_enabled = d.get('anomalies_enabled', False)
+            factory.game.no_scanners = d.get('no_scanners', False)
             factory.game.max_starting_tech_level = int(
                 d.get('max_starting_tech_level') or 5
             )

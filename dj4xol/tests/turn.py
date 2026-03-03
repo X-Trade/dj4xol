@@ -15,7 +15,7 @@ from ..colony_rules import (
     COLONISTS_PER_JOB,
     BUILDPOINTS_PER_FACTORY,
 )
-from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player
+from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, Report
 from ..factory import GameFactory
 from django.test import TestCase
 from ._util import default_game, get_default_race, get_default_race_type
@@ -3604,6 +3604,8 @@ class TestFleetTransferOrders(TestCase):
         from ..models import FleetOrders
 
         game = default_game(stars=2)
+        game.no_scanners = True
+        game.save(update_fields=['no_scanners'])
         game.random_events = False
         game.save(update_fields=['random_events'])
         attacker = game.players.first()
@@ -3656,6 +3658,24 @@ class TestFleetTransferOrders(TestCase):
         # Invaders 10k - defenders 2k = 8k remaining
         self.assertEqual(star.colonists, 8000)
         self.assertEqual(fleet.colonists, 0)
+
+        attacker_report = Report.objects.filter(
+            game=game,
+            player=attacker,
+            target_type='star',
+            target_id=star.id,
+        ).first()
+        self.assertIsNotNone(attacker_report)
+        self.assertEqual(attacker_report.get_report_data().get('report_tier'), 'encounter')
+        if defender:
+            defender_report = Report.objects.filter(
+                game=game,
+                player=defender,
+                target_type='fleet',
+                target_id=fleet.id,
+            ).first()
+            self.assertIsNotNone(defender_report)
+            self.assertEqual(defender_report.get_report_data().get('report_tier'), 'encounter')
 
     def test_transfer_invasion_fails_when_defenders_stronger(self):
         """Transferring colonists to enemy colony fails if defenders are stronger."""
@@ -6713,6 +6733,38 @@ class TestCombat(TestCase):
 
         self.assertTrue(Salvage.objects.filter(game=game, x=20, y=20).exists())
         self.assertGreater(player1.messages.filter(category='COMBAT', priority=True).count(), 0)
+
+    def test_no_scanners_combat_creates_encounter_reports(self):
+        game, player1, player2 = self._create_two_player_game()
+        game.no_scanners = True
+        game.save(update_fields=['no_scanners'])
+
+        Fleet.objects.create(
+            game=game,
+            player=player1,
+            name="Alpha",
+            x=25,
+            y=25,
+            ship_count=6,
+            integrity=100,
+        )
+        Fleet.objects.create(
+            game=game,
+            player=player2,
+            name="Beta",
+            x=25,
+            y=25,
+            ship_count=6,
+            integrity=100,
+        )
+
+        with patch('dj4xol.turn.random.uniform', return_value=0.0):
+            GameTurn(game).resolve_combat()
+
+        reports = list(Report.objects.filter(game=game, target_type='fleet'))
+        self.assertTrue(reports)
+        for report in reports:
+            self.assertEqual(report.get_report_data().get('report_tier'), 'encounter')
         self.assertGreater(player2.messages.filter(category='COMBAT', priority=True).count(), 0)
 
     def test_combat_low_integrity_can_reduce_ship_count(self):

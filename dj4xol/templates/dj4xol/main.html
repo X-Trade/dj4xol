@@ -69,7 +69,9 @@
                             <div class="starmap" id="starmap">
                                 <div class="maparea-sizer" id="maparea-sizer">
                                     <div class="maparea" id="maparea" data-width="{{ starmap.width }}" data-height="{{ starmap.height }}" data-border="{{ starmap.border_offset }}" data-dest-mode="{{ dest_mode|yesno:'true,false' }}"{% if detail %} data-sel-x="{{ detail.x }}" data-sel-y="{{ detail.y }}"{% endif %} data-selected-fleet-id="{{ selected_fleet_short_id|default:'' }}" data-selected-object-type="{{ selected_object_type|default:'' }}" data-selected-object-id="{{ selected_object_short_id|default:'' }}">
+                                        {% if not game.no_scanners %}
                                         <svg id="scanner-range-overlay" class="scanner-range-overlay" width="{{ starmap.width }}" height="{{ starmap.height }}" aria-hidden="true"></svg>
+                                        {% endif %}
                                         <svg id="fleet-movement-overlay" class="fleet-movement-overlay" width="{{ starmap.width }}" height="{{ starmap.height }}" aria-hidden="true"></svg>
                                         {{ starmap.map |safe }}
                                     </div>
@@ -80,7 +82,9 @@
                                 <button id="starmap-zoom-out" title="Zoom out">-</button>
                                 <button id="starmap-locate" title="Auto-center on selection">&#8982;</button>
                                 <button id="starmap-movement-paths" title="Show Orders" aria-label="Show Orders"></button>
+                                {% if not game.no_scanners %}
                                 <button id="starmap-scanners" title="Show Scanner Ranges" aria-label="Show Scanner Ranges"></button>
+                                {% endif %}
                                 <button id="starmap-star-names" title="Star names" aria-label="Star names">Nn</button>
                                 {% if homeworld %}<a href="?x={{ homeworld.x }}&y={{ homeworld.y }}&sel={{ homeworld.short_id }}&locate=1"><button id="starmap-home" title="Go to homeworld">&#8962;</button></a>{% endif %}
                             </div>

@@ -282,6 +282,7 @@ class Game(UUIDMixin):
     years_per_turn = models.IntegerField(default=1)
     random_events = models.BooleanField(default=False)
     anomalies_enabled = models.BooleanField(default=False)
+    no_scanners = models.BooleanField(default=False)
     max_starting_tech_level = models.IntegerField(default=5)
     last_generated = models.DateTimeField(null=True, blank=True)
     next_generation = models.DateTimeField(null=True, blank=True)
