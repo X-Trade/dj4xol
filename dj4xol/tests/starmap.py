@@ -1,5 +1,5 @@
 from ..starmap import StarMap
-from ..models import Report
+from ..models import Report, Anomaly
 from ._util import default_game
 from django.test import TestCase
 
@@ -47,3 +47,17 @@ class TestStarMap(TestCase):
         self.assertIn('data-map-object="1"', html)
         self.assertIn('data-object-type="star"', html)
         self.assertIn('data-object-type="fleet"', html)
+
+    def test_wormhole_anomaly_uses_wormhole_css_class(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        Anomaly.objects.create(
+            game=game,
+            x=20,
+            y=20,
+            name='Pair A',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+        )
+        starmap = StarMap(game, player)
+        html = starmap.render_map()
+        self.assertIn('mapanomaly-wormhole', html)

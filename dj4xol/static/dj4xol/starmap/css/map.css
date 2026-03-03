@@ -110,6 +110,15 @@ body.lcars .maparea a.mapstar-name {
     stroke: #79b8ff;
 }
 
+.wormhole-link-line {
+    fill: none;
+    stroke: rgba(186, 112, 255, 0.95);
+    stroke-linecap: round;
+    stroke-width: 1.2;
+    stroke-dasharray: 1.8 2.8;
+    opacity: 0.95;
+}
+
 .fleet-patrol-radius {
     fill: none;
     vector-effect: non-scaling-stroke;
@@ -268,6 +277,45 @@ body.lcars .maparea a.mapstar-name {
 }
 
 .mapanomaly-blackhole::after {
+    margin-left: -1.2px;
+    transform: rotate(202deg);
+}
+
+.mapanomaly-wormhole {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 50% 50%, rgba(36, 10, 54, 0.95) 0%, rgba(84, 48, 122, 0.86) 30%, rgba(108, 154, 226, 0.74) 68%, rgba(142, 188, 255, 0.78) 100%);
+    box-shadow:
+        0 0 3px rgba(132, 182, 255, 0.60),
+        0 0 6px rgba(108, 154, 226, 0.46);
+    filter: none;
+    opacity: 0.98;
+}
+
+.mapanomaly-wormhole::before,
+.mapanomaly-wormhole::after {
+    left: 50%;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    margin-top: -2px;
+    border-radius: 50%;
+    background: transparent;
+    border: 1px solid rgba(74, 18, 120, 0.82);
+    border-top-color: transparent;
+    border-right-color: transparent;
+    box-sizing: border-box;
+    opacity: 0.7;
+}
+
+.mapanomaly-wormhole::before {
+    margin-left: -2.9px;
+    transform: rotate(22deg);
+}
+
+.mapanomaly-wormhole::after {
     margin-left: -1.2px;
     transform: rotate(202deg);
 }

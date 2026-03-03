@@ -1026,6 +1026,171 @@ class TestAnomalyInteractions(TestCase):
             message__icontains='400 bonus RP',
         ).exists())
 
+    def test_wormhole_interaction_transports_and_reports_both_ends(self):
+        from ..models import Report
+
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Transit Probe',
+            x=10,
+            y=10,
+            integrity=100,
+        )
+        a = Anomaly.objects.create(
+            game=game,
+            x=10,
+            y=10,
+            name='WH-1',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=100,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=40,
+            y=40,
+            name='WH-1',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=100,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+
+        with patch('dj4xol.turn.random.random', return_value=1.0), \
+             patch('dj4xol.turn.random.shuffle', lambda vals: None):
+            GameTurn(game).anomaly_interactions()
+
+        fleet.refresh_from_db()
+        self.assertNotEqual((fleet.x, fleet.y), (10, 10))
+        self.assertNotEqual((fleet.x, fleet.y), (40, 40))
+        dist = (((fleet.x - b.x) ** 2) + ((fleet.y - b.y) ** 2)) ** 0.5
+        self.assertTrue(4.0 <= dist <= 8.0)
+        self.assertTrue(Report.objects.filter(
+            game=game, player=player, target_type='anomaly', target_id=a.id
+        ).exists())
+        self.assertTrue(Report.objects.filter(
+            game=game, player=player, target_type='anomaly', target_id=b.id
+        ).exists())
+        self.assertFalse(GameMessage.objects.filter(
+            game=game,
+            player=player,
+            category='RANDOM',
+            message__icontains='bonus RP',
+        ).exists())
+
+    def test_wormhole_high_instability_can_apply_damage(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Bruised Probe',
+            x=11,
+            y=11,
+            integrity=100,
+        )
+        a = Anomaly.objects.create(
+            game=game,
+            x=11,
+            y=11,
+            name='WH-2',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=0,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=30,
+            y=30,
+            name='WH-2',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=0,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+
+        with patch('dj4xol.turn.random.random', return_value=0.0), \
+             patch('dj4xol.turn.random.randint', return_value=25), \
+             patch('dj4xol.turn.random.shuffle', lambda vals: None):
+            GameTurn(game).anomaly_interactions()
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 75)
+
+    def test_wormhole_endpoint_extinction_transforms_pair_or_deletes(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        a = Anomaly.objects.create(
+            game=game,
+            x=15,
+            y=15,
+            name='WH-Decay',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=10,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=25,
+            y=25,
+            name='WH-Decay',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=100,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+
+        with patch('dj4xol.turn.random.randint', return_value=1), \
+             patch('dj4xol.turn.random.random', side_effect=[0.0, 0.0]):
+            GameTurn(game).decay_anomalies()
+
+        self.assertFalse(Anomaly.objects.filter(id=a.id).exists())
+        self.assertFalse(Anomaly.objects.filter(id=b.id).exists())
+
+    def test_wormhole_endpoint_extinction_can_create_unstable_black_hole(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        a = Anomaly.objects.create(
+            game=game,
+            x=16,
+            y=16,
+            name='WH-Decay2',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=10,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=26,
+            y=26,
+            name='WH-Decay2',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=100,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+
+        with patch('dj4xol.turn.random.randint', return_value=1), \
+             patch('dj4xol.turn.random.random', side_effect=[0.0, 0.75, 0.25, 1.0, 1.0, 1.0]):
+            GameTurn(game).decay_anomalies()
+
+        self.assertFalse(Anomaly.objects.filter(id=a.id).exists())
+        b.refresh_from_db()
+        self.assertEqual(b.anomaly_type, Anomaly.TYPE_BLACK_HOLE)
+        self.assertTrue(0 <= int(b.stability) < 50)
+
 
 class TestEconomicCalculations(TestCase):
     """Tests for economic factor calculations."""
