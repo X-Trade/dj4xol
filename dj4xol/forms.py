@@ -208,11 +208,13 @@ class NewGameForm(forms.Form):
     random_events = forms.BooleanField(
         label="Random Events",
         required=False,
+        initial=True,
         help_text="Enable random events affecting colonies"
     )
     anomalies_enabled = forms.BooleanField(
         label="Anomalies",
         required=False,
+        initial=True,
         help_text="Enable anomalies and anomaly interactions for fleets"
     )
     no_scanners = forms.BooleanField(

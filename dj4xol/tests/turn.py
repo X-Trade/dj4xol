@@ -709,6 +709,31 @@ class TestAnomalyInteractions(TestCase):
         after = Anomaly.objects.filter(game=game).count()
         self.assertEqual(before, after)
 
+    def test_spawned_wormhole_names_are_serial(self):
+        game = default_game(stars=10, fleets=0)
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.fleets.all().delete()
+        for idx, star in enumerate(game.stars.order_by('id'), start=1):
+            star.x = idx
+            star.y = 1
+            star.save(update_fields=['x', 'y'])
+        turn = GameTurn(game)
+        randint_values = [50, 50, 60, 60]
+        with patch('dj4xol.turn.random.random', return_value=0.0):
+            with patch('dj4xol.turn.random.choice', return_value=Anomaly.TYPE_WORMHOLE):
+                with patch('dj4xol.turn.random.randint', side_effect=lambda *_: (
+                    randint_values.pop(0) if randint_values else 7
+                )):
+                    turn.spawn_anomalies()
+        wormholes = list(Anomaly.objects.filter(
+            game=game,
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+        ).order_by('id'))
+        self.assertEqual(len(wormholes), 2)
+        self.assertEqual(wormholes[0].name, 'Wormhole 1')
+        self.assertEqual(wormholes[1].name, 'Wormhole 2')
+
     def test_comet_drift_moves_stochastically_by_heading(self):
         game = default_game()
         game.anomalies_enabled = True

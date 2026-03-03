@@ -129,6 +129,7 @@ class GameFactory():
                     continue
                 ordinal = len(created) + 1
                 pair_name = '%s %s' % (type_names.get(anomaly_type, 'Anomaly'), ordinal)
+                pair_name_b = '%s %s' % (type_names.get(anomaly_type, 'Anomaly'), ordinal + 1)
                 wormhole_a = Anomaly(
                     game=self.game,
                     x=x1,
@@ -143,7 +144,7 @@ class GameFactory():
                     x=x2,
                     y=y2,
                     anomaly_type=Anomaly.TYPE_WORMHOLE,
-                    name=pair_name,
+                    name=pair_name_b,
                     heading=random.random() * 360.0,
                     stability=random_wormhole_stability_init(),
                 )
