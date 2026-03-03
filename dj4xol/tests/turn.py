@@ -3677,6 +3677,70 @@ class TestFleetTransferOrders(TestCase):
             self.assertIsNotNone(defender_report)
             self.assertEqual(defender_report.get_report_data().get('report_tier'), 'encounter')
 
+    def test_transfer_invasion_destroyed_attacker_creates_no_reports(self):
+        """If defenses destroy the attacker, no encounter reports should be created."""
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        game.no_scanners = True
+        game.save(update_fields=['no_scanners'])
+        attacker = game.players.first()
+        defender = Player.objects.exclude(id=attacker.id).first()
+        if not defender:
+            other_user = User.objects.create_user('inv_def_destroy', 'invdefd@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(
+                game=game,
+                account=other_account,
+                race_type=attacker.race_type,
+            )
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 5000
+        star.defenses = 10
+        star.save()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name="Doomed Invader",
+            x=star.x,
+            y=star.y,
+            colonists=5,
+            integrity=100,
+            ship_count=1,
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='UNLOAD',
+            transfer_colonists=5
+        )
+
+        with patch.object(GameTurn, '_calculate_combat_damage', return_value={
+            attacker: 200.0,
+            defender: 0.0,
+        }):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
+        self.assertFalse(Report.objects.filter(
+            game=game,
+            player=attacker,
+            target_type='star',
+            target_id=star.id,
+        ).exists())
+        self.assertFalse(Report.objects.filter(
+            game=game,
+            player=defender,
+            target_type='fleet',
+            target_id=fleet.id,
+        ).exists())
+
     def test_transfer_invasion_fails_when_defenders_stronger(self):
         """Transferring colonists to enemy colony fails if defenders are stronger."""
         from ..models import FleetOrders
@@ -6765,6 +6829,43 @@ class TestCombat(TestCase):
         self.assertTrue(reports)
         for report in reports:
             self.assertEqual(report.get_report_data().get('report_tier'), 'encounter')
+
+    def test_combat_does_not_report_destroyed_fleet(self):
+        game, player1, player2 = self._create_two_player_game()
+
+        fleet_a = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name="Survivor",
+            x=28,
+            y=28,
+            ship_count=6,
+            integrity=100,
+        )
+        fleet_b = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name="Doomed",
+            x=28,
+            y=28,
+            ship_count=1,
+            integrity=100,
+        )
+
+        turn = GameTurn(game)
+        with patch.object(GameTurn, '_calculate_combat_damage', return_value={
+            player1: 0.0,
+            player2: 200.0,
+        }):
+            turn.resolve_combat()
+
+        self.assertFalse(Fleet.objects.filter(id=fleet_b.id).exists())
+        self.assertFalse(Report.objects.filter(
+            game=game,
+            player=player1,
+            target_type='fleet',
+            target_id=fleet_b.id,
+        ).exists())
         self.assertGreater(player2.messages.filter(category='COMBAT', priority=True).count(), 0)
 
     def test_combat_low_integrity_can_reduce_ship_count(self):
