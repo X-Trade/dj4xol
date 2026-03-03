@@ -70,17 +70,13 @@ def random_heading_init():
 
 
 def random_anomaly_stability_init():
-    """Roll anomaly stability with ~20% in the high-stability 91-100 band."""
-    if random.random() < 0.20:
-        return random.randint(91, 100)
-    return random.randint(35, 90)
+    """Natural anomalies now start at fixed baseline stability."""
+    return 50
 
 
 def random_wormhole_stability_init():
-    """Roll wormhole stability with a 50% chance in the 91-100 band."""
-    if random.random() < 0.50:
-        return random.randint(91, 100)
-    return random.randint(35, 90)
+    """Natural wormholes now start at fixed baseline stability."""
+    return 50
 
 
 BOMB_TYPE_CONVENTIONAL = 'CONVENTIONAL'

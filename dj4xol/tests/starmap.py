@@ -61,3 +61,18 @@ class TestStarMap(TestCase):
         starmap = StarMap(game, player)
         html = starmap.render_map()
         self.assertIn('mapanomaly-wormhole', html)
+
+    def test_rift_anomaly_has_deterministic_variable_height_style(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        rift = Anomaly.objects.create(
+            game=game,
+            x=22,
+            y=22,
+            name='Rift Height Check',
+            anomaly_type=Anomaly.TYPE_RIFT,
+        )
+        starmap = StarMap(game, player)
+        html = starmap.render_map()
+        self.assertIn(f'data-object-id="{rift.short_id}"', html)
+        self.assertIn('--rift-height:', html)

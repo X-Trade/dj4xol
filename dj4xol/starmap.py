@@ -311,8 +311,22 @@ class StarMap():
             offset_x, offset_y = (0, 0)
         elif anomaly_type == Anomaly.TYPE_RIFT:
             type_class = 'mapanomaly-rift'
-            # Center on average of full visual bounds including pseudo-elements.
-            offset_x, offset_y = (-3, -6)
+            seed = anomaly.short_id or anomaly.name or str(anomaly.id)
+            rift_height = 20 + (sum(ord(ch) for ch in seed) % 31)  # 20..50px
+            # Keep the visual center stable as the rift body height varies.
+            offset_x = -3
+            offset_y = -6 - int(round((rift_height - 20) / 2.0))
+            extra_style = (
+                " z-index:4; transform: rotate(%.1fdeg); --rift-height:%spx;"
+                % (render_heading, rift_height)
+            )
+            return self.render_object(
+                anomaly,
+                extra_style=extra_style,
+                offset_x=offset_x,
+                offset_y=offset_y,
+                extra_classes=type_class,
+            )
         else:
             type_class = 'mapanomaly-nebula'
             # Center on full nebula silhouette (base + pseudo-elements).

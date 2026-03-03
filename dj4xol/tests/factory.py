@@ -285,21 +285,11 @@ class testGameFactory(TestCase):
         self.assertTrue(all(0.0 <= float(a.heading) < 360.0 for a in anomalies))
         self.assertTrue(all(0 <= int(a.stability) <= 100 for a in anomalies))
 
-    def test_random_anomaly_stability_init_distribution_bands(self):
-        with patch('dj4xol.models.random.random', return_value=0.10):
-            with patch('dj4xol.models.random.randint', return_value=95):
-                self.assertEqual(random_anomaly_stability_init(), 95)
-        with patch('dj4xol.models.random.random', return_value=0.80):
-            with patch('dj4xol.models.random.randint', return_value=65):
-                self.assertEqual(random_anomaly_stability_init(), 65)
+    def test_random_anomaly_stability_init_is_fixed_baseline(self):
+        self.assertEqual(random_anomaly_stability_init(), 50)
 
-    def test_random_wormhole_stability_init_distribution_bands(self):
-        with patch('dj4xol.models.random.random', return_value=0.10):
-            with patch('dj4xol.models.random.randint', return_value=96):
-                self.assertEqual(random_wormhole_stability_init(), 96)
-        with patch('dj4xol.models.random.random', return_value=0.80):
-            with patch('dj4xol.models.random.randint', return_value=68):
-                self.assertEqual(random_wormhole_stability_init(), 68)
+    def test_random_wormhole_stability_init_is_fixed_baseline(self):
+        self.assertEqual(random_wormhole_stability_init(), 50)
 
 
 class testStarNamer(TestCase):
