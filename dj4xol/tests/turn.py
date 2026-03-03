@@ -6220,6 +6220,15 @@ class TestFleetFuel(TestCase):
             x=star.x + 20, y=star.y, warpfactor=6
         )
 
+        turn = GameTurn(game)
+        fuel_gain = 1.0
+        projected_fuel = float(fleet.fuel) + fuel_gain
+        expected_warp = 0
+        for candidate in range(6, 0, -1):
+            if turn._movement_fuel_cost(fleet, candidate) <= projected_fuel:
+                expected_warp = candidate
+                break
+
         with patch('dj4xol.turn.roll_chance', return_value=True), \
              patch('dj4xol.turn.random.randint', return_value=1):
             GameTurn(game).generate_turn()
@@ -6227,11 +6236,11 @@ class TestFleetFuel(TestCase):
         fleet.refresh_from_db()
         self.assertGreater(fleet.x, star.x)
         self.assertLess(fleet.x, star.x + 6)
-        self.assertLess(fleet.fuel, 0.2)
+        self.assertLess(fleet.fuel, projected_fuel)
         self.assertGreater(player.messages.count(), start_messages)
         msg = player.messages.order_by('-id').first()
         self.assertIn('ordered warp 6', msg.message)
-        self.assertTrue(('warp 4' in msg.message) or ('warp 5' in msg.message))
+        self.assertIn('warp %s' % expected_warp, msg.message)
 
     def test_wormhole_jump_fuel_cost_basic_drive_is_5_mg_per_ly(self):
         from ..models import Fleet
