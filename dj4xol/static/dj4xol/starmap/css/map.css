@@ -259,18 +259,6 @@ body.lcars .maparea a.mapstar-name {
     filter: blur(2px);
 }
 
-.mapanomaly-nebula.mapanomaly-v1 {
-    transform: rotate(-6deg) scale(1.02, 0.90);
-}
-
-.mapanomaly-nebula.mapanomaly-v2 {
-    transform: rotate(11deg) scale(1.08, 0.86);
-}
-
-.mapanomaly-nebula.mapanomaly-v3 {
-    transform: rotate(-14deg) scale(1.14, 0.82);
-}
-
 .mapanomaly-nebula-orange {
     --neb-dark-r: 66; --neb-dark-g: 32; --neb-dark-b: 18;
     --neb-mid-r: 148; --neb-mid-g: 74; --neb-mid-b: 34;
@@ -312,6 +300,8 @@ body.lcars .maparea a.mapstar-name {
     background: transparent;
     opacity: 1;
     filter: none;
+    /* Rotate around nucleus center (::before is at x=22,y=5). */
+    transform-origin: 22px 5px;
 }
 
 .mapanomaly-comet::before {
@@ -348,31 +338,12 @@ body.lcars .maparea a.mapstar-name {
     filter: blur(1.32px);
 }
 
-.mapanomaly-comet.mapanomaly-v1 {
-    width: 20px;
-    height: 9px;
-    transform: rotate(-18deg);
-}
-
-.mapanomaly-comet.mapanomaly-v2 {
-    width: 24px;
-    height: 10px;
-    transform: rotate(8deg);
-}
-
-.mapanomaly-comet.mapanomaly-v3 {
-    width: 28px;
-    height: 11px;
-    transform: rotate(22deg);
-}
-
 .mapanomaly-rift {
     width: 7px;
     height: 20px;
     border-radius: 76% 24% 78% 22% / 88% 20% 90% 22%;
     background: linear-gradient(90deg, rgba(110, 64, 188, 0.45) 0%, rgba(90, 206, 255, 0.82) 50%, rgba(118, 72, 196, 0.45) 100%);
     box-shadow: 0 0 4px rgba(126, 86, 212, 0.22);
-    transform: rotate(-26deg);
     transform-origin: 50% 50%;
     opacity: 0.76;
     clip-path: polygon(
@@ -404,36 +375,6 @@ body.lcars .maparea a.mapstar-name {
     border-radius: 70% 30% 70% 30% / 85% 25% 85% 25%;
     background: linear-gradient(90deg, rgba(103, 58, 183, 0.16) 0%, rgba(114, 75, 194, 0.07) 45%, rgba(99, 56, 176, 0.16) 100%);
     filter: blur(1.8px);
-}
-
-.mapanomaly-rift.mapanomaly-v1 {
-    width: 6px;
-    height: 18px;
-    transform: rotate(-45deg);
-}
-
-.mapanomaly-rift.mapanomaly-v2 {
-    width: 7px;
-    height: 22px;
-    transform: rotate(33deg);
-}
-
-.mapanomaly-rift.mapanomaly-v3 {
-    width: 8px;
-    height: 26px;
-    transform: rotate(45deg);
-}
-
-.mapanomaly-rift.mapanomaly-v4 {
-    width: 6px;
-    height: 30px;
-    transform: rotate(76deg);
-}
-
-.mapanomaly-rift.mapanomaly-v5 {
-    width: 7px;
-    height: 24px;
-    transform: rotate(-12deg);
 }
 
 .mapstar-mixed {

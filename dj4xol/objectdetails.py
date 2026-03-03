@@ -131,6 +131,9 @@ class DetailBuilder():
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
                      'salvage_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Salvage) else None,
                      'anomaly_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Anomaly) else None,
+                     'anomaly_type': self.selected_obj.anomaly_type if isinstance(self.selected_obj, Anomaly) else None,
+                     'stability': self.selected_obj.stability if isinstance(self.selected_obj, Anomaly) else None,
+                     'heading': self.selected_obj.heading if isinstance(self.selected_obj, Anomaly) else None,
                      'salvage_inventory': self.build_salvage_inventory(),
                      'production_orders': self.get_production_orders(),
                      'fleet_orders': self.get_fleet_orders(),
@@ -269,6 +272,8 @@ class DetailBuilder():
             detail['anomaly_short_id'] = self.selected_obj.short_id
             detail['anomaly_type'] = data.get('anomaly_type')
             detail['description'] = data.get('description')
+            detail['stability'] = data.get('stability')
+            detail['heading'] = data.get('heading')
 
         return detail
 

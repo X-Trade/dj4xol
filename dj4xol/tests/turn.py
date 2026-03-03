@@ -528,6 +528,21 @@ class TestRandomEvents(TestCase):
 
 
 class TestAnomalyInteractions(TestCase):
+    @staticmethod
+    def _find_location_far_from_stars(game):
+        star_positions = list(game.stars.values_list('x', 'y'))
+        max_x = max(2, int(game.map_size_x) - 1)
+        max_y = max(2, int(game.map_size_y) - 1)
+        min_x = 5 if max_x > 10 else 2
+        min_y = 5 if max_y > 10 else 2
+        max_scan_x = max_x - 3 if max_x > 10 else max_x
+        max_scan_y = max_y - 3 if max_y > 10 else max_y
+        for x in range(min_x, max_scan_x):
+            for y in range(min_y, max_scan_y):
+                if all((((sx - x) ** 2) + ((sy - y) ** 2)) > 1 for sx, sy in star_positions):
+                    return x, y
+        raise AssertionError('No star-safe coordinate found for comet test setup.')
+
     def test_roll_1_and_2_have_no_effect(self):
         game = default_game()
         game.anomalies_enabled = True
@@ -669,6 +684,9 @@ class TestAnomalyInteractions(TestCase):
         data = report.get_report_data()
         self.assertEqual(data.get('anomaly_type'), Anomaly.TYPE_COMET)
         self.assertEqual(data.get('name'), 'Comet Trace')
+        self.assertIn('heading', data)
+        self.assertIn('stability', data)
+        self.assertEqual(data.get('stability'), anomaly.stability)
 
     def test_spawn_anomaly_respects_star_based_cap(self):
         game = default_game(stars=10)
@@ -690,6 +708,235 @@ class TestAnomalyInteractions(TestCase):
             turn.spawn_anomalies()
         after = Anomaly.objects.filter(game=game).count()
         self.assertEqual(before, after)
+
+    def test_comet_drift_moves_stochastically_by_heading(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        x, y = (50, 50)
+        comet = Anomaly.objects.create(
+            game=game,
+            x=x,
+            y=y,
+            name='Drifter',
+            anomaly_type=Anomaly.TYPE_COMET,
+            heading=0.0,
+        )
+        turn = GameTurn(game)
+        for _ in range(20):
+            turn.move_comets()
+            game.year += 1
+            game.save(update_fields=['year'])
+        comet.refresh_from_db()
+        self.assertEqual(comet.x, x)
+        self.assertLess(comet.y, y)
+        self.assertAlmostEqual(float(comet.heading), 0.0, places=3)
+
+    def test_comet_drift_is_destroyed_on_map_edge_exit(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        comet = Anomaly.objects.create(
+            game=game,
+            x=1,
+            y=40,
+            name='Wall Skimmer',
+            anomaly_type=Anomaly.TYPE_COMET,
+            heading=270.0,
+        )
+        turn = GameTurn(game)
+        for _ in range(20):
+            turn.move_comets()
+            game.year += 1
+            game.save(update_fields=['year'])
+            if not Anomaly.objects.filter(id=comet.id).exists():
+                break
+        self.assertFalse(Anomaly.objects.filter(id=comet.id).exists())
+
+    def test_comet_bends_towards_star_at_1ly_by_up_to_60_degrees(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        x, y = (50, 50)
+        Star.objects.create(
+            game=game,
+            name='Bend Anchor',
+            x=x + 1,
+            y=y,
+        )
+        comet = Anomaly.objects.create(
+            game=game,
+            x=x,
+            y=y,
+            name='Bender',
+            anomaly_type=Anomaly.TYPE_COMET,
+            heading=0.0,
+        )
+        turn = GameTurn(game)
+        turn.move_comets()
+        comet.refresh_from_db()
+        self.assertAlmostEqual(float(comet.heading), 60.0, places=3)
+
+    def test_comet_on_star_allows_large_course_change(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        x, y = (50, 50)
+        Star.objects.create(
+            game=game,
+            name='Direct Overlap',
+            x=x,
+            y=y,
+        )
+        comet = Anomaly.objects.create(
+            game=game,
+            x=x,
+            y=y,
+            name='Close Pass',
+            anomaly_type=Anomaly.TYPE_COMET,
+            heading=10.0,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.uniform', return_value=179.0):
+            turn.move_comets()
+        comet.refresh_from_db()
+        self.assertAlmostEqual(float(comet.heading), 189.0, places=3)
+
+    def test_comet_does_not_bend_for_star_behind(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        x, y = (50, 50)
+        Star.objects.create(
+            game=game,
+            name='Rear Star',
+            x=x,
+            y=y + 1,
+        )
+        comet = Anomaly.objects.create(
+            game=game,
+            x=x,
+            y=y,
+            name='Forward Drifter',
+            anomaly_type=Anomaly.TYPE_COMET,
+            heading=0.0,
+        )
+        turn = GameTurn(game)
+        turn.move_comets()
+        comet.refresh_from_db()
+        self.assertAlmostEqual(float(comet.heading), 0.0, places=3)
+
+    def test_anomaly_decay_applies_below_90_stability(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=30,
+            y=30,
+            name='Unstable',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=80,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.randint', return_value=3):
+            turn.decay_anomalies()
+        anomaly.refresh_from_db()
+        self.assertEqual(anomaly.stability, 77)
+
+    def test_anomaly_below_20_stability_can_collapse(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=31,
+            y=31,
+            name='Collapsing',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=10,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.randint', return_value=1):
+            with patch('dj4xol.turn.random.random', return_value=0.0):
+                turn.decay_anomalies()
+        self.assertFalse(Anomaly.objects.filter(id=anomaly.id).exists())
+
+    def test_low_stability_increases_anomaly_rewards(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Reward Probe',
+            x=20,
+            y=20,
+        )
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=20,
+            y=20,
+            name='Reward Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=0,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.randint', side_effect=[200]):
+            with patch('dj4xol.turn.random.random', return_value=0.1):
+                turn._apply_anomaly_research_boon(fleet, anomaly)
+        self.assertTrue(GameMessage.objects.filter(
+            game=game,
+            player=player,
+            category='RANDOM',
+            message__icontains='300 bonus RP',
+        ).exists())
+
+    def test_cargo_loss_roll_without_cargo_converts_to_integrity_damage(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Empty Freighter',
+            x=25,
+            y=25,
+            integrity=100,
+            ironium_inventory=0,
+            boranium_inventory=0,
+            germanium_inventory=0,
+            colonists=0,
+        )
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=25,
+            y=25,
+            name='Cargo Shear',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=100,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.uniform', return_value=0.3):
+            with patch('dj4xol.turn.random.randint', return_value=12):
+                turn._apply_anomaly_cargo_loss(fleet, anomaly)
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 88)
+        self.assertTrue(GameMessage.objects.filter(
+            game=game,
+            player=player,
+            category='RANDOM',
+            message__icontains='integrity damage',
+        ).exists())
 
 
 class TestEconomicCalculations(TestCase):

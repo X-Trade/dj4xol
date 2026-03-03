@@ -1,9 +1,13 @@
 from ..factory import GameFactory
 from ..starnamer import StarNamer
 from django.test import TestCase
-from ..models import Game, Account, ServerRaceType, ServerRace, ResearchCategory, Technology, Anomaly
+from ..models import (
+    Game, Account, ServerRaceType, ServerRace, ResearchCategory, Technology, Anomaly,
+    random_anomaly_stability_init,
+)
 from ..research import get_player_tech_effects
 from django.contrib.auth.models import User
+from unittest.mock import patch
 
 
 class testGameFactory(TestCase):
@@ -278,6 +282,16 @@ class testGameFactory(TestCase):
         short_ids = [a.short_id for a in anomalies]
         self.assertEqual(len(short_ids), len(set(short_ids)))
         self.assertTrue(all(bool(sid) and len(sid) == 12 for sid in short_ids))
+        self.assertTrue(all(0.0 <= float(a.heading) < 360.0 for a in anomalies))
+        self.assertTrue(all(0 <= int(a.stability) <= 100 for a in anomalies))
+
+    def test_random_anomaly_stability_init_distribution_bands(self):
+        with patch('dj4xol.models.random.random', return_value=0.10):
+            with patch('dj4xol.models.random.randint', return_value=95):
+                self.assertEqual(random_anomaly_stability_init(), 95)
+        with patch('dj4xol.models.random.random', return_value=0.80):
+            with patch('dj4xol.models.random.randint', return_value=65):
+                self.assertEqual(random_anomaly_stability_init(), 65)
 
 
 class testStarNamer(TestCase):

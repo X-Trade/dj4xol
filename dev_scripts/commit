@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import html
 import re
+import string
 import subprocess
 import sys
 from pathlib import Path
@@ -100,19 +101,34 @@ def _li_indent(items_block: str, default: str) -> str:
     return default + "    "
 
 
-def update_changelog(changelog_path: Path, message: str, version: str, start_new_version: bool) -> None:
+def normalize_message_item(raw: str) -> str:
+    cleaned = str(raw or "").strip()
+    cleaned = cleaned.strip(string.whitespace + string.punctuation)
+    if not cleaned:
+        raise ValueError("Commit/release note items must not be empty")
+    cleaned = cleaned[0].upper() + cleaned[1:]
+    if not cleaned.endswith("."):
+        cleaned += "."
+    return cleaned
+
+
+def update_changelog(changelog_path: Path, messages: list[str], version: str, start_new_version: bool) -> None:
     content = changelog_path.read_text(encoding="utf-8")
-    escaped_message = html.escape(message, quote=False)
+    escaped_messages = [html.escape(message, quote=False) for message in messages]
 
     if start_new_version:
         header_match = FIRST_VERSION_HEADER_RE.search(content)
         if not header_match:
             raise ValueError(f"Could not find first version header in {changelog_path}")
         indent = header_match.group("indent")
+        item_lines = "".join(
+            f"{indent}    <li>{escaped_message}</li>\n"
+            for escaped_message in escaped_messages
+        )
         new_section = (
             f"{indent}<h4><span class=\"env-label\">v{version}</span></h4>\n"
             f"{indent}<ul class=\"game-list\">\n"
-            f"{indent}    <li>{escaped_message}</li>\n"
+            f"{item_lines}"
             f"{indent}</ul>\n\n"
         )
         content = content[:header_match.start()] + new_section + content[header_match.start():]
@@ -125,8 +141,11 @@ def update_changelog(changelog_path: Path, message: str, version: str, start_new
         footer = section_match.group("footer")
         header_indent = re.match(r"^(\s*)", header).group(1)  # type: ignore[union-attr]
         li_indent = _li_indent(items, header_indent)
-        new_item = f"{li_indent}<li>{escaped_message}</li>\n"
-        new_items = new_item + items
+        new_items_block = "".join(
+            f"{li_indent}<li>{escaped_message}</li>\n"
+            for escaped_message in escaped_messages
+        )
+        new_items = new_items_block + items
         replacement = header + new_items + footer
         content = content[:section_match.start()] + replacement + content[section_match.end():]
 
@@ -135,9 +154,8 @@ def update_changelog(changelog_path: Path, message: str, version: str, start_new
 
 def main() -> int:
     args = parse_args()
-    commit_message = " ".join(args.message).strip()
-    if not commit_message:
-        raise ValueError("Commit message must not be empty")
+    release_note_items = [normalize_message_item(item) for item in args.message]
+    commit_message = " ".join(release_note_items)
 
     repo_root = Path(__file__).resolve().parents[1]
     version_path = repo_root / "dj4xol" / "version.py"
@@ -158,7 +176,7 @@ def main() -> int:
 
     update_changelog(
         changelog_path=changelog_path,
-        message=commit_message,
+        messages=release_note_items,
         version=target_version,
         start_new_version=start_new_version,
     )

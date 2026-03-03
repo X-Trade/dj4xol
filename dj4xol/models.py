@@ -64,6 +64,18 @@ def random_surface_germanium_init():
     return mineral_rules.random_surface_germanium_init()
 
 
+def random_heading_init():
+    """Random heading in degrees, where 0 = north."""
+    return random.random() * 360.0
+
+
+def random_anomaly_stability_init():
+    """Roll anomaly stability with ~20% in the high-stability 91-100 band."""
+    if random.random() < 0.20:
+        return random.randint(91, 100)
+    return random.randint(35, 90)
+
+
 BOMB_TYPE_CONVENTIONAL = 'CONVENTIONAL'
 BOMB_TYPE_SMART = 'SMART'
 BOMB_TYPE_NOVA = 'NOVA'
@@ -464,6 +476,12 @@ class Anomaly(AbstractMapObject):
     description = models.TextField(blank=True, default='')
     anomaly_type = models.CharField(
         max_length=24, choices=TYPE_CHOICES, blank=True, default=TYPE_ANOMALY
+    )
+    # Heading in degrees: 0 = north, 90 = east, 180 = south, 270 = west
+    heading = models.FloatField(default=random_heading_init)
+    stability = models.IntegerField(
+        default=random_anomaly_stability_init,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
     )
 
     @property

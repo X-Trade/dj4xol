@@ -294,66 +294,21 @@ class StarMap():
     def render_anomaly(self, anomaly):
         """Render an anomaly marker on map."""
         anomaly_type = str(getattr(anomaly, 'anomaly_type', '') or '').upper()
-        inline_fallback = ""
+        heading = float(getattr(anomaly, 'heading', 0.0) or 0.0)
+        render_heading = heading
         if anomaly_type == Anomaly.TYPE_COMET:
             type_class = 'mapanomaly-comet'
-            inline_fallback = (
-                " width:24px; height:10px; position:absolute; background:transparent;"
-            )
+            render_heading = heading - 90.0
+            # Anchor at comet nucleus center (::before center), not the tail body.
+            offset_x, offset_y = (-21, -2)
         elif anomaly_type == Anomaly.TYPE_RIFT:
             type_class = 'mapanomaly-rift'
-            inline_fallback = (
-                " width:7px; height:20px; position:absolute;"
-                " border-radius:76% 24% 78% 22% / 88% 20% 90% 22%;"
-                " background:linear-gradient(90deg, rgba(110,64,188,0.48) 0%,"
-                " rgba(91,205,255,0.80) 50%, rgba(118,72,196,0.48) 100%);"
-            )
+            # Center on average of full visual bounds including pseudo-elements.
+            offset_x, offset_y = (-3, -6)
         else:
             type_class = 'mapanomaly-nebula'
-            inline_fallback = (
-                " width:16px; height:16px; position:absolute;"
-                " border-radius:43% 57% 52% 48% / 57% 43% 58% 42%;"
-                " background:radial-gradient(circle at 42% 35%, rgba(210,245,255,0.65) 0%,"
-                " rgba(116,191,255,0.42) 28%, rgba(88,59,172,0.35) 58%, rgba(0,0,0,0) 100%);"
-            )
-        variant_count = 5 if anomaly_type == Anomaly.TYPE_RIFT else 3
-        variant = (sum(ord(ch) for ch in (anomaly.short_id or '')) % variant_count) + 1
-        # Per-type visual centering: pseudo-elements make visible extents asymmetrical.
-        if anomaly_type == Anomaly.TYPE_RIFT:
-            offset_by_variant = {
-                1: (-3, -9),
-                2: (-4, -11),
-                3: (-4, -13),
-                4: (-3, -15),
-                5: (-4, -12),
-            }
-        elif anomaly_type == Anomaly.TYPE_COMET:
-            # Anchor on nucleus at one end of tail (comet body).
-            offset_by_variant = {
-                1: (-17, -4),
-                2: (-21, -5),
-                3: (-25, -6),
-            }
-        elif anomaly_type == Anomaly.TYPE_NEBULA:
-            # Nebula wisps lean upward; nudge down slightly to center on target.
-            offset_by_variant = {
-                1: (-9, -5),
-                2: (-10, -6),
-                3: (-10, -7),
-            }
-        else:
-            offset_by_variant = {
-                1: (-8, -8),
-                2: (-9, -9),
-                3: (-10, -10),
-            }
-        offset_x, offset_y = offset_by_variant.get(variant, (-8, -8))
-        variant_style = ""
-        if anomaly_type == Anomaly.TYPE_NEBULA:
-            if variant == 2:
-                variant_style = " width:18px; height:18px;"
-            elif variant == 3:
-                variant_style = " width:20px; height:20px;"
+            # Center on full nebula silhouette (base + pseudo-elements).
+            offset_x, offset_y = (-7, -8)
         nebula_palette_class = ""
         if anomaly_type == Anomaly.TYPE_NEBULA:
             palettes = ("blue", "orange", "yellow", "red", "white")
@@ -361,8 +316,8 @@ class StarMap():
             nebula_palette_class = " mapanomaly-nebula-%s" % palettes[idx]
         return self.render_object(
             anomaly,
-            extra_style=" z-index:4;%s%s" % (inline_fallback, variant_style),
+            extra_style=" z-index:4; transform: rotate(%.1fdeg);" % render_heading,
             offset_x=offset_x,
             offset_y=offset_y,
-            extra_classes="%s mapanomaly-v%s%s" % (type_class, variant, nebula_palette_class),
+            extra_classes="%s%s" % (type_class, nebula_palette_class),
         )
