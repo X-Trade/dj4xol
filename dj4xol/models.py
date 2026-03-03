@@ -76,6 +76,13 @@ def random_anomaly_stability_init():
     return random.randint(35, 90)
 
 
+def random_wormhole_stability_init():
+    """Roll wormhole stability with a 50% chance in the 91-100 band."""
+    if random.random() < 0.50:
+        return random.randint(91, 100)
+    return random.randint(35, 90)
+
+
 BOMB_TYPE_CONVENTIONAL = 'CONVENTIONAL'
 BOMB_TYPE_SMART = 'SMART'
 BOMB_TYPE_NOVA = 'NOVA'
@@ -465,12 +472,14 @@ class Anomaly(AbstractMapObject):
     TYPE_COMET = 'COMET'
     TYPE_RIFT = 'RIFT'
     TYPE_BLACK_HOLE = 'BLACK_HOLE'
+    TYPE_WORMHOLE = 'WORMHOLE'
     TYPE_ANOMALY = 'ANOMALY'
     TYPE_CHOICES = [
         (TYPE_NEBULA, 'Nebula'),
         (TYPE_COMET, 'Comet'),
         (TYPE_RIFT, 'Rift'),
         (TYPE_BLACK_HOLE, 'Black Hole'),
+        (TYPE_WORMHOLE, 'Wormhole'),
         (TYPE_ANOMALY, 'Anomaly'),
     ]
 
@@ -484,6 +493,13 @@ class Anomaly(AbstractMapObject):
     stability = models.IntegerField(
         default=random_anomaly_stability_init,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    wormhole_pair = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='wormhole_pair_reverse',
     )
 
     @property

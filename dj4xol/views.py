@@ -112,6 +112,51 @@ def _build_selected_fleet_patrol_circles(selected_obj, player):
     return circles
 
 
+def _player_explored_anomaly_ids(game, player):
+    if not player:
+        return set()
+    return set(
+        Report.objects.filter(
+            game=game,
+            player=player,
+            target_type='anomaly',
+        ).values_list('target_id', flat=True)
+    )
+
+
+def _build_wormhole_links(game, player):
+    """Return visible wormhole link segments for map overlay rendering."""
+    explored_ids = _player_explored_anomaly_ids(game, player)
+    if not explored_ids:
+        return []
+    links = []
+    seen = set()
+    wormholes = Anomaly.objects.filter(
+        game=game,
+        anomaly_type=Anomaly.TYPE_WORMHOLE,
+        wormhole_pair__isnull=False,
+    ).select_related('wormhole_pair')
+    for anomaly in wormholes:
+        pair = anomaly.wormhole_pair
+        if not pair:
+            continue
+        key = tuple(sorted([str(anomaly.id), str(pair.id)]))
+        if key in seen:
+            continue
+        seen.add(key)
+        if anomaly.id not in explored_ids or pair.id not in explored_ids:
+            continue
+        links.append({
+            'a_short_id': anomaly.short_id,
+            'b_short_id': pair.short_id,
+            'ax': int(anomaly.x),
+            'ay': int(anomaly.y),
+            'bx': int(pair.x),
+            'by': int(pair.y),
+        })
+    return links
+
+
 def _setting_enabled(value, default=True):
     if value is None:
         return default
@@ -441,8 +486,21 @@ def starmap(request, game_short_id):
     # Get player's homeworld for home button
     homeworld = player.homeworld if player else None
     movement_paths = _build_player_movement_paths(game, player)
+    wormhole_links = _build_wormhole_links(game, player)
     selected_fleet_short_id = None
+    selected_object_type = ''
+    selected_object_short_id = ''
     selected_patrol_circles = []
+    if detail and detail.get('selected_id'):
+        selected_object_short_id = detail.get('selected_id') or ''
+        if detail.get('is_star'):
+            selected_object_type = 'star'
+        elif detail.get('is_fleet'):
+            selected_object_type = 'fleet'
+        elif detail.get('is_salvage'):
+            selected_object_type = 'salvage'
+        elif detail.get('is_anomaly'):
+            selected_object_type = 'anomaly'
     if detail and detail.get('is_fleet') and detail.get('is_owned'):
         selected_fleet_short_id = detail.get('fleet_short_id')
         selected_patrol_circles = _build_selected_fleet_patrol_circles(
@@ -470,7 +528,10 @@ def starmap(request, game_short_id):
         'dest_y': dest_y,
         'destination_targets': destination_targets,
         'movement_paths_json': json.dumps(movement_paths),
+        'wormhole_links_json': json.dumps(wormhole_links),
         'selected_fleet_short_id': selected_fleet_short_id or '',
+        'selected_object_type': selected_object_type,
+        'selected_object_short_id': selected_object_short_id,
         'selected_patrol_circles_json': json.dumps(selected_patrol_circles),
         'enable_debug_actions': _debug_actions_enabled(),
     })
@@ -583,13 +644,65 @@ def _spawn_random_anomaly_at(game, x, y):
         Anomaly.TYPE_COMET,
         Anomaly.TYPE_RIFT,
         Anomaly.TYPE_BLACK_HOLE,
+        Anomaly.TYPE_WORMHOLE,
     ])
     labels = {
         Anomaly.TYPE_NEBULA: 'Nebula',
         Anomaly.TYPE_COMET: 'Comet',
         Anomaly.TYPE_RIFT: 'Rift',
         Anomaly.TYPE_BLACK_HOLE: 'Black Hole',
+        Anomaly.TYPE_WORMHOLE: 'Wormhole',
     }
+    if anomaly_type == Anomaly.TYPE_WORMHOLE:
+        from .models import random_wormhole_stability_init
+        wormhole_name = '%s %s' % (labels.get(anomaly_type, 'Anomaly'), game.anomalys.count() + 1)
+        endpoint = Anomaly.objects.create(
+            game=game,
+            x=int(x),
+            y=int(y),
+            anomaly_type=anomaly_type,
+            name=wormhole_name,
+            heading=random.random() * 360.0,
+            stability=random_wormhole_stability_init(),
+        )
+        pair = endpoint
+        max_x = max(1, int(game.map_size_x) - 1)
+        max_y = max(1, int(game.map_size_y) - 1)
+        occupied = set(game.stars.values_list('x', 'y'))
+        occupied.update(game.fleets.values_list('x', 'y'))
+        occupied.update(game.salvages.values_list('x', 'y'))
+        occupied.update(game.anomalys.values_list('x', 'y'))
+        for _ in range(120):
+            px = random.randint(1, max_x)
+            py = random.randint(1, max_y)
+            if (px, py) in occupied:
+                continue
+            pair = Anomaly.objects.create(
+                game=game,
+                x=px,
+                y=py,
+                anomaly_type=anomaly_type,
+                name=wormhole_name,
+                heading=random.random() * 360.0,
+                stability=random_wormhole_stability_init(),
+            )
+            break
+        if pair.id == endpoint.id:
+            endpoint.delete()
+            return Anomaly.objects.create(
+                game=game,
+                x=int(x),
+                y=int(y),
+                anomaly_type=Anomaly.TYPE_RIFT,
+                name='Rift %s' % (game.anomalys.count() + 1),
+                heading=random.random() * 360.0,
+                stability=random_anomaly_stability_init(),
+            )
+        endpoint.wormhole_pair = pair
+        endpoint.save(update_fields=['wormhole_pair'])
+        pair.wormhole_pair = endpoint
+        pair.save(update_fields=['wormhole_pair'])
+        return endpoint
     return Anomaly.objects.create(
         game=game,
         x=int(x),

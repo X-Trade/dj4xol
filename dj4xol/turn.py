@@ -168,6 +168,10 @@ ANOMALY_MAX_RISK_REWARD_BONUS = 0.50
 BLACK_HOLE_RESEARCH_MULTIPLIER = 2.0
 BLACK_HOLE_DAMAGE_MIN = 50
 BLACK_HOLE_DAMAGE_MAX = 100
+WORMHOLE_DAMAGE_MAX = 85
+WORMHOLE_EXIT_MIN_DISTANCE = 4.0
+WORMHOLE_EXIT_MAX_DISTANCE = 8.0
+WORMHOLE_WANDER_MAX_LY_PER_YEAR = 12.0
 
 
 # Chance calculation functions (separated for testability)
@@ -330,6 +334,7 @@ class GameTurn():
     def _process_year(self):
         """Process a single year of game time."""
         self.move_comets()
+        self.move_wormholes()
         self.decay_anomalies()
         self.fleet_movements()
         self.anomaly_interactions()
@@ -374,7 +379,10 @@ class GameTurn():
             return
         from .models import Anomaly
 
-        for anomaly in Anomaly.objects.filter(game=self.game):
+        for anomaly in list(Anomaly.objects.filter(game=self.game)):
+            anomaly = Anomaly.objects.filter(id=anomaly.id).first()
+            if anomaly is None:
+                continue
             stability = self._anomaly_stability(anomaly)
             changed = False
             if stability < 90:
@@ -386,10 +394,32 @@ class GameTurn():
             if stability < 20:
                 collapse_chance = (20.0 - float(stability)) / 20.0
                 if random.random() < collapse_chance:
+                    if getattr(anomaly, 'anomaly_type', None) == Anomaly.TYPE_WORMHOLE:
+                        self._resolve_wormhole_extinction(anomaly)
                     anomaly.delete()
                     continue
             if changed:
                 anomaly.save(update_fields=['stability'])
+
+    def _resolve_wormhole_extinction(self, anomaly):
+        """When one wormhole endpoint dies, the pair collapses or becomes an unstable black hole."""
+        from .models import Anomaly
+
+        pair = getattr(anomaly, 'wormhole_pair', None)
+        if not pair:
+            return
+        if not Anomaly.objects.filter(id=pair.id).exists():
+            return
+        pair = Anomaly.objects.get(id=pair.id)
+        pair.wormhole_pair = None
+        if random.random() < 0.5:
+            pair.delete()
+            return
+        pair.anomaly_type = Anomaly.TYPE_BLACK_HOLE
+        pair.stability = random.randint(1, 49)
+        pair.heading = random.random() * 360.0
+        pair.name = 'Black Hole %s' % (Anomaly.objects.filter(game=self.game).count() + 1)
+        pair.save(update_fields=['wormhole_pair', 'anomaly_type', 'stability', 'heading', 'name'])
 
     def _quantized_axis_step(self, component, comet_short_id, axis_key, year=None):
         """Convert a sub-integer movement component into deterministic yearly tile steps."""
@@ -515,6 +545,97 @@ class GameTurn():
             comet.heading = float(heading)
             comet.save(update_fields=['x', 'y', 'heading'])
 
+    def _find_wormhole_exit(self, endpoint, origin):
+        """Return a valid exit coordinate near endpoint, avoiding stars/anomalies and the endpoint tile."""
+        from .models import Star, Anomaly
+
+        max_x = max(1, int(self.game.map_size_x) - 1)
+        max_y = max(1, int(self.game.map_size_y) - 1)
+        occupied = set(Star.objects.filter(game=self.game).values_list('x', 'y'))
+        occupied.update(
+            Anomaly.objects.filter(game=self.game).exclude(id=origin.id).values_list('x', 'y')
+        )
+        candidates = []
+        max_d = int(ceil(WORMHOLE_EXIT_MAX_DISTANCE))
+        for ox in range(-max_d, max_d + 1):
+            for oy in range(-max_d, max_d + 1):
+                dist = ((ox * ox) + (oy * oy)) ** 0.5
+                if WORMHOLE_EXIT_MIN_DISTANCE <= dist <= WORMHOLE_EXIT_MAX_DISTANCE:
+                    x = int(endpoint.x + ox)
+                    y = int(endpoint.y + oy)
+                    if x < 1 or x > max_x or y < 1 or y > max_y:
+                        continue
+                    if (x, y) in occupied:
+                        continue
+                    candidates.append((x, y))
+        random.shuffle(candidates)
+        if candidates:
+            return candidates[0]
+        fallback_x = int(endpoint.x + int(WORMHOLE_EXIT_MIN_DISTANCE))
+        fallback_y = int(endpoint.y)
+        fallback_x = max(1, min(max_x, fallback_x))
+        fallback_y = max(1, min(max_y, fallback_y))
+        if (fallback_x, fallback_y) == (int(endpoint.x), int(endpoint.y)):
+            fallback_x = max(1, min(max_x, int(endpoint.x - int(WORMHOLE_EXIT_MIN_DISTANCE))))
+        return fallback_x, fallback_y
+
+    def _move_anomaly_within_map(self, anomaly, max_step, star_positions, occupied_positions):
+        """Move anomaly by up to max_step LY, avoiding stars and occupied anomaly tiles."""
+        max_step = max(0, int(max_step or 0))
+        if max_step <= 0:
+            return
+        max_x = max(1, int(self.game.map_size_x) - 1)
+        max_y = max(1, int(self.game.map_size_y) - 1)
+        base_x = int(anomaly.x)
+        base_y = int(anomaly.y)
+        offsets = [(0, 0)]
+        for ox in range(-max_step, max_step + 1):
+            for oy in range(-max_step, max_step + 1):
+                if ox == 0 and oy == 0:
+                    continue
+                dist = ((ox * ox) + (oy * oy)) ** 0.5
+                if dist <= float(max_step):
+                    offsets.append((ox, oy))
+        random.shuffle(offsets)
+        for ox, oy in offsets:
+            nx = base_x + ox
+            ny = base_y + oy
+            if nx < 1 or nx > max_x or ny < 1 or ny > max_y:
+                continue
+            if (nx, ny) in star_positions:
+                continue
+            if (nx, ny) in occupied_positions and (nx, ny) != (base_x, base_y):
+                continue
+            occupied_positions.discard((base_x, base_y))
+            anomaly.x = int(nx)
+            anomaly.y = int(ny)
+            occupied_positions.add((int(nx), int(ny)))
+            anomaly.save(update_fields=['x', 'y'])
+            return
+
+    def move_wormholes(self):
+        """Wormhole endpoints wander based on instability, up to 12LY/year at low stability."""
+        if not bool(getattr(self.game, 'anomalies_enabled', False)):
+            return
+        from .models import Anomaly, Star
+
+        wormholes = list(Anomaly.objects.filter(
+            game=self.game,
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+        ))
+        if not wormholes:
+            return
+        star_positions = set(Star.objects.filter(game=self.game).values_list('x', 'y'))
+        occupied_positions = set(
+            Anomaly.objects.filter(game=self.game).values_list('x', 'y')
+        )
+        for wormhole in wormholes:
+            instability = self._anomaly_instability_ratio(wormhole)
+            max_step = int(round(float(WORMHOLE_WANDER_MAX_LY_PER_YEAR) * instability))
+            self._move_anomaly_within_map(
+                wormhole, max_step, star_positions, occupied_positions
+            )
+
     def anomaly_interactions(self):
         """Apply anomaly outcomes to fleets co-located with anomalies."""
         if not bool(getattr(self.game, 'anomalies_enabled', False)):
@@ -531,6 +652,9 @@ class GameTurn():
                 continue
             if getattr(anomaly, 'anomaly_type', None) == Anomaly.TYPE_BLACK_HOLE:
                 self._apply_black_hole_interaction(fleet, anomaly)
+                continue
+            if getattr(anomaly, 'anomaly_type', None) == Anomaly.TYPE_WORMHOLE:
+                self._apply_wormhole_interaction(fleet, anomaly)
                 continue
             # D6 table: 1-2 no effect (2/6), 3 damage, 4 cargo loss, 5 destroyed, 6 research boon.
             roll = random.randint(1, 6)
@@ -555,6 +679,7 @@ class GameTurn():
             return
         from .models import (
             Anomaly, Star, Fleet, Salvage, random_anomaly_stability_init,
+            random_wormhole_stability_init,
         )
         star_count = int(Star.objects.filter(game=self.game).count())
         if star_count <= 0:
@@ -582,20 +707,54 @@ class GameTurn():
                 Anomaly.TYPE_COMET,
                 Anomaly.TYPE_RIFT,
                 Anomaly.TYPE_BLACK_HOLE,
+                Anomaly.TYPE_WORMHOLE,
             ])
-            name = '%s %s' % (
-                anomaly_type.title(),
-                current + 1,
-            )
-            Anomaly.objects.create(
-                game=self.game,
-                x=x,
-                y=y,
-                anomaly_type=anomaly_type,
-                name=name,
-                heading=random.random() * 360.0,
-                stability=random_anomaly_stability_init(),
-            )
+            name = '%s %s' % (anomaly_type.title(), current + 1)
+            if anomaly_type == Anomaly.TYPE_WORMHOLE:
+                if current + 2 > max_allowed:
+                    continue
+                pair_x = pair_y = None
+                for _ in range(120):
+                    px = random.randint(min_x, max_x)
+                    py = random.randint(min_y, max_y)
+                    if (px, py) in occupied or (px, py) == (x, y):
+                        continue
+                    pair_x = px
+                    pair_y = py
+                    break
+                if pair_x is None:
+                    continue
+                a = Anomaly.objects.create(
+                    game=self.game,
+                    x=x,
+                    y=y,
+                    anomaly_type=anomaly_type,
+                    name=name,
+                    heading=random.random() * 360.0,
+                    stability=random_wormhole_stability_init(),
+                )
+                b = Anomaly.objects.create(
+                    game=self.game,
+                    x=pair_x,
+                    y=pair_y,
+                    anomaly_type=anomaly_type,
+                    name=name,
+                    heading=random.random() * 360.0,
+                    stability=random_wormhole_stability_init(),
+                    wormhole_pair=a,
+                )
+                a.wormhole_pair = b
+                a.save(update_fields=['wormhole_pair'])
+            else:
+                Anomaly.objects.create(
+                    game=self.game,
+                    x=x,
+                    y=y,
+                    anomaly_type=anomaly_type,
+                    name=name,
+                    heading=random.random() * 360.0,
+                    stability=random_anomaly_stability_init(),
+                )
             break
 
     def _create_anomaly_message(self, player, text, priority=False):
@@ -735,6 +894,54 @@ class GameTurn():
             "%s suffered %s%% integrity damage from the black hole %s at (%s, %s)."
             % (fleet.name, damage, anomaly.name, anomaly.x, anomaly.y)
         )
+        self._create_anomaly_message(fleet.player, text, priority=True)
+
+    def _apply_wormhole_interaction(self, fleet, anomaly):
+        """Resolve wormhole transit: possible damage, then relocation near the paired endpoint."""
+        from .models import Anomaly
+
+        endpoint = anomaly
+        pair = getattr(endpoint, 'wormhole_pair', None)
+        if not pair or not Anomaly.objects.filter(id=pair.id).exists():
+            return
+        if pair.id == endpoint.id:
+            return
+        pair = Anomaly.objects.get(id=pair.id)
+
+        instability = self._anomaly_instability_ratio(endpoint)
+        damage_chance = max(0.0, min(1.0, instability))
+        took_damage = False
+        damage = 0
+        if random.random() < damage_chance:
+            max_damage = max(1, int(round(float(WORMHOLE_DAMAGE_MAX) * instability)))
+            damage = random.randint(1, max_damage)
+            fleet.integrity = max(0, int(fleet.integrity or 0) - int(damage))
+            took_damage = damage > 0
+            if fleet.integrity <= 0:
+                self._apply_anomaly_destruction(fleet, endpoint)
+                return
+
+        exit_x, exit_y = self._find_wormhole_exit(pair, endpoint)
+        fleet.x = int(exit_x)
+        fleet.y = int(exit_y)
+        if took_damage:
+            fleet.save(update_fields=['integrity', 'x', 'y'])
+        else:
+            fleet.save(update_fields=['x', 'y'])
+
+        self._create_or_update_report(fleet.player, 'anomaly', endpoint, self.game.year)
+        self._create_or_update_report(fleet.player, 'anomaly', pair, self.game.year)
+
+        if took_damage:
+            text = (
+                "%s traversed wormhole %s at (%s, %s), suffered %s%% integrity damage, and emerged near %s at (%s, %s)."
+                % (fleet.name, endpoint.name, endpoint.x, endpoint.y, damage, pair.name, pair.x, pair.y)
+            )
+        else:
+            text = (
+                "%s traversed wormhole %s at (%s, %s) and emerged near %s at (%s, %s)."
+                % (fleet.name, endpoint.name, endpoint.x, endpoint.y, pair.name, pair.x, pair.y)
+            )
         self._create_anomaly_message(fleet.player, text, priority=True)
 
     def _calculate_next_generation(self):
@@ -879,6 +1086,9 @@ class GameTurn():
                 'description': obj.description,
                 'heading': obj.heading,
                 'stability': obj.stability,
+                'wormhole_pair_short_id': (
+                    obj.wormhole_pair.short_id if getattr(obj, 'wormhole_pair', None) else None
+                ),
             }
         return {}
 

@@ -305,6 +305,10 @@ class StarMap():
             type_class = 'mapanomaly-blackhole'
             # Match star-sized footprint.
             offset_x, offset_y = (0, 0)
+        elif anomaly_type == Anomaly.TYPE_WORMHOLE:
+            type_class = 'mapanomaly-wormhole'
+            # Match star-sized footprint.
+            offset_x, offset_y = (0, 0)
         elif anomaly_type == Anomaly.TYPE_RIFT:
             type_class = 'mapanomaly-rift'
             # Center on average of full visual bounds including pseudo-elements.

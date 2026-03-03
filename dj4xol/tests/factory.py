@@ -3,7 +3,7 @@ from ..starnamer import StarNamer
 from django.test import TestCase
 from ..models import (
     Game, Account, ServerRaceType, ServerRace, ResearchCategory, Technology, Anomaly,
-    random_anomaly_stability_init,
+    random_anomaly_stability_init, random_wormhole_stability_init,
 )
 from ..research import get_player_tech_effects
 from django.contrib.auth.models import User
@@ -292,6 +292,14 @@ class testGameFactory(TestCase):
         with patch('dj4xol.models.random.random', return_value=0.80):
             with patch('dj4xol.models.random.randint', return_value=65):
                 self.assertEqual(random_anomaly_stability_init(), 65)
+
+    def test_random_wormhole_stability_init_distribution_bands(self):
+        with patch('dj4xol.models.random.random', return_value=0.10):
+            with patch('dj4xol.models.random.randint', return_value=96):
+                self.assertEqual(random_wormhole_stability_init(), 96)
+        with patch('dj4xol.models.random.random', return_value=0.80):
+            with patch('dj4xol.models.random.randint', return_value=68):
+                self.assertEqual(random_wormhole_stability_init(), 68)
 
 
 class testStarNamer(TestCase):

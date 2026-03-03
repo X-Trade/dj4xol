@@ -3,7 +3,7 @@ from django.utils import timezone
 from dj4xol.starnamer import StarNamer
 from .models import (
     Game, Star, Fleet, Player, Account, Anomaly,
-    random_anomaly_stability_init,
+    random_anomaly_stability_init, random_wormhole_stability_init,
 )
 from .research import get_player_tech_effects
 from .fleet_thumbnails import choose_fleet_thumbnail
@@ -89,6 +89,7 @@ class GameFactory():
             Anomaly.TYPE_COMET: 'Comet',
             Anomaly.TYPE_RIFT: 'Rift',
             Anomaly.TYPE_BLACK_HOLE: 'Black Hole',
+            Anomaly.TYPE_WORMHOLE: 'Wormhole',
         }
         min_x = 1
         min_y = 1
@@ -97,17 +98,65 @@ class GameFactory():
         attempts = max(100, count * 40)
         while len(created) < count and attempts > 0:
             attempts -= 1
-            x = random.randint(min_x, max_x)
-            y = random.randint(min_y, max_y)
-            key = (x, y)
-            if key in occupied:
-                continue
             anomaly_type = random.choice([
                 Anomaly.TYPE_NEBULA,
                 Anomaly.TYPE_COMET,
                 Anomaly.TYPE_RIFT,
                 Anomaly.TYPE_BLACK_HOLE,
+                Anomaly.TYPE_WORMHOLE,
             ])
+            if anomaly_type == Anomaly.TYPE_WORMHOLE:
+                if len(created) + 2 > count:
+                    continue
+                x1 = y1 = x2 = y2 = None
+                for _ in range(80):
+                    tx = random.randint(min_x, max_x)
+                    ty = random.randint(min_y, max_y)
+                    if (tx, ty) in occupied:
+                        continue
+                    x1, y1 = tx, ty
+                    break
+                if x1 is None:
+                    continue
+                for _ in range(80):
+                    tx = random.randint(min_x, max_x)
+                    ty = random.randint(min_y, max_y)
+                    if (tx, ty) in occupied or (tx, ty) == (x1, y1):
+                        continue
+                    x2, y2 = tx, ty
+                    break
+                if x2 is None:
+                    continue
+                ordinal = len(created) + 1
+                pair_name = '%s %s' % (type_names.get(anomaly_type, 'Anomaly'), ordinal)
+                wormhole_a = Anomaly(
+                    game=self.game,
+                    x=x1,
+                    y=y1,
+                    anomaly_type=Anomaly.TYPE_WORMHOLE,
+                    name=pair_name,
+                    heading=random.random() * 360.0,
+                    stability=random_wormhole_stability_init(),
+                )
+                wormhole_b = Anomaly(
+                    game=self.game,
+                    x=x2,
+                    y=y2,
+                    anomaly_type=Anomaly.TYPE_WORMHOLE,
+                    name=pair_name,
+                    heading=random.random() * 360.0,
+                    stability=random_wormhole_stability_init(),
+                )
+                created.extend([wormhole_a, wormhole_b])
+                occupied.add((x1, y1))
+                occupied.add((x2, y2))
+                continue
+
+            x = random.randint(min_x, max_x)
+            y = random.randint(min_y, max_y)
+            key = (x, y)
+            if key in occupied:
+                continue
             ordinal = len(created) + 1
             created.append(Anomaly(
                 game=self.game,
@@ -124,6 +173,20 @@ class GameFactory():
                 if not anomaly.short_id:
                     anomaly.short_id = self.game.short_id[:4] + anomaly.id.hex[-8:]
             Anomaly.objects.bulk_create(created)
+            wormholes = list(Anomaly.objects.filter(
+                game=self.game,
+                anomaly_type=Anomaly.TYPE_WORMHOLE,
+                wormhole_pair__isnull=True,
+            ).order_by('id'))
+            for idx in range(0, len(wormholes), 2):
+                if idx + 1 >= len(wormholes):
+                    break
+                a = wormholes[idx]
+                b = wormholes[idx + 1]
+                a.wormhole_pair = b
+                b.wormhole_pair = a
+                a.save(update_fields=['wormhole_pair'])
+                b.save(update_fields=['wormhole_pair'])
     
     def set_year(self, year):
         self.game.year = year

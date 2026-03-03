@@ -133,7 +133,10 @@ $(document).ready(function() {
     var mapScale = 6;
     var borderOffset = parseInt($maparea.data('border')) || 0;
     var selectedFleetId = ($maparea.data('selected-fleet-id') || '').toString();
+    var selectedObjectType = ($maparea.data('selected-object-type') || '').toString();
+    var selectedObjectId = ($maparea.data('selected-object-id') || '').toString();
     var movementPaths = [];
+    var wormholeLinks = [];
     var selectedPatrolCircles = [];
     var patrolPreviewCircle = null;
     var movementStateValues = ['off', 'selected', 'all'];
@@ -166,6 +169,18 @@ $(document).ready(function() {
             }
         } catch (e) {
             selectedPatrolCircles = [];
+        }
+    })();
+    (function loadWormholeLinks() {
+        var el = document.getElementById('wormhole-links-json');
+        if (!el) return;
+        try {
+            var parsed = JSON.parse(el.textContent || '[]');
+            if (Array.isArray(parsed)) {
+                wormholeLinks = parsed;
+            }
+        } catch (e) {
+            wormholeLinks = [];
         }
     })();
 
@@ -275,6 +290,34 @@ $(document).ready(function() {
                     'fleet-movement-line ' + (isSelected ? 'fleet-movement-line-selected' : 'fleet-movement-line-other')
                 ));
                 overlay.appendChild(line);
+            }
+        }
+
+        if (wormholeLinks.length) {
+            for (var k = 0; k < wormholeLinks.length; k++) {
+                var link = wormholeLinks[k] || {};
+                var selectedVisible = (
+                    selectedObjectType === 'anomaly' &&
+                    selectedObjectId &&
+                    (selectedObjectId === (link.a_short_id || '') || selectedObjectId === (link.b_short_id || ''))
+                );
+                if (movementState === 'selected' && !selectedVisible) {
+                    continue;
+                }
+                var lx1 = (parseInt(link.ax, 10) * mapScale) + borderOffset + cxOffset;
+                var ly1 = (parseInt(link.ay, 10) * mapScale) + borderOffset + cxOffset;
+                var lx2 = (parseInt(link.bx, 10) * mapScale) + borderOffset + cxOffset;
+                var ly2 = (parseInt(link.by, 10) * mapScale) + borderOffset + cxOffset;
+                if (!isFinite(lx1) || !isFinite(ly1) || !isFinite(lx2) || !isFinite(ly2)) {
+                    continue;
+                }
+                var wormholeLine = document.createElementNS(ns, 'line');
+                wormholeLine.setAttribute('x1', lx1);
+                wormholeLine.setAttribute('y1', ly1);
+                wormholeLine.setAttribute('x2', lx2);
+                wormholeLine.setAttribute('y2', ly2);
+                wormholeLine.setAttribute('class', 'wormhole-link-line');
+                overlay.appendChild(wormholeLine);
             }
         }
 
