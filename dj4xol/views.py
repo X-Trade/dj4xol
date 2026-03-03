@@ -16,6 +16,7 @@ from dj4xol.objectdetails import DetailBuilder
 from .models import (
     Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology, HullDesign, HullDesignSlot,
+    random_anomaly_stability_init,
 )
 from .decorators import registration_required, player_only_view
 from .turn import GameTurn
@@ -593,6 +594,8 @@ def _spawn_random_anomaly_at(game, x, y):
         y=int(y),
         anomaly_type=anomaly_type,
         name='%s %s' % (labels.get(anomaly_type, 'Anomaly'), game.anomalys.count() + 1),
+        heading=random.random() * 360.0,
+        stability=random_anomaly_stability_init(),
     )
 
 

@@ -1,7 +1,10 @@
 from datetime import timedelta
 from django.utils import timezone
 from dj4xol.starnamer import StarNamer
-from .models import Game, Star, Fleet, Player, Account, Anomaly
+from .models import (
+    Game, Star, Fleet, Player, Account, Anomaly,
+    random_anomaly_stability_init,
+)
 from .research import get_player_tech_effects
 from .fleet_thumbnails import choose_fleet_thumbnail
 import random
@@ -110,6 +113,8 @@ class GameFactory():
                 y=y,
                 anomaly_type=anomaly_type,
                 name='%s %s' % (type_names.get(anomaly_type, 'Anomaly'), ordinal),
+                heading=random.random() * 360.0,
+                stability=random_anomaly_stability_init(),
             ))
             occupied.add(key)
         if created:

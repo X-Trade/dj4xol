@@ -159,6 +159,8 @@ ANOMALY_MAJOR_PROGRESS_RP_MIN = 500
 ANOMALY_MAJOR_PROGRESS_RP_MAX = 900
 ANOMALY_SPAWN_CHANCE_PER_YEAR = 0.01
 ANOMALY_MAX_STAR_RATIO = 0.15
+ANOMALY_COMET_DRIFT_WARP = 1.0
+ANOMALY_MAX_RISK_REWARD_BONUS = 0.50
 
 
 # Chance calculation functions (separated for testability)
@@ -320,6 +322,8 @@ class GameTurn():
 
     def _process_year(self):
         """Process a single year of game time."""
+        self.move_comets()
+        self.decay_anomalies()
         self.fleet_movements()
         self.anomaly_interactions()
         self.check_lost_fleets()
@@ -337,6 +341,170 @@ class GameTurn():
         self.check_join_deadline()
         self.generate_reports()
         self.game.year += 1
+
+    @staticmethod
+    def _anomaly_stability(anomaly):
+        try:
+            value = int(anomaly.stability)
+        except (TypeError, ValueError):
+            value = 100
+        return max(0, min(100, value))
+
+    @classmethod
+    def _anomaly_instability_ratio(cls, anomaly):
+        """Return 0.0 at stability=100, 1.0 at stability=0."""
+        stability = cls._anomaly_stability(anomaly)
+        return (100.0 - float(stability)) / 100.0
+
+    @classmethod
+    def _anomaly_risk_reward_multiplier(cls, anomaly):
+        """Return 1.0..1.5 multiplier based on instability."""
+        return 1.0 + (cls._anomaly_instability_ratio(anomaly) * ANOMALY_MAX_RISK_REWARD_BONUS)
+
+    def decay_anomalies(self):
+        """Decay unstable anomalies and collapse very unstable anomalies over time."""
+        if not bool(getattr(self.game, 'anomalies_enabled', False)):
+            return
+        from .models import Anomaly
+
+        for anomaly in Anomaly.objects.filter(game=self.game):
+            stability = self._anomaly_stability(anomaly)
+            changed = False
+            if stability < 90:
+                # Lower stability decays faster over time.
+                decay_ceiling = 1 + int((90 - stability) / 20)
+                stability = max(0, stability - random.randint(1, max(1, decay_ceiling)))
+                anomaly.stability = stability
+                changed = True
+            if stability < 20:
+                collapse_chance = (20.0 - float(stability)) / 20.0
+                if random.random() < collapse_chance:
+                    anomaly.delete()
+                    continue
+            if changed:
+                anomaly.save(update_fields=['stability'])
+
+    def _quantized_axis_step(self, component, comet_short_id, axis_key):
+        """Convert a sub-integer movement component into deterministic yearly tile steps."""
+        try:
+            value = float(component)
+        except (TypeError, ValueError):
+            return 0
+        magnitude = abs(value)
+        if magnitude < 1e-9:
+            return 0
+        sid = str(comet_short_id or '')
+        seed = sum((idx + 1) * ord(ch) for idx, ch in enumerate('%s:%s' % (sid, axis_key)))
+        phase = (seed % 997) / 997.0
+        year = float(self.game.year or 0)
+        before = int((year + phase) * magnitude)
+        after = int((year + 1.0 + phase) * magnitude)
+        step = max(0, after - before)
+        if step <= 0:
+            return 0
+        return step if value > 0 else -step
+
+    @staticmethod
+    def _normalize_heading(heading):
+        """Normalize a heading to [0, 360)."""
+        try:
+            return float(heading) % 360.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def _signed_heading_delta(target_heading, current_heading):
+        """Shortest signed heading delta in degrees (-180, 180]."""
+        return ((target_heading - current_heading + 540.0) % 360.0) - 180.0
+
+    @staticmethod
+    def _closest_distance_to_step_segment(start_x, start_y, dx, dy, star_x, star_y):
+        """Return minimum distance from a star to the comet's one-turn movement segment."""
+        end_x = float(start_x) + float(dx)
+        end_y = float(start_y) + float(dy)
+        seg_x = end_x - float(start_x)
+        seg_y = end_y - float(start_y)
+        seg_len_sq = (seg_x * seg_x) + (seg_y * seg_y)
+        if seg_len_sq <= 0.0:
+            proj_x = float(start_x)
+            proj_y = float(start_y)
+        else:
+            rel_x = float(star_x) - float(start_x)
+            rel_y = float(star_y) - float(start_y)
+            t = ((rel_x * seg_x) + (rel_y * seg_y)) / seg_len_sq
+            t = max(0.0, min(1.0, t))
+            proj_x = float(start_x) + (seg_x * t)
+            proj_y = float(start_y) + (seg_y * t)
+        diff_x = float(star_x) - proj_x
+        diff_y = float(star_y) - proj_y
+        return ((diff_x * diff_x) + (diff_y * diff_y)) ** 0.5
+
+    def move_comets(self):
+        """Drift comet anomalies according to heading at a low fixed warp."""
+        if not bool(getattr(self.game, 'anomalies_enabled', False)):
+            return
+        from .models import Anomaly, Star
+
+        max_x = max(1, int(self.game.map_size_x) - 1)
+        max_y = max(1, int(self.game.map_size_y) - 1)
+        stars = list(Star.objects.filter(game=self.game).only('x', 'y'))
+        comets = list(Anomaly.objects.filter(
+            game=self.game,
+            anomaly_type=Anomaly.TYPE_COMET,
+        ))
+        if not comets:
+            return
+
+        for comet in comets:
+            heading = self._normalize_heading(comet.heading)
+            angle = heading * pi / 180.0
+            dx = sin(angle) * ANOMALY_COMET_DRIFT_WARP
+            dy = -cos(angle) * ANOMALY_COMET_DRIFT_WARP
+            nearest_star = None
+            nearest_distance = None
+            for star in stars:
+                distance = self._closest_distance_to_step_segment(
+                    comet.x, comet.y, dx, dy, star.x, star.y
+                )
+                if distance > 1.0:
+                    continue
+                to_star_x = float(star.x) - float(comet.x)
+                to_star_y = float(star.y) - float(comet.y)
+                forward_dot = (to_star_x * dx) + (to_star_y * dy)
+                # Ignore stars that are behind current motion direction.
+                if distance >= 1e-9 and forward_dot < 0.0:
+                    continue
+                if nearest_distance is None or distance < nearest_distance:
+                    nearest_distance = distance
+                    nearest_star = star
+            if nearest_star is not None and nearest_distance is not None:
+                if nearest_distance < 1e-9:
+                    heading = (heading + random.uniform(-179.0, 179.0)) % 360.0
+                else:
+                    star_dx = float(nearest_star.x) - float(comet.x)
+                    star_dy = float(nearest_star.y) - float(comet.y)
+                    star_heading = (degrees(atan2(star_dx, -star_dy)) + 360.0) % 360.0
+                    max_turn = 60.0 + ((1.0 - nearest_distance) * 119.0)
+                    delta = self._signed_heading_delta(star_heading, heading)
+                    delta = max(-max_turn, min(max_turn, delta))
+                    heading = (heading + delta) % 360.0
+                angle = heading * pi / 180.0
+                dx = sin(angle) * ANOMALY_COMET_DRIFT_WARP
+                dy = -cos(angle) * ANOMALY_COMET_DRIFT_WARP
+
+            step_x = self._quantized_axis_step(dx, comet.short_id, 'x')
+            step_y = self._quantized_axis_step(dy, comet.short_id, 'y')
+            new_x = int(comet.x) + step_x
+            new_y = int(comet.y) + step_y
+
+            if new_x < 1 or new_x > max_x or new_y < 1 or new_y > max_y:
+                comet.delete()
+                continue
+
+            comet.x = int(new_x)
+            comet.y = int(new_y)
+            comet.heading = float(heading)
+            comet.save(update_fields=['x', 'y', 'heading'])
 
     def anomaly_interactions(self):
         """Apply anomaly outcomes to fleets co-located with anomalies."""
@@ -373,7 +541,9 @@ class GameTurn():
             return
         if random.random() >= ANOMALY_SPAWN_CHANCE_PER_YEAR:
             return
-        from .models import Anomaly, Star, Fleet, Salvage
+        from .models import (
+            Anomaly, Star, Fleet, Salvage, random_anomaly_stability_init,
+        )
         star_count = int(Star.objects.filter(game=self.game).count())
         if star_count <= 0:
             return
@@ -410,6 +580,8 @@ class GameTurn():
                 y=y,
                 anomaly_type=anomaly_type,
                 name=name,
+                heading=random.random() * 360.0,
+                stability=random_anomaly_stability_init(),
             )
             break
 
@@ -426,6 +598,8 @@ class GameTurn():
 
     def _apply_anomaly_damage(self, fleet, anomaly):
         damage = random.randint(ANOMALY_DAMAGE_MIN, ANOMALY_DAMAGE_MAX)
+        damage = int(round(float(damage) * self._anomaly_risk_reward_multiplier(anomaly)))
+        damage = max(1, min(100, damage))
         before = int(fleet.integrity or 0)
         fleet.integrity = max(0, before - damage)
         fleet.save(update_fields=['integrity'])
@@ -437,6 +611,8 @@ class GameTurn():
 
     def _apply_anomaly_cargo_loss(self, fleet, anomaly):
         loss_ratio = random.uniform(ANOMALY_CARGO_LOSS_MIN, ANOMALY_CARGO_LOSS_MAX)
+        loss_ratio *= self._anomaly_risk_reward_multiplier(anomaly)
+        loss_ratio = min(0.95, max(0.0, loss_ratio))
         iron_loss = int((fleet.ironium_inventory or 0) * loss_ratio)
         bor_loss = int((fleet.boranium_inventory or 0) * loss_ratio)
         germ_loss = int((fleet.germanium_inventory or 0) * loss_ratio)
@@ -457,6 +633,19 @@ class GameTurn():
             losses.append('%skt Germanium' % germ_loss)
         if colonist_loss:
             losses.append('%sk colonists' % colonist_loss)
+        if not losses:
+            damage = random.randint(ANOMALY_DAMAGE_MIN, ANOMALY_DAMAGE_MAX)
+            damage = int(round(float(damage) * self._anomaly_risk_reward_multiplier(anomaly)))
+            damage = max(1, min(100, damage))
+            before = int(fleet.integrity or 0)
+            fleet.integrity = max(0, before - damage)
+            fleet.save(update_fields=['integrity'])
+            text = (
+                "Anomaly encounter at %s (%s, %s) found no cargo on %s; hull stress caused %s%% integrity damage."
+                % (anomaly.name, anomaly.x, anomaly.y, fleet.name, damage)
+            )
+            self._create_anomaly_message(fleet.player, text, priority=True)
+            return
         loss_text = ', '.join(losses) if losses else 'no significant cargo'
         text = (
             "Anomaly encounter at %s (%s, %s) disrupted %s cargo: %s lost."
@@ -483,6 +672,7 @@ class GameTurn():
         category = row.category
         if random.random() < 0.5:
             bonus_rp = random.randint(ANOMALY_BONUS_RP_MIN, ANOMALY_BONUS_RP_MAX)
+            bonus_rp = int(round(float(bonus_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
             result = apply_research_bonus_rp(player, category.id, bonus_rp)
             text = (
                 "Anomaly data from %s (%s, %s) granted %s bonus RP in %s."
@@ -493,6 +683,7 @@ class GameTurn():
             self._create_anomaly_message(player, text, priority=False)
             return
         progress_rp = random.randint(ANOMALY_MAJOR_PROGRESS_RP_MIN, ANOMALY_MAJOR_PROGRESS_RP_MAX)
+        progress_rp = int(round(float(progress_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
         result = apply_research_bonus_rp(player, category.id, progress_rp)
         text = (
             "Major anomaly breakthrough at %s (%s, %s): %s RP applied to %s."
@@ -642,6 +833,8 @@ class GameTurn():
                 'y': obj.y,
                 'anomaly_type': obj.anomaly_type,
                 'description': obj.description,
+                'heading': obj.heading,
+                'stability': obj.stability,
             }
         return {}
 
