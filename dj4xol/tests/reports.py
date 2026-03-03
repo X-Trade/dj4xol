@@ -9,7 +9,7 @@ from ..models import (
 from ..factory import GameFactory
 from ..objectdetails import DetailBuilder
 from ..turn import GameTurn
-from ._util import get_default_race_type, get_default_race
+from ._util import get_default_race_type, get_default_race, default_game
 
 
 def create_test_game(account, stars=5):
@@ -1102,3 +1102,72 @@ class NoScannerReportTierTest(TestCase):
             target_type='star',
             target_id=self.enemy_star.id,
         ).exists())
+
+    def test_no_scanners_high_advanced_requires_visit_for_encounter(self):
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Long Range',
+            x=10,
+            y=10,
+            basic_scanner_range=0,
+            advanced_scanner_range=25,
+        )
+        self.enemy_star.x = 13
+        self.enemy_star.y = 10
+        self.enemy_star.save(update_fields=['x', 'y'])
+
+        GameTurn(self.game).generate_scanner_reports()
+        self.assertFalse(Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=self.enemy_star.id,
+        ).exists())
+
+        visiting = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Visitor',
+            x=self.enemy_star.x,
+            y=self.enemy_star.y,
+            basic_scanner_range=0,
+            advanced_scanner_range=25,
+        )
+        GameTurn(self.game).generate_reports()
+        report = Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=self.enemy_star.id,
+        ).first()
+        self.assertIsNotNone(report)
+        self.assertEqual(report.get_report_data().get('report_tier'), 'encounter')
+
+
+class ReportTierMergeTest(TestCase):
+    def setUp(self):
+        self.game = default_game(stars=5, fleets=0)
+        self.player = self.game.players.first()
+        self.star = self.game.stars.filter(player__isnull=True).first()
+
+    def test_encounter_report_is_not_downgraded(self):
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='star',
+            target_id=self.star.id,
+            cached_report=json.dumps({
+                'name': self.star.name,
+                'x': self.star.x,
+                'y': self.star.y,
+                'report_tier': 'encounter',
+            }),
+        )
+        turn = GameTurn(self.game)
+        turn._create_or_update_report(
+            self.player, 'star', self.star, self.game.year + 1, report_tier='basic'
+        )
+        report.refresh_from_db()
+        self.assertEqual(report.get_report_data().get('report_tier'), 'encounter')
