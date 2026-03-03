@@ -1122,3 +1122,341 @@
     params_json: '{"has_bombs": "NOVA"}'
     display_order: 250
     enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000700"
+  fields:
+    short_id: "tech00000700"
+    category: 2
+    level: 1
+    name: 'Short-Range Scanner Array'
+    description: 'Baseline sensor arrays for short-range detection.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 5, "advanced_scanner_range": 0}'
+    display_order: 260
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000701"
+  fields:
+    short_id: "tech00000701"
+    category: 2
+    level: 3
+    name: 'Enhanced Scanner Array'
+    description: 'Improved signal processing extends detection range.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 10, "advanced_scanner_range": 0}'
+    display_order: 265
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000702"
+  fields:
+    short_id: "tech00000702"
+    category: 2
+    level: 5
+    name: 'Deep Space Scanner Grid'
+    description: 'Expanded sensor baselines improve long-range coverage.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 20, "advanced_scanner_range": 0}'
+    display_order: 270
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000703"
+  fields:
+    short_id: "tech00000703"
+    category: 2
+    level: 6
+    name: 'Advanced Multi-Spectrum Scanner'
+    description: 'Multi-band detection enables limited advanced resolution.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 25, "advanced_scanner_range": 5}'
+    display_order: 275
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000704"
+  fields:
+    short_id: "tech00000704"
+    category: 2
+    level: 8
+    name: 'Wide-Area Sensor Network'
+    description: 'Distributed arrays produce wide-area coverage and improved fidelity.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 50, "advanced_scanner_range": 15}'
+    display_order: 280
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000705"
+  fields:
+    short_id: "tech00000705"
+    category: 2
+    level: 9
+    name: 'High-Gain Sensor Matrix'
+    description: 'High-gain receivers improve detection against background noise.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 15}'
+    display_order: 285
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000706"
+  fields:
+    short_id: "tech00000706"
+    category: 2
+    level: 10
+    name: 'Quantum Resonance Scanners'
+    description: 'Quantum resonance profiling increases advanced sensor clarity.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 50, "advanced_scanner_range": 25}'
+    display_order: 290
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000707"
+  fields:
+    short_id: "tech00000707"
+    category: 2
+    level: 11
+    name: 'Subspace Echo Array'
+    description: 'Echo analysis refines target classification at range.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 60, "advanced_scanner_range": 30}'
+    display_order: 295
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000708"
+  fields:
+    short_id: "tech00000708"
+    category: 2
+    level: 12
+    name: 'Far-Reach Sensor Web'
+    description: 'Interlinked arrays extend coverage with higher resolution.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 40}'
+    display_order: 300
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000709"
+  fields:
+    short_id: "tech00000709"
+    category: 2
+    level: 14
+    name: 'Hyper-Luminal Scanner Lattice'
+    description: 'Hyper-luminal inference expands detection horizons.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 100, "advanced_scanner_range": 50}'
+    display_order: 305
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000710"
+  fields:
+    short_id: "tech00000710"
+    category: 2
+    level: 16
+    name: 'Trans-Spatial Sensor Grid'
+    description: 'Trans-spatial analytics improve deep-range coverage.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 120, "advanced_scanner_range": 50}'
+    display_order: 310
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000711"
+  fields:
+    short_id: "tech00000711"
+    category: 2
+    level: 18
+    name: 'Galactic Range Scanner'
+    description: 'High-order inference pushes basic detection to galactic scales.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 150, "advanced_scanner_range": 50}'
+    display_order: 315
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000712"
+  fields:
+    short_id: "tech00000712"
+    category: 2
+    level: 20
+    name: 'Interstellar Sensor Nexus'
+    description: 'Networked sensor nexus for maximum basic coverage.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 200, "advanced_scanner_range": 50}'
+    display_order: 320
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000720"
+  fields:
+    short_id: "tech00000720"
+    category: 5
+    level: 1
+    name: 'Planetary Sensor Station I'
+    description: 'Ground-based arrays extend local detection coverage.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 7, "advanced_scanner_range": 0}'
+    display_order: 330
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000721"
+  fields:
+    short_id: "tech00000721"
+    category: 5
+    level: 3
+    name: 'Planetary Sensor Station II'
+    description: 'Expanded baselines improve colony sensor reach.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 14, "advanced_scanner_range": 0}'
+    display_order: 335
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000722"
+  fields:
+    short_id: "tech00000722"
+    category: 5
+    level: 5
+    name: 'Planetary Sensor Station III'
+    description: 'Deep-space arrays improve colony detection coverage.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 28, "advanced_scanner_range": 0}'
+    display_order: 340
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000723"
+  fields:
+    short_id: "tech00000723"
+    category: 5
+    level: 6
+    name: 'Planetary Multi-Spectrum Sensors'
+    description: 'Multi-band sensors enable early advanced detection.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 35, "advanced_scanner_range": 6}'
+    display_order: 345
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000724"
+  fields:
+    short_id: "tech00000724"
+    category: 5
+    level: 8
+    name: 'Planetary Sensor Network'
+    description: 'Distributed colony sensors expand range and resolution.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 18}'
+    display_order: 350
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000725"
+  fields:
+    short_id: "tech00000725"
+    category: 5
+    level: 9
+    name: 'High-Gain Colony Sensors'
+    description: 'High-gain receivers improve colony signal capture.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 98, "advanced_scanner_range": 18}'
+    display_order: 355
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000726"
+  fields:
+    short_id: "tech00000726"
+    category: 5
+    level: 10
+    name: 'Quantum Colony Sensors'
+    description: 'Quantum resonance improves advanced colony scanning.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 30}'
+    display_order: 360
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000727"
+  fields:
+    short_id: "tech00000727"
+    category: 5
+    level: 11
+    name: 'Subspace Colony Echo Array'
+    description: 'Echo analysis sharpens colony sensor resolution.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 84, "advanced_scanner_range": 36}'
+    display_order: 365
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000728"
+  fields:
+    short_id: "tech00000728"
+    category: 5
+    level: 12
+    name: 'Colony Sensor Web'
+    description: 'Interlinked arrays extend colony detection reach.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 98, "advanced_scanner_range": 48}'
+    display_order: 370
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000729"
+  fields:
+    short_id: "tech00000729"
+    category: 5
+    level: 14
+    name: 'Hyper-Luminal Colony Lattice'
+    description: 'Hyper-luminal inference expands colony scanning.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 140, "advanced_scanner_range": 60}'
+    display_order: 375
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000730"
+  fields:
+    short_id: "tech00000730"
+    category: 5
+    level: 16
+    name: 'Trans-Spatial Colony Grid'
+    description: 'Trans-spatial processing extends colony reach.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 168, "advanced_scanner_range": 60}'
+    display_order: 380
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000731"
+  fields:
+    short_id: "tech00000731"
+    category: 5
+    level: 18
+    name: 'Galactic Colony Sensors'
+    description: 'Colony-scale arrays push basic detection to extremes.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 210, "advanced_scanner_range": 60}'
+    display_order: 385
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000732"
+  fields:
+    short_id: "tech00000732"
+    category: 5
+    level: 20
+    name: 'Interstellar Colony Sensor Nexus'
+    description: 'Massive colony networks maximize basic scanning coverage.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"basic_scanner_range": 280, "advanced_scanner_range": 60}'
+    display_order: 390
+    enabled: True

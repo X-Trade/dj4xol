@@ -482,6 +482,8 @@ class GameFactory():
                 has_miners=tech_effects.get('has_miners'),
                 has_fuel_factory=bool(tech_effects.get('has_fuel_factory')),
                 has_wormhole_drive=bool(tech_effects.get('has_wormhole_drive')),
+                basic_scanner_range=tech_effects.get('basic_scanner_range', 0),
+                advanced_scanner_range=tech_effects.get('advanced_scanner_range', 0),
                 thumbnail_path=thumbnail_path,
             )
     

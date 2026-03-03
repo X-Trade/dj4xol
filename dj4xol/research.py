@@ -35,6 +35,8 @@ TECH_PARAM_LABELS = {
     'offense_level': 'Offense Level',
     'defense_level': 'Defense Level',
     'colony_defense_level': 'Colony Defense Level',
+    'basic_scanner_range': 'Basic Scanner Range',
+    'advanced_scanner_range': 'Advanced Scanner Range',
 }
 
 
@@ -478,6 +480,43 @@ def get_player_unlocked_technologies(player):
     return unlocked
 
 
+def _select_scanner_ranges(unlocked, tech_type):
+    selected = None
+    selected_sort_key = None
+    for tech in unlocked:
+        if str(tech.tech_type or '') != tech_type:
+            continue
+        params = _safe_params(tech)
+        if 'basic_scanner_range' not in params and 'advanced_scanner_range' not in params:
+            continue
+        sort_key = (int(tech.level), int(tech.display_order or 0), str(tech.name or ''))
+        if selected is None or sort_key > selected_sort_key:
+            selected = tech
+            selected_sort_key = sort_key
+    if selected is None:
+        return 0, 0
+    params = _safe_params(selected)
+    try:
+        basic = int(params.get('basic_scanner_range') or 0)
+    except (TypeError, ValueError):
+        basic = 0
+    try:
+        advanced = int(params.get('advanced_scanner_range') or 0)
+    except (TypeError, ValueError):
+        advanced = 0
+    if advanced > basic:
+        basic = advanced
+    return max(0, basic), max(0, advanced)
+
+
+def get_player_colony_scanner_ranges(player):
+    """Return scanner ranges sourced from INFRASTRUCTURE tech."""
+    unlocked = list(get_player_unlocked_technologies(player))
+    if not unlocked:
+        return 0, 0
+    return _select_scanner_ranges(unlocked, 'INFRASTRUCTURE')
+
+
 def get_player_tech_effects(player):
     """Return current research effects for fleet commissioning/combat.
 
@@ -500,6 +539,8 @@ def get_player_tech_effects(player):
         'has_miners': None,
         'has_fuel_factory': False,
         'has_wormhole_drive': False,
+        'basic_scanner_range': 0,
+        'advanced_scanner_range': 0,
     }
     unlocked = list(get_player_unlocked_technologies(player))
     if not unlocked:
@@ -528,6 +569,22 @@ def get_player_tech_effects(player):
             continue
         tech = selected[1]
         params = _safe_params(tech)
+        if tech_type == 'SCANNER':
+            try:
+                effects['basic_scanner_range'] = max(
+                    0, int(params.get('basic_scanner_range') or 0)
+                )
+            except (TypeError, ValueError):
+                effects['basic_scanner_range'] = 0
+            try:
+                effects['advanced_scanner_range'] = max(
+                    0, int(params.get('advanced_scanner_range') or 0)
+                )
+            except (TypeError, ValueError):
+                effects['advanced_scanner_range'] = 0
+            if effects['advanced_scanner_range'] > effects['basic_scanner_range']:
+                effects['basic_scanner_range'] = effects['advanced_scanner_range']
+            continue
         max_warp = params.get('max_warp_speed')
         if max_warp is not None:
             try:

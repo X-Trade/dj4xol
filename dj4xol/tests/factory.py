@@ -268,6 +268,8 @@ class testGameFactory(TestCase):
         self.assertAlmostEqual(fleet.overmax_fuel_penalty, effects['overmax_fuel_penalty'], places=4)
         self.assertAlmostEqual(fleet.offense_level, effects['offense_level'], places=4)
         self.assertAlmostEqual(fleet.defense_level, effects['defense_level'], places=4)
+        self.assertEqual(fleet.basic_scanner_range, effects['basic_scanner_range'])
+        self.assertEqual(fleet.advanced_scanner_range, effects['advanced_scanner_range'])
         self.assertIn('/capital/', fleet.thumbnail_path)
 
     def test_initial_anomalies_have_unique_short_ids(self):

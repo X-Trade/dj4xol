@@ -34,6 +34,7 @@ from .ship_thumbnail_catalog import SHIP_THUMBNAILS_BY_CLASS
 from .starmap import StarMap
 from .factory import GameFactory
 from .forms import ServerRaceForm, NewGameForm, RegistrationForm, JoinGameForm
+from .scanners import get_scanner_sources_for_player
 
 
 def _build_player_movement_paths(game, player):
@@ -110,6 +111,28 @@ def _build_selected_fleet_patrol_circles(selected_obj, player):
             'radius': radius,
         })
     return circles
+
+
+def _build_scanner_circles(game, player):
+    sources = get_scanner_sources_for_player(game, player) if player else []
+    basic = []
+    advanced = []
+    for src in sources:
+        basic_range = int(src.get('basic') or 0)
+        adv_range = int(src.get('advanced') or 0)
+        if basic_range > 0:
+            basic.append({
+                'center_x': int(src.get('x')),
+                'center_y': int(src.get('y')),
+                'radius': basic_range,
+            })
+        if adv_range > 0:
+            advanced.append({
+                'center_x': int(src.get('x')),
+                'center_y': int(src.get('y')),
+                'radius': adv_range,
+            })
+    return basic, advanced
 
 
 def _player_explored_anomaly_ids(game, player):
@@ -487,6 +510,7 @@ def starmap(request, game_short_id):
     homeworld = player.homeworld if player else None
     movement_paths = _build_player_movement_paths(game, player)
     wormhole_links = _build_wormhole_links(game, player)
+    scanner_basic, scanner_advanced = _build_scanner_circles(game, player)
     selected_fleet_short_id = None
     selected_object_type = ''
     selected_object_short_id = ''
@@ -529,6 +553,8 @@ def starmap(request, game_short_id):
         'destination_targets': destination_targets,
         'movement_paths_json': json.dumps(movement_paths),
         'wormhole_links_json': json.dumps(wormhole_links),
+        'scanner_basic_json': json.dumps(scanner_basic),
+        'scanner_advanced_json': json.dumps(scanner_advanced),
         'selected_fleet_short_id': selected_fleet_short_id or '',
         'selected_object_type': selected_object_type,
         'selected_object_short_id': selected_object_short_id,

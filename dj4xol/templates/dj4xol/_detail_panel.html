@@ -46,7 +46,7 @@
     {% if not detail.is_current %}
     <div class="report-age"><span class="has-tooltip" data-tooltip="{{ detail.report_age }} year{{ detail.report_age|pluralize }} old">Year {{ detail.report_year }} Report</span></div>
     {% endif %}
-    <p>{% if detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: <span class="has-tooltip" data-tooltip="{{ detail.population|exact_pop }}">{{ detail.population|humanize_pop }}</span>{% if detail.population_change != None %} <span class="pop-change has-tooltip {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}" data-tooltip="{{ detail.population_change|exact_pop }}">({{ detail.population_change|humanize_pop_change }})</span>{% endif %}{% endif %}</p>
+    <p>{% if detail.report_tier == 'basic' %}Unknown{% elif detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: <span class="has-tooltip" data-tooltip="{{ detail.population|exact_pop }}">{{ detail.population|humanize_pop }}</span>{% if detail.population_change != None %} <span class="pop-change has-tooltip {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}" data-tooltip="{{ detail.population_change|exact_pop }}">({{ detail.population_change|humanize_pop_change }})</span>{% endif %}{% endif %}</p>
     {% if detail.is_anomaly %}
     <div class="collapsible-section" data-section="anomaly">
         <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Anomaly</h4>
@@ -136,10 +136,12 @@
                 <span class="env-label">Ships</span>
                 <span class="env-value">{{ detail.fleet_cargo.ship_count }}</span>
             </div>
+            {% if not detail.report_tier or detail.report_tier == 'encounter' %}
             <div class="env-row">
                 <span class="env-label">Max Warp</span>
                 <span class="env-value">{% if detail.fleet_cargo.max_safe_warp != None %}{{ detail.fleet_cargo.max_safe_warp }}{% else %}???{% endif %}</span>
             </div>
+            {% endif %}
             <div class="env-row">
                 <span class="env-label">Integrity</span>
                 {% if detail.fleet_cargo.integrity != None %}
@@ -151,6 +153,7 @@
                 <span class="env-value">???</span>
                 {% endif %}
             </div>
+            {% if not detail.report_tier or detail.report_tier == 'encounter' %}
             <div class="env-row">
                 <span class="env-label">Offence</span>
                 <span class="env-value">{% if detail.fleet_cargo.offense_modifier %}{{ detail.fleet_cargo.offense_modifier }}{% else %}???{% endif %}</span>
@@ -175,6 +178,7 @@
                 <span class="env-label">Wormhole Drive</span>
                 <span class="env-value">{% if detail.fleet_cargo.has_wormhole_drive %}Yes{% else %}No{% endif %}</span>
             </div>
+            {% endif %}
         </div>
     </div>
     {% endif %}

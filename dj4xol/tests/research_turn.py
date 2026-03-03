@@ -6,6 +6,7 @@ from ..research import (
     ensure_player_research_rows,
     get_player_tech_effects,
     get_player_colony_defense_level,
+    get_player_colony_scanner_ranges,
 )
 from ..turn import (
     GameTurn,
@@ -377,6 +378,64 @@ class ResearchTurnTest(TestCase):
         effects = get_player_tech_effects(self.player)
         self.assertAlmostEqual(effects['offense_level'], 1.0, places=4)
         self.assertAlmostEqual(effects['defense_level'], 0.0, places=4)
+
+    def test_scanner_effects_use_latest_scanner_tech(self):
+        self._reset_research_catalog()
+        electronics = ResearchCategory.objects.create(
+            code='SCAN', name='Scanners', enabled=True
+        )
+        Technology.objects.create(
+            category=electronics,
+            level=5,
+            name='Scanner Core I',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 20, "advanced_scanner_range": 0}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=electronics,
+            level=6,
+            name='Scanner Core II',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 25, "advanced_scanner_range": 5}',
+            enabled=True,
+        )
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 6.0
+            row.save(update_fields=['current_level'])
+        effects = get_player_tech_effects(self.player)
+        self.assertEqual(effects['basic_scanner_range'], 25)
+        self.assertEqual(effects['advanced_scanner_range'], 5)
+
+    def test_colony_scanner_ranges_use_latest_infrastructure_scanner(self):
+        self._reset_research_catalog()
+        construction = ResearchCategory.objects.create(
+            code='C_SCAN', name='Construction', enabled=True
+        )
+        Technology.objects.create(
+            category=construction,
+            level=5,
+            name='Colony Scanner I',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"basic_scanner_range": 28, "advanced_scanner_range": 0}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=construction,
+            level=8,
+            name='Colony Scanner II',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"basic_scanner_range": 70, "advanced_scanner_range": 18}',
+            enabled=True,
+        )
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 8.0
+            row.save(update_fields=['current_level'])
+        basic, advanced = get_player_colony_scanner_ranges(self.player)
+        self.assertEqual(basic, 70)
+        self.assertEqual(advanced, 18)
 
     def test_colony_defense_uses_latest_unlocked_technology(self):
         energy = ResearchCategory.objects.create(

@@ -879,6 +879,7 @@ class TestAnomalyInteractions(TestCase):
             name='Reward Probe',
             x=20,
             y=20,
+            advanced_scanner_range=1,
         )
         anomaly = Anomaly.objects.create(
             game=game,
@@ -1006,6 +1007,7 @@ class TestAnomalyInteractions(TestCase):
             x=29,
             y=29,
             integrity=100,
+            advanced_scanner_range=1,
         )
         Anomaly.objects.create(
             game=game,
