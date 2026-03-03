@@ -5677,6 +5677,49 @@ class TestWormholeDriveMovement(TestCase):
         msg = player.messages.latest('id')
         self.assertIn('wormhole', msg.message.lower())
 
+    def test_wormhole_destruction_can_spawn_nearby_rift(self):
+        game = default_game(stars=2)
+        game.random_events = False
+        game.anomalies_enabled = True
+        game.save(update_fields=['random_events', 'anomalies_enabled'])
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Wormhole Rift Seed',
+            x=20,
+            y=20,
+            has_wormhole_drive=True,
+            fuel=999.0,
+            max_fuel=999.0,
+            max_safe_warp=5,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE', x=60, y=60, warpfactor=14
+        )
+
+        def roll_map(chance):
+            if abs(chance - 0.10) < 1e-9:
+                return True
+            return False
+
+        with patch('dj4xol.turn.roll_chance', side_effect=roll_map), \
+             patch('dj4xol.turn.random.random', return_value=0.0), \
+             patch('dj4xol.turn.random.shuffle', lambda x: None):
+            GameTurn(game).generate_turn()
+
+        rift = Anomaly.objects.filter(game=game, anomaly_type=Anomaly.TYPE_RIFT).first()
+        self.assertIsNotNone(rift)
+        if rift is not None:
+            self.assertTrue(30 <= int(rift.stability) <= 91)
+            start_dist = (((rift.x - 20) ** 2) + ((rift.y - 20) ** 2)) ** 0.5
+            dest_dist = (((rift.x - 60) ** 2) + ((rift.y - 60) ** 2)) ** 0.5
+            self.assertTrue(
+                (4.0 <= start_dist <= 9.0) or (4.0 <= dest_dist <= 9.0)
+            )
+            self.assertFalse(Star.objects.filter(game=game, x=rift.x, y=rift.y).exists())
+
 
 class TestFleetFuel(TestCase):
     def test_fuel_cost_scales_with_ship_count(self):
@@ -6983,10 +7026,21 @@ class TestBombardmentOrders(TestCase):
         with patch('dj4xol.turn.roll_chance', return_value=True), patch(
             'dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet',
             return_value={'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
-        ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
+        ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0), patch(
+            'dj4xol.turn.random.random', return_value=0.0
+        ), patch('dj4xol.turn.random.randint', return_value=75):
             GameTurn(game).generate_turn()
 
         self.assertFalse(Star.objects.filter(id=star.id).exists())
+        self.assertTrue(Anomaly.objects.filter(
+            game=game, x=star.x, y=star.y, anomaly_type=Anomaly.TYPE_BLACK_HOLE
+        ).exists())
+        black_hole = Anomaly.objects.filter(
+            game=game, x=star.x, y=star.y, anomaly_type=Anomaly.TYPE_BLACK_HOLE
+        ).first()
+        self.assertIsNotNone(black_hole)
+        if black_hole is not None:
+            self.assertTrue(30 <= int(black_hole.stability) <= 91)
         self.assertTrue(
             attacker.messages.filter(
                 message__icontains=star_name,

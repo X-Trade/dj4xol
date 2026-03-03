@@ -115,6 +115,9 @@ WORMHOLE_DEVIATION_LY_PER_50 = 5.0
 WORMHOLE_INTEGRITY_DAMAGE_CHANCE = 0.20
 WORMHOLE_MAX_INTEGRITY_DAMAGE_PER_100_LY = 1
 WORMHOLE_DESTRUCTION_CHANCE = 0.10
+WORMHOLE_RIFT_SPAWN_CHANCE = 0.01
+WORMHOLE_RIFT_MIN_DISTANCE = 4.0
+WORMHOLE_RIFT_MAX_DISTANCE = 9.0
 
 # Salvage constants
 SALVAGE_CHANCE_WARP = 0.66       # 66% chance of salvage from warp destruction
@@ -140,6 +143,7 @@ BUSSARD_RECOVERY_CHANCE = 0.5
 BUSSARD_RECOVERY_MIN_MG = 1
 BUSSARD_RECOVERY_MAX_MG = 5
 NOVA_STAR_DESTRUCTION_CHANCE = 0.40
+NOVA_BLACK_HOLE_SPAWN_CHANCE = 0.01
 STAR_VANISH_FLEET_MENTION_CHANCE = 0.35
 REMOTE_MINER_UNITS_BY_TYPE = {
     'SMALL': 1,
@@ -1592,9 +1596,19 @@ class GameTurn():
         - 'arrived': fleet reached intended target
         - 'deviated': fleet arrived off-target due to deviation
         """
+        start_x = int(fleet.x)
+        start_y = int(fleet.y)
+        target_x = int(target_x)
+        target_y = int(target_y)
+
         if roll_chance(WORMHOLE_DESTRUCTION_CHANCE):
             self._handle_wormhole_destruction(
-                fleet, from_damage=False
+                fleet,
+                from_damage=False,
+                start_x=start_x,
+                start_y=start_y,
+                destination_x=target_x,
+                destination_y=target_y,
             )
             return 'destroyed'
 
@@ -1608,7 +1622,12 @@ class GameTurn():
                 fleet.integrity -= integrity_loss
                 if fleet.integrity <= 0:
                     self._handle_wormhole_destruction(
-                        fleet, from_damage=True
+                        fleet,
+                        from_damage=True,
+                        start_x=start_x,
+                        start_y=start_y,
+                        destination_x=target_x,
+                        destination_y=target_y,
                     )
                     return 'destroyed'
                 self._create_warp_damage_message(
@@ -1985,7 +2004,10 @@ class GameTurn():
         msg.save()
         fleet.delete()
 
-    def _handle_wormhole_destruction(self, fleet, from_damage=False):
+    def _handle_wormhole_destruction(
+        self, fleet, from_damage=False, start_x=None, start_y=None,
+        destination_x=None, destination_y=None,
+    ):
         """Destroy fleet during wormhole transit and send wormhole-specific message."""
         salvage_created = False
         salvage_location = None
@@ -2009,7 +2031,65 @@ class GameTurn():
         msg = factory.new_message()
         msg.year = self.game.year
         msg.save()
+        self._maybe_spawn_wormhole_rift(start_x, start_y, destination_x, destination_y)
         fleet.delete()
+
+    def _maybe_spawn_wormhole_rift(self, start_x, start_y, destination_x, destination_y):
+        """Rarely spawn a rift near wormhole loss start/destination (never on stars)."""
+        if not bool(getattr(self.game, 'anomalies_enabled', False)):
+            return
+        if random.random() >= WORMHOLE_RIFT_SPAWN_CHANCE:
+            return
+
+        try:
+            sx = int(start_x)
+            sy = int(start_y)
+            dx = int(destination_x)
+            dy = int(destination_y)
+        except (TypeError, ValueError):
+            return
+
+        from .models import Anomaly, Star, Fleet, Salvage
+
+        max_x = max(1, int(self.game.map_size_x) - 1)
+        max_y = max(1, int(self.game.map_size_y) - 1)
+        star_positions = set(Star.objects.filter(game=self.game).values_list('x', 'y'))
+        occupied = set(Fleet.objects.filter(game=self.game).values_list('x', 'y'))
+        occupied.update(Salvage.objects.filter(game=self.game).values_list('x', 'y'))
+        occupied.update(Anomaly.objects.filter(game=self.game).values_list('x', 'y'))
+
+        offsets = []
+        max_d = int(WORMHOLE_RIFT_MAX_DISTANCE)
+        for ox in range(-max_d, max_d + 1):
+            for oy in range(-max_d, max_d + 1):
+                dist = ((ox * ox) + (oy * oy)) ** 0.5
+                if WORMHOLE_RIFT_MIN_DISTANCE <= dist <= WORMHOLE_RIFT_MAX_DISTANCE:
+                    offsets.append((ox, oy))
+        random.shuffle(offsets)
+
+        anchors = [(sx, sy), (dx, dy)]
+        if random.random() < 0.5:
+            anchors.reverse()
+
+        for ax, ay in anchors:
+            for ox, oy in offsets:
+                x = int(ax + ox)
+                y = int(ay + oy)
+                if x < 1 or x > max_x or y < 1 or y > max_y:
+                    continue
+                key = (x, y)
+                if key in star_positions or key in occupied:
+                    continue
+                Anomaly.objects.create(
+                    game=self.game,
+                    x=x,
+                    y=y,
+                    anomaly_type=Anomaly.TYPE_RIFT,
+                    name='Rift %s' % (Anomaly.objects.filter(game=self.game).count() + 1),
+                    heading=random.random() * 360.0,
+                    stability=random.randint(30, 91),
+                )
+                return
 
     def _create_salvage_from_fleet(self, fleet):
         """Create salvage from fleet destruction or scuttling.
@@ -2862,6 +2942,7 @@ class GameTurn():
                 destroyed_star_name, destroyed_x, destroyed_y, fleet,
                 former_owner_id=destroyed_owner_id
             )
+            self._maybe_spawn_black_hole_from_nova(destroyed_x, destroyed_y)
         else:
             star.save(update_fields=['defenses', 'colonists', 'mines', 'factories', 'labs', 'shipyards'])
 
@@ -2935,6 +3016,23 @@ class GameTurn():
             order.delete()
             return 'executed'
         return 'blocked'
+
+    def _maybe_spawn_black_hole_from_nova(self, x, y):
+        """Rarely create a black hole at a nova-destroyed star location."""
+        if random.random() >= NOVA_BLACK_HOLE_SPAWN_CHANCE:
+            return
+        from .models import Anomaly
+        if Anomaly.objects.filter(game=self.game, x=x, y=y).exists():
+            return
+        Anomaly.objects.create(
+            game=self.game,
+            x=int(x),
+            y=int(y),
+            anomaly_type=Anomaly.TYPE_BLACK_HOLE,
+            name='Black Hole %s' % (Anomaly.objects.filter(game=self.game).count() + 1),
+            heading=random.random() * 360.0,
+            stability=random.randint(30, 91),
+        )
 
     def _notify_star_vanished(self, star_name, x, y, attacking_fleet, former_owner_id=None):
         """Send ominous notifications when a star disappears."""
