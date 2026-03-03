@@ -1,7 +1,8 @@
 ============= MAIN TODO =============
-2. Anomolies (nebula, asteroid field, ancient debris, comet, wormhole, black hole, rift)
-3. rebalance production costs, tech costs, & fuel consumption
-4. unlockable terraforming
+1. More anomolies (asteroid field, ancient debris, wormhole, black hole)
+2. rebalance production costs, tech costs, & fuel consumption
+3. unlockable terraforming
+4. moving comets?
 5. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
 6. Secret resources
 7. fuel factory
