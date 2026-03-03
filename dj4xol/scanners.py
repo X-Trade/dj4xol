@@ -21,6 +21,8 @@ def get_scanner_sources_for_player(game, player):
     """Return scanner source dicts for a player (fleets + colonies)."""
     if not player:
         return []
+    if getattr(game, 'no_scanners', False):
+        return []
     from .research import get_player_colony_scanner_ranges
 
     sources = []
@@ -74,8 +76,9 @@ def position_in_scanner_range(x, y, sources, range_key='basic'):
 def fleet_visible_to_player(fleet, player, sources=None):
     if not player:
         return False
+    if getattr(fleet.game, 'no_scanners', False):
+        return True
     if fleet.player_id == player.id:
         return True
     sources = sources if sources is not None else get_scanner_sources_for_player(fleet.game, player)
     return position_in_scanner_range(fleet.x, fleet.y, sources, range_key='basic')
-

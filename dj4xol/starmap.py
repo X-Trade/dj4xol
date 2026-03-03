@@ -43,7 +43,7 @@ class StarMap():
         self.stars = game.stars.all()
         self._scanner_sources = get_scanner_sources_for_player(game, player) if player else []
         fleets = list(game.fleets.all())
-        if player:
+        if player and not getattr(game, 'no_scanners', False):
             fleets = [
                 fleet for fleet in fleets
                 if fleet_visible_to_player(fleet, player, sources=self._scanner_sources)
@@ -302,6 +302,8 @@ class StarMap():
         """Return True if current player can see ownership of the star."""
         if not self.player:
             return False
+        if getattr(self.game, 'no_scanners', False):
+            return True
         if star.player == self.player:
             return True
         tier = self.star_report_tiers.get(star.id)

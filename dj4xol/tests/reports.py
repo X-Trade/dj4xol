@@ -1013,3 +1013,92 @@ class ScannerReportTest(TestCase):
             target_id=anomaly.id,
         )
         self.assertEqual(anomaly_report.get_report_data().get('report_tier'), 'encounter')
+
+
+class NoScannerReportTierTest(TestCase):
+    def setUp(self):
+        get_default_race_type()
+        self.user1 = User.objects.create_user('noscan_p1', 'nsp1@test.com', 'pass')
+        self.account1 = Account.objects.create(django_user=self.user1)
+        self.user2 = User.objects.create_user('noscan_p2', 'nsp2@test.com', 'pass')
+        self.account2 = Account.objects.create(django_user=self.user2)
+
+        factory = GameFactory()
+        factory.set_map_size(100, 100)
+        factory.set_owner(self.account1)
+        factory.create_stars(10)
+        self.game = factory.save()
+        self.game.joinable = True
+        self.game.no_scanners = True
+        self.game.save(update_fields=['joinable', 'no_scanners'])
+        self.player1 = factory.join_player(self.account1, get_default_race())
+        self.player2 = factory.join_player(self.account2, get_default_race())
+        self.enemy_star = self.player2.homeworld
+
+    def _visit_enemy_star(self, basic, advanced):
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Visit Fleet',
+            x=self.enemy_star.x,
+            y=self.enemy_star.y,
+            basic_scanner_range=basic,
+            advanced_scanner_range=advanced,
+        )
+        GameTurn(self.game).generate_reports()
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=self.enemy_star.id,
+        )
+        return report.get_report_data()
+
+    def test_visit_without_scanners_only_reports_ownership(self):
+        data = self._visit_enemy_star(basic=0, advanced=0)
+        self.assertEqual(data.get('report_tier'), 'ownership')
+        self.assertNotIn('gravity', data)
+        self.assertIn('player_name', data)
+
+    def test_visit_with_basic_scanners_reports_environment_only(self):
+        data = self._visit_enemy_star(basic=5, advanced=0)
+        self.assertEqual(data.get('report_tier'), 'basic')
+        self.assertIn('gravity', data)
+        self.assertNotIn('ironium_yield', data)
+
+    def test_visit_with_advanced_scanners_reports_resources(self):
+        data = self._visit_enemy_star(basic=5, advanced=10)
+        self.assertEqual(data.get('report_tier'), 'advanced')
+        self.assertIn('ironium_yield', data)
+        self.assertNotIn('mines', data)
+
+    def test_visit_with_high_advanced_scanners_reports_encounter(self):
+        self.enemy_star.mines = 3
+        self.enemy_star.factories = 2
+        self.enemy_star.save(update_fields=['mines', 'factories'])
+        data = self._visit_enemy_star(basic=5, advanced=25)
+        self.assertEqual(data.get('report_tier'), 'encounter')
+        self.assertEqual(data.get('mines'), 3)
+        self.assertEqual(data.get('factories'), 2)
+
+    def test_no_scanners_disables_range_reports(self):
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Scanner',
+            x=10,
+            y=10,
+            basic_scanner_range=20,
+            advanced_scanner_range=20,
+        )
+        self.enemy_star.x = 12
+        self.enemy_star.y = 10
+        self.enemy_star.save(update_fields=['x', 'y'])
+
+        GameTurn(self.game).generate_scanner_reports()
+        self.assertFalse(Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=self.enemy_star.id,
+        ).exists())

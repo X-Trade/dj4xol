@@ -204,6 +204,24 @@ class TestGameDetailRendering(TestCase):
         self.assertContains(response, 'data-panel="detail"')
         self.assertContains(response, 'id="detail"')
 
+    def test_no_scanners_hides_scanner_controls_and_overlay(self):
+        game = default_game(stars=5, fleets=0)
+        game.no_scanners = True
+        game.save(update_fields=['no_scanners'])
+        player = game.players.first()
+        target = player.homeworld
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': target.x, 'y': target.y, 'sel': target.short_id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'starmap-scanners')
+        self.assertNotContains(response, 'scanner-range-overlay')
+
     def test_toggle_production_order_repeat_blocked_when_turned_in(self):
         """Repeat toggle should be blocked when player has turned in."""
         game = default_game(stars=5)

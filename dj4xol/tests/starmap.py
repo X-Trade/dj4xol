@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from ..factory import GameFactory
-from ..models import Account, Report, Anomaly
+from ..models import Account, Report, Anomaly, Fleet
 from ..starmap import StarMap
 from ._util import default_game, get_default_race
 
@@ -151,6 +151,49 @@ class TestStarMap(TestCase):
         }))
         starmap = StarMap(game, player1)
         html = starmap.render_map()
+        idx = html.find(needle)
+        self.assertNotEqual(idx, -1)
+        start = html.rfind('<', 0, idx)
+        end = html.find('>', idx)
+        tag = html[start:end]
+        self.assertIn('mapstar-enemy', tag)
+
+    def test_no_scanners_shows_enemy_fleets_and_star_ownership(self):
+        user1 = User.objects.create_user('noscan_map_1', 'ns1@test.com', 'pass')
+        account1 = Account.objects.create(django_user=user1)
+        user2 = User.objects.create_user('noscan_map_2', 'ns2@test.com', 'pass')
+        account2 = Account.objects.create(django_user=user2)
+
+        factory = GameFactory()
+        factory.set_map_size(100, 100)
+        factory.set_owner(account1)
+        factory.create_stars(12)
+        game = factory.save()
+        game.joinable = True
+        game.no_scanners = True
+        game.save(update_fields=['joinable', 'no_scanners'])
+
+        player1 = factory.join_player(account1, get_default_race())
+        player2 = factory.join_player(account2, get_default_race())
+        enemy_star = player2.homeworld
+        enemy_star.x = 42
+        enemy_star.y = 42
+        enemy_star.save(update_fields=['x', 'y'])
+
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name='Visible Raider',
+            x=45,
+            y=45,
+        )
+
+        starmap = StarMap(game, player1)
+        html = starmap.render_map()
+        self.assertIn('mapfleet-enemy', html)
+        self.assertIn(f'data-object-id="{enemy_fleet.short_id}"', html)
+
+        needle = f'data-object-id="{enemy_star.short_id}"'
         idx = html.find(needle)
         self.assertNotEqual(idx, -1)
         start = html.rfind('<', 0, idx)

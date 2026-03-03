@@ -215,6 +215,11 @@ class NewGameForm(forms.Form):
         required=False,
         help_text="Enable anomalies and anomaly interactions for fleets"
     )
+    no_scanners = forms.BooleanField(
+        label="No Scanners",
+        required=False,
+        help_text="Disable scanner range visibility rules (classic map visibility). Scanner tech still affects visit report quality."
+    )
     max_starting_tech_level = forms.IntegerField(
         label="Max Starting Tech Level",
         min_value=0,
@@ -253,6 +258,7 @@ class NewGameForm(forms.Form):
             'years_per_turn',
             'random_events',
             'anomalies_enabled',
+            'no_scanners',
             'max_starting_tech_level',
             'invitations',
         ])

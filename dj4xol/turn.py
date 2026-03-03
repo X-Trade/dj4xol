@@ -1045,6 +1045,9 @@ class GameTurn():
         """Generate scanner-based reports for stars and fleets within sensor range."""
         from .models import Star, Fleet, Salvage, Anomaly
 
+        if getattr(self.game, 'no_scanners', False):
+            return
+
         for player in self.game.players.all():
             sources = get_scanner_sources_for_player(self.game, player)
             if not sources:
@@ -1113,42 +1116,64 @@ class GameTurn():
         x, y = fleet.x, fleet.y
         player = fleet.player
         year = self.game.year
+        report_tier = self._report_tier_for_visit(fleet)
 
         # Report on all stars at this location
         for star in Star.objects.filter(game=self.game, x=x, y=y):
-            self._create_or_update_report(player, 'star', star, year, report_tier='encounter')
+            self._create_or_update_report(player, 'star', star, year, report_tier=report_tier)
 
         # Report on other players' fleets at this location
         for other_fleet in Fleet.objects.filter(
             game=self.game, x=x, y=y
         ).exclude(player=player):
-            self._create_or_update_report(player, 'fleet', other_fleet, year, report_tier='encounter')
+            self._create_or_update_report(player, 'fleet', other_fleet, year, report_tier=report_tier)
 
         # Report on all salvage at this location
         for salvage in Salvage.objects.filter(game=self.game, x=x, y=y):
-            self._create_or_update_report(player, 'salvage', salvage, year, report_tier='encounter')
+            self._create_or_update_report(player, 'salvage', salvage, year, report_tier=report_tier)
 
         for anomaly in Anomaly.objects.filter(game=self.game, x=x, y=y):
-            self._create_or_update_report(player, 'anomaly', anomaly, year, report_tier='encounter')
+            self._create_or_update_report(player, 'anomaly', anomaly, year, report_tier=report_tier)
 
     def _create_or_update_report(self, player, target_type, obj, year, report_tier='advanced'):
         """Create or update a report for an object."""
         from .models import Report, Fleet
         from .messages import HabitableWorldMessageFactory
 
-        report_data = self._build_report_data(player, obj, target_type, report_tier=report_tier)
-
-        report, created = Report.objects.update_or_create(
+        report = Report.objects.filter(
             player=player,
             target_type=target_type,
             target_id=obj.id,
-            defaults={
-                'game': self.game,
-                'year': year,
-            }
-        )
-        report.set_report_data(report_data)
-        report.save()
+        ).first()
+
+        if report:
+            existing_data = report.get_report_data()
+            existing_tier = existing_data.get('report_tier') or 'advanced'
+            if self._report_tier_rank(existing_tier) > self._report_tier_rank(report_tier):
+                return report
+            report.year = year
+            report.game = self.game
+            report_data = self._build_report_data(
+                player, obj, target_type, report_tier=report_tier
+            )
+            report.set_report_data(report_data)
+            report.save()
+            created = False
+        else:
+            report_data = self._build_report_data(
+                player, obj, target_type, report_tier=report_tier
+            )
+            report = Report.objects.create(
+                player=player,
+                target_type=target_type,
+                target_id=obj.id,
+                game=self.game,
+                year=year,
+                cached_report='{}',
+            )
+            report.set_report_data(report_data)
+            report.save()
+            created = True
 
         if created and target_type == 'star' and calculate_habitability_factor(player, obj) >= 0 and obj.player != player:
             fleet = Fleet.objects.filter(game=self.game, player=player, x=obj.x, y=obj.y).first()
@@ -1165,11 +1190,16 @@ class GameTurn():
                 'name': obj.name,
                 'x': obj.x,
                 'y': obj.y,
+                'report_tier': report_tier,
+            }
+            if report_tier == 'ownership':
+                base['player_name'] = obj.player.name if obj.player else None
+                return base
+            base.update({
                 'gravity': obj.gravity,
                 'temperature': obj.temperature,
                 'radiation': obj.radiation,
-                'report_tier': report_tier,
-            }
+            })
             if report_tier == 'basic':
                 return base
             base.update({
@@ -1209,6 +1239,9 @@ class GameTurn():
                 'y': obj.y,
                 'report_tier': report_tier,
             }
+            if report_tier == 'ownership':
+                data['player_name'] = obj.player.name if obj.player else None
+                return data
             if report_tier == 'basic':
                 return data
             data.update({
@@ -1241,6 +1274,13 @@ class GameTurn():
                 })
             return data
         elif target_type == 'salvage':
+            if report_tier in ('ownership', 'basic'):
+                return {
+                    'name': obj.name,
+                    'x': obj.x,
+                    'y': obj.y,
+                    'report_tier': report_tier,
+                }
             return {
                 'name': obj.name,
                 'x': obj.x,
@@ -1252,6 +1292,13 @@ class GameTurn():
                 'report_tier': report_tier,
             }
         elif target_type == 'anomaly':
+            if report_tier in ('ownership', 'basic'):
+                return {
+                    'name': obj.name,
+                    'x': obj.x,
+                    'y': obj.y,
+                    'report_tier': report_tier,
+                }
             return {
                 'name': obj.name,
                 'x': obj.x,
@@ -1266,6 +1313,36 @@ class GameTurn():
                 'report_tier': report_tier,
             }
         return {}
+
+    def _report_tier_for_visit(self, fleet):
+        """Return report tier for a fleet visit based on scanner settings."""
+        if not getattr(self.game, 'no_scanners', False):
+            return 'encounter'
+        try:
+            basic = int(getattr(fleet, 'basic_scanner_range', 0) or 0)
+        except (TypeError, ValueError):
+            basic = 0
+        try:
+            advanced = int(getattr(fleet, 'advanced_scanner_range', 0) or 0)
+        except (TypeError, ValueError):
+            advanced = 0
+        if advanced > 20:
+            return 'encounter'
+        if advanced > 0:
+            return 'advanced'
+        if basic > 0:
+            return 'basic'
+        return 'ownership'
+
+    def _report_tier_rank(self, tier):
+        """Higher numbers mean more detailed reports."""
+        order = {
+            'ownership': 0,
+            'basic': 1,
+            'advanced': 2,
+            'encounter': 3,
+        }
+        return order.get(str(tier or '').lower(), 2)
 
     def check_quorum(self):
         """Check if all players have turned in. Returns True if quorum met."""
@@ -1503,6 +1580,7 @@ class GameTurn():
         winner = self._choose_combat_winner(players, strength_by_player)
         damage_taken = self._calculate_combat_damage(strength_by_player)
         results = self._apply_combat_damage(fleets_by_player, damage_taken)
+        self._create_combat_encounter_reports(x, y)
 
         star = Star.objects.filter(game=self.game, x=x, y=y).first()
         location = star if star else (x, y)
@@ -1537,6 +1615,21 @@ class GameTurn():
             msg = factory.new_message()
             msg.year = self.game.year
             msg.save()
+
+    def _create_combat_encounter_reports(self, x, y):
+        """Ensure surviving fleets get encounter reports on opposing fleets."""
+        from .models import Fleet
+
+        surviving = list(Fleet.objects.filter(game=self.game, x=x, y=y))
+        if len(surviving) < 2:
+            return
+        for fleet in surviving:
+            for other in surviving:
+                if other.player_id == fleet.player_id:
+                    continue
+                self._create_or_update_report(
+                    fleet.player, 'fleet', other, self.game.year, report_tier='encounter'
+                )
 
     def _choose_combat_winner(self, players, strength_by_player):
         """Choose a winner weighted by strength."""
@@ -2664,6 +2757,7 @@ class GameTurn():
     def _handle_invasion(self, fleet, star, invader_colonists_kt):
         """Resolve invasion when colonists are transferred to an enemy colony."""
         from .messages import InvasionReportMessageFactory
+        from .models import Fleet
 
         if invader_colonists_kt <= 0:
             return
@@ -2765,6 +2859,16 @@ class GameTurn():
             ).new_message()
             defender_msg.year = self.game.year
             defender_msg.save()
+
+        # Surviving invasion fleets grant encounter-grade reports to both sides.
+        if Fleet.objects.filter(id=fleet.id).exists():
+            self._create_or_update_report(
+                attacker, 'star', star, self.game.year, report_tier='encounter'
+            )
+            if defender:
+                self._create_or_update_report(
+                    defender, 'fleet', fleet, self.game.year, report_tier='encounter'
+                )
 
     def resolve_orbital_defense_hazards(self):
         """Resolve occasional defensive fire against hostile fleets in orbit.
