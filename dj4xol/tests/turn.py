@@ -1026,6 +1026,57 @@ class TestAnomalyInteractions(TestCase):
             message__icontains='400 bonus RP',
         ).exists())
 
+    def test_black_hole_full_damage_destroys_immediately_without_salvage(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Critical Scout',
+            x=35,
+            y=35,
+            integrity=100,
+        )
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=35,
+            y=35,
+            name='Singularity',
+            anomaly_type=Anomaly.TYPE_BLACK_HOLE,
+            stability=100,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.randint', side_effect=[5, 100]):
+            turn.anomaly_interactions()
+
+        self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
+        self.assertFalse(Salvage.objects.filter(game=game, x=35, y=35).exists())
+        msgs = list(GameMessage.objects.filter(game=game, player=player, category='RANDOM'))
+        self.assertEqual(len(msgs), 1)
+        self.assertIn('destroyed by the black hole', msgs[0].message.lower())
+        self.assertIn('sel=%s' % anomaly.short_id, msgs[0].message)
+        self.assertNotIn('(35, 35)', msgs[0].message)
+
+    def test_format_location_prefers_anomaly_link_over_star(self):
+        from ..messages import format_location
+
+        game = default_game()
+        player = game.players.first()
+        star = game.stars.first()
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=star.x,
+            y=star.y,
+            name='Overlay Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+        )
+        location = format_location(x=star.x, y=star.y, link=True, game=game)
+        self.assertIn('sel=%s' % anomaly.short_id, location)
+        self.assertNotIn('sel=%s' % star.short_id, location)
+
     def test_wormhole_interaction_transports_and_reports_both_ends(self):
         from ..models import Report
 
