@@ -1120,12 +1120,99 @@ class TestAnomalyInteractions(TestCase):
         a.wormhole_pair = b
         a.save(update_fields=['wormhole_pair'])
 
-        with patch('dj4xol.turn.random.random', return_value=0.0), \
+        with patch('dj4xol.turn.random.random', side_effect=[1.0, 0.0]), \
              patch('dj4xol.turn.random.randint', return_value=25), \
              patch('dj4xol.turn.random.shuffle', lambda vals: None):
             GameTurn(game).anomaly_interactions()
         fleet.refresh_from_db()
         self.assertEqual(fleet.integrity, 75)
+
+    def test_wormhole_below_30_stability_can_instantly_destroy(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Risky Transit',
+            x=12,
+            y=12,
+            integrity=100,
+        )
+        a = Anomaly.objects.create(
+            game=game,
+            x=12,
+            y=12,
+            name='WH-3',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=0,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=32,
+            y=32,
+            name='WH-3',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=0,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+
+        with patch('dj4xol.turn.random.random', return_value=0.0):
+            GameTurn(game).anomaly_interactions()
+
+        self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
+        self.assertTrue(GameMessage.objects.filter(
+            game=game,
+            player=player,
+            category='RANDOM',
+            message__icontains='catastrophic wormhole transit',
+        ).exists())
+
+    def test_wormhole_at_30_stability_has_no_instant_destruction_roll(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Safer Transit',
+            x=13,
+            y=13,
+            integrity=100,
+        )
+        a = Anomaly.objects.create(
+            game=game,
+            x=13,
+            y=13,
+            name='WH-4',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=30,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=33,
+            y=33,
+            name='WH-4',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=30,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+
+        with patch('dj4xol.turn.random.random', return_value=1.0), \
+             patch('dj4xol.turn.random.shuffle', lambda vals: None):
+            GameTurn(game).anomaly_interactions()
+
+        self.assertTrue(Fleet.objects.filter(id=fleet.id).exists())
 
     def test_wormhole_endpoint_extinction_transforms_pair_or_deletes(self):
         game = default_game()

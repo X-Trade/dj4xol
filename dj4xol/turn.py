@@ -172,6 +172,7 @@ WORMHOLE_DAMAGE_MAX = 85
 WORMHOLE_EXIT_MIN_DISTANCE = 4.0
 WORMHOLE_EXIT_MAX_DISTANCE = 8.0
 WORMHOLE_WANDER_MAX_LY_PER_YEAR = 12.0
+WORMHOLE_INSTANT_DESTRUCTION_MAX_CHANCE = 0.35
 
 
 # Chance calculation functions (separated for testability)
@@ -907,6 +908,22 @@ class GameTurn():
         if pair.id == endpoint.id:
             return
         pair = Anomaly.objects.get(id=pair.id)
+
+        stability = self._anomaly_stability(endpoint)
+        if stability < 30:
+            destruction_chance = (
+                (30.0 - float(stability)) / 30.0
+            ) * float(WORMHOLE_INSTANT_DESTRUCTION_MAX_CHANCE)
+            if random.random() < destruction_chance:
+                fleet_name = fleet.name
+                player = fleet.player
+                fleet.delete()
+                text = (
+                    "%s was destroyed in catastrophic wormhole transit at %s (%s, %s)."
+                    % (fleet_name, endpoint.name, endpoint.x, endpoint.y)
+                )
+                self._create_anomaly_message(player, text, priority=True)
+                return
 
         instability = self._anomaly_instability_ratio(endpoint)
         damage_chance = max(0.0, min(1.0, instability))
