@@ -887,6 +887,7 @@ class ResearchCategory(models.Model):
     code = models.CharField(max_length=16, unique=True)
     name = models.CharField(max_length=32)
     description = models.TextField(blank=True, default='')
+    metadata_json = models.TextField(default='{}')
     display_order = models.IntegerField(default=0)
     enabled = models.BooleanField(default=True)
 
@@ -1043,6 +1044,9 @@ class PlayerResearch(models.Model):
     current_level = models.FloatField(default=0.0)
     stored_rp = models.FloatField(default=0.0)
     allocation_percent = models.FloatField(default=25.0)
+    ironium_paid = models.IntegerField(default=0)
+    boranium_paid = models.IntegerField(default=0)
+    germanium_paid = models.IntegerField(default=0)
 
     class Meta:
         unique_together = [['player', 'category']]

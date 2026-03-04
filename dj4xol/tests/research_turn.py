@@ -1,6 +1,13 @@
 from django.test import TestCase
 
-from ..models import Fleet, FleetOrders, ProductionOrder, ResearchCategory, Technology
+from ..models import (
+    Fleet,
+    FleetOrders,
+    ProductionOrder,
+    ResearchCategory,
+    ResearchLevelRequirement,
+    Technology,
+)
 from ..research import (
     build_research_budget,
     ensure_player_research_rows,
@@ -84,6 +91,123 @@ class ResearchTurnTest(TestCase):
         row.refresh_from_db()
         self.assertGreaterEqual(row.current_level, 1.0)
         self.assertGreaterEqual(int(row.stored_rp), 0)
+
+    def test_research_mineral_progress_persists(self):
+        self._reset_research_catalog()
+        category = ResearchCategory.objects.create(
+            code='RT_MINERAL', name='Minerals', enabled=True
+        )
+        Technology.objects.create(
+            category=category,
+            level=1,
+            name='Mineral Tech',
+            tech_type='OTHER',
+            params_json='{}',
+        )
+        ResearchLevelRequirement.objects.create(
+            category=category,
+            level=1,
+            rp_cost=0,
+            ironium_cost=100,
+            boranium_cost=0,
+            germanium_cost=0,
+        )
+
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.labs = 10
+        self.star.colonists = 10000
+        self.star.ironium_inventory = 50
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.save()
+
+        rows = ensure_player_research_rows(self.player)
+        row = next(item for item in rows if item.category_id == category.id)
+        for item in rows:
+            item.allocation_percent = 100.0 if item.id == row.id else 0.0
+            item.save(update_fields=['allocation_percent'])
+
+        GameTurn(self.game).research()
+        row.refresh_from_db()
+        self.assertEqual(row.current_level, 0.0)
+        self.assertEqual(row.ironium_paid, 50)
+
+        self.star.ironium_inventory = 0
+        self.star.save(update_fields=['ironium_inventory'])
+        GameTurn(self.game).research()
+        row.refresh_from_db()
+        self.assertEqual(row.ironium_paid, 50)
+
+        self.star.ironium_inventory = 50
+        self.star.save(update_fields=['ironium_inventory'])
+        GameTurn(self.game).research()
+        row.refresh_from_db()
+        self.assertGreaterEqual(row.current_level, 1.0)
+        self.assertEqual(row.ironium_paid, 0)
+
+    def test_research_minerals_allocate_by_allocation_percent(self):
+        self._reset_research_catalog()
+        alpha = ResearchCategory.objects.create(
+            code='RT_ALPHA', name='Alpha', enabled=True, display_order=10
+        )
+        beta = ResearchCategory.objects.create(
+            code='RT_BETA', name='Beta', enabled=True, display_order=20
+        )
+        Technology.objects.create(
+            category=alpha,
+            level=1,
+            name='Alpha Tech',
+            tech_type='OTHER',
+            params_json='{}',
+        )
+        Technology.objects.create(
+            category=beta,
+            level=1,
+            name='Beta Tech',
+            tech_type='OTHER',
+            params_json='{}',
+        )
+        for category in (alpha, beta):
+            ResearchLevelRequirement.objects.create(
+                category=category,
+                level=1,
+                rp_cost=0,
+                ironium_cost=100,
+                boranium_cost=0,
+                germanium_cost=0,
+            )
+
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.labs = 10
+        self.star.colonists = 10000
+        self.star.ironium_inventory = 50
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.save()
+
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            if row.category_id == alpha.id:
+                row.allocation_percent = 75.0
+            elif row.category_id == beta.id:
+                row.allocation_percent = 25.0
+            else:
+                row.allocation_percent = 0.0
+            row.save(update_fields=['allocation_percent'])
+
+        GameTurn(self.game).research()
+
+        alpha_row = self.player.research_progress.get(category=alpha)
+        beta_row = self.player.research_progress.get(category=beta)
+        self.assertEqual(alpha_row.ironium_paid + beta_row.ironium_paid, 50)
+        self.assertEqual(alpha_row.ironium_paid, 38)
+        self.assertEqual(beta_row.ironium_paid, 12)
 
     def test_research_budget_can_include_unused_buildpoints(self):
         self.player.convert_unused_buildpoints_to_research = True

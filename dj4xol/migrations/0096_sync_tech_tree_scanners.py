@@ -24,6 +24,7 @@ def _load_defaults_rows():
 def sync_tech_tree_scanners(apps, schema_editor):
     ResearchCategory = apps.get_model('dj4xol', 'ResearchCategory')
     Technology = apps.get_model('dj4xol', 'Technology')
+    category_fields = {field.name for field in ResearchCategory._meta.fields}
 
     rows = _load_defaults_rows()
 
@@ -31,6 +32,11 @@ def sync_tech_tree_scanners(apps, schema_editor):
         if row.get('model') != 'dj4xol.ResearchCategory':
             continue
         fields = dict(row.get('fields') or {})
+        fields = {
+            key: value
+            for key, value in fields.items()
+            if key in category_fields
+        }
         pk = row.get('pk')
         if pk is None:
             continue

@@ -231,6 +231,151 @@ def _eligible_research_stars(player):
     )
 
 
+def _allocate_weighted_integer(total_amount, weights):
+    """Allocate integer amounts by weights, preserving total."""
+    if not weights:
+        return []
+    cleaned = [max(0.0, float(weight or 0.0)) for weight in weights]
+    total_weight = sum(cleaned)
+    if total_weight <= 0 or total_amount <= 0:
+        return [0 for _ in cleaned]
+    raw = [(float(total_amount) * weight) / total_weight for weight in cleaned]
+    floors = [int(value) for value in raw]
+    remainder = int(total_amount) - sum(floors)
+    ranked = sorted(
+        range(len(raw)),
+        key=lambda idx: (raw[idx] - floors[idx]),
+        reverse=True,
+    )
+    for idx in ranked:
+        if remainder <= 0:
+            break
+        floors[idx] += 1
+        remainder -= 1
+    return floors
+
+
+def _consume_resource_partial(stars, inventory_field, amount):
+    """Consume up to amount of a mineral from eligible stars."""
+    remaining = int(amount or 0)
+    if remaining <= 0:
+        return 0
+    consumed = 0
+    for star in stars:
+        available = int(getattr(star, inventory_field, 0) or 0)
+        if available <= 0:
+            continue
+        take = min(available, remaining)
+        if take <= 0:
+            continue
+        setattr(star, inventory_field, available - take)
+        star.save(update_fields=[inventory_field])
+        consumed += take
+        remaining -= take
+        if remaining <= 0:
+            break
+    return consumed
+
+
+def _clamp_paid_to_requirement(paid, requirement):
+    """Clamp paid minerals to the current requirement."""
+    paid = {
+        'ironium_paid': int(paid.get('ironium_paid', 0) or 0),
+        'boranium_paid': int(paid.get('boranium_paid', 0) or 0),
+        'germanium_paid': int(paid.get('germanium_paid', 0) or 0),
+    }
+    paid['ironium_paid'] = min(paid['ironium_paid'], int(requirement.get('ironium_cost', 0)))
+    paid['boranium_paid'] = min(paid['boranium_paid'], int(requirement.get('boranium_cost', 0)))
+    paid['germanium_paid'] = min(paid['germanium_paid'], int(requirement.get('germanium_cost', 0)))
+    return paid
+
+
+def _allocate_mineral_progress(rows, eligible_stars, max_level_by_category):
+    """Allocate available minerals across categories by allocation percentage."""
+    if not rows or not eligible_stars:
+        return
+
+    requirements = {}
+    for row in rows:
+        max_level = max_level_by_category.get(row.category_id, int(row.current_level))
+        if int(row.current_level) >= int(max_level):
+            continue
+        next_level = int(row.current_level) + 1
+        requirement = get_level_requirement(row.category_id, next_level)
+        paid = _clamp_paid_to_requirement({
+            'ironium_paid': getattr(row, 'ironium_paid', 0),
+            'boranium_paid': getattr(row, 'boranium_paid', 0),
+            'germanium_paid': getattr(row, 'germanium_paid', 0),
+        }, requirement)
+        row.ironium_paid = paid['ironium_paid']
+        row.boranium_paid = paid['boranium_paid']
+        row.germanium_paid = paid['germanium_paid']
+        requirements[row.id] = requirement
+
+    resource_specs = (
+        ('ironium_cost', 'ironium_paid', 'ironium_inventory'),
+        ('boranium_cost', 'boranium_paid', 'boranium_inventory'),
+        ('germanium_cost', 'germanium_paid', 'germanium_inventory'),
+    )
+
+    for cost_key, paid_attr, inventory_field in resource_specs:
+        available = sum(int(getattr(star, inventory_field, 0) or 0) for star in eligible_stars)
+        if available <= 0:
+            continue
+        candidates = []
+        total_needed = 0
+        for row in rows:
+            requirement = requirements.get(row.id)
+            if not requirement:
+                continue
+            cost = int(requirement.get(cost_key, 0))
+            if cost <= 0:
+                continue
+            paid = int(getattr(row, paid_attr, 0) or 0)
+            remaining = max(0, cost - paid)
+            if remaining <= 0:
+                continue
+            candidates.append((row, remaining))
+            total_needed += remaining
+
+        if not candidates or total_needed <= 0:
+            continue
+
+        if available >= total_needed:
+            for row, remaining in candidates:
+                consumed = _consume_resource_partial(eligible_stars, inventory_field, remaining)
+                if consumed > 0:
+                    setattr(row, paid_attr, int(getattr(row, paid_attr, 0) or 0) + consumed)
+            continue
+
+        remaining_available = int(available)
+        pending = list(candidates)
+        while remaining_available > 0 and pending:
+            weights = [row.allocation_percent for row, _ in pending]
+            total_weight = sum(max(0.0, float(w or 0.0)) for w in weights)
+            if total_weight <= 0:
+                break
+            allocations = _allocate_weighted_integer(remaining_available, weights)
+            next_pending = []
+            progress = False
+            for (row, remaining_need), allocation in zip(pending, allocations):
+                if allocation <= 0:
+                    if remaining_need > 0:
+                        next_pending.append((row, remaining_need))
+                    continue
+                take = min(allocation, remaining_need)
+                consumed = _consume_resource_partial(eligible_stars, inventory_field, take)
+                if consumed > 0:
+                    setattr(row, paid_attr, int(getattr(row, paid_attr, 0) or 0) + consumed)
+                    remaining_available -= consumed
+                    remaining_need -= consumed
+                    progress = True
+                if remaining_need > 0:
+                    next_pending.append((row, remaining_need))
+            if not progress:
+                break
+            pending = next_pending
+
 def _can_pay_requirement(stars, requirement):
     """Check if eligible stars have enough minerals for this requirement."""
     needed_iron = int(requirement.get('ironium_cost', 0))
@@ -339,25 +484,68 @@ def get_starting_tech_balance_cost(level, rp_per_point=10.0):
     )
 
 
-def _advance_research_row_with_requirements(row, added_rp, max_level, eligible_stars):
+def _advance_research_row_with_requirements(
+    row,
+    added_rp,
+    max_level,
+    eligible_stars,
+    allow_mineral_payment=True,
+):
     """Apply RP and advance one research row, consuming required minerals."""
     old_level = float(row.current_level or 0.0)
     level = old_level
     stored_rp = int(row.stored_rp) + int(added_rp or 0)
+    ironium_paid = int(getattr(row, 'ironium_paid', 0) or 0)
+    boranium_paid = int(getattr(row, 'boranium_paid', 0) or 0)
+    germanium_paid = int(getattr(row, 'germanium_paid', 0) or 0)
     while int(level) < int(max_level):
         next_level = int(level) + 1
         requirement = get_level_requirement(row.category_id, next_level)
         rp_cost = int(requirement['rp_cost'])
+        paid = _clamp_paid_to_requirement({
+            'ironium_paid': ironium_paid,
+            'boranium_paid': boranium_paid,
+            'germanium_paid': germanium_paid,
+        }, requirement)
+        ironium_paid = paid['ironium_paid']
+        boranium_paid = paid['boranium_paid']
+        germanium_paid = paid['germanium_paid']
+
+        if allow_mineral_payment:
+            iron_needed = max(0, int(requirement.get('ironium_cost', 0)) - ironium_paid)
+            bor_needed = max(0, int(requirement.get('boranium_cost', 0)) - boranium_paid)
+            germ_needed = max(0, int(requirement.get('germanium_cost', 0)) - germanium_paid)
+            if iron_needed > 0:
+                ironium_paid += _consume_resource_partial(
+                    eligible_stars, 'ironium_inventory', iron_needed
+                )
+            if bor_needed > 0:
+                boranium_paid += _consume_resource_partial(
+                    eligible_stars, 'boranium_inventory', bor_needed
+                )
+            if germ_needed > 0:
+                germanium_paid += _consume_resource_partial(
+                    eligible_stars, 'germanium_inventory', germ_needed
+                )
+
+        if ironium_paid < int(requirement.get('ironium_cost', 0)):
+            break
+        if boranium_paid < int(requirement.get('boranium_cost', 0)):
+            break
+        if germanium_paid < int(requirement.get('germanium_cost', 0)):
+            break
         if stored_rp < rp_cost:
-            break
-        if not _can_pay_requirement(eligible_stars, requirement):
-            break
-        if not _consume_requirement(eligible_stars, requirement):
             break
         stored_rp -= rp_cost
         level += 1.0
+        ironium_paid = 0
+        boranium_paid = 0
+        germanium_paid = 0
     row.current_level = level
     row.stored_rp = stored_rp
+    row.ironium_paid = ironium_paid
+    row.boranium_paid = boranium_paid
+    row.germanium_paid = germanium_paid
     return old_level, level
 
 
@@ -781,6 +969,8 @@ def process_player_research_for_year(player):
         [row.category_id for row in rows]
     )
 
+    _allocate_mineral_progress(rows, eligible_stars, max_level_by_category)
+
     unlocks = []
     for idx, row in enumerate(rows):
         max_level = max_level_by_category.get(row.category_id, int(row.current_level))
@@ -789,6 +979,7 @@ def process_player_research_for_year(player):
             added_rp=allocations[idx],
             max_level=max_level,
             eligible_stars=eligible_stars,
+            allow_mineral_payment=False,
         )
         if int(new_level) > int(old_level):
             unlocks.append({
@@ -798,7 +989,13 @@ def process_player_research_for_year(player):
             })
 
     for row in rows:
-        row.save(update_fields=['stored_rp', 'current_level'])
+        row.save(update_fields=[
+            'stored_rp',
+            'current_level',
+            'ironium_paid',
+            'boranium_paid',
+            'germanium_paid',
+        ])
     if budget.get('leftover_bonus_rp', 0) > 0 and player.spend_leftover_points_on_research:
         player.leftover_points = 0.0
         player.save(update_fields=['leftover_points'])
@@ -829,7 +1026,13 @@ def apply_research_bonus_rp(player, category_id, bonus_rp):
         max_level=max_level,
         eligible_stars=eligible_stars,
     )
-    row.save(update_fields=['stored_rp', 'current_level'])
+    row.save(update_fields=[
+        'stored_rp',
+        'current_level',
+        'ironium_paid',
+        'boranium_paid',
+        'germanium_paid',
+    ])
     return {
         'category': row.category,
         'old_level': int(old_level),
@@ -905,11 +1108,10 @@ def build_research_screen_data(player, selected_category_id=None):
             next_level_rp_current = 0
 
         if not selected_is_maxed and next_level_req:
-            eligible_stars = _eligible_research_stars(player)
-            available_by_resource = {
-                'ironium_cost': sum(star.ironium_inventory for star in eligible_stars),
-                'boranium_cost': sum(star.boranium_inventory for star in eligible_stars),
-                'germanium_cost': sum(star.germanium_inventory for star in eligible_stars),
+            paid_by_resource = {
+                'ironium_cost': int(getattr(selected_research, 'ironium_paid', 0) or 0),
+                'boranium_cost': int(getattr(selected_research, 'boranium_paid', 0) or 0),
+                'germanium_cost': int(getattr(selected_research, 'germanium_paid', 0) or 0),
             }
             for key, label in (
                 ('ironium_cost', 'Ironium'),
@@ -919,7 +1121,7 @@ def build_research_screen_data(player, selected_category_id=None):
                 cost = int(next_level_req.get(key, 0))
                 if cost <= 0:
                     continue
-                current = int(min(max(0, available_by_resource.get(key, 0)), cost))
+                current = int(min(max(0, paid_by_resource.get(key, 0)), cost))
                 next_level_resource_rows.append({
                     'label': label,
                     'current': current,
