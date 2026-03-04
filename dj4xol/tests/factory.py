@@ -46,6 +46,30 @@ class testGameFactory(TestCase):
             self.assertTrue(0 <= star.x <= 200)
             self.assertTrue(0 <= star.y <= 200)
 
+    def test_stars_do_not_stack_without_systems(self):
+        modes = [
+            {'clusters': False, 'spiral_arms': False},
+            {'clusters': True, 'spiral_arms': False},
+            {'clusters': False, 'spiral_arms': True},
+        ]
+        for mode in modes:
+            gf = GameFactory()
+            gf.set_map_size(120, 120)
+            gf.game.anomalies_enabled = False
+            gf.create_stars(250, systems=False, **mode)
+            coords = [(s.x, s.y) for s in gf.stars]
+            self.assertTrue(len(coords) > 0)
+            self.assertEqual(len(coords), len(set(coords)))
+
+    def test_systems_allow_stacked_stars(self):
+        gf = GameFactory()
+        gf.set_map_size(120, 120)
+        gf.game.anomalies_enabled = False
+        gf.create_stars(200, systems=True)
+        coords = [(s.x, s.y) for s in gf.stars]
+        self.assertTrue(len(coords) > 0)
+        self.assertLess(len(set(coords)), len(coords))
+
     def test_saved_game_with_players(self):
         gf = GameFactory()
         gf.set_map_size(150, 150)

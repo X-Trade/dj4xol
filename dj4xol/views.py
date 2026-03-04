@@ -16,8 +16,8 @@ from dj4xol.objectdetails import DetailBuilder
 
 from .models import (
     Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
-    FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology, HullDesign, HullDesignSlot,
-    random_anomaly_stability_init,
+    FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology,
+    ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
 )
 from .email_rollups import send_message_rollup_for_account
 from .decorators import registration_required, player_only_view
@@ -1622,6 +1622,12 @@ def help_technology(request):
             'name',
         )
     )
+    prereq_map = {}
+    for prereq in ResearchLevelPrerequisite.objects.select_related(
+        'category', 'requires_category'
+    ):
+        key = (prereq.category_id, prereq.level)
+        prereq_map.setdefault(key, []).append(prereq)
     for tech in tech_rows:
         params = _safe_tech_params(tech)
         tech.thumbnail_path = get_technology_thumbnail_path(tech)
@@ -1634,6 +1640,13 @@ def help_technology(request):
             }
             for key, value in params.items()
             if _should_show_tech_param(key, value)
+        ]
+        tech.prerequisites = [
+            {
+                'category': prereq.requires_category,
+                'min_level': prereq.min_level,
+            }
+            for prereq in prereq_map.get((tech.category_id, tech.level), [])
         ]
 
     return render(request, 'dj4xol/help_technology.html', {

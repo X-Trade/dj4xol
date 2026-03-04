@@ -365,7 +365,7 @@
   pk: "00000000-0000-0000-0000-000000000102"
   fields:
     short_id: "tech00000102"
-    category: 4
+    category: 2
     level: 2
     name: 'Adaptive Navigation Computers'
     description: 'Advanced guidance packages support tighter warp tolerances.'
@@ -391,7 +391,7 @@
   pk: "00000000-0000-0000-0000-000000000104"
   fields:
     short_id: "tech00000104"
-    category: 4
+    category: 1
     level: 5
     name: 'Phase-Coupled Warp Frames'
     description: 'Experimental frame coupling pushes safe warp limits further.'
@@ -430,7 +430,7 @@
   pk: "00000000-0000-0000-0000-000000000107"
   fields:
     short_id: "tech00000107"
-    category: 4
+    category: 1
     level: 9
     name: 'Inertial Shear Dampers'
     description: 'Reinforced dampers keep hull stress within tolerances at extreme cruise warp.'
@@ -694,7 +694,7 @@
     level: 6
     name: 'Targeting Computer'
     description: 'Advanced fire-control logic optimizes fleet-wide target assignment.'
-    tech_type: 'TORPEDO'
+    tech_type: 'ELECTRICAL'
     params_json: '{"offense_level": 1.60}'
     display_order: 105
     enabled: True
@@ -833,7 +833,7 @@
   pk: "00000000-0000-0000-0000-000000000303"
   fields:
     short_id: "tech00000303"
-    category: 4
+    category: 3
     level: 2
     name: 'Deflector Shield'
     description: 'Deflection harmonics reduce incoming weapon penetration.'
@@ -846,11 +846,11 @@
   pk: "00000000-0000-0000-0000-000000000304"
   fields:
     short_id: "tech00000304"
-    category: 4
+    category: 5
     level: 3
     name: 'Maneuvering Jets'
     description: 'Fine-control thrusters improve evasive survivability under fire.'
-    tech_type: 'SHIELD'
+    tech_type: 'MECHANICAL'
     params_json: '{"defense_level": 0.4, "offense_level": 0.1}'
     display_order: 135
     enabled: True
@@ -898,7 +898,7 @@
   pk: "00000000-0000-0000-0000-000000000308"
   fields:
     short_id: "tech00000308"
-    category: 4
+    category: 3
     level: 6
     name: 'Phased Shield Array'
     description: 'Phased shield synchronization broadens defensive coverage.'
@@ -915,8 +915,8 @@
     level: 7
     name: 'Tractor Beam'
     description: 'Field projection can disrupt attacker approach vectors.'
-    tech_type: 'SHIELD'
-    params_json: '{"defense_level": 1.10, "offense_level": 0.20}'
+    tech_type: 'ELECTRICAL'
+    params_json: '{"defense_level": 1.10, "offense_level": 1.70}'
     display_order: 160
     enabled: True
 
@@ -1068,7 +1068,7 @@
   fields:
     short_id: "tech00000406"
     category: 5
-    level: 16
+    level: 17
     name: 'Trans-Spatial Defense Matrix'
     description: 'Colony defense matrix derived from trans-spatial shielding.'
     tech_type: 'INFRASTRUCTURE'
@@ -1236,7 +1236,7 @@
   pk: "00000000-0000-0000-0000-000000000604"
   fields:
     short_id: "tech00000604"
-    category: 4
+    category: 2
     level: 10
     name: 'Smart Bombs'
     description: 'Guided bombardment payloads focused on defenses and population centers.'
@@ -1288,7 +1288,7 @@
   pk: "00000000-0000-0000-0000-000000000702"
   fields:
     short_id: "tech00000702"
-    category: 4
+    category: 2
     level: 5
     name: 'Scanner Array III'
     description: 'Expanded sensor baselines improve long-range coverage.'
@@ -1314,7 +1314,7 @@
   pk: "00000000-0000-0000-0000-000000000704"
   fields:
     short_id: "tech00000704"
-    category: 4
+    category: 2
     level: 8
     name: 'Scanner Array V'
     description: 'Distributed arrays produce wide-area coverage and improved fidelity.'
@@ -1483,7 +1483,7 @@
   pk: "00000000-0000-0000-0000-000000000723"
   fields:
     short_id: "tech00000723"
-    category: 4
+    category: 2
     level: 6
     name: 'Colony Scanner Array IV'
     description: 'Multi-band sensors enable early advanced detection.'
@@ -1522,7 +1522,7 @@
   pk: "00000000-0000-0000-0000-000000000726"
   fields:
     short_id: "tech00000726"
-    category: 4
+    category: 2
     level: 10
     name: 'Colony Scanner Array VII'
     description: 'Quantum resonance improves advanced colony scanning.'

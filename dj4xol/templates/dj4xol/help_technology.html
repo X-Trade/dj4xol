@@ -121,6 +121,16 @@
                                     {% endfor %}
                                 </table>
                                 {% endif %}
+                                {% if tech.prerequisites %}
+                                <table class="tech-params">
+                                    {% for prereq in tech.prerequisites %}
+                                    <tr>
+                                        <td>Requires {{ prereq.category.name }}</td>
+                                        <td>L{{ prereq.min_level }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </table>
+                                {% endif %}
                             </div>
                         </div>
                         {% endfor %}

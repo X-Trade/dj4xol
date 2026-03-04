@@ -4,6 +4,7 @@ from ..models import (
     ProductionOrder,
     ResearchCategory,
     ResearchLevelRequirement,
+    ResearchLevelPrerequisite,
     Technology,
 )
 from ..research import copy_default_requirements_to_category, ensure_player_research_rows
@@ -140,3 +141,67 @@ class ResearchRequirementsTest(TestCase):
         self.star.refresh_from_db()
         self.assertGreaterEqual(row.current_level, 1.0)
         self.assertLessEqual(self.star.ironium_inventory, 20)
+
+    def test_research_level_blocked_by_prerequisites(self):
+        primary, _ = ResearchCategory.objects.get_or_create(
+            code='REQ_GATED_A',
+            defaults={'name': 'Req Gated A', 'enabled': True}
+        )
+        secondary, _ = ResearchCategory.objects.get_or_create(
+            code='REQ_GATED_B',
+            defaults={'name': 'Req Gated B', 'enabled': True}
+        )
+        Technology.objects.create(
+            category=primary,
+            level=1,
+            name='Gate Test Tech',
+            tech_type='PROPULSION',
+            params_json='{\"max_warp_speed\": 3}',
+            enabled=True,
+        )
+        copy_default_requirements_to_category(primary)
+        copy_default_requirements_to_category(secondary)
+        requirement = ResearchLevelRequirement.objects.get(
+            category=primary,
+            level=1,
+        )
+        requirement.rp_cost = 10
+        requirement.ironium_cost = 0
+        requirement.boranium_cost = 0
+        requirement.germanium_cost = 0
+        requirement.save()
+
+        ResearchLevelPrerequisite.objects.create(
+            category=primary,
+            level=1,
+            requires_category=secondary,
+            min_level=1,
+        )
+
+        self.star.labs = 50
+        self.star.factories = 0
+        self.star.mines = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.colonists = 10000
+        self.star.save()
+
+        rows = ensure_player_research_rows(self.player)
+        primary_row = next(row for row in rows if row.category_id == primary.id)
+        secondary_row = next(row for row in rows if row.category_id == secondary.id)
+        primary_row.allocation_percent = 100
+        secondary_row.allocation_percent = 0
+        primary_row.save(update_fields=['allocation_percent'])
+        secondary_row.save(update_fields=['allocation_percent'])
+
+        GameTurn(self.game).research()
+        primary_row.refresh_from_db()
+        self.assertEqual(primary_row.current_level, 0.0)
+        self.assertGreater(primary_row.stored_rp, 0)
+
+        secondary_row.current_level = 1
+        secondary_row.save(update_fields=['current_level'])
+
+        GameTurn(self.game).research()
+        primary_row.refresh_from_db()
+        self.assertGreaterEqual(primary_row.current_level, 1.0)

@@ -14,6 +14,7 @@ from .models import (
     PlayerResearch,
     ResearchCategory,
     ResearchLevelRequirement,
+    ResearchLevelPrerequisite,
     Technology,
 )
 from .research_rules import (
@@ -226,6 +227,31 @@ def get_level_requirement(category_id, level):
         'boranium_cost': 0,
         'germanium_cost': 0,
     }
+
+
+def get_level_prerequisites(category_id, level):
+    """Return prerequisite rows for a category level."""
+    if category_id is None:
+        return []
+    return list(
+        ResearchLevelPrerequisite.objects.select_related('requires_category').filter(
+            category_id=category_id,
+            level=int(level),
+        )
+    )
+
+
+def _prerequisites_met(category_id, level, level_map):
+    if not level_map:
+        return True
+    prereqs = get_level_prerequisites(category_id, level)
+    if not prereqs:
+        return True
+    for prereq in prereqs:
+        current = int(level_map.get(prereq.requires_category_id, 0) or 0)
+        if current < int(prereq.min_level or 0):
+            return False
+    return True
 
 
 def _eligible_research_stars(player):
@@ -525,6 +551,7 @@ def _advance_research_row_with_requirements(
     max_level,
     eligible_stars,
     allow_mineral_payment=True,
+    level_map=None,
 ):
     """Apply RP and advance one research row, consuming required minerals."""
     old_level = float(row.current_level or 0.0)
@@ -536,6 +563,8 @@ def _advance_research_row_with_requirements(
     while int(level) < int(max_level):
         next_level = int(level) + 1
         requirement = get_level_requirement(row.category_id, next_level)
+        if not _prerequisites_met(row.category_id, next_level, level_map):
+            break
         rp_cost = int(requirement['rp_cost'])
         paid = _clamp_paid_to_requirement({
             'ironium_paid': ironium_paid,
@@ -1003,6 +1032,7 @@ def process_player_research_for_year(player):
     max_level_by_category = _max_level_by_category(
         [row.category_id for row in rows]
     )
+    level_map = {row.category_id: int(row.current_level or 0) for row in rows}
 
     _allocate_mineral_progress(rows, eligible_stars, max_level_by_category)
 
@@ -1015,6 +1045,7 @@ def process_player_research_for_year(player):
             max_level=max_level,
             eligible_stars=eligible_stars,
             allow_mineral_payment=False,
+            level_map=level_map,
         )
         if int(new_level) > int(old_level):
             unlocks.append({
@@ -1022,6 +1053,7 @@ def process_player_research_for_year(player):
                 'old_level': int(old_level),
                 'new_level': int(new_level),
             })
+            level_map[row.category_id] = int(new_level)
 
     for row in rows:
         row.save(update_fields=[
@@ -1055,11 +1087,13 @@ def apply_research_bonus_rp(player, category_id, bonus_rp):
     max_level = _max_level_by_category([row.category_id]).get(
         row.category_id, int(row.current_level)
     )
+    level_map = {item.category_id: int(item.current_level or 0) for item in rows}
     old_level, new_level = _advance_research_row_with_requirements(
         row=row,
         added_rp=bonus_rp,
         max_level=max_level,
         eligible_stars=eligible_stars,
+        level_map=level_map,
     )
     row.save(update_fields=[
         'stored_rp',
@@ -1099,8 +1133,11 @@ def build_research_screen_data(player, selected_category_id=None):
     next_level_number = None
     next_level_rp_current = None
     next_level_resource_rows = []
+    next_level_prerequisites = []
+    next_level_blocked = False
     selected_is_maxed = False
     selected_max_level = None
+    level_map = {row.category_id: int(row.current_level or 0) for row in rows}
     max_level_by_category = _max_level_by_category(
         [row.category_id for row in rows]
     )
@@ -1121,6 +1158,19 @@ def build_research_screen_data(player, selected_category_id=None):
             next_level_number = next_level
             next_level_req = get_level_requirement(selected.id, next_level)
             level_cost = int(next_level_req['rp_cost'])
+            prereqs = get_level_prerequisites(selected.id, next_level)
+            for prereq in prereqs:
+                current = int(level_map.get(prereq.requires_category_id, 0) or 0)
+                required = int(prereq.min_level or 0)
+                met = current >= required
+                if not met:
+                    next_level_blocked = True
+                next_level_prerequisites.append({
+                    'name': prereq.requires_category.name,
+                    'current': current,
+                    'required': required,
+                    'met': met,
+                })
         if selected_research and not selected_is_maxed:
             allocations = allocate_rp_integer(
                 budget['generated_rp'],
@@ -1220,5 +1270,7 @@ def build_research_screen_data(player, selected_category_id=None):
         'next_level_eta_years': eta_years,
         'next_level_requirements': next_level_req if selected else None,
         'next_level_resource_rows': next_level_resource_rows,
+        'next_level_prerequisites': next_level_prerequisites,
+        'next_level_blocked': next_level_blocked,
         'next_level_items': next_level_items,
     }
