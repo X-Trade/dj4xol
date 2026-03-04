@@ -367,6 +367,7 @@ def join_game(request, game_short_id):
     """Join a game with race selection."""
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
+    selected_theme = account.theme if account else 'classic'
 
     if game.players.filter(account=account).exists():
         return render(request, 'dj4xol/forbidden.html', {
@@ -405,9 +406,41 @@ def join_game(request, game_short_id):
     else:
         form = JoinGameForm(account)
 
+    race_refunds = {}
+    try:
+        from .research import get_starting_tech_balance_cost
+    except ImportError:
+        get_starting_tech_balance_cost = None
+    if get_starting_tech_balance_cost:
+        max_allowed = max(0, int(getattr(game, 'max_starting_tech_level', 0) or 0))
+        for race in form.fields['race'].queryset:
+            requested_level = max(0, int(getattr(race, 'starting_tech_level', 0) or 0))
+            effective_level = min(requested_level, max_allowed)
+            requested_cost = float(get_starting_tech_balance_cost(requested_level))
+            effective_cost = float(get_starting_tech_balance_cost(effective_level))
+            refunded_points = max(0.0, requested_cost - effective_cost)
+            refund_points = int(round(refunded_points))
+            if refund_points > 0:
+                refund_destination = (
+                    'research' if getattr(race, 'spend_leftover_points_on_research', False)
+                    else 'minerals'
+                )
+            else:
+                refund_destination = 'none'
+            race_refunds[str(race.pk)] = {
+                'starting_level': requested_level,
+                'effective_level': effective_level,
+                'refund_points': refund_points,
+                'refund_destination': refund_destination,
+            }
+
+    player_count = game.players.count()
     return render(request, 'dj4xol/join_game.html', {
         'form': form,
-        'game': game
+        'game': game,
+        'selected_theme': selected_theme,
+        'race_refunds_json': json.dumps(race_refunds),
+        'player_count': player_count,
     })
 
 @player_only_view()
@@ -1202,7 +1235,7 @@ def create_game(request):
             )
             game = factory.save()
             factory.join_player(account, d['race'])
-            _create_invitations(game, form.parse_invitations())
+            _create_invitations(game, form.parse_invitations(), inviter=account)
             return redirect('dj4xol:game', game_short_id=game.short_id)
     else:
         form = NewGameForm(account)
@@ -1679,27 +1712,52 @@ def help_technology(request):
     })
 
 
-def _create_invitations(game, invitations):
+def _create_invitations(game, invitations, inviter=None):
     """Create GameInvitation records from parsed invitation list."""
+    from .email_rollups import send_game_invite_email
     for inv_type, value in invitations:
         if inv_type == 'email':
             # Check if account exists with this email
             try:
                 acct = Account.objects.get(email=value)
-                GameInvitation.objects.get_or_create(game=game, account=acct)
+                invite, created = GameInvitation.objects.get_or_create(game=game, account=acct)
+                if created:
+                    send_game_invite_email(
+                        game,
+                        acct.email,
+                        inviter_name=getattr(inviter, 'alias', None),
+                    )
             except Account.DoesNotExist:
-                GameInvitation.objects.get_or_create(game=game, email=value)
+                invite, created = GameInvitation.objects.get_or_create(game=game, email=value)
+                if created:
+                    send_game_invite_email(
+                        game,
+                        value,
+                        inviter_name=getattr(inviter, 'alias', None),
+                    )
         else:
             # Alias/username lookup
             try:
                 acct = Account.objects.get(alias__iexact=value)
-                GameInvitation.objects.get_or_create(game=game, account=acct)
+                invite, created = GameInvitation.objects.get_or_create(game=game, account=acct)
+                if created:
+                    send_game_invite_email(
+                        game,
+                        acct.email,
+                        inviter_name=getattr(inviter, 'alias', None),
+                    )
                 continue
             except Account.DoesNotExist:
                 pass
             try:
                 acct = Account.objects.get(django_user__username__iexact=value)
-                GameInvitation.objects.get_or_create(game=game, account=acct)
+                invite, created = GameInvitation.objects.get_or_create(game=game, account=acct)
+                if created:
+                    send_game_invite_email(
+                        game,
+                        acct.email,
+                        inviter_name=getattr(inviter, 'alias', None),
+                    )
             except Account.DoesNotExist:
                 pass  # Silently ignore invalid aliases/usernames
 

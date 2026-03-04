@@ -665,7 +665,7 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
         self, game, player, fleet, star_name, bomb_type,
         defenses_lost, colonists_lost, mines_lost, factories_lost, labs_lost, shipyards_lost,
         integrity_lost=0, ships_lost=0, star_destroyed=False,
-        perspective='attacker', attacker_fleet_name=None, message=None
+        perspective='attacker', attacker_fleet_name=None, star=None, message=None
     ):
         super().__init__(game, player, message, intensity=-0.5)
         self.fleet = fleet
@@ -682,6 +682,7 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
         self.star_destroyed = bool(star_destroyed)
         self.perspective = perspective
         self.attacker_fleet_name = attacker_fleet_name or getattr(fleet, 'name', 'Unknown Fleet')
+        self.star = star
 
     def format_message(self):
         infra = []
@@ -695,16 +696,21 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
             infra.append(f"{self.shipyards_lost} shipyards")
         infra_text = ", ".join(infra) if infra else "no infrastructure"
 
+        star_label = (
+            format_map_object(self.star)
+            if self.star is not None and not self.star_destroyed
+            else escape(self.star_name)
+        )
         if self.perspective == 'defender':
             msg = (
-                f"{escape(self.attacker_fleet_name)} bombarded {escape(self.star_name)} "
+                f"{escape(self.attacker_fleet_name)} bombarded {star_label} "
                 f"({escape(self.bomb_type.title())} bombs): "
                 f"we lost {self.defenses_lost} defenses, "
                 f"{self.colonists_lost:,} colonists, and {infra_text}."
             )
         else:
             msg = (
-                f"{format_map_object(self.fleet)} bombarded {escape(self.star_name)} "
+                f"{format_map_object(self.fleet)} bombarded {star_label} "
                 f"({escape(self.bomb_type.title())} bombs): "
                 f"{self.defenses_lost} defenses destroyed, "
                 f"{self.colonists_lost:,} colonists killed, "
