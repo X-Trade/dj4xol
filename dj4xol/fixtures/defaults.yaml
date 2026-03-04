@@ -291,6 +291,7 @@
     code: 'ENERGY'
     name: 'Energy'
     description: 'Energy generation and propulsion fundamentals.'
+    metadata_json: '{"key_resources": {"BORANIUM": 1}}'
     display_order: 10
     enabled: True
 
@@ -300,6 +301,7 @@
     code: 'ELECTRONICS'
     name: 'Electronics'
     description: 'Sensors, guidance, and command systems.'
+    metadata_json: '{"key_resources": {"GERMANIUM": 1}}'
     display_order: 20
     enabled: True
 
@@ -309,6 +311,7 @@
     code: 'MATERIALS'
     name: 'Materials'
     description: 'Hull and structural engineering advances.'
+    metadata_json: '{"key_resources": {"IRONIUM": 1, "BORANIUM": 2}}'
     display_order: 30
     enabled: True
 
@@ -318,6 +321,7 @@
     code: 'METAPHYSICS'
     name: 'Metaphysics'
     description: 'Exotic theories and unconventional breakthroughs.'
+    metadata_json: '{"key_resources": {"BORANIUM": 1, "GERMANIUM": 1}}'
     display_order: 40
     enabled: True
 
@@ -327,6 +331,7 @@
     code: 'CONSTRUCTION'
     name: 'Construction'
     description: 'Planetary installations, civil engineering, and logistics.'
+    metadata_json: '{"key_resources": {"IRONIUM": 1}}'
     display_order: 50
     enabled: True
 

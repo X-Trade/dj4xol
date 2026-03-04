@@ -80,7 +80,8 @@ class ResearchRequirementsTest(TestCase):
         self.star.refresh_from_db()
         self.assertEqual(row.current_level, 0.0)
         self.assertGreater(int(row.stored_rp), 0)
-        self.assertEqual(self.star.ironium_inventory, 90)
+        self.assertEqual(row.ironium_paid, 90)
+        self.assertEqual(self.star.ironium_inventory, 0)
 
     def test_research_minerals_consumed_after_production(self):
         category, _ = ResearchCategory.objects.get_or_create(
