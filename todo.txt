@@ -1,7 +1,5 @@
 ============= MAIN TODO =============
 1. More anomolies (asteroid field, ancient debris)
-2. rebalance production costs, tech costs, & fuel consumption
-3. unlockable terraforming
 4. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
 5. Secret resources
 6. fuel factory
