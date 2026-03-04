@@ -482,7 +482,7 @@
     name: 'Wormhole Drive'
     description: 'A transdimensional jump system that enables risky wormhole traversal modes.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 5, "defense_level": -1.4, "fuel_efficiency": 0.82, "overmax_fuel_penalty": 1.75, "has_wormhole_drive": true, "wormhole_fuel_per_ly": 5.0}'
+    params_json: '{"max_warp_speed": 5, "defense_level": -1.4, "fuel_efficiency": 0.82, "overmax_fuel_penalty": 1.75, "has_wormhole_drive": true, "wormhole_fuel_per_ly": 5.0, "wormhole_destruction_chance": 0.18}'
     display_order: 52
     enabled: True
 
@@ -495,7 +495,7 @@
     name: 'Advanced Wormhole Drive'
     description: 'A refined transdimensional drive with improved cruising efficiency and safer conventional warp handling.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 8, "defense_level": -1, "fuel_efficiency": 0.95, "overmax_fuel_penalty": 1.25, "has_wormhole_drive": true, "wormhole_fuel_per_ly": 4.0}'
+    params_json: '{"max_warp_speed": 8, "defense_level": -1, "fuel_efficiency": 0.95, "overmax_fuel_penalty": 1.25, "has_wormhole_drive": true, "wormhole_fuel_per_ly": 4.0, "wormhole_destruction_chance": 0.05}'
     display_order: 53
     enabled: True
 
@@ -508,7 +508,7 @@
     name: 'Wormhole Drive MkIII'
     description: 'A third-generation wormhole drive core with dramatically reduced transdimensional fuel burn.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 9, "defense_level": -1, "fuel_efficiency": 0.98, "overmax_fuel_penalty": 1.25, "has_wormhole_drive": true, "wormhole_fuel_per_ly": 2.0}'
+    params_json: '{"max_warp_speed": 9, "defense_level": -1, "fuel_efficiency": 0.98, "overmax_fuel_penalty": 1.25, "has_wormhole_drive": true, "wormhole_fuel_per_ly": 2.0, "wormhole_destruction_chance": 0.02}'
     display_order: 54
     enabled: True
 

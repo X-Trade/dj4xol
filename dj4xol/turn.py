@@ -118,9 +118,13 @@ WORMHOLE_DEVIATION_LY_PER_50 = 5.0
 WORMHOLE_INTEGRITY_DAMAGE_CHANCE = 0.20
 WORMHOLE_MAX_INTEGRITY_DAMAGE_PER_100_LY = 1
 WORMHOLE_DESTRUCTION_CHANCE = 0.10
-WORMHOLE_RIFT_SPAWN_CHANCE = 0.01
 WORMHOLE_RIFT_MIN_DISTANCE = 4.0
 WORMHOLE_RIFT_MAX_DISTANCE = 9.0
+WORMHOLE_DRIVE_RIFT_CHANCE = 0.01
+WORMHOLE_DRIVE_BLACK_HOLE_CHANCE = 0.02
+WORMHOLE_DRIVE_WORMHOLE_CHANCE = 0.03
+WORMHOLE_DRIVE_WORMHOLE_STABILITY_MIN = 20
+WORMHOLE_DRIVE_WORMHOLE_STABILITY_MAX = 60
 
 # Salvage constants
 SALVAGE_CHANCE_WARP = 0.66       # 66% chance of salvage from warp destruction
@@ -2082,7 +2086,14 @@ class GameTurn():
         target_x = int(target_x)
         target_y = int(target_y)
 
-        if roll_chance(WORMHOLE_DESTRUCTION_CHANCE):
+        try:
+            destruction_chance = float(getattr(fleet, 'wormhole_destruction_chance', None))
+        except (TypeError, ValueError):
+            destruction_chance = None
+        if destruction_chance is None:
+            destruction_chance = WORMHOLE_DESTRUCTION_CHANCE
+        destruction_chance = max(0.0, min(1.0, destruction_chance))
+        if roll_chance(destruction_chance):
             self._handle_wormhole_destruction(
                 fleet,
                 from_damage=False,
@@ -2513,14 +2524,20 @@ class GameTurn():
         msg = factory.new_message()
         msg.year = self.game.year
         msg.save()
-        self._maybe_spawn_wormhole_rift(start_x, start_y, destination_x, destination_y)
+        self._maybe_spawn_wormhole_drive_anomaly(start_x, start_y, destination_x, destination_y)
         fleet.delete()
 
-    def _maybe_spawn_wormhole_rift(self, start_x, start_y, destination_x, destination_y):
-        """Rarely spawn a rift near wormhole loss start/destination (never on stars)."""
+    def _maybe_spawn_wormhole_drive_anomaly(self, start_x, start_y, destination_x, destination_y):
+        """Rarely spawn a rift/black hole/wormhole near wormhole loss start/destination."""
         if not bool(getattr(self.game, 'anomalies_enabled', False)):
             return
-        if random.random() >= WORMHOLE_RIFT_SPAWN_CHANCE:
+        total_chance = (
+            WORMHOLE_DRIVE_RIFT_CHANCE
+            + WORMHOLE_DRIVE_BLACK_HOLE_CHANCE
+            + WORMHOLE_DRIVE_WORMHOLE_CHANCE
+        )
+        roll = random.random()
+        if roll >= total_chance:
             return
 
         try:
@@ -2553,25 +2570,80 @@ class GameTurn():
         if random.random() < 0.5:
             anchors.reverse()
 
-        for ax, ay in anchors:
+        def find_spawn_near(anchor_x, anchor_y, blocked):
             for ox, oy in offsets:
-                x = int(ax + ox)
-                y = int(ay + oy)
+                x = int(anchor_x + ox)
+                y = int(anchor_y + oy)
                 if x < 1 or x > max_x or y < 1 or y > max_y:
                     continue
                 key = (x, y)
-                if key in star_positions or key in occupied:
+                if key in star_positions or key in blocked:
                     continue
-                Anomaly.objects.create(
-                    game=self.game,
-                    x=x,
-                    y=y,
-                    anomaly_type=Anomaly.TYPE_RIFT,
-                    name='Rift %s' % (Anomaly.objects.filter(game=self.game).count() + 1),
-                    heading=random.random() * 360.0,
-                    stability=random.randint(30, 91),
-                )
+                return x, y
+            return None, None
+
+        if roll < WORMHOLE_DRIVE_RIFT_CHANCE:
+            anomaly_type = Anomaly.TYPE_RIFT
+        elif roll < (WORMHOLE_DRIVE_RIFT_CHANCE + WORMHOLE_DRIVE_BLACK_HOLE_CHANCE):
+            anomaly_type = Anomaly.TYPE_BLACK_HOLE
+        else:
+            anomaly_type = Anomaly.TYPE_WORMHOLE
+
+        if anomaly_type == Anomaly.TYPE_WORMHOLE:
+            start_x, start_y = find_spawn_near(sx, sy, occupied)
+            if start_x is None:
                 return
+            occupied.add((start_x, start_y))
+            dest_x, dest_y = find_spawn_near(dx, dy, occupied)
+            if dest_x is None:
+                return
+            base_index = Anomaly.objects.filter(game=self.game).count() + 1
+            name_a = 'Wormhole %s' % base_index
+            name_b = 'Wormhole %s' % (base_index + 1)
+            a = Anomaly.objects.create(
+                game=self.game,
+                x=start_x,
+                y=start_y,
+                anomaly_type=Anomaly.TYPE_WORMHOLE,
+                name=name_a,
+                heading=random.random() * 360.0,
+                stability=random.randint(
+                    WORMHOLE_DRIVE_WORMHOLE_STABILITY_MIN,
+                    WORMHOLE_DRIVE_WORMHOLE_STABILITY_MAX,
+                ),
+            )
+            b = Anomaly.objects.create(
+                game=self.game,
+                x=dest_x,
+                y=dest_y,
+                anomaly_type=Anomaly.TYPE_WORMHOLE,
+                name=name_b,
+                heading=random.random() * 360.0,
+                stability=random.randint(
+                    WORMHOLE_DRIVE_WORMHOLE_STABILITY_MIN,
+                    WORMHOLE_DRIVE_WORMHOLE_STABILITY_MAX,
+                ),
+                wormhole_pair=a,
+            )
+            a.wormhole_pair = b
+            a.save(update_fields=['wormhole_pair'])
+            return
+
+        for ax, ay in anchors:
+            x, y = find_spawn_near(ax, ay, occupied)
+            if x is None:
+                continue
+            label = 'Rift' if anomaly_type == Anomaly.TYPE_RIFT else 'Black Hole'
+            Anomaly.objects.create(
+                game=self.game,
+                x=x,
+                y=y,
+                anomaly_type=anomaly_type,
+                name='%s %s' % (label, Anomaly.objects.filter(game=self.game).count() + 1),
+                heading=random.random() * 360.0,
+                stability=random.randint(30, 91),
+            )
+            return
 
     def _create_salvage_from_fleet(self, fleet):
         """Create salvage from fleet destruction or scuttling.
@@ -3916,6 +3988,10 @@ class GameTurn():
             float(source_fleet.wormhole_fuel_per_ly or 5.0),
             float(target_fleet.wormhole_fuel_per_ly or 5.0),
         )
+        worst_wormhole_destruction = max(
+            float(source_fleet.wormhole_destruction_chance or 0.0),
+            float(target_fleet.wormhole_destruction_chance or 0.0),
+        )
 
         # Merge attributes into target fleet
         target_fleet.ship_count = total_ships
@@ -3929,6 +4005,7 @@ class GameTurn():
         target_fleet.fuel_efficiency = weighted_fuel_efficiency
         target_fleet.overmax_fuel_penalty = weighted_overmax_fuel_penalty
         target_fleet.wormhole_fuel_per_ly = bottleneck_wormhole_fuel_per_ly
+        target_fleet.wormhole_destruction_chance = worst_wormhole_destruction
         target_fleet.offense_level = merged_offense_level
         target_fleet.defense_level = merged_defense_level
         target_fleet.integrity = avg_integrity
@@ -4411,6 +4488,7 @@ class GameTurn():
             fuel_efficiency=tech_effects.get('fuel_efficiency', 1.0),
             overmax_fuel_penalty=tech_effects.get('overmax_fuel_penalty', 1.0),
             wormhole_fuel_per_ly=tech_effects.get('wormhole_fuel_per_ly', 5.0),
+            wormhole_destruction_chance=tech_effects.get('wormhole_destruction_chance', 0.0),
             offense_level=tech_effects['offense_level'],
             defense_level=tech_effects['defense_level'],
             has_bombs=tech_effects.get('has_bombs'),

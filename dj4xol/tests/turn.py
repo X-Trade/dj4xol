@@ -5920,9 +5920,10 @@ class TestWormholeDriveMovement(TestCase):
         order = FleetOrders.objects.create(
             game=game, fleet=fleet, order_type='MOVE', x=40, y=40, warpfactor=14
         )
+        destruction_chance = float(fleet.wormhole_destruction_chance or 0.0)
 
         def roll_map(chance):
-            if abs(chance - 0.10) < 1e-9:
+            if abs(chance - destruction_chance) < 1e-9:
                 return False
             if abs(chance - 0.20) < 1e-9:
                 return False
@@ -5959,9 +5960,10 @@ class TestWormholeDriveMovement(TestCase):
         order = FleetOrders.objects.create(
             game=game, fleet=fleet, order_type='MOVE', x=50, y=50, warpfactor=14
         )
+        destruction_chance = float(fleet.wormhole_destruction_chance or 0.0)
 
         def roll_map(chance):
-            if abs(chance - 0.10) < 1e-9:
+            if abs(chance - destruction_chance) < 1e-9:
                 return False
             if abs(chance - 0.20) < 1e-9:
                 return False
@@ -5999,9 +6001,10 @@ class TestWormholeDriveMovement(TestCase):
         order = FleetOrders.objects.create(
             game=game, fleet=fleet, order_type='MOVE', x=40, y=40, warpfactor=14
         )
+        destruction_chance = float(fleet.wormhole_destruction_chance or 0.0)
 
         def roll_map(chance):
-            if abs(chance - 0.10) < 1e-9:
+            if abs(chance - destruction_chance) < 1e-9:
                 return False
             if abs(chance - 0.20) < 1e-9:
                 return False
@@ -6039,9 +6042,10 @@ class TestWormholeDriveMovement(TestCase):
         order = FleetOrders.objects.create(
             game=game, fleet=fleet, order_type='MOVE', x=100, y=0, warpfactor=14
         )
+        destruction_chance = float(fleet.wormhole_destruction_chance or 0.0)
 
         def roll_map(chance):
-            if abs(chance - 0.10) < 1e-9:
+            if abs(chance - destruction_chance) < 1e-9:
                 return False
             if abs(chance - 0.20) < 1e-9:
                 return True
@@ -6078,9 +6082,10 @@ class TestWormholeDriveMovement(TestCase):
         FleetOrders.objects.create(
             game=game, fleet=fleet, order_type='MOVE', x=60, y=60, warpfactor=14
         )
+        destruction_chance = float(fleet.wormhole_destruction_chance or 0.0)
 
         def roll_map(chance):
-            if abs(chance - 0.10) < 1e-9:
+            if abs(chance - destruction_chance) < 1e-9:
                 return True
             return False
 
@@ -6112,16 +6117,19 @@ class TestWormholeDriveMovement(TestCase):
         FleetOrders.objects.create(
             game=game, fleet=fleet, order_type='MOVE', x=60, y=60, warpfactor=14
         )
+        destruction_chance = float(fleet.wormhole_destruction_chance or 0.0)
 
         def roll_map(chance):
-            if abs(chance - 0.10) < 1e-9:
+            if abs(chance - destruction_chance) < 1e-9:
                 return True
             return False
 
         with patch('dj4xol.turn.roll_chance', side_effect=roll_map), \
              patch('dj4xol.turn.random.random', return_value=0.0), \
              patch('dj4xol.turn.random.shuffle', lambda x: None):
-            GameTurn(game).generate_turn()
+            GameTurn(game)._execute_wormhole_jump(
+                fleet, fleet.orders.first(), 60, 60, 60.0
+            )
 
         rift = Anomaly.objects.filter(game=game, anomaly_type=Anomaly.TYPE_RIFT).first()
         self.assertIsNotNone(rift)
@@ -6133,6 +6141,85 @@ class TestWormholeDriveMovement(TestCase):
                 (4.0 <= start_dist <= 9.0) or (4.0 <= dest_dist <= 9.0)
             )
             self.assertFalse(Star.objects.filter(game=game, x=rift.x, y=rift.y).exists())
+
+    def test_wormhole_destruction_can_spawn_nearby_wormhole(self):
+        game = default_game(stars=2)
+        game.random_events = False
+        game.anomalies_enabled = True
+        game.save(update_fields=['random_events', 'anomalies_enabled'])
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Wormhole Seed',
+            x=20,
+            y=20,
+            has_wormhole_drive=True,
+            fuel=999.0,
+            max_fuel=999.0,
+            max_safe_warp=5,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE', x=60, y=60, warpfactor=14
+        )
+        destruction_chance = float(fleet.wormhole_destruction_chance or 0.0)
+
+        def roll_map(chance):
+            if abs(chance - destruction_chance) < 1e-9:
+                return True
+            return False
+
+        random_values = [0.04, 0.6, 0.1, 0.2]
+        with patch('dj4xol.turn.roll_chance', side_effect=roll_map), \
+             patch('dj4xol.turn.random.random', side_effect=lambda: random_values.pop(0)), \
+             patch('dj4xol.turn.random.shuffle', lambda x: None):
+            GameTurn(game)._execute_wormhole_jump(
+                fleet, fleet.orders.first(), 60, 60, 60.0
+            )
+
+        wormholes = list(Anomaly.objects.filter(
+            game=game, anomaly_type=Anomaly.TYPE_WORMHOLE
+        ).order_by('id'))
+        self.assertEqual(len(wormholes), 2)
+        for wormhole in wormholes:
+            self.assertTrue(20 <= int(wormhole.stability) <= 60)
+            self.assertFalse(Star.objects.filter(
+                game=game, x=wormhole.x, y=wormhole.y
+            ).exists())
+        self.assertTrue(
+            (4.0 <= (((wormholes[0].x - 20) ** 2 + (wormholes[0].y - 20) ** 2) ** 0.5) <= 9.0)
+            or (4.0 <= (((wormholes[0].x - 60) ** 2 + (wormholes[0].y - 60) ** 2) ** 0.5) <= 9.0)
+        )
+        self.assertTrue(wormholes[0].wormhole_pair_id in [w.id for w in wormholes])
+        self.assertTrue(wormholes[1].wormhole_pair_id in [w.id for w in wormholes])
+
+    def test_wormhole_wander_avoids_stars(self):
+        game = default_game(stars=1, fleets=0)
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        star = game.stars.first()
+        star.x = 11
+        star.y = 10
+        star.save(update_fields=['x', 'y'])
+
+        wormhole = Anomaly.objects.create(
+            game=game,
+            x=10,
+            y=10,
+            name='Wanderer',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=0,
+        )
+
+        def custom_shuffle(items):
+            items.sort(key=lambda item: 0 if item == (1, 0) else (1 if item == (0, 0) else 2))
+
+        with patch('dj4xol.turn.random.shuffle', custom_shuffle):
+            GameTurn(game).move_wormholes()
+
+        wormhole.refresh_from_db()
+        self.assertNotEqual((wormhole.x, wormhole.y), (star.x, star.y))
 
 
 class TestFleetFuel(TestCase):

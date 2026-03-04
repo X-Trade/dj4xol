@@ -477,6 +477,8 @@ class GameFactory():
                 max_safe_warp=tech_effects.get('max_warp_speed', 2),
                 fuel_efficiency=tech_effects.get('fuel_efficiency', 1.0),
                 overmax_fuel_penalty=tech_effects.get('overmax_fuel_penalty', 1.0),
+                wormhole_fuel_per_ly=tech_effects.get('wormhole_fuel_per_ly', 5.0),
+                wormhole_destruction_chance=tech_effects.get('wormhole_destruction_chance', 0.0),
                 offense_level=tech_effects.get('offense_level', 0.0),
                 defense_level=tech_effects.get('defense_level', 0.0),
                 has_bombs=tech_effects.get('has_bombs'),
