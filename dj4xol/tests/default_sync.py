@@ -27,7 +27,7 @@ class DefaultSyncTest(TestCase):
             id='00000000-0000-0000-0000-000000000111'
         )
         self.assertEqual(wormhole.category.code, 'METAPHYSICS')
-        self.assertEqual(wormhole.level, 14)
+        self.assertEqual(wormhole.level, 18)
         self.assertEqual(
             json.loads(wormhole.params_json).get('wormhole_fuel_per_ly'), 5.0
         )
@@ -35,15 +35,15 @@ class DefaultSyncTest(TestCase):
             id='00000000-0000-0000-0000-000000000112'
         )
         self.assertEqual(advanced_wormhole.category.code, 'METAPHYSICS')
-        self.assertEqual(advanced_wormhole.level, 18)
+        self.assertEqual(advanced_wormhole.level, 22)
         self.assertEqual(
             json.loads(advanced_wormhole.params_json).get('wormhole_fuel_per_ly'), 4.0
         )
         wormhole_mk3 = Technology.objects.get(
             id='00000000-0000-0000-0000-000000000113'
         )
-        self.assertEqual(wormhole_mk3.category.code, 'ENERGY')
-        self.assertEqual(wormhole_mk3.level, 20)
+        self.assertEqual(wormhole_mk3.category.code, 'METAPHYSICS')
+        self.assertEqual(wormhole_mk3.level, 26)
         self.assertEqual(
             json.loads(wormhole_mk3.params_json).get('wormhole_fuel_per_ly'), 2.0
         )

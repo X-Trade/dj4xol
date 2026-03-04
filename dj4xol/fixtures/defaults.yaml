@@ -339,7 +339,7 @@
     name: 'Prototype Warp Coils'
     description: 'First-generation warp drive with poor fuel economy and conservative safety margins.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 2, "fuel_efficiency": 0.58, "overmax_fuel_penalty": 1.40}'
+    params_json: '{"max_warp_speed": 2, "fuel_efficiency": 0.49, "overmax_fuel_penalty": 1.40}'
     display_order: 5
     enabled: True
 
@@ -352,7 +352,7 @@
     name: 'Improved Warp Coils'
     description: 'Refined coil harmonics permit safer high-speed transit.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 3, "fuel_efficiency": 0.70, "overmax_fuel_penalty": 1.25}'
+    params_json: '{"max_warp_speed": 3, "fuel_efficiency": 0.60, "overmax_fuel_penalty": 1.25}'
     display_order: 10
     enabled: True
 
@@ -360,12 +360,12 @@
   pk: "00000000-0000-0000-0000-000000000102"
   fields:
     short_id: "tech00000102"
-    category: 2
+    category: 4
     level: 2
     name: 'Adaptive Navigation Computers'
     description: 'Advanced guidance packages support tighter warp tolerances.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 4, "fuel_efficiency": 0.78, "overmax_fuel_penalty": 1.20}'
+    params_json: '{"max_warp_speed": 4, "fuel_efficiency": 0.66, "overmax_fuel_penalty": 1.20}'
     display_order: 20
     enabled: True
 
@@ -373,12 +373,12 @@
   pk: "00000000-0000-0000-0000-000000000103"
   fields:
     short_id: "tech00000103"
-    category: 3
+    category: 1
     level: 3
     name: 'Reinforced Field Lattices'
     description: 'Improved stress management allows sustained higher warp.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 5, "fuel_efficiency": 0.86, "overmax_fuel_penalty": 1.12}'
+    params_json: '{"max_warp_speed": 5, "fuel_efficiency": 0.73, "overmax_fuel_penalty": 1.12}'
     display_order: 30
     enabled: True
 
@@ -391,7 +391,7 @@
     name: 'Phase-Coupled Warp Frames'
     description: 'Experimental frame coupling pushes safe warp limits further.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 6, "fuel_efficiency": 0.94, "overmax_fuel_penalty": 1.05}'
+    params_json: '{"max_warp_speed": 6, "fuel_efficiency": 0.80, "overmax_fuel_penalty": 1.05}'
     display_order: 40
     enabled: True
 
@@ -404,7 +404,7 @@
     name: 'Quantum Slipstream Baffles'
     description: 'Slipstream damping baffles reduce transit turbulence at higher warp.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 7, "fuel_efficiency": 1.00, "overmax_fuel_penalty": 1.00}'
+    params_json: '{"max_warp_speed": 7, "fuel_efficiency": 0.88, "overmax_fuel_penalty": 1.00}'
     display_order: 42
     enabled: True
 
@@ -412,12 +412,12 @@
   pk: "00000000-0000-0000-0000-000000000106"
   fields:
     short_id: "tech00000106"
-    category: 2
-    level: 7
+    category: 1
+    level: 8
     name: 'Interstellar Ram Scoops'
     description: 'Fuel-scoop geometry stabilizes long-range high-warp transits.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 8, "fuel_efficiency": 1.10, "overmax_fuel_penalty": 0.92}'
+    params_json: '{"max_warp_speed": 8, "fuel_efficiency": 0.96, "overmax_fuel_penalty": 0.92}'
     display_order: 44
     enabled: True
 
@@ -425,12 +425,12 @@
   pk: "00000000-0000-0000-0000-000000000107"
   fields:
     short_id: "tech00000107"
-    category: 3
-    level: 8
+    category: 4
+    level: 9
     name: 'Inertial Shear Dampers'
     description: 'Reinforced dampers keep hull stress within tolerances at extreme cruise warp.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 9, "fuel_efficiency": 1.18, "overmax_fuel_penalty": 0.86}'
+    params_json: '{"max_warp_speed": 9, "fuel_efficiency": 1.00, "overmax_fuel_penalty": 0.86}'
     display_order: 46
     enabled: True
 
@@ -439,7 +439,7 @@
   fields:
     short_id: "tech00000108"
     category: 4
-    level: 9
+    level: 12
     name: 'Null-Phase Transit Geometry'
     description: 'Phase-shaped transit envelopes permit stable Warp 10 cruise envelopes.'
     tech_type: 'PROPULSION'
@@ -451,8 +451,8 @@
   pk: "00000000-0000-0000-0000-000000000109"
   fields:
     short_id: "tech00000109"
-    category: 5
-    level: 10
+    category: 1
+    level: 14
     name: 'Inertial Minimizer'
     description: 'High-precision inertial damping lowers frame stress and maintains reliable Warp 10 transit.'
     tech_type: 'PROPULSION'
@@ -465,7 +465,7 @@
   fields:
     short_id: "tech00000110"
     category: 1
-    level: 11
+    level: 16
     name: 'Shield-Drain Overdrive Injectors'
     description: 'Emergency overdrive unlocks Warp 11 but bleeds defensive shielding under sustained operation.'
     tech_type: 'PROPULSION'
@@ -474,11 +474,24 @@
     enabled: True
 
 - model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000114"
+  fields:
+    short_id: "tech00000114"
+    category: 4
+    level: 17
+    name: 'Prototype Wormhole Drive'
+    description: 'A fragile transdimensional drive core with extreme instability.'
+    tech_type: 'PROPULSION'
+    params_json: '{"max_warp_speed": 4, "defense_level": -1.8, "fuel_efficiency": 0.50, "overmax_fuel_penalty": 2.00, "has_wormhole_drive": true, "wormhole_fuel_per_ly": 6.0, "wormhole_destruction_chance": 0.50}'
+    display_order: 51
+    enabled: True
+
+- model: dj4xol.Technology
   pk: "00000000-0000-0000-0000-000000000111"
   fields:
     short_id: "tech00000111"
     category: 4
-    level: 14
+    level: 18
     name: 'Wormhole Drive'
     description: 'A transdimensional jump system that enables risky wormhole traversal modes.'
     tech_type: 'PROPULSION'
@@ -491,7 +504,7 @@
   fields:
     short_id: "tech00000112"
     category: 4
-    level: 18
+    level: 22
     name: 'Advanced Wormhole Drive'
     description: 'A refined transdimensional drive with improved cruising efficiency and safer conventional warp handling.'
     tech_type: 'PROPULSION'
@@ -503,8 +516,8 @@
   pk: "00000000-0000-0000-0000-000000000113"
   fields:
     short_id: "tech00000113"
-    category: 1
-    level: 20
+    category: 4
+    level: 26
     name: 'Wormhole Drive MkIII'
     description: 'A third-generation wormhole drive core with dramatically reduced transdimensional fuel burn.'
     tech_type: 'PROPULSION'
@@ -529,7 +542,7 @@
   pk: "00000000-0000-0000-0000-000000000201"
   fields:
     short_id: "tech00000201"
-    category: 1
+    category: 2
     level: 1
     name: 'Mark I Laser'
     description: 'First-generation coherent beam emitters improve offensive capability.'
@@ -542,8 +555,8 @@
   pk: "00000000-0000-0000-0000-000000000202"
   fields:
     short_id: "tech00000202"
-    category: 2
-    level: 1
+    category: 1
+    level: 2
     name: 'Mark II Laser'
     description: 'Improved beam coherence increases energy weapon effectiveness.'
     tech_type: 'ENERGY_WEAPON'
@@ -555,8 +568,8 @@
   pk: "00000000-0000-0000-0000-000000000203"
   fields:
     short_id: "tech00000203"
-    category: 3
-    level: 2
+    category: 2
+    level: 3
     name: 'Mark III Laser'
     description: 'High-output laser arrays provide stronger opening volleys.'
     tech_type: 'ENERGY_WEAPON'
@@ -568,8 +581,8 @@
   pk: "00000000-0000-0000-0000-000000000204"
   fields:
     short_id: "tech00000204"
-    category: 4
-    level: 2
+    category: 2
+    level: 4
     name: 'Beam Focuser'
     description: 'Precision focusing assemblies tighten beam spread at range.'
     tech_type: 'ENERGY_WEAPON'
@@ -582,7 +595,7 @@
   fields:
     short_id: "tech00000205"
     category: 1
-    level: 3
+    level: 5
     name: 'Mark I Disruptor'
     description: 'Early disruptor emitters destabilize target shielding.'
     tech_type: 'ENERGY_WEAPON'
@@ -595,7 +608,7 @@
   fields:
     short_id: "tech00000206"
     category: 2
-    level: 3
+    level: 6
     name: 'Phased Disruptor'
     description: 'Phase modulation improves disruptor coupling against defenses.'
     tech_type: 'ENERGY_WEAPON'
@@ -607,8 +620,8 @@
   pk: "00000000-0000-0000-0000-000000000207"
   fields:
     short_id: "tech00000207"
-    category: 3
-    level: 4
+    category: 1
+    level: 7
     name: 'Mark II Disruptor'
     description: 'Second-generation disruptors deliver improved energy transfer.'
     tech_type: 'ENERGY_WEAPON'
@@ -620,8 +633,8 @@
   pk: "00000000-0000-0000-0000-000000000208"
   fields:
     short_id: "tech00000208"
-    category: 4
-    level: 4
+    category: 2
+    level: 8
     name: 'Phaser Array'
     description: 'Arrayed emitters improve target tracking and sustained fire.'
     tech_type: 'ENERGY_WEAPON'
@@ -634,7 +647,7 @@
   fields:
     short_id: "tech00000209"
     category: 1
-    level: 5
+    level: 9
     name: 'Plasma Caster'
     description: 'Dense plasma projection significantly raises strike lethality.'
     tech_type: 'ENERGY_WEAPON'
@@ -646,8 +659,8 @@
   pk: "00000000-0000-0000-0000-000000000210"
   fields:
     short_id: "tech00000210"
-    category: 2
-    level: 6
+    category: 3
+    level: 8
     name: 'Anti-Matter Torpedo'
     description: 'Antimatter warheads provide high burst damage potential.'
     tech_type: 'TORPEDO'
@@ -659,8 +672,8 @@
   pk: "00000000-0000-0000-0000-000000000211"
   fields:
     short_id: "tech00000211"
-    category: 3
-    level: 7
+    category: 2
+    level: 10
     name: 'Homing Torpedo'
     description: 'Guided torpedoes increase hit probability on maneuvering targets.'
     tech_type: 'TORPEDO'
@@ -672,8 +685,8 @@
   pk: "00000000-0000-0000-0000-000000000212"
   fields:
     short_id: "tech00000212"
-    category: 4
-    level: 8
+    category: 2
+    level: 6
     name: 'Targeting Computer'
     description: 'Advanced fire-control logic optimizes fleet-wide target assignment.'
     tech_type: 'TORPEDO'
@@ -682,16 +695,94 @@
     enabled: True
 
 - model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000219"
+  fields:
+    short_id: "tech00000219"
+    category: 3
+    level: 18
+    name: 'Beamed Warhead Delivery Torpedo'
+    description: 'Beamed guidance locks warheads onto targets at extreme range.'
+    tech_type: 'TORPEDO'
+    params_json: '{"offense_level": 4.20}'
+    display_order: 108
+    enabled: True
+
+- model: dj4xol.Technology
   pk: "00000000-0000-0000-0000-000000000213"
   fields:
     short_id: "tech00000213"
     category: 1
-    level: 9
+    level: 12
     name: 'Mark IV Disruptor'
     description: 'Mature disruptor architecture delivers superior offensive throughput.'
     tech_type: 'ENERGY_WEAPON'
     params_json: '{"offense_level": 2.40}'
     display_order: 110
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000214"
+  fields:
+    short_id: "tech00000214"
+    category: 2
+    level: 10
+    name: 'Mark III Disruptor'
+    description: 'Third-generation disruptors sustain higher energy throughput.'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 2.00}'
+    display_order: 105
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000215"
+  fields:
+    short_id: "tech00000215"
+    category: 2
+    level: 14
+    name: 'Mark V Disruptor'
+    description: 'Fifth-generation disruptors deliver destructive sustained fire.'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 3.00}'
+    display_order: 115
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000216"
+  fields:
+    short_id: "tech00000216"
+    category: 1
+    level: 16
+    name: 'Mark VI Disruptor'
+    description: 'Sixth-generation disruptors push beam lethality to the limit.'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 3.60}'
+    display_order: 120
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000217"
+  fields:
+    short_id: "tech00000217"
+    category: 2
+    level: 17
+    name: 'Pulsar Cannon'
+    description: 'Pulsar-tuned emitters generate devastating bursts at extreme range.'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 4.20}'
+    display_order: 125
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000218"
+  fields:
+    short_id: "tech00000218"
+    category: 1
+    level: 19
+    name: 'Micro-Singularity Gun'
+    description: 'Micro-singularity projectors create catastrophic localized collapse.'
+    tech_type: 'ENERGY_WEAPON'
+    params_json: '{"offense_level": 5.00}'
+    display_order: 130
     enabled: True
 
 - model: dj4xol.Technology
@@ -711,7 +802,7 @@
   pk: "00000000-0000-0000-0000-000000000301"
   fields:
     short_id: "tech00000301"
-    category: 3
+    category: 5
     level: 1
     name: 'Advanced Alloys'
     description: 'Improved metallurgical composites strengthen baseline protection.'
@@ -724,7 +815,7 @@
   pk: "00000000-0000-0000-0000-000000000302"
   fields:
     short_id: "tech00000302"
-    category: 4
+    category: 3
     level: 1
     name: 'Magnetic Shield'
     description: 'Magnetically stabilized fields improve resistance to beam impacts.'
@@ -737,7 +828,7 @@
   pk: "00000000-0000-0000-0000-000000000303"
   fields:
     short_id: "tech00000303"
-    category: 3
+    category: 4
     level: 2
     name: 'Deflector Shield'
     description: 'Deflection harmonics reduce incoming weapon penetration.'
@@ -751,7 +842,7 @@
   fields:
     short_id: "tech00000304"
     category: 4
-    level: 2
+    level: 3
     name: 'Maneuvering Jets'
     description: 'Fine-control thrusters improve evasive survivability under fire.'
     tech_type: 'SHIELD'
@@ -763,7 +854,7 @@
   pk: "00000000-0000-0000-0000-000000000305"
   fields:
     short_id: "tech00000305"
-    category: 1
+    category: 3
     level: 3
     name: 'Protonium Armour'
     description: 'Dense protonium plating increases structural resilience.'
@@ -776,7 +867,7 @@
   pk: "00000000-0000-0000-0000-000000000306"
   fields:
     short_id: "tech00000306"
-    category: 2
+    category: 3
     level: 4
     name: 'Cellular Shield Grid'
     description: 'Distributed emitters improve shield continuity after impacts.'
@@ -789,7 +880,7 @@
   pk: "00000000-0000-0000-0000-000000000307"
   fields:
     short_id: "tech00000307"
-    category: 3
+    category: 5
     level: 5
     name: 'Ablative Armour'
     description: 'Sacrificial outer layers absorb high-energy weapon strikes.'
@@ -803,7 +894,7 @@
   fields:
     short_id: "tech00000308"
     category: 4
-    level: 5
+    level: 6
     name: 'Phased Shield Array'
     description: 'Phased shield synchronization broadens defensive coverage.'
     tech_type: 'SHIELD'
@@ -815,8 +906,8 @@
   pk: "00000000-0000-0000-0000-000000000309"
   fields:
     short_id: "tech00000309"
-    category: 1
-    level: 6
+    category: 3
+    level: 7
     name: 'Tractor Beam'
     description: 'Field projection can disrupt attacker approach vectors.'
     tech_type: 'SHIELD'
@@ -828,8 +919,8 @@
   pk: "00000000-0000-0000-0000-000000000310"
   fields:
     short_id: "tech00000310"
-    category: 2
-    level: 7
+    category: 3
+    level: 8
     name: 'Organic Armour'
     description: 'Self-healing bio-structural material improves damage tolerance.'
     tech_type: 'ARMOUR'
@@ -841,8 +932,8 @@
   pk: "00000000-0000-0000-0000-000000000311"
   fields:
     short_id: "tech00000311"
-    category: 3
-    level: 8
+    category: 4
+    level: 10
     name: 'Trans-Spatial Shielding'
     description: 'Exotic field geometry mitigates multi-spectrum weapon hits.'
     tech_type: 'SHIELD'
@@ -854,8 +945,8 @@
   pk: "00000000-0000-0000-0000-000000000312"
   fields:
     short_id: "tech00000312"
-    category: 4
-    level: 9
+    category: 3
+    level: 16
     name: 'Neutronium Armor'
     description: 'Ultra-dense neutronium reinforcement maximizes defensive endurance.'
     tech_type: 'ARMOUR'
@@ -864,11 +955,50 @@
     enabled: True
 
 - model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000313"
+  fields:
+    short_id: "tech00000313"
+    category: 5
+    level: 12
+    name: 'Adaptive Armour'
+    description: 'Adaptive plating redistributes impact loads to absorb sustained fire.'
+    tech_type: 'ARMOUR'
+    params_json: '{"defense_level": 2.80, "offense_level": -0.35}'
+    display_order: 172
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000314"
+  fields:
+    short_id: "tech00000314"
+    category: 3
+    level: 12
+    name: 'Quantum Shielding'
+    description: 'Quantum-shifted barriers dissipate high-energy impacts.'
+    tech_type: 'SHIELD'
+    params_json: '{"defense_level": 3.40}'
+    display_order: 172
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000315"
+  fields:
+    short_id: "tech00000315"
+    category: 4
+    level: 15
+    name: 'Null Field Generator'
+    description: 'Null fields collapse incoming energy signatures before impact.'
+    tech_type: 'SHIELD'
+    params_json: '{"defense_level": 3.90}'
+    display_order: 176
+    enabled: True
+
+- model: dj4xol.Technology
   pk: "00000000-0000-0000-0000-000000000401"
   fields:
     short_id: "tech00000401"
     category: 2
-    level: 1
+    level: 2
     name: 'Planetary Laser Grid I'
     description: 'Static emitter grids adapt naval beam logic for colonies.'
     tech_type: 'INFRASTRUCTURE'
@@ -880,8 +1010,8 @@
   pk: "00000000-0000-0000-0000-000000000402"
   fields:
     short_id: "tech00000402"
-    category: 1
-    level: 2
+    category: 3
+    level: 4
     name: 'Planetary Shield Net I'
     description: 'Ground shield relays provide layered local interception.'
     tech_type: 'INFRASTRUCTURE'
@@ -893,8 +1023,8 @@
   pk: "00000000-0000-0000-0000-000000000403"
   fields:
     short_id: "tech00000403"
-    category: 3
-    level: 4
+    category: 2
+    level: 6
     name: 'Planetary Disruptor Banks'
     description: 'Heavy fixed disruptors increase anti-invasion lethality.'
     tech_type: 'INFRASTRUCTURE'
@@ -907,7 +1037,7 @@
   fields:
     short_id: "tech00000404"
     category: 5
-    level: 5
+    level: 8
     name: 'Planetary Shield Net II'
     description: 'Expanded relay coherence improves colony shield overlap.'
     tech_type: 'INFRASTRUCTURE'
@@ -920,7 +1050,7 @@
   fields:
     short_id: "tech00000405"
     category: 4
-    level: 7
+    level: 12
     name: 'Phased Bastion Envelope'
     description: 'Phase-tuned bastion fields blunt concentrated assault vectors.'
     tech_type: 'INFRASTRUCTURE'
@@ -933,7 +1063,7 @@
   fields:
     short_id: "tech00000406"
     category: 5
-    level: 9
+    level: 16
     name: 'Trans-Spatial Defense Matrix'
     description: 'Colony defense matrix derived from trans-spatial shielding.'
     tech_type: 'INFRASTRUCTURE'
@@ -958,8 +1088,8 @@
   pk: "00000000-0000-0000-0000-000000000501"
   fields:
     short_id: "tech00000501"
-    category: 5
-    level: 1
+    category: 3
+    level: 2
     name: 'Scout Hull'
     description: 'Baseline scout chassis with minimal holds and tanks.'
     tech_type: 'HULL'
@@ -972,7 +1102,7 @@
   fields:
     short_id: "tech00000502"
     category: 5
-    level: 2
+    level: 5
     name: 'Fighter Hull'
     description: 'Compact combat frame with improved endurance and payload.'
     tech_type: 'HULL'
@@ -985,7 +1115,7 @@
   fields:
     short_id: "tech00000503"
     category: 3
-    level: 5
+    level: 6
     name: 'Frigate Hull'
     description: 'Standard escort hull with stronger armor and internal bulkheads.'
     tech_type: 'HULL'
@@ -998,7 +1128,7 @@
   fields:
     short_id: "tech00000504"
     category: 5
-    level: 6
+    level: 8
     name: 'Freighter Hull'
     description: 'Bulk cargo frame with expanded holds and reinforced fuel tanks.'
     tech_type: 'HULL'
@@ -1011,7 +1141,7 @@
   fields:
     short_id: "tech00000505"
     category: 3
-    level: 8
+    level: 9
     name: 'Tanker Hull'
     description: 'Long range transport.'
     tech_type: 'HULL'
@@ -1023,8 +1153,8 @@
   pk: "00000000-0000-0000-0000-000000000506"
   fields:
     short_id: "tech00000506"
-    category: 3
-    level: 10
+    category: 5
+    level: 12
     name: 'Capital Hull'
     description: 'Standardised ship-of-the-line with compartments for everything. Extra armour included as standard.'
     tech_type: 'HULL'
@@ -1037,7 +1167,7 @@
   fields:
     short_id: "tech00000507"
     category: 5
-    level: 13
+    level: 16
     name: 'City Hull'
     description: 'Mobile megastructure for empires at scale.'
     tech_type: 'HULL'
@@ -1063,7 +1193,7 @@
   fields:
     short_id: "tech00000601"
     category: 5
-    level: 8
+    level: 9
     name: 'Improved Remote Miners'
     description: 'Expanded remote mining arrays improve off-world extraction throughput.'
     tech_type: 'MECHANICAL'
@@ -1075,8 +1205,8 @@
   pk: "00000000-0000-0000-0000-000000000602"
   fields:
     short_id: "tech00000602"
-    category: 3
-    level: 11
+    category: 2
+    level: 12
     name: 'Advanced Remote Miners'
     description: 'Heavy industrial remote mining complexes for deep-field extraction.'
     tech_type: 'MECHANICAL'
@@ -1101,7 +1231,7 @@
   pk: "00000000-0000-0000-0000-000000000604"
   fields:
     short_id: "tech00000604"
-    category: 2
+    category: 4
     level: 10
     name: 'Smart Bombs'
     description: 'Guided bombardment payloads focused on defenses and population centers.'
@@ -1114,8 +1244,8 @@
   pk: "00000000-0000-0000-0000-000000000605"
   fields:
     short_id: "tech00000605"
-    category: 1
-    level: 14
+    category: 4
+    level: 19
     name: 'Nova Bombs'
     description: 'Unstable stellar-devastation weapons with catastrophic potential.'
     tech_type: 'BOMB'
@@ -1129,7 +1259,7 @@
     short_id: "tech00000700"
     category: 2
     level: 1
-    name: 'Short-Range Scanner Array'
+    name: 'Scanner Array I'
     description: 'Baseline sensor arrays for short-range detection.'
     tech_type: 'SCANNER'
     params_json: '{"basic_scanner_range": 5, "advanced_scanner_range": 0}'
@@ -1142,7 +1272,7 @@
     short_id: "tech00000701"
     category: 2
     level: 3
-    name: 'Enhanced Scanner Array'
+    name: 'Scanner Array II'
     description: 'Improved signal processing extends detection range.'
     tech_type: 'SCANNER'
     params_json: '{"basic_scanner_range": 10, "advanced_scanner_range": 0}'
@@ -1153,9 +1283,9 @@
   pk: "00000000-0000-0000-0000-000000000702"
   fields:
     short_id: "tech00000702"
-    category: 2
+    category: 4
     level: 5
-    name: 'Deep Space Scanner Grid'
+    name: 'Scanner Array III'
     description: 'Expanded sensor baselines improve long-range coverage.'
     tech_type: 'SCANNER'
     params_json: '{"basic_scanner_range": 20, "advanced_scanner_range": 0}'
@@ -1168,7 +1298,7 @@
     short_id: "tech00000703"
     category: 2
     level: 6
-    name: 'Advanced Multi-Spectrum Scanner'
+    name: 'Scanner Array IV'
     description: 'Multi-band detection enables limited advanced resolution.'
     tech_type: 'SCANNER'
     params_json: '{"basic_scanner_range": 25, "advanced_scanner_range": 5}'
@@ -1179,9 +1309,9 @@
   pk: "00000000-0000-0000-0000-000000000704"
   fields:
     short_id: "tech00000704"
-    category: 2
+    category: 4
     level: 8
-    name: 'Wide-Area Sensor Network'
+    name: 'Scanner Array V'
     description: 'Distributed arrays produce wide-area coverage and improved fidelity.'
     tech_type: 'SCANNER'
     params_json: '{"basic_scanner_range": 50, "advanced_scanner_range": 15}'
@@ -1194,7 +1324,7 @@
     short_id: "tech00000705"
     category: 2
     level: 9
-    name: 'High-Gain Sensor Matrix'
+    name: 'Scanner Array VI'
     description: 'High-gain receivers improve detection against background noise.'
     tech_type: 'SCANNER'
     params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 15}'
@@ -1205,9 +1335,9 @@
   pk: "00000000-0000-0000-0000-000000000706"
   fields:
     short_id: "tech00000706"
-    category: 2
+    category: 4
     level: 10
-    name: 'Quantum Resonance Scanners'
+    name: 'Scanner Array VII'
     description: 'Quantum resonance profiling increases advanced sensor clarity.'
     tech_type: 'SCANNER'
     params_json: '{"basic_scanner_range": 50, "advanced_scanner_range": 25}'
@@ -1220,7 +1350,7 @@
     short_id: "tech00000707"
     category: 2
     level: 11
-    name: 'Subspace Echo Array'
+    name: 'Scanner Array VIII'
     description: 'Echo analysis refines target classification at range.'
     tech_type: 'SCANNER'
     params_json: '{"basic_scanner_range": 60, "advanced_scanner_range": 30}'
@@ -1231,9 +1361,9 @@
   pk: "00000000-0000-0000-0000-000000000708"
   fields:
     short_id: "tech00000708"
-    category: 2
+    category: 4
     level: 12
-    name: 'Far-Reach Sensor Web'
+    name: 'Scanner Array IX'
     description: 'Interlinked arrays extend coverage with higher resolution.'
     tech_type: 'SCANNER'
     params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 40}'
@@ -1246,7 +1376,7 @@
     short_id: "tech00000709"
     category: 2
     level: 14
-    name: 'Hyper-Luminal Scanner Lattice'
+    name: 'Scanner Array X'
     description: 'Hyper-luminal inference expands detection horizons.'
     tech_type: 'SCANNER'
     params_json: '{"basic_scanner_range": 100, "advanced_scanner_range": 50}'
@@ -1257,9 +1387,9 @@
   pk: "00000000-0000-0000-0000-000000000710"
   fields:
     short_id: "tech00000710"
-    category: 2
+    category: 4
     level: 16
-    name: 'Trans-Spatial Sensor Grid'
+    name: 'Scanner Array XI'
     description: 'Trans-spatial analytics improve deep-range coverage.'
     tech_type: 'SCANNER'
     params_json: '{"basic_scanner_range": 120, "advanced_scanner_range": 50}'
@@ -1271,11 +1401,11 @@
   fields:
     short_id: "tech00000711"
     category: 2
-    level: 18
-    name: 'Galactic Range Scanner'
-    description: 'High-order inference pushes basic detection to galactic scales.'
+    level: 19
+    name: 'Scanner Array XII'
+    description: 'Extreme-range arrays massively extend basic detection.'
     tech_type: 'SCANNER'
-    params_json: '{"basic_scanner_range": 150, "advanced_scanner_range": 50}'
+    params_json: '{"basic_scanner_range": 250, "advanced_scanner_range": 60}'
     display_order: 315
     enabled: True
 
@@ -1283,13 +1413,26 @@
   pk: "00000000-0000-0000-0000-000000000712"
   fields:
     short_id: "tech00000712"
-    category: 2
-    level: 20
-    name: 'Interstellar Sensor Nexus'
-    description: 'Networked sensor nexus for maximum basic coverage.'
+    category: 4
+    level: 24
+    name: 'Scanner Array XIII'
+    description: 'Deep-penetration sensor architectures unlock advanced resolution at scale.'
     tech_type: 'SCANNER'
-    params_json: '{"basic_scanner_range": 200, "advanced_scanner_range": 50}'
+    params_json: '{"basic_scanner_range": 280, "advanced_scanner_range": 90}'
     display_order: 320
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000713"
+  fields:
+    short_id: "tech00000713"
+    category: 2
+    level: 26
+    name: 'Scanner Array XIV'
+    description: 'Fleet-only arrays push basic range to extreme levels with reduced advanced fidelity.'
+    tech_type: 'SCANNER'
+    params_json: '{"basic_scanner_range": 500, "advanced_scanner_range": 50}'
+    display_order: 325
     enabled: True
 
 - model: dj4xol.Technology
@@ -1298,7 +1441,7 @@
     short_id: "tech00000720"
     category: 5
     level: 1
-    name: 'Planetary Sensor Station I'
+    name: 'Colony Scanner Array I'
     description: 'Ground-based arrays extend local detection coverage.'
     tech_type: 'INFRASTRUCTURE'
     params_json: '{"basic_scanner_range": 7, "advanced_scanner_range": 0}'
@@ -1311,7 +1454,7 @@
     short_id: "tech00000721"
     category: 5
     level: 3
-    name: 'Planetary Sensor Station II'
+    name: 'Colony Scanner Array II'
     description: 'Expanded baselines improve colony sensor reach.'
     tech_type: 'INFRASTRUCTURE'
     params_json: '{"basic_scanner_range": 14, "advanced_scanner_range": 0}'
@@ -1322,9 +1465,9 @@
   pk: "00000000-0000-0000-0000-000000000722"
   fields:
     short_id: "tech00000722"
-    category: 5
+    category: 2
     level: 5
-    name: 'Planetary Sensor Station III'
+    name: 'Colony Scanner Array III'
     description: 'Deep-space arrays improve colony detection coverage.'
     tech_type: 'INFRASTRUCTURE'
     params_json: '{"basic_scanner_range": 28, "advanced_scanner_range": 0}'
@@ -1335,12 +1478,12 @@
   pk: "00000000-0000-0000-0000-000000000723"
   fields:
     short_id: "tech00000723"
-    category: 5
+    category: 4
     level: 6
-    name: 'Planetary Multi-Spectrum Sensors'
+    name: 'Colony Scanner Array IV'
     description: 'Multi-band sensors enable early advanced detection.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 35, "advanced_scanner_range": 6}'
+    params_json: '{"basic_scanner_range": 35, "advanced_scanner_range": 4}'
     display_order: 345
     enabled: True
 
@@ -1350,10 +1493,10 @@
     short_id: "tech00000724"
     category: 5
     level: 8
-    name: 'Planetary Sensor Network'
+    name: 'Colony Scanner Array V'
     description: 'Distributed colony sensors expand range and resolution.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 18}'
+    params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 12}'
     display_order: 350
     enabled: True
 
@@ -1361,12 +1504,12 @@
   pk: "00000000-0000-0000-0000-000000000725"
   fields:
     short_id: "tech00000725"
-    category: 5
+    category: 2
     level: 9
-    name: 'High-Gain Colony Sensors'
+    name: 'Colony Scanner Array VI'
     description: 'High-gain receivers improve colony signal capture.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 98, "advanced_scanner_range": 18}'
+    params_json: '{"basic_scanner_range": 98, "advanced_scanner_range": 12}'
     display_order: 355
     enabled: True
 
@@ -1374,12 +1517,12 @@
   pk: "00000000-0000-0000-0000-000000000726"
   fields:
     short_id: "tech00000726"
-    category: 5
+    category: 4
     level: 10
-    name: 'Quantum Colony Sensors'
+    name: 'Colony Scanner Array VII'
     description: 'Quantum resonance improves advanced colony scanning.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 30}'
+    params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 20}'
     display_order: 360
     enabled: True
 
@@ -1387,12 +1530,12 @@
   pk: "00000000-0000-0000-0000-000000000727"
   fields:
     short_id: "tech00000727"
-    category: 5
+    category: 2
     level: 11
-    name: 'Subspace Colony Echo Array'
+    name: 'Colony Scanner Array VIII'
     description: 'Echo analysis sharpens colony sensor resolution.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 84, "advanced_scanner_range": 36}'
+    params_json: '{"basic_scanner_range": 84, "advanced_scanner_range": 24}'
     display_order: 365
     enabled: True
 
@@ -1400,12 +1543,12 @@
   pk: "00000000-0000-0000-0000-000000000728"
   fields:
     short_id: "tech00000728"
-    category: 5
+    category: 4
     level: 12
-    name: 'Colony Sensor Web'
+    name: 'Colony Scanner Array IX'
     description: 'Interlinked arrays extend colony detection reach.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 98, "advanced_scanner_range": 48}'
+    params_json: '{"basic_scanner_range": 98, "advanced_scanner_range": 32}'
     display_order: 370
     enabled: True
 
@@ -1415,10 +1558,10 @@
     short_id: "tech00000729"
     category: 5
     level: 14
-    name: 'Hyper-Luminal Colony Lattice'
+    name: 'Colony Scanner Array X'
     description: 'Hyper-luminal inference expands colony scanning.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 140, "advanced_scanner_range": 60}'
+    params_json: '{"basic_scanner_range": 140, "advanced_scanner_range": 40}'
     display_order: 375
     enabled: True
 
@@ -1426,12 +1569,12 @@
   pk: "00000000-0000-0000-0000-000000000730"
   fields:
     short_id: "tech00000730"
-    category: 5
+    category: 4
     level: 16
-    name: 'Trans-Spatial Colony Grid'
+    name: 'Colony Scanner Array XI'
     description: 'Trans-spatial processing extends colony reach.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 168, "advanced_scanner_range": 60}'
+    params_json: '{"basic_scanner_range": 168, "advanced_scanner_range": 40}'
     display_order: 380
     enabled: True
 
@@ -1439,12 +1582,12 @@
   pk: "00000000-0000-0000-0000-000000000731"
   fields:
     short_id: "tech00000731"
-    category: 5
-    level: 18
-    name: 'Galactic Colony Sensors'
+    category: 2
+    level: 19
+    name: 'Colony Scanner Array XII'
     description: 'Colony-scale arrays push basic detection to extremes.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 210, "advanced_scanner_range": 60}'
+    params_json: '{"basic_scanner_range": 350, "advanced_scanner_range": 50}'
     display_order: 385
     enabled: True
 
@@ -1452,11 +1595,11 @@
   pk: "00000000-0000-0000-0000-000000000732"
   fields:
     short_id: "tech00000732"
-    category: 5
-    level: 20
-    name: 'Interstellar Colony Sensor Nexus'
+    category: 4
+    level: 24
+    name: 'Colony Scanner Array XIII'
     description: 'Massive colony networks maximize basic scanning coverage.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 280, "advanced_scanner_range": 60}'
+    params_json: '{"basic_scanner_range": 390, "advanced_scanner_range": 70}'
     display_order: 390
     enabled: True
