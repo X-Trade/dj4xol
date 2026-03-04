@@ -3,7 +3,11 @@ import math
 
 from django.db import models, transaction
 
-from .colony_rules import calculate_available_buildpoints, calculate_available_researchpoints
+from .colony_rules import (
+    calculate_available_buildpoints,
+    calculate_available_researchpoints,
+    calculate_staffing_ratio,
+)
 from .bombardment_rules import normalize_bomb_type, normalize_miner_type
 from .models import (
     DefaultResearchLevelRequirement,
@@ -256,24 +260,55 @@ def _allocate_weighted_integer(total_amount, weights):
 
 
 def _consume_resource_partial(stars, inventory_field, amount):
-    """Consume up to amount of a mineral from eligible stars."""
+    """Consume up to amount of a mineral, weighted by staffed labs with reallocation."""
     remaining = int(amount or 0)
     if remaining <= 0:
         return 0
-    consumed = 0
+
+    candidates = []
     for star in stars:
-        available = int(getattr(star, inventory_field, 0) or 0)
-        if available <= 0:
+        if int(getattr(star, inventory_field, 0) or 0) <= 0:
             continue
-        take = min(available, remaining)
-        if take <= 0:
+        if int(star.labs or 0) <= 0:
             continue
-        setattr(star, inventory_field, available - take)
-        star.save(update_fields=[inventory_field])
-        consumed += take
-        remaining -= take
-        if remaining <= 0:
+        staffing_ratio = calculate_staffing_ratio(star)
+        if staffing_ratio <= 0:
+            continue
+        effectiveness = 1.0 if staffing_ratio <= 1.0 else (1.0 / staffing_ratio)
+        effective_labs = float(star.labs) * effectiveness
+        if effective_labs <= 0.0:
+            continue
+        candidates.append((star, effective_labs))
+    consumed = 0
+
+    while remaining > 0 and candidates:
+        weights = [math.log1p(effective_labs) for _, effective_labs in candidates]
+        total_weight = sum(weights)
+        if total_weight <= 0:
             break
+        allocations = _allocate_weighted_integer(remaining, weights)
+        next_candidates = []
+        progress = False
+        for (star, effective_labs), allocation in zip(candidates, allocations):
+            if allocation <= 0:
+                if int(getattr(star, inventory_field, 0) or 0) > 0:
+                    next_candidates.append((star, effective_labs))
+                continue
+            available = int(getattr(star, inventory_field, 0) or 0)
+            take = min(available, allocation)
+            if take > 0:
+                setattr(star, inventory_field, available - take)
+                star.save(update_fields=[inventory_field])
+                consumed += take
+                remaining -= take
+                available -= take
+                progress = True
+            if available > 0:
+                next_candidates.append((star, effective_labs))
+        if not progress:
+            break
+        candidates = next_candidates
+
     return consumed
 
 
