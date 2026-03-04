@@ -671,7 +671,9 @@ body.turned-in.lcars .order-params::after {
     border-radius: 6px;
 }
 
-.detail-subpanel--requirements::before {
+.detail-subpanel--requirements::before,
+.detail-subpanel--info::before,
+.detail-subpanel--refund::before {
     content: 'Requirements';
     display: block;
     font-weight: bold;
@@ -680,6 +682,14 @@ body.turned-in.lcars .order-params::after {
     font-size: 0.78em;
     color: inherit;
     margin-bottom: 6px;
+}
+
+.detail-subpanel--info::before {
+    content: 'Game Details';
+}
+
+.detail-subpanel--refund::before {
+    content: 'Tech Refund';
 }
 
 .detail-label {

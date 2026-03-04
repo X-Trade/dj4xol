@@ -1,0 +1,9 @@
+{% if inviter_name %}{{ inviter_name }} has invited you to join a DJ4XOL game.{% else %}You have been invited to join a DJ4XOL game.{% endif %}
+
+Game: {{ game.name }}
+{% if game.description %}Description: {{ game.description }}{% endif %}
+
+Join the game here:
+{{ join_url }}
+
+{% if server_url %}Server: {{ server_url }}{% endif %}

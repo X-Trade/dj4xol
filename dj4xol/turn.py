@@ -800,18 +800,15 @@ class GameTurn():
                 fleet,
                 anomaly,
                 reason=(
-                    "%s was destroyed by anomaly-induced structural failure near %s."
+                    "%s was destroyed by anomaly-induced structural failure at %s."
                     % (fleet.name, format_map_object(anomaly))
                 ),
             )
             return
         fleet.save(update_fields=['integrity'])
-        location = format_location(
-            obj=anomaly, link=True, game=self.game
-        )
         text = (
-            "%s took %s%% integrity damage whilst exploring %s near %s."
-            % (fleet.name, damage, format_map_object(anomaly), location)
+            "%s took %s%% integrity damage whilst exploring %s."
+            % (fleet.name, damage, format_map_object(anomaly))
         )
         self._create_anomaly_message(fleet.player, text, priority=True)
 
@@ -857,14 +854,14 @@ class GameTurn():
                 return
             fleet.save(update_fields=['integrity'])
             text = (
-                "Anomaly encounter near %s found no cargo on %s; hull stress caused %s%% integrity damage."
+                "Anomaly encounter at %s found no cargo on %s; hull stress caused %s%% integrity damage."
                 % (format_map_object(anomaly), fleet.name, damage)
             )
             self._create_anomaly_message(fleet.player, text, priority=True)
             return
         loss_text = ', '.join(losses) if losses else 'no significant cargo'
         text = (
-            "Anomaly encounter near %s disrupted %s cargo: %s lost."
+            "Anomaly encounter at %s disrupted %s cargo: %s lost."
             % (format_map_object(anomaly), fleet.name, loss_text)
         )
         self._create_anomaly_message(fleet.player, text, priority=True)
@@ -877,12 +874,8 @@ class GameTurn():
             text = reason
         else:
             text = (
-                "%s was lost whilst exploring %s near %s."
-                % (
-                    fleet_name,
-                    format_map_object(anomaly),
-                    format_location(obj=anomaly, link=True, game=self.game),
-                )
+                "%s was lost whilst exploring %s."
+                % (fleet_name, format_map_object(anomaly))
             )
         self._create_anomaly_message(player, text, priority=True)
 
@@ -3447,6 +3440,7 @@ class GameTurn():
                 integrity_lost=defense_fire.get('integrity_lost', 0),
                 ships_lost=defense_fire.get('ships_lost', 0),
                 star_destroyed=False,
+                star=star,
             )
             msg = factory.new_message()
             msg.year = self.game.year
@@ -3528,6 +3522,7 @@ class GameTurn():
             integrity_lost=defense_fire.get('integrity_lost', 0),
             ships_lost=defense_fire.get('ships_lost', 0),
             star_destroyed=star_destroyed,
+            star=None if star_destroyed else star,
         )
         msg = factory.new_message()
         msg.year = self.game.year
@@ -3556,6 +3551,7 @@ class GameTurn():
                     star_destroyed=star_destroyed,
                     perspective='defender',
                     attacker_fleet_name=fleet.name,
+                    star=None if star_destroyed else star,
                 )
                 defender_msg = defender_factory.new_message()
                 defender_msg.year = self.game.year

@@ -53,6 +53,46 @@ def _profile_url(base_url):
     return path
 
 
+def _join_game_url(game, base_url):
+    path = reverse('dj4xol:join_game', args=[game.short_id])
+    if base_url:
+        return base_url + path
+    return path
+
+
+def send_game_invite_email(game, recipient_email, inviter_name=None, dry_run=False, stdout=None):
+    if not _email_enabled():
+        if stdout:
+            stdout.write('Email disabled; skipping invite email.')
+        return False
+    if not recipient_email:
+        return False
+
+    base_url = _get_server_url()
+    from_email = _get_from_email()
+    subject = f'DJ4XOL: Invitation to join {game.name}'
+    body = render_to_string('dj4xol/email/game_invite.txt', {
+        'game': game,
+        'inviter_name': inviter_name,
+        'join_url': _join_game_url(game, base_url),
+        'server_url': base_url,
+    })
+
+    if dry_run:
+        if stdout:
+            stdout.write(f'[DRY RUN] Would send invite to {recipient_email}')
+        return False
+
+    send_mail(
+        subject=subject,
+        message=body,
+        from_email=from_email,
+        recipient_list=[recipient_email],
+        fail_silently=False,
+    )
+    return True
+
+
 def _build_rollup_entries(account, base_url):
     entries = []
     total_messages = 0
