@@ -262,7 +262,7 @@ body.lcars .maparea a.mapstar-name {
         radial-gradient(ellipse at 48% 52%, rgba(var(--neb-dark-r), var(--neb-dark-g), var(--neb-dark-b), 0.44) 0%, rgba(var(--neb-mid-r), var(--neb-mid-g), var(--neb-mid-b), 0.27) 36%, rgba(var(--neb-bright-r), var(--neb-bright-g), var(--neb-bright-b), 0.21) 64%, rgba(0, 0, 0, 0) 100%),
         radial-gradient(ellipse at 76% 32%, rgba(var(--neb-accent-r), var(--neb-accent-g), var(--neb-accent-b), 0.22) 0%, rgba(var(--neb-bright-r), var(--neb-bright-g), var(--neb-bright-b), 0.17) 46%, rgba(0, 0, 0, 0) 100%);
     box-shadow: 0 0 10px rgba(var(--neb-bright-r), var(--neb-bright-g), var(--neb-bright-b), 0.17);
-    opacity: 0.60;
+    opacity: 0.79;
     filter: blur(1.1px);
 }
 
