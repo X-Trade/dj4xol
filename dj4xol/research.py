@@ -31,6 +31,7 @@ TECH_PARAM_LABELS = {
     'fuel_efficiency': 'Fuel Efficiency',
     'overmax_fuel_penalty': 'Overmax Fuel Penalty',
     'wormhole_fuel_per_ly': 'Wormhole Fuel (mg/ly)',
+    'wormhole_destruction_chance': 'Wormhole Destruction Chance',
     'hull_thumbnail_class': 'Hull Class',
     'offense_level': 'Offense Level',
     'defense_level': 'Defense Level',
@@ -66,6 +67,11 @@ def _format_param_value(key, value):
         except (TypeError, ValueError):
             return value
     if key in ('fuel_efficiency', 'overmax_fuel_penalty'):
+        try:
+            return '{}%'.format(int(round(float(value) * 100)))
+        except (TypeError, ValueError):
+            return value
+    if key == 'wormhole_destruction_chance':
         try:
             return '{}%'.format(int(round(float(value) * 100)))
         except (TypeError, ValueError):
@@ -532,6 +538,7 @@ def get_player_tech_effects(player):
         'fuel_efficiency': 1.0,
         'overmax_fuel_penalty': 1.0,
         'wormhole_fuel_per_ly': 5.0,
+        'wormhole_destruction_chance': None,
         'hull_thumbnail_class': 'scout',
         'offense_level': 0.0,
         'defense_level': 0.0,
@@ -654,6 +661,23 @@ def get_player_tech_effects(player):
                 effects['wormhole_fuel_per_ly'] = max(0.1, float(wormhole_fuel_per_ly))
             except (TypeError, ValueError):
                 pass
+        wormhole_destruction_chance = params.get('wormhole_destruction_chance')
+        if wormhole_destruction_chance is not None:
+            try:
+                effects['wormhole_destruction_chance'] = max(
+                    0.0, min(1.0, float(wormhole_destruction_chance))
+                )
+            except (TypeError, ValueError):
+                pass
+    if effects.get('has_wormhole_drive'):
+        if effects.get('wormhole_destruction_chance') is None:
+            try:
+                fallback = 1.0 - float(effects.get('fuel_efficiency') or 1.0)
+            except (TypeError, ValueError):
+                fallback = 0.0
+            effects['wormhole_destruction_chance'] = max(0.0, min(1.0, fallback))
+    elif effects.get('wormhole_destruction_chance') is None:
+        effects['wormhole_destruction_chance'] = 0.0
     return effects
 
 

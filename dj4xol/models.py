@@ -526,6 +526,7 @@ class Fleet(AbstractMapObject):
     fuel_efficiency = models.FloatField(default=1.0)  # Per-fleet fuel efficiency multiplier
     overmax_fuel_penalty = models.FloatField(default=1.0)  # Exponential burn multiplier above safe warp
     wormhole_fuel_per_ly = models.FloatField(default=5.0)
+    wormhole_destruction_chance = models.FloatField(default=0.10)
     offense_level = models.FloatField(default=0.0)
     defense_level = models.FloatField(default=0.0)
     has_bombs = models.CharField(max_length=16, choices=BOMB_TYPE_CHOICES,
