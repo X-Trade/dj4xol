@@ -17,6 +17,7 @@ from ..colony_rules import (
 )
 from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, Report
 from ..factory import GameFactory
+from ..research import ensure_player_research_rows
 from django.test import TestCase
 from ._util import default_game, get_default_race, get_default_race_type
 from unittest.mock import patch, PropertyMock
@@ -337,6 +338,12 @@ class TestTerraforming(TestCase):
         game = default_game(stars=5)
         player = game.players.first()
         homeworld = player.homeworld
+        rows = ensure_player_research_rows(player)
+        construction = next(
+            row for row in rows if row.category.code == 'CONSTRUCTION'
+        )
+        construction.current_level = 7
+        construction.save(update_fields=['current_level'])
         # Set gravity away from player's ideal
         player_ideal = player.gravity_center
         if player_ideal >= 0.3:
@@ -361,6 +368,12 @@ class TestTerraforming(TestCase):
         game = default_game(stars=5)
         player = game.players.first()
         homeworld = player.homeworld
+        rows = ensure_player_research_rows(player)
+        construction = next(
+            row for row in rows if row.category.code == 'CONSTRUCTION'
+        )
+        construction.current_level = 7
+        construction.save(update_fields=['current_level'])
         gravity_ideal = player.gravity_center
         temp_ideal = player.temperature_center
         homeworld.gravity = max(0.0, gravity_ideal - 0.3)

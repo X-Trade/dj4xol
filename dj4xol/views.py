@@ -25,7 +25,8 @@ from .turn import GameTurn
 from .research import (
     build_research_screen_data, update_player_allocations, set_even_allocations,
     set_singular_allocation, get_global_research_max_level,
-    get_starting_tech_balance_costs,
+    get_starting_tech_balance_costs, build_production_cost_entries,
+    get_player_available_production_orders,
 )
 from .technology_thumbnails import (
     get_technology_thumbnail_initial_index,
@@ -867,6 +868,11 @@ def add_production_order(request, game_short_id):
 
     if order_type:
         star = Star.objects.get(short_id=star_short_id, game=game, player=player)
+        allowed = {
+            entry['value'] for entry in get_player_available_production_orders(player, star)
+        }
+        if order_type not in allowed:
+            return _redirect_preserving_selection(request, game)
         # Calculate next position
         max_pos = star.production_orders.aggregate(
             max_pos=models.Max('position'))['max_pos'] or 0
@@ -1497,6 +1503,7 @@ def _format_tech_param_key(key):
         'offense_level': 'Offense Level',
         'defense_level': 'Defense Level',
         'colony_defense_level': 'Colony Defense Level',
+        'terraforming_rate': 'Terraforming Rate',
     }
     return labels.get(key, key.replace('_', ' ').title())
 
@@ -1523,6 +1530,11 @@ def _format_tech_param_value(key, value):
         if not text:
             return value
         return text.replace('_', ' ').title()
+    if key == 'terraforming_rate':
+        try:
+            return '{}%'.format(int(round(float(value) * 100.0)))
+        except (TypeError, ValueError):
+            return value
     return value
 
 
@@ -1532,6 +1544,8 @@ def _should_show_tech_param(key, value):
             return float(value) > 0
         except (TypeError, ValueError):
             return True
+    if key == 'production_cost_overrides':
+        return False
     return True
 
 
@@ -1641,6 +1655,7 @@ def help_technology(request):
             for key, value in params.items()
             if _should_show_tech_param(key, value)
         ]
+        tech.params_display += build_production_cost_entries(params)
         tech.prerequisites = [
             {
                 'category': prereq.requires_category,

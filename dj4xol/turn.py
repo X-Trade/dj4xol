@@ -76,6 +76,8 @@ from .research import (
     get_player_colony_defense_level,
     apply_research_bonus_rp,
     ensure_player_research_rows,
+    get_player_production_costs,
+    get_player_terraforming_profile,
 )
 from .fleet_thumbnails import choose_fleet_thumbnail
 from .chance_rules import (
@@ -4300,7 +4302,7 @@ class GameTurn():
         7. Send aggregate messages for mines/factories/defenses (4+ items)
         8. Repair damaged fleets using available shipyards
         """
-        from .models import Star, ProductionOrder, PRODUCTION_COSTS
+        from .models import Star, ProductionOrder
         for star in Star.objects.filter(game=self.game, player__isnull=False):
             had_production_orders = star.production_orders.exists()
             star.buildpoints_consumed = 0
@@ -4309,6 +4311,9 @@ class GameTurn():
             blocked = False
             fleets_built_this_turn = 0  # Track fleets built for shipyard availability
             shipyard_blocked_message_sent = False  # Only send once per star
+            cost_map = get_player_production_costs(star.player)
+            terraform_profile = get_player_terraforming_profile(star.player)
+            terraform_rate = float(terraform_profile.get('rate', 0.0) or 0.0)
 
             # Track production counts for aggregate messages
             production_counts = {
@@ -4319,7 +4324,12 @@ class GameTurn():
                 if blocked:
                     break
 
-                cost = PRODUCTION_COSTS.get(order.order_type, {})
+                cost = cost_map.get(order.order_type, {})
+
+                if order.order_type.startswith('TERRAFORM_') and terraform_rate <= 0:
+                    blocked = True
+                    order.save()
+                    break
 
                 # Check shipyard requirement for BUILD_FLEET
                 if order.order_type == 'BUILD_FLEET' and star.shipyards == 0:
@@ -4395,7 +4405,7 @@ class GameTurn():
                         colonists_busy += colonist_cost
 
                     fleet_built = self._apply_production_effect(
-                        star, order, production_counts
+                        star, order, production_counts, terraform_rate=terraform_rate
                     )
                     if fleet_built:
                         fleets_built_this_turn += 1
@@ -4434,7 +4444,7 @@ class GameTurn():
             available_shipyards = star.shipyards - fleets_built_this_turn
             self._repair_fleets_at_star(star, available_shipyards)
 
-    def _apply_production_effect(self, star, order, production_counts):
+    def _apply_production_effect(self, star, order, production_counts, terraform_rate=None):
         """Apply the effect of a completed production order.
 
         Returns True if a fleet was built (for shipyard availability tracking).
@@ -4458,7 +4468,7 @@ class GameTurn():
             self._build_shipyard(star)
             production_counts['shipyard'] += 1
         elif order.order_type.startswith('TERRAFORM_'):
-            self._apply_terraform_order(star, order)
+            self._apply_terraform_order(star, order, terraform_rate=terraform_rate)
         return False
 
     def _build_fleet(self, star, order):
@@ -4554,14 +4564,19 @@ class GameTurn():
         msg.year = self.game.year
         msg.save()
 
-    def _apply_terraform_order(self, star, order):
+    def _apply_terraform_order(self, star, order, terraform_rate=None):
         """Apply a single terraforming order.
 
-        Each turn moves 1% of the remaining distance toward the player's ideal.
+        Each turn moves a fraction of the remaining distance toward the player's ideal.
         This produces exponential decay that never quite reaches perfection.
         Modifies the environmental value directly.
         """
-        TERRAFORM_RATE = 0.01  # 1% of remaining distance per turn
+        rate = terraform_rate
+        if rate is None:
+            profile = get_player_terraforming_profile(star.player)
+            rate = float(profile.get('rate', 0.0) or 0.0)
+        if rate <= 0:
+            return
 
         env_map = {
             'TERRAFORM_GRAVITY': ('gravity', star.player.gravity_center),
@@ -4575,9 +4590,9 @@ class GameTurn():
         field, target = env_map[order.order_type]
         current = getattr(star, field)
 
-        # Move 1% of the way from current to target
+        # Move a portion of the way from current to target
         distance = target - current
-        new_value = current + distance * TERRAFORM_RATE
+        new_value = current + distance * rate
 
         # Clamp to valid range
         new_value = max(0.0, min(2.0, new_value))

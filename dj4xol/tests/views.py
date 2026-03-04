@@ -142,7 +142,7 @@ class TestProductionOrders(TestCase):
         # Submit with valid order_type
         response = client.post(
             reverse('dj4xol:add_production', args=[game.short_id]),
-            {'star': homeworld.short_id, 'order_type': 'TERRAFORM_GRAVITY'}
+            {'star': homeworld.short_id, 'order_type': 'BUILD_MINE'}
         )
         self.assertEqual(response.status_code, 302)  # Redirects
         # New order should be created
@@ -152,7 +152,7 @@ class TestProductionOrders(TestCase):
         )
         # Verify the order type
         order = ProductionOrder.objects.filter(star=homeworld).first()
-        self.assertEqual(order.order_type, 'TERRAFORM_GRAVITY')
+        self.assertEqual(order.order_type, 'BUILD_MINE')
 
     def test_toggle_production_order_repeat(self):
         """Production order repeat can be toggled from the list button."""

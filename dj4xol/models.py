@@ -1193,9 +1193,9 @@ PRODUCTION_COSTS = {
     'BUILD_SHIPYARD': {'bp': 100, 'ironium': 250, 'boranium': 50, 'germanium': 100,
                        'colonists': 0},
     'BUILD_FLEET': {'bp': 50, 'ironium': 100, 'boranium': 200, 'germanium': 200, 'colonists': 0},
-    'TERRAFORM_GRAVITY': {'bp': 100, 'ironium': 1000, 'boranium': 0, 'germanium': 0, 'colonists': 0},
-    'TERRAFORM_TEMPERATURE': {'bp': 100, 'ironium': 0, 'boranium': 1000, 'germanium': 0, 'colonists': 0},
-    'TERRAFORM_RADIATION': {'bp': 100, 'ironium': 0, 'boranium': 500, 'germanium': 500, 'colonists': 0},
+    'TERRAFORM_GRAVITY': {'bp': 100, 'ironium': 750, 'boranium': 150, 'germanium': 100, 'colonists': 0},
+    'TERRAFORM_TEMPERATURE': {'bp': 100, 'ironium': 200, 'boranium': 660, 'germanium': 140, 'colonists': 0},
+    'TERRAFORM_RADIATION': {'bp': 100, 'ironium': 50, 'boranium': 475, 'germanium': 475, 'colonists': 0},
 }
 
 
