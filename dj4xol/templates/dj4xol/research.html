@@ -76,6 +76,9 @@
                     <div class="panel-content panel-stack research-panel-body">
                         <form method="post" class="panel-scrollable-list" id="research-allocation-form">
                             {% csrf_token %}
+                            {% if not singular_research %}
+                            <input type="hidden" name="alloc_action" value="update" id="alloc-action-input">
+                            {% endif %}
                             {% if selected_category %}
                             <input type="hidden" name="category" value="{{ selected_category.id }}">
                             {% endif %}
@@ -106,8 +109,8 @@
                             {% endfor %}
                             {% if not singular_research %}
                             <div class="allocation-actions">
-                                <button type="submit" name="alloc_action" value="even">Even Split</button>
-                                <button type="submit" name="alloc_action" value="update">Update Allocation</button>
+                                <button type="button" id="alloc-even-btn">Even Split</button>
+                                <button type="submit">Update Allocation</button>
                             </div>
                             {% endif %}
                         </form>
@@ -272,6 +275,7 @@
                 var remainingMs = targetMs - Date.now();
                 if (remainingMs <= 60000) {
                     countdownEl.textContent = 'Due';
+                    countdownEl.classList.add('status-due');
                     if (!window.turnIsDue) {
                         window.turnIsDue = true;
                         if (window.__startTurnPoll) {
@@ -280,6 +284,7 @@
                     }
                     return;
                 }
+                countdownEl.classList.remove('status-due');
                 var totalMinutes = Math.floor(remainingMs / 60000);
                 var hours = Math.floor(totalMinutes / 60);
                 var minutes = totalMinutes % 60;
@@ -355,6 +360,19 @@
                         form.submit();
                     }
                 });
+            });
+        })();
+        (function() {
+            var form = document.getElementById('research-allocation-form');
+            if (!form) return;
+            var evenBtn = document.getElementById('alloc-even-btn');
+            var actionInput = document.getElementById('alloc-action-input');
+            if (!evenBtn) return;
+            evenBtn.addEventListener('click', function() {
+                if (actionInput) {
+                    actionInput.value = 'even';
+                }
+                form.submit();
             });
         })();
         </script>

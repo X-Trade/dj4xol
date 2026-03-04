@@ -116,6 +116,11 @@ label {
     color: var(--status-positive);
 }
 
+.title-bar .status-due {
+    color: var(--status-negative);
+    font-weight: bold;
+}
+
 .title-bar .status-generating {
     color: var(--status-warning);
     font-style: italic;
