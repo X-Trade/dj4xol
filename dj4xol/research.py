@@ -1285,6 +1285,7 @@ def build_research_screen_data(player, selected_category_id=None):
     next_level_req = None
     next_level_number = None
     next_level_rp_current = None
+    next_level_rp_met = None
     next_level_resource_rows = []
     next_level_prerequisites = []
     next_level_blocked = False
@@ -1335,7 +1336,11 @@ def build_research_screen_data(player, selected_category_id=None):
                     rp_per_year = int(allocations[idx])
                     break
             remaining = max(0.0, level_cost - selected_research.stored_rp)
-            next_level_rp_current = int(min(max(0, selected_research.stored_rp), level_cost))
+            next_level_rp_current = int(max(0, selected_research.stored_rp))
+            if level_cost > 0:
+                next_level_rp_met = next_level_rp_current >= level_cost
+            else:
+                next_level_rp_met = True
             if level_cost > 0:
                 progress_percent = int(
                     max(0, min(100, (selected_research.stored_rp / float(level_cost)) * 100.0))
@@ -1344,6 +1349,7 @@ def build_research_screen_data(player, selected_category_id=None):
                 eta_years = int(math.ceil(remaining / rp_per_year))
         elif selected_research:
             next_level_rp_current = 0
+            next_level_rp_met = False
 
         if not selected_is_maxed and next_level_req:
             paid_by_resource = {
@@ -1364,6 +1370,7 @@ def build_research_screen_data(player, selected_category_id=None):
                     'label': label,
                     'current': current,
                     'cost': cost,
+                    'met': current >= cost,
                     'unit': 'kt',
                 })
 
@@ -1418,6 +1425,7 @@ def build_research_screen_data(player, selected_category_id=None):
         'next_level_number': next_level_number,
         'next_level_cost': level_cost,
         'next_level_rp_current': next_level_rp_current,
+        'next_level_rp_met': next_level_rp_met,
         'next_level_progress_percent': progress_percent,
         'next_level_rp_per_year': rp_per_year,
         'next_level_eta_years': eta_years,

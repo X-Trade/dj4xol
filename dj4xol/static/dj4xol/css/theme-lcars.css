@@ -341,6 +341,31 @@ body {
     margin-bottom: 2px;
 }
 
+.lcars .detail-subpanel {
+    background: #000;
+    border: 2px solid #9999cc;
+    border-radius: 0 0 0 12px;
+    padding: 8px 10px;
+    position: relative;
+    border-style: hidden hidden solid solid;
+}
+
+.lcars .detail-subpanel--requirements::before {
+    content: 'Requirements';
+    display: block;
+    background: linear-gradient(to right,
+        #9999cc 0%, #9999cc calc(100% - 24px),
+        #000 calc(100% - 24px), #000 calc(100% - 20px),
+        #cc99cc calc(100% - 20px), #cc99cc 100%);
+    color: #000;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 0.8em;
+    padding: 2px 8px;
+    margin: -8px -10px 8px -10px;
+}
+
 /* ============================================
    LCARS Columns Layout
    ============================================ */
@@ -648,6 +673,22 @@ input:focus {
     padding: 2px 8px;
     margin: -10px -10px 10px -10px;
     border-radius: 0;
+}
+
+.panel .order-params--costs::before {
+    content: 'Costs';
+}
+
+.panel .order-params--costs,
+.order-params--costs {
+    border-style: hidden hidden solid hidden;
+}
+
+.panel-content .order-params--costs {
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none !important;
+    padding-right: 14px;
 }
 
 .panel .order-params label {

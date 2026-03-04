@@ -730,7 +730,19 @@ class DetailBuilder():
             return []
         if not self.player or self.selected_obj.player != self.player:
             return []
-        return get_player_available_production_orders(self.player, self.selected_obj)
+        orders = get_player_available_production_orders(self.player, self.selected_obj)
+        cost_map = get_player_production_costs(self.player)
+        for option in orders:
+            order_type = option.get('value')
+            cost = cost_map.get(order_type, {}) if order_type else {}
+            option['cost'] = {
+                'bp': int(cost.get('bp', 0) or 0),
+                'ironium': int(cost.get('ironium', 0) or 0),
+                'boranium': int(cost.get('boranium', 0) or 0),
+                'germanium': int(cost.get('germanium', 0) or 0),
+                'colonists': int(cost.get('colonists', 0) or 0),
+            }
+        return orders
 
     def get_fleet_orders(self):
         """Get movement orders for selected fleet."""

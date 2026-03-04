@@ -119,35 +119,36 @@
                     <h2><span>Detail{% if selected_category %} - {{ selected_category.name }}{% endif %}</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack research-panel-body">
                         <section class="research-detail-body panel-scrollable-text">
+                        <div class="research-detail-kv">
                         {% if next_level_number %}
                         <div class="detail-row">
                             <span class="env-label">Next Level</span>
                             <span class="detail-value">L{{ next_level_number }}</span>
                         </div>
                         {% endif %}
+                        {% if next_level_cost != None or next_level_resource_rows or next_level_prerequisites %}
+                        <div class="detail-subpanel detail-subpanel--requirements detail-subpanel--columns">
                         {% if next_level_cost != None %}
                         <div class="detail-row">
                             <span class="env-label">RP</span>
-                            <span class="detail-value">{{ next_level_rp_current }}/{{ next_level_cost }}</span>
+                            <span class="detail-value"><span class="{% if next_level_rp_met is not None and not next_level_rp_met %}text-negative{% endif %}">{{ next_level_rp_current }}</span>/{{ next_level_cost }}</span>
                         </div>
                         {% endif %}
                         {% for row in next_level_resource_rows %}
                         <div class="detail-row">
                             <span class="env-label">{{ row.label }}</span>
-                            <span class="detail-value">{{ row.current }}/{{ row.cost }}{{ row.unit }}</span>
+                            <span class="detail-value"><span class="{% if not row.met %}text-negative{% endif %}">{{ row.current }}</span>/{{ row.cost }}{{ row.unit }}</span>
                         </div>
                         {% endfor %}
                         {% if next_level_prerequisites %}
-                        <div class="detail-row">
-                            <span class="env-label">Prerequisites</span>
-                            <span class="detail-value"></span>
-                        </div>
                         {% for prereq in next_level_prerequisites %}
                         <div class="detail-row">
                             <span class="env-label">{{ prereq.name }}</span>
-                            <span class="detail-value{% if not prereq.met %} text-negative{% endif %}">L{{ prereq.current }}/{{ prereq.required }}</span>
+                            <span class="detail-value"><span class="{% if not prereq.met %}text-negative{% endif %}">L{{ prereq.current }}</span>/{{ prereq.required }}</span>
                         </div>
                         {% endfor %}
+                        {% endif %}
+                        </div>
                         {% endif %}
                         {% if next_level_progress_percent != None %}
                         <div class="detail-row">
@@ -164,12 +165,13 @@
                                     Not funded
                                 {% elif next_level_eta_years <= 0 %}
                                     Ready this turn
-                                {% elif next_level_eta_years == 1 %}
+                        {% elif next_level_eta_years == 1 %}
                                     1 year
                                 {% else %}
                                     {{ next_level_eta_years }} years
                                 {% endif %}
                             </span>
+                        </div>
                         </div>
                         <hr class="detail-divider">
                         <h4>Unlocks</h4>
