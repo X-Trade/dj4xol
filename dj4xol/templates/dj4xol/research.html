@@ -137,6 +137,18 @@
                             <span class="detail-value">{{ row.current }}/{{ row.cost }}{{ row.unit }}</span>
                         </div>
                         {% endfor %}
+                        {% if next_level_prerequisites %}
+                        <div class="detail-row">
+                            <span class="env-label">Prerequisites</span>
+                            <span class="detail-value"></span>
+                        </div>
+                        {% for prereq in next_level_prerequisites %}
+                        <div class="detail-row">
+                            <span class="env-label">{{ prereq.name }}</span>
+                            <span class="detail-value{% if not prereq.met %} text-negative{% endif %}">L{{ prereq.current }}/{{ prereq.required }}</span>
+                        </div>
+                        {% endfor %}
+                        {% endif %}
                         {% if next_level_progress_percent != None %}
                         <div class="detail-row">
                             <span class="env-label">Progress</span>
@@ -146,7 +158,9 @@
                         <div class="detail-row">
                             <span class="env-label">Projected Duration</span>
                             <span class="detail-value">
-                                {% if next_level_eta_years == None %}
+                                {% if next_level_blocked %}
+                                    Blocked
+                                {% elif next_level_eta_years == None %}
                                     Not funded
                                 {% elif next_level_eta_years <= 0 %}
                                     Ready this turn

@@ -936,6 +936,7 @@ class Technology(UUIDMixin):
         ('ARMOUR', 'Armour'),
         ('SCANNER', 'Scanner'),
         ('INFRASTRUCTURE', 'Infrastructure'),
+        ('ELECTRICAL', 'Electrical'),
         ('MECHANICAL', 'Mechanical'),
         ('BOMB', 'Bomb'),
         ('OTHER', 'Other'),
@@ -1115,6 +1116,32 @@ class ResearchLevelRequirement(models.Model):
 
     def __str__(self):
         return '%s L%s' % (self.category.name, self.level)
+
+
+class ResearchLevelPrerequisite(models.Model):
+    """Per-category cross-category prerequisites for research levels."""
+    category = models.ForeignKey(
+        ResearchCategory, related_name='level_prerequisites',
+        on_delete=models.CASCADE
+    )
+    level = models.IntegerField()
+    requires_category = models.ForeignKey(
+        ResearchCategory, related_name='required_by_levels',
+        on_delete=models.CASCADE
+    )
+    min_level = models.IntegerField(default=0)
+
+    class Meta:
+        unique_together = [['category', 'level', 'requires_category']]
+        ordering = ['category', 'level', 'requires_category']
+
+    def __str__(self):
+        return '%s L%s requires %s L%s' % (
+            self.category.name,
+            self.level,
+            self.requires_category.name,
+            self.min_level,
+        )
 
 
 class GameMessage(AbstractGameObject):
