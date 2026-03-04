@@ -242,19 +242,45 @@ class Account(models.Model):
     alias = models.CharField(max_length=30, unique=True)
     email = models.EmailField()
     email_game_updates = models.BooleanField(default=True)
+    email_game_rollups_per_day = models.IntegerField(default=1)
     email_newsletter = models.BooleanField(default=True)
+    email_unsubscribe_key = models.CharField(max_length=64, blank=True, default='')
     theme = models.CharField(max_length=20, choices=THEME_CHOICES, default='classic')
     website_url = models.URLField(blank=True, default='')
 
     def save(self, *args, **kwargs):
         if not self.alias:
             self.alias = self.django_user.username
+        if not self.email_unsubscribe_key:
+            self.email_unsubscribe_key = uuid.uuid4().hex
         super(Account, self).save(*args, **kwargs)
 
     def __str__(self):
         if self.pk:
             return '%i:%s' % (self.pk, self.alias)
         return self.alias or '(new account)'
+
+
+class EmailRollupLog(models.Model):
+    """Record of sent message rollup emails."""
+    account = models.ForeignKey(
+        Account, related_name='email_rollups', on_delete=models.CASCADE
+    )
+    player = models.ForeignKey(
+        'Player', related_name='email_rollups', on_delete=models.CASCADE
+    )
+    game = models.ForeignKey(
+        'Game', related_name='email_rollups', on_delete=models.CASCADE
+    )
+    year = models.IntegerField(default=0)
+    sent_at = models.DateTimeField(auto_now_add=True)
+    message_count = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['-sent_at']
+
+    def __str__(self):
+        return '%s rollup %s @ %s' % (self.account.alias, self.game_id, self.sent_at)
 
 
 class Game(UUIDMixin):

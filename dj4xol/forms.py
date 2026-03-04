@@ -328,6 +328,12 @@ class SignupForm(UserCreationForm):
 
 class RegistrationForm(forms.ModelForm):
     """Registration form for account profile, with optional Django user creation."""
+    email_game_rollups_per_day = forms.TypedChoiceField(
+        choices=[(0, '0'), (1, '1'), (2, '2'), (3, '3'), (4, '4')],
+        coerce=int,
+        required=False,
+        label='Send me up to x message-rollups per day',
+    )
     username = forms.CharField(
         required=False,
         max_length=150,
@@ -353,6 +359,7 @@ class RegistrationForm(forms.ModelForm):
             'full_name',
             'website_url',
             'email_game_updates',
+            'email_game_rollups_per_day',
             'email_newsletter',
         ]
         labels = {
@@ -377,6 +384,9 @@ class RegistrationForm(forms.ModelForm):
         if not self.is_bound and (not self.instance or not self.instance.pk):
             # New sign-ups must opt in explicitly to newsletters.
             self.fields['email_newsletter'].initial = False
+        if not self.is_bound and self.instance and self.instance.pk:
+            if not self.instance.email_game_updates:
+                self.fields['email_game_rollups_per_day'].initial = 0
         if not self.create_user:
             # Hide Django user-creation fields for existing authenticated users.
             self.fields.pop('username')
@@ -399,6 +409,17 @@ class RegistrationForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         if not self.create_user:
+            email_updates = bool(cleaned.get('email_game_updates'))
+            rollups = cleaned.get('email_game_rollups_per_day')
+            if not email_updates:
+                cleaned['email_game_rollups_per_day'] = 0
+            else:
+                try:
+                    rollups = int(rollups)
+                except (TypeError, ValueError):
+                    rollups = 1
+                rollups = max(1, min(4, rollups))
+                cleaned['email_game_rollups_per_day'] = rollups
             return cleaned
         password1 = cleaned.get('password1')
         password2 = cleaned.get('password2')
@@ -408,6 +429,17 @@ class RegistrationForm(forms.ModelForm):
             self.add_error('password2', 'This field is required.')
         if password1 and password2 and password1 != password2:
             self.add_error('password2', 'The two password fields did not match.')
+        email_updates = bool(cleaned.get('email_game_updates'))
+        rollups = cleaned.get('email_game_rollups_per_day')
+        if not email_updates:
+            cleaned['email_game_rollups_per_day'] = 0
+        else:
+            try:
+                rollups = int(rollups)
+            except (TypeError, ValueError):
+                rollups = 1
+            rollups = max(1, min(4, rollups))
+            cleaned['email_game_rollups_per_day'] = rollups
         return cleaned
 
     def save(self, commit=True):

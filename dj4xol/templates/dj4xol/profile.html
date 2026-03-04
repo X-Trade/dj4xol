@@ -43,6 +43,16 @@
                                 <td>{% if account.email_game_updates %}Enabled{% else %}Disabled{% endif %}</td>
                             </tr>
                             <tr>
+                                <th>Message Rollups</th>
+                                <td>
+                                    {% if account.email_game_updates %}
+                                        {{ account.email_game_rollups_per_day }} per day
+                                    {% else %}
+                                        0 per day
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
                                 <th>Newsletter</th>
                                 <td>{% if account.email_newsletter %}Enabled{% else %}Disabled{% endif %}</td>
                             </tr>
@@ -63,6 +73,18 @@
                             <label>
                                 <input type="checkbox" name="email_game_updates" {% if account.email_game_updates %}checked{% endif %}>
                                 Send me updates about my game progress
+                            </label>
+                            <br>
+                            <label>
+                                Send me up to
+                                <select name="email_game_rollups_per_day" id="email-rollups-select">
+                                    <option value="0" {% if not account.email_game_updates or account.email_game_rollups_per_day == 0 %}selected{% endif %}>0</option>
+                                    <option value="1" {% if account.email_game_rollups_per_day == 1 %}selected{% endif %}>1</option>
+                                    <option value="2" {% if account.email_game_rollups_per_day == 2 %}selected{% endif %}>2</option>
+                                    <option value="3" {% if account.email_game_rollups_per_day == 3 %}selected{% endif %}>3</option>
+                                    <option value="4" {% if account.email_game_rollups_per_day == 4 %}selected{% endif %}>4</option>
+                                </select>
+                                message-rollups per day
                             </label>
                             <br>
                             <label>
@@ -213,6 +235,7 @@
             var emailPrefForm = document.getElementById('email-preferences-form');
             var emailPrefStatus = document.getElementById('email-pref-status');
             var csrfToken = '{{ csrf_token }}';
+            var emailRollupsSelect = document.getElementById('email-rollups-select');
 
             themeOptions.forEach(function(option) {
                 option.addEventListener('click', function() {
@@ -252,6 +275,33 @@
             });
 
             if (emailPrefForm) {
+                var gameUpdates = emailPrefForm.querySelector('input[name=\"email_game_updates\"]');
+                var newsletter = emailPrefForm.querySelector('input[name=\"email_newsletter\"]');
+
+                function syncRollupState() {
+                    if (!emailRollupsSelect) {
+                        return;
+                    }
+                    if (gameUpdates && !gameUpdates.checked) {
+                        if (emailRollupsSelect.value !== '0') {
+                            emailRollupsSelect.dataset.lastEnabled = emailRollupsSelect.value;
+                        }
+                        emailRollupsSelect.value = '0';
+                        emailRollupsSelect.disabled = true;
+                    } else {
+                        var restore = emailRollupsSelect.dataset.lastEnabled || '1';
+                        if (emailRollupsSelect.value === '0') {
+                            emailRollupsSelect.value = restore;
+                        }
+                        emailRollupsSelect.disabled = false;
+                    }
+                }
+
+                if (gameUpdates) {
+                    gameUpdates.addEventListener('change', syncRollupState);
+                }
+                syncRollupState();
+
                 emailPrefForm.addEventListener('submit', function(e) {
                     e.preventDefault();
                     if (emailPrefStatus) {
@@ -259,10 +309,11 @@
                     }
 
                     var params = new URLSearchParams();
-                    var gameUpdates = emailPrefForm.querySelector('input[name=\"email_game_updates\"]');
-                    var newsletter = emailPrefForm.querySelector('input[name=\"email_newsletter\"]');
                     if (gameUpdates && gameUpdates.checked) {
                         params.append('email_game_updates', 'on');
+                    }
+                    if (emailRollupsSelect) {
+                        params.append('email_game_rollups_per_day', emailRollupsSelect.value || '0');
                     }
                     if (newsletter && newsletter.checked) {
                         params.append('email_newsletter', 'on');

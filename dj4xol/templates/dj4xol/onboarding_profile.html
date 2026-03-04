@@ -87,6 +87,10 @@
                                 <td>{{ form.email_game_updates }}{{ form.email_game_updates.errors }}</td>
                             </tr>
                             <tr>
+                                <th>{{ form.email_game_rollups_per_day.label_tag }}</th>
+                                <td>{{ form.email_game_rollups_per_day }}{{ form.email_game_rollups_per_day.errors }}</td>
+                            </tr>
+                            <tr>
                                 <th>{{ form.email_newsletter.label_tag }}</th>
                                 <td>{{ form.email_newsletter }}{{ form.email_newsletter.errors }}</td>
                             </tr>
@@ -113,6 +117,27 @@
                         });
                     }
                 });
+
+                var emailUpdates = document.querySelector('input[name=\"email_game_updates\"]');
+                var rollupsSelect = document.querySelector('select[name=\"email_game_rollups_per_day\"]');
+                function syncRollups() {
+                    if (!rollupsSelect) {
+                        return;
+                    }
+                    if (emailUpdates && !emailUpdates.checked) {
+                        rollupsSelect.value = '0';
+                        rollupsSelect.disabled = true;
+                    } else {
+                        if (rollupsSelect.value === '0') {
+                            rollupsSelect.value = '1';
+                        }
+                        rollupsSelect.disabled = false;
+                    }
+                }
+                if (emailUpdates) {
+                    emailUpdates.addEventListener('change', syncRollups);
+                }
+                syncRollups();
             })();
         </script>
         <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>

@@ -15,6 +15,18 @@
             {% if server_tagline %}<span class="tagline">{{ server_tagline }}</span>{% endif %}
             {% include 'dj4xol/_nav_menu.html' with current_page='home' %}
         </div>
+        {% if messages %}
+        <div class="panel no-transition open" data-panel="alerts">
+            <h2><span>Alerts</span><span class="panel-toggle"></span></h2>
+            <div class="panel-content panel-stack">
+                <section class="panel-scrollable-text">
+                    {% for message in messages %}
+                    <p>{{ message }}</p>
+                    {% endfor %}
+                </section>
+            </div>
+        </div>
+        {% endif %}
         <div class="columns two-column">
             <div class="column column-left">
                 {% if server_welcome %}
@@ -99,6 +111,7 @@
                             <li><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></li>
                             {% if user.is_staff %}
                             <li><a href="{% url 'dj4xol:hull_design_list' %}" class="admin-only-link">Hull Layout Editor</a></li>
+                            <li><a href="{% url 'dj4xol:test_email_rollup' %}" class="admin-only-link">Send Test Rollup Email</a></li>
                             {% endif %}
                         </ul>
                         </section>
