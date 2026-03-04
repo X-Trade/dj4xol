@@ -54,10 +54,17 @@
             <input type="hidden" name="y" value="{{ selection.y }}">
             <input type="hidden" name="sel" value="{{ selection.sel }}">
             <div class="order-type-row">
-                <select name="order_type" class="order-select">
+                <select name="order_type" class="order-select" id="production-order-select">
                     <option value="">Select production...</option>
                     {% for option in detail.production_order_choices %}
-                    <option value="{{ option.value }}">{{ option.label }}</option>
+                    <option value="{{ option.value }}"
+                            data-cost-bp="{{ option.cost.bp }}"
+                            data-cost-ironium="{{ option.cost.ironium }}"
+                            data-cost-boranium="{{ option.cost.boranium }}"
+                            data-cost-germanium="{{ option.cost.germanium }}"
+                            data-cost-colonists="{{ option.cost.colonists }}">
+                        {{ option.label }}
+                    </option>
                     {% endfor %}
                 </select>
                 <input type="number" name="quantity" value="1" min="1" class="quantity-input" title="Quantity">
@@ -65,6 +72,29 @@
                 <button type="submit" class="order-add-btn">+</button>
             </div>
         </form>
+        <div class="order-params order-params--costs order-params--columns" id="production-costs-panel">
+            <div class="order-param-empty">Select a production item to view costs.</div>
+            <div class="detail-row cost-row" data-cost-key="ironium">
+                <span class="env-label">Ironium</span>
+                <span class="detail-value"><span class="cost-value"></span></span>
+            </div>
+            <div class="detail-row cost-row" data-cost-key="boranium">
+                <span class="env-label">Boranium</span>
+                <span class="detail-value"><span class="cost-value"></span></span>
+            </div>
+            <div class="detail-row cost-row" data-cost-key="germanium">
+                <span class="env-label">Germanium</span>
+                <span class="detail-value"><span class="cost-value"></span></span>
+            </div>
+            <div class="detail-row cost-row" data-cost-key="colonists">
+                <span class="env-label">Colonists</span>
+                <span class="detail-value"><span class="cost-value"></span></span>
+            </div>
+            <div class="detail-row cost-row" data-cost-key="bp">
+                <span class="env-label">BP</span>
+                <span class="detail-value"><span class="cost-value"></span></span>
+            </div>
+        </div>
     </div>
 </div>
 <script>
@@ -130,5 +160,53 @@ function hideTooltip() {
             localStorage.setItem('productionRepeat', this.checked);
         });
     }
+})();
+
+(function() {
+    var select = document.getElementById('production-order-select');
+    var panel = document.getElementById('production-costs-panel');
+    if (!select || !panel) {
+        return;
+    }
+    var emptyRow = panel.querySelector('.order-param-empty');
+    var rows = Array.prototype.slice.call(panel.querySelectorAll('.cost-row[data-cost-key]'));
+
+    function updateCosts() {
+        var option = select.options[select.selectedIndex];
+        if (!option || !option.value) {
+            if (emptyRow) {
+                emptyRow.style.display = 'block';
+            }
+            rows.forEach(function(row) {
+                row.style.display = 'none';
+            });
+            return;
+        }
+        if (emptyRow) {
+            emptyRow.style.display = 'none';
+        }
+        rows.forEach(function(row) {
+            var key = row.getAttribute('data-cost-key');
+            var attr = 'cost' + key.charAt(0).toUpperCase() + key.slice(1);
+            var raw = option.dataset[attr];
+            var value = raw ? parseInt(raw, 10) : 0;
+            var label = value;
+            if (key === 'bp') {
+                label = value + ' BP';
+            } else if (key === 'colonists') {
+                label = value + ' required';
+            } else {
+                label = value + 'kt';
+            }
+            var span = row.querySelector('.cost-value');
+            if (span) {
+                span.textContent = label;
+            }
+            row.style.display = value > 0 ? 'flex' : 'none';
+        });
+    }
+
+    select.addEventListener('change', updateCosts);
+    updateCosts();
 })();
 </script>

@@ -320,6 +320,41 @@ body.map-dragging * {
 
 }
 
+@media (min-width: 1100px) {
+    .research-detail-kv {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 12px;
+        row-gap: 4px;
+    }
+
+    .research-detail-kv .detail-subpanel {
+        grid-column: 1 / -1;
+    }
+
+    .research-detail-kv .detail-subpanel--requirements {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 12px;
+        row-gap: 4px;
+    }
+
+    .research-detail-kv .detail-subpanel--requirements::before {
+        grid-column: 1 / -1;
+    }
+
+    .order-params--columns {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 12px;
+        row-gap: 4px;
+    }
+
+    .order-params--columns .order-param-empty {
+        grid-column: 1 / -1;
+    }
+}
+
 /* Short viewport - give up and scroll */
 @media (max-height: 500px) {
     body {
@@ -627,6 +662,24 @@ body.turned-in.lcars .order-params::after {
     align-items: center;
     gap: 6px;
     margin: 4px 0;
+}
+
+.detail-subpanel {
+    margin: 6px 0;
+    padding: 6px 8px;
+    border: 1px solid var(--panel-content-border, #404040);
+    border-radius: 6px;
+}
+
+.detail-subpanel--requirements::before {
+    content: 'Requirements';
+    display: block;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 0.78em;
+    color: inherit;
+    margin-bottom: 6px;
 }
 
 .detail-label {
@@ -1152,6 +1205,24 @@ body.floating-tooltips-enabled .has-tooltip::after {
     border: 1px solid #ddd;
     border-radius: 4px;
     padding: 10px;
+}
+
+.order-params--costs {
+    margin-top: 8px;
+}
+
+.order-params--costs .cost-row {
+    display: none;
+}
+
+.order-params--columns {
+    display: flex;
+    flex-direction: column;
+}
+
+.order-param-empty {
+    color: #666;
+    font-style: italic;
 }
 
 .order-param-row {
