@@ -1485,6 +1485,7 @@ def _format_tech_param_key(key):
         'max_fuel': 'Fuel Capacity',
         'fuel_efficiency': 'Fuel Efficiency',
         'overmax_fuel_penalty': 'Overmax Fuel Penalty',
+        'wormhole_destruction_chance': 'Wormhole Destruction Chance',
         'hull_thumbnail_class': 'Hull Class',
         'offense_level': 'Offense Level',
         'defense_level': 'Defense Level',
@@ -1505,12 +1506,26 @@ def _format_tech_param_value(key, value):
             return '{}%'.format(int(round(float(value) * 100)))
         except (TypeError, ValueError):
             return value
+    if key == 'wormhole_destruction_chance':
+        try:
+            return '{}%'.format(int(round(float(value) * 100)))
+        except (TypeError, ValueError):
+            return value
     if key == 'hull_thumbnail_class':
         text = str(value or '').strip()
         if not text:
             return value
         return text.replace('_', ' ').title()
     return value
+
+
+def _should_show_tech_param(key, value):
+    if key == 'advanced_scanner_range':
+        try:
+            return float(value) > 0
+        except (TypeError, ValueError):
+            return True
+    return True
 
 
 def _safe_tech_params(tech):
@@ -1611,6 +1626,7 @@ def help_technology(request):
                 'value': _format_tech_param_value(key, value),
             }
             for key, value in params.items()
+            if _should_show_tech_param(key, value)
         ]
 
     return render(request, 'dj4xol/help_technology.html', {

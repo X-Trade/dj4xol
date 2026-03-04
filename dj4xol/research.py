@@ -89,6 +89,15 @@ def _format_param_value(key, value):
     return value
 
 
+def _should_show_param(key, value):
+    if key == 'advanced_scanner_range':
+        try:
+            return float(value) > 0
+        except (TypeError, ValueError):
+            return True
+    return True
+
+
 def _tech_type_label(tech_type):
     choice_map = dict(Technology.TECH_TYPE_CHOICES)
     return choice_map.get(str(tech_type or ''), str(tech_type or 'Other').title())
@@ -694,6 +703,7 @@ def get_player_colony_defense_level(player):
     selected = None
     selected_level = 0.0
     selected_sort_key = None
+    selected_bonus = None
 
     for tech in unlocked:
         params = _safe_params(tech)
@@ -708,10 +718,17 @@ def get_player_colony_defense_level(player):
             continue
 
         sort_key = (int(tech.level), int(tech.display_order), str(tech.name))
-        if selected is None or sort_key > selected_sort_key:
+        bonus = level
+        if (
+            selected is None
+            or int(tech.level) > selected_sort_key[0]
+            or (int(tech.level) == selected_sort_key[0] and bonus > float(selected_bonus or 0.0))
+            or (int(tech.level) == selected_sort_key[0] and bonus == float(selected_bonus or 0.0) and sort_key > selected_sort_key)
+        ):
             selected = tech
             selected_level = level
             selected_sort_key = sort_key
+            selected_bonus = bonus
 
     if selected is None:
         return 0.0
@@ -930,6 +947,7 @@ def build_research_screen_data(player, selected_category_id=None):
                     'params_display': [
                         {'label': _format_param_key(key), 'value': _format_param_value(key, value)}
                         for key, value in params.items()
+                        if _should_show_param(key, value)
                     ],
                 })
 

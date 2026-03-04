@@ -49,6 +49,10 @@ def default_game(stars=50, fleets=0):
     factory.set_owner(account)
     factory.create_stars(stars)
     game = factory.save()
+    if game.random_events or game.anomalies_enabled:
+        game.random_events = False
+        game.anomalies_enabled = False
+        game.save(update_fields=['random_events', 'anomalies_enabled'])
     factory.join_player(account, get_default_race())
     if fleets:
         factory._create_random_fleets(fleets)
