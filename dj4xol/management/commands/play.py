@@ -26,6 +26,7 @@ from dj4xol.research import (
     build_research_budget,
     build_research_screen_data,
     ensure_player_research_rows,
+    get_player_available_production_orders,
     set_singular_allocation,
     update_player_allocations,
 )
@@ -570,6 +571,13 @@ class Command(BaseCommand):
         valid_types = set(v for v, _ in ProductionOrder.ORDER_TYPES)
         if order_type not in valid_types:
             raise CommandError("Unknown production order type: %s" % order_token)
+        if order_type.startswith("TERRAFORM_"):
+            allowed = {
+                entry["value"]
+                for entry in get_player_available_production_orders(star.player, star)
+            }
+            if order_type not in allowed:
+                raise CommandError("Terraforming requires a terraforming technology.")
 
         quantity = 1
         repeat = False

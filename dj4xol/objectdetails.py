@@ -2,7 +2,13 @@ from django.db import models
 from dj4xol.models import Fleet, Star, Salvage, Anomaly, Report
 from dj4xol.scanners import get_scanner_sources_for_player, fleet_visible_to_player
 from dj4xol.turn import apply_population_change, KT_PER_MINE
-from dj4xol.research import get_player_colony_defense_level
+from dj4xol.research import (
+    get_player_colony_defense_level,
+    get_player_production_costs,
+    get_player_terraforming_profile,
+    format_terraform_order_label,
+    get_player_available_production_orders,
+)
 from dj4xol.colony_rules import (
     calculate_growth_factor,
     calculate_habitability_factor,
@@ -138,6 +144,7 @@ class DetailBuilder():
                      'heading': self.selected_obj.heading if isinstance(self.selected_obj, Anomaly) else None,
                      'salvage_inventory': self.build_salvage_inventory(),
                      'production_orders': self.get_production_orders(),
+                     'production_order_choices': self.get_available_production_orders(),
                      'fleet_orders': self.get_fleet_orders(),
                      'fleet_cargo': self.get_fleet_cargo(),
                      'fleet_capabilities': self.get_fleet_capabilities(),
@@ -642,14 +649,20 @@ class DetailBuilder():
 
     def get_production_orders(self):
         """Get production orders for selected star."""
-        from .models import PRODUCTION_COSTS
         if not self.selected_obj or not isinstance(self.selected_obj, Star):
             return []
         if not self.player or self.selected_obj.player != self.player:
             return []
+        cost_map = get_player_production_costs(self.player)
+        profile = get_player_terraforming_profile(self.player)
+        rate_percent = int(round(profile.get('rate', 0.0) * 100.0))
         orders = []
         for o in self.selected_obj.production_orders.order_by('position'):
-            cost = PRODUCTION_COSTS.get(o.order_type, {})
+            cost = cost_map.get(o.order_type, {})
+            if o.order_type.startswith('TERRAFORM_'):
+                display = format_terraform_order_label(o.order_type, rate_percent)
+            else:
+                display = o.get_order_type_display()
             
             # Calculate progress based on what has actually been spent
             labor_cost = cost.get('bp', 0)
@@ -681,7 +694,7 @@ class DetailBuilder():
             orders.append({
                 'short_id': o.short_id,
                 'type': o.order_type,
-                'display': o.get_order_type_display(),
+                'display': display,
                 'quantity': o.quantity,
                 'completed': o.completed,
                 'repeat': o.repeat,
@@ -710,6 +723,14 @@ class DetailBuilder():
                 },
             })
         return orders
+
+    def get_available_production_orders(self):
+        """Return available production orders for the selected star."""
+        if not self.selected_obj or not isinstance(self.selected_obj, Star):
+            return []
+        if not self.player or self.selected_obj.player != self.player:
+            return []
+        return get_player_available_production_orders(self.player, self.selected_obj)
 
     def get_fleet_orders(self):
         """Get movement orders for selected fleet."""

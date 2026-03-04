@@ -43,6 +43,13 @@ TECH_PARAM_LABELS = {
     'colony_defense_level': 'Colony Defense Level',
     'basic_scanner_range': 'Basic Scanner Range',
     'advanced_scanner_range': 'Advanced Scanner Range',
+    'terraforming_rate': 'Terraforming Rate',
+}
+
+TERRAFORM_ORDER_LABELS = {
+    'TERRAFORM_GRAVITY': 'Terraform Gravity',
+    'TERRAFORM_TEMPERATURE': 'Terraform Temperature',
+    'TERRAFORM_RADIATION': 'Terraform Radiation',
 }
 
 
@@ -91,6 +98,11 @@ def _format_param_value(key, value):
         if not text:
             return value
         return text.replace('_', ' ').title()
+    if key == 'terraforming_rate':
+        try:
+            return '{}%'.format(int(round(float(value) * 100.0)))
+        except (TypeError, ValueError):
+            return value
     return value
 
 
@@ -100,7 +112,148 @@ def _should_show_param(key, value):
             return float(value) > 0
         except (TypeError, ValueError):
             return True
+    if key == 'production_cost_overrides':
+        return False
     return True
+
+
+def format_terraform_order_label(order_type, rate_percent=None):
+    label = TERRAFORM_ORDER_LABELS.get(order_type, order_type)
+    if rate_percent is None:
+        return label
+    return '%s (%s%%)' % (label, int(rate_percent))
+
+
+def _normalise_cost_dict(cost):
+    base = {
+        'bp': 0,
+        'ironium': 0,
+        'boranium': 0,
+        'germanium': 0,
+        'colonists': 0,
+    }
+    if not isinstance(cost, dict):
+        return base
+    for key in base:
+        try:
+            base[key] = int(cost.get(key, base[key]) or 0)
+        except (TypeError, ValueError):
+            base[key] = base[key]
+    return base
+
+
+def _parse_terraforming_rate(value):
+    try:
+        rate = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if rate > 1.0:
+        return max(0.0, rate / 100.0)
+    return max(0.0, rate)
+
+
+def _select_terraforming_tech(unlocked):
+    selected = None
+    selected_sort_key = None
+    for tech in unlocked:
+        if str(tech.tech_type or '') != 'INFRASTRUCTURE':
+            continue
+        params = _safe_params(tech)
+        if 'terraforming_rate' not in params and 'production_cost_overrides' not in params:
+            continue
+        sort_key = (int(tech.level), int(tech.display_order or 0), str(tech.name or ''))
+        if selected is None or sort_key > selected_sort_key:
+            selected = tech
+            selected_sort_key = sort_key
+    return selected
+
+
+def get_player_terraforming_profile(player):
+    """Return terraforming rate/costs for a player based on INFRASTRUCTURE tech."""
+    if not player or not getattr(player, 'race_type', None):
+        return {'rate': 0.0, 'costs': {}, 'tech': None}
+    if not bool(getattr(player.race_type, 'has_terraforming', True)):
+        return {'rate': 0.0, 'costs': {}, 'tech': None}
+    unlocked = list(get_player_unlocked_technologies(player))
+    if not unlocked:
+        return {'rate': 0.0, 'costs': {}, 'tech': None}
+    selected = _select_terraforming_tech(unlocked)
+    if selected is None:
+        return {'rate': 0.0, 'costs': {}, 'tech': None}
+    params = _safe_params(selected)
+    rate = _parse_terraforming_rate(params.get('terraforming_rate', 0.0))
+    overrides = params.get('production_cost_overrides') if isinstance(params, dict) else None
+    if not isinstance(overrides, dict):
+        overrides = {}
+    costs = {}
+    for order_type, cost in overrides.items():
+        if order_type not in TERRAFORM_ORDER_LABELS:
+            continue
+        costs[order_type] = _normalise_cost_dict(cost)
+    return {'rate': rate, 'costs': costs, 'tech': selected}
+
+
+def get_player_production_costs(player):
+    """Return production costs for the player, including tech overrides."""
+    from .models import PRODUCTION_COSTS
+    costs = {}
+    for key, value in PRODUCTION_COSTS.items():
+        costs[key] = _normalise_cost_dict(value)
+    profile = get_player_terraforming_profile(player)
+    for order_type, override in profile.get('costs', {}).items():
+        if order_type not in costs:
+            continue
+        merged = costs[order_type].copy()
+        merged.update(override)
+        costs[order_type] = _normalise_cost_dict(merged)
+    return costs
+
+
+def get_player_available_production_orders(player, star):
+    """Return available production order choices for a player at a star."""
+    if not player or not star or getattr(star, 'player_id', None) != player.id:
+        return []
+    orders = []
+    profile = get_player_terraforming_profile(player)
+    rate = profile.get('rate', 0.0)
+    if rate > 0:
+        rate_percent = int(round(rate * 100.0))
+        for order_type in ('TERRAFORM_GRAVITY', 'TERRAFORM_TEMPERATURE', 'TERRAFORM_RADIATION'):
+            orders.append({
+                'value': order_type,
+                'label': format_terraform_order_label(order_type, rate_percent),
+            })
+    if int(getattr(star, 'shipyards', 0) or 0) > 0:
+        orders.append({'value': 'BUILD_FLEET', 'label': 'Build Fleet'})
+    orders.extend([
+        {'value': 'BUILD_MINE', 'label': 'Build Mine'},
+        {'value': 'BUILD_FACTORY', 'label': 'Build Factory'},
+        {'value': 'BUILD_LAB', 'label': 'Build Lab'},
+        {'value': 'BUILD_DEFENSE', 'label': 'Build Defense'},
+        {'value': 'BUILD_SHIPYARD', 'label': 'Build Shipyard'},
+    ])
+    return orders
+
+
+def build_production_cost_entries(params):
+    """Return display entries for production cost overrides."""
+    overrides = params.get('production_cost_overrides') if isinstance(params, dict) else None
+    if not isinstance(overrides, dict):
+        return []
+    entries = []
+    for order_type, cost in overrides.items():
+        if order_type not in TERRAFORM_ORDER_LABELS:
+            continue
+        normalised = _normalise_cost_dict(cost)
+        label = '%s Cost' % format_terraform_order_label(order_type, None)
+        value = 'BP {bp}, Fe {iron}kt, Bo {bor}kt, Ge {germ}kt'.format(
+            bp=normalised.get('bp', 0),
+            iron=normalised.get('ironium', 0),
+            bor=normalised.get('boranium', 0),
+            germ=normalised.get('germanium', 0),
+        )
+        entries.append({'label': label, 'value': value})
+    return entries
 
 
 def _tech_type_label(tech_type):
@@ -1235,7 +1388,7 @@ def build_research_screen_data(player, selected_category_id=None):
                         {'label': _format_param_key(key), 'value': _format_param_value(key, value)}
                         for key, value in params.items()
                         if _should_show_param(key, value)
-                    ],
+                    ] + build_production_cost_entries(params),
                 })
 
     for row in rows:

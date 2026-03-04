@@ -128,6 +128,70 @@ def update_technology_rebalance(apps, schema_editor):
         tech_type='ELECTRICAL',
     )
 
+    terraforming = [
+        {
+            'short_id': 'tech00000407',
+            'category': 'CONSTRUCTION',
+            'level': 7,
+            'name': 'Terraforming Control I',
+            'description': 'Early terraforming control matrices enable limited planetary adjustment.',
+            'tech_type': 'INFRASTRUCTURE',
+            'params_json': '{"terraforming_rate": 0.01, "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 100, "ironium": 750, "boranium": 150, "germanium": 100, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 100, "ironium": 200, "boranium": 660, "germanium": 140, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 100, "ironium": 50, "boranium": 475, "germanium": 475, "colonists": 0}}}',
+            'display_order': 206,
+            'enabled': True,
+        },
+        {
+            'short_id': 'tech00000408',
+            'category': 'MATERIALS',
+            'level': 10,
+            'name': 'Terraforming Control II',
+            'description': 'Improved terraforming relays double adjustment rates and reduce per-point costs.',
+            'tech_type': 'INFRASTRUCTURE',
+            'params_json': '{"terraforming_rate": 0.02, "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 180, "ironium": 1350, "boranium": 270, "germanium": 180, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 180, "ironium": 360, "boranium": 1188, "germanium": 252, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 180, "ironium": 90, "boranium": 855, "germanium": 855, "colonists": 0}}}',
+            'display_order': 207,
+            'enabled': True,
+        },
+        {
+            'short_id': 'tech00000409',
+            'category': 'CONSTRUCTION',
+            'level': 16,
+            'name': 'Terraforming Control III',
+            'description': 'Advanced atmospheric and geological feedback loops enable faster terraforming.',
+            'tech_type': 'INFRASTRUCTURE',
+            'params_json': '{"terraforming_rate": 0.05, "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 350, "ironium": 3000, "boranium": 600, "germanium": 400, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 350, "ironium": 800, "boranium": 2640, "germanium": 560, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 350, "ironium": 200, "boranium": 1900, "germanium": 1900, "colonists": 0}}}',
+            'display_order': 208,
+            'enabled': True,
+        },
+        {
+            'short_id': 'tech00000410',
+            'category': 'MATERIALS',
+            'level': 22,
+            'name': 'Terraforming Control IV',
+            'description': 'Endgame terraforming arrays deliver rapid environmental stabilisation.',
+            'tech_type': 'INFRASTRUCTURE',
+            'params_json': '{"terraforming_rate": 0.10, "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 600, "ironium": 5250, "boranium": 1050, "germanium": 700, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 600, "ironium": 1400, "boranium": 4620, "germanium": 980, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 600, "ironium": 350, "boranium": 3325, "germanium": 3325, "colonists": 0}}}',
+            'display_order': 209,
+            'enabled': True,
+        },
+    ]
+    for entry in terraforming:
+        category = categories.get(entry['category'])
+        if not category:
+            continue
+        Technology.objects.update_or_create(
+            short_id=entry['short_id'],
+            defaults={
+                'category': category,
+                'level': entry['level'],
+                'name': entry['name'],
+                'description': entry['description'],
+                'tech_type': entry['tech_type'],
+                'params_json': entry['params_json'],
+                'display_order': entry['display_order'],
+                'enabled': entry['enabled'],
+            },
+        )
+
 
 def revert_technology_rebalance(apps, schema_editor):
     Technology = apps.get_model('dj4xol', 'Technology')
@@ -170,6 +234,9 @@ def revert_technology_rebalance(apps, schema_editor):
     Technology.objects.filter(short_id='tech00000212').update(
         tech_type='TORPEDO',
     )
+    Technology.objects.filter(
+        short_id__in=['tech00000407', 'tech00000408', 'tech00000409', 'tech00000410']
+    ).delete()
 
 
 class Migration(migrations.Migration):
