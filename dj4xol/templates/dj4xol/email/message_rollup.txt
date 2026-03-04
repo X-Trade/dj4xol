@@ -1,0 +1,13 @@
+Hello {{ account.alias }},
+
+Here are your unread priority updates. Games with new turns are listed first.
+
+{% for entry in games %}{% if entry.has_new_turn %}[NEW TURN] {% endif %}{{ entry.game.name }} (Year {{ entry.game.year }})
+{{ entry.game_url }}
+{% for msg in entry.messages %}- Year {{ msg.year }}{% if msg.priority %} !{% endif %} {{ msg.text }}
+{% endfor %}
+
+{% endfor %}
+You can manage rollup frequency in your profile: {{ profile_url }}
+
+Unsubscribe or adjust email preferences: {{ unsubscribe_url }}

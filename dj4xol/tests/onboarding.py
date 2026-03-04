@@ -47,6 +47,8 @@ class OnboardingRegistrationTest(TestCase):
         account = Account.objects.get(django_user=user)
         self.assertTrue(account.email_game_updates)
         self.assertFalse(account.email_newsletter)
+        self.assertEqual(account.email_game_rollups_per_day, 1)
+        self.assertTrue(bool(account.email_unsubscribe_key))
 
     def test_register_shows_email_and_password_help_in_login_section(self):
         ServerSettings.objects.update_or_create(
@@ -81,6 +83,7 @@ class OnboardingRegistrationTest(TestCase):
             email='prefs@example.com',
             full_name='Prefs User',
             email_game_updates=True,
+            email_game_rollups_per_day=2,
             email_newsletter=True,
         )
         self.client.force_login(user)
@@ -92,3 +95,5 @@ class OnboardingRegistrationTest(TestCase):
         account = Account.objects.get(django_user=user)
         self.assertTrue(account.email_game_updates)
         self.assertFalse(account.email_newsletter)
+        self.assertEqual(account.email_game_rollups_per_day, 1)
+        self.assertTrue(bool(account.email_unsubscribe_key))

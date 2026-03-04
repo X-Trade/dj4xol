@@ -5,6 +5,7 @@ from django.urls import resolve
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib import messages
 from django.utils import timezone
 from datetime import timedelta
 import os
@@ -18,6 +19,7 @@ from .models import (
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology, HullDesign, HullDesignSlot,
     random_anomaly_stability_init,
 )
+from .email_rollups import send_message_rollup_for_account
 from .decorators import registration_required, player_only_view
 from .turn import GameTurn
 from .research import (
@@ -1976,12 +1978,82 @@ def update_email_preferences(request):
     account = request.user.dj4xol_account
     account.email_game_updates = bool(request.POST.get('email_game_updates'))
     account.email_newsletter = bool(request.POST.get('email_newsletter'))
-    account.save(update_fields=['email_game_updates', 'email_newsletter'])
+    rollups_raw = request.POST.get('email_game_rollups_per_day')
+    if not account.email_game_updates:
+        account.email_game_rollups_per_day = 0
+    else:
+        try:
+            rollups = int(rollups_raw)
+        except (TypeError, ValueError):
+            rollups = 1
+        account.email_game_rollups_per_day = max(1, min(4, rollups))
+    account.save(update_fields=[
+        'email_game_updates',
+        'email_game_rollups_per_day',
+        'email_newsletter',
+    ])
 
     return JsonResponse({
         'success': True,
         'email_game_updates': account.email_game_updates,
+        'email_game_rollups_per_day': account.email_game_rollups_per_day,
         'email_newsletter': account.email_newsletter,
+    })
+
+
+@staff_member_required
+def test_email_rollup(request):
+    """Trigger a one-off rollup email for the current staff account."""
+    account = request.user.dj4xol_account
+    sent, reason = send_message_rollup_for_account(
+        account,
+        ignore_frequency=True,
+        dry_run=False,
+    )
+    if sent:
+        messages.success(request, 'Test rollup email sent.')
+    else:
+        messages.warning(request, f'Test rollup not sent: {reason}.')
+    return redirect('dj4xol:index')
+
+
+def unsubscribe_email(request, key):
+    if not key:
+        return render(request, 'dj4xol/email_preferences_unsubscribe.html', {
+            'account': Account(email_game_updates=False, email_game_rollups_per_day=0),
+            'status_message': 'Invalid or expired unsubscribe link.',
+        })
+
+    account = Account.objects.filter(email_unsubscribe_key=key).first()
+    status_message = None
+    if not account:
+        return render(request, 'dj4xol/email_preferences_unsubscribe.html', {
+            'account': Account(email_game_updates=False, email_game_rollups_per_day=0),
+            'status_message': 'Invalid or expired unsubscribe link.',
+        })
+
+    if request.method == 'POST':
+        email_updates = bool(request.POST.get('email_game_updates'))
+        account.email_game_updates = email_updates
+        account.email_newsletter = bool(request.POST.get('email_newsletter'))
+        if not email_updates:
+            account.email_game_rollups_per_day = 0
+        else:
+            try:
+                rollups = int(request.POST.get('email_game_rollups_per_day'))
+            except (TypeError, ValueError):
+                rollups = 1
+            account.email_game_rollups_per_day = max(1, min(4, rollups))
+        account.save(update_fields=[
+            'email_game_updates',
+            'email_game_rollups_per_day',
+            'email_newsletter',
+        ])
+        status_message = 'Preferences updated.'
+
+    return render(request, 'dj4xol/email_preferences_unsubscribe.html', {
+        'account': account,
+        'status_message': status_message,
     })
 
 

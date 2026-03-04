@@ -34,7 +34,7 @@ class ServerAdmin(admin.ModelAdmin):
 class AccountAdmin(admin.ModelAdmin):
     list_display = (
         'pk', 'django_user', 'full_name', 'alias', 'email',
-        'email_game_updates', 'email_newsletter'
+        'email_game_updates', 'email_game_rollups_per_day', 'email_newsletter'
     )
 
     def get_readonly_fields(self, request, obj=None):
@@ -69,8 +69,12 @@ class GameAdmin(admin.ModelAdmin):
     game_actions.allow_tags = True
 
     def generate_turn_view(self, request, game_id):
-        GameTurn(Game.objects.get(pk=game_id)).generate_turn()
-        url = reverse('admin:dj4xol_game_change', args=[game_id],
+        game = Game.objects.get(pk=game_id)
+        if game.is_generating:
+            game.is_generating = False
+            game.save(update_fields=['is_generating'])
+        GameTurn(game).generate_turn()
+        url = reverse('admin:dj4xol_game_changelist',
             current_app=self.admin_site.name)
         return HttpResponseRedirect(url)
 

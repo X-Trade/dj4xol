@@ -10,6 +10,7 @@ from django.db.models import Count, F, Q
 from django.utils import timezone
 
 from dj4xol.models import Game, ServerSettings
+from dj4xol.email_rollups import send_message_rollups
 from dj4xol.turn import GameTurn
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ class Command(BaseCommand):
 
         if game_count == 0:
             self.stdout.write('No games due for turn generation.')
+            send_message_rollups(dry_run=dry_run, stdout=self.stdout)
             return
 
         timed_count = timed_games.count()
@@ -131,6 +133,8 @@ class Command(BaseCommand):
                     logger.exception(
                         f'Failed to reset is_generating for {game.name}: {reset_error}'
                     )
+
+        send_message_rollups(dry_run=dry_run, stdout=self.stdout)
 
         if not dry_run:
             self.stdout.write(

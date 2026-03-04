@@ -1,0 +1,81 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Email Preferences</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+    </head>
+    <body class="classic profile-page">
+        <div class="title-bar">
+            <span class="title">Email Preferences</span>
+            <span class="tagline">Manage rollups</span>
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="prefs">
+                    <h2><span>Message Rollups</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                        {% if status_message %}
+                        <p>{{ status_message }}</p>
+                        {% endif %}
+                        <form method="post">
+                            {% csrf_token %}
+                            <label>
+                                <input type="checkbox" name="email_game_updates" {% if account.email_game_updates %}checked{% endif %}>
+                                Send me updates about my game progress
+                            </label>
+                            <br>
+                            <label>
+                                Send me up to
+                                <select name="email_game_rollups_per_day" id="email-rollups-select">
+                                    <option value="0" {% if not account.email_game_updates or account.email_game_rollups_per_day == 0 %}selected{% endif %}>0</option>
+                                    <option value="1" {% if account.email_game_rollups_per_day == 1 %}selected{% endif %}>1</option>
+                                    <option value="2" {% if account.email_game_rollups_per_day == 2 %}selected{% endif %}>2</option>
+                                    <option value="3" {% if account.email_game_rollups_per_day == 3 %}selected{% endif %}>3</option>
+                                    <option value="4" {% if account.email_game_rollups_per_day == 4 %}selected{% endif %}>4</option>
+                                </select>
+                                message-rollups per day
+                            </label>
+                            <br>
+                            <label>
+                                <input type="checkbox" name="email_newsletter" {% if account.email_newsletter %}checked{% endif %}>
+                                Send me newsletters about DJ4XOL and the server
+                            </label>
+                            <div class="panel-footer">
+                                <button type="submit">Save Preferences</button>
+                            </div>
+                        </form>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var emailUpdates = document.querySelector('input[name="email_game_updates"]');
+                var rollupsSelect = document.getElementById('email-rollups-select');
+                function syncRollups() {
+                    if (!rollupsSelect) {
+                        return;
+                    }
+                    if (emailUpdates && !emailUpdates.checked) {
+                        rollupsSelect.value = '0';
+                        rollupsSelect.disabled = true;
+                    } else {
+                        if (rollupsSelect.value === '0') {
+                            rollupsSelect.value = '1';
+                        }
+                        rollupsSelect.disabled = false;
+                    }
+                }
+                if (emailUpdates) {
+                    emailUpdates.addEventListener('change', syncRollups);
+                }
+                syncRollups();
+            })();
+        </script>
+    </body>
+</html>

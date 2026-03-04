@@ -1,0 +1,254 @@
+import logging
+from datetime import timedelta
+
+from django.conf import settings
+from django.core.mail import send_mail
+from django.db import models
+from django.template.loader import render_to_string
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.html import strip_tags
+
+from .models import Account, EmailRollupLog, ServerSettings
+
+logger = logging.getLogger(__name__)
+
+ROLLUP_CATEGORIES = ('RANDOM', 'COMBAT', 'DIPLOMATIC', 'EXCEPTION')
+
+
+def _email_enabled():
+    value = ServerSettings.get('enable_email', 'False')
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _get_from_email():
+    contact = ServerSettings.get('server_contact', '')
+    if contact:
+        return contact
+    return getattr(settings, 'DEFAULT_FROM_EMAIL', 'admin@localhost')
+
+
+def _get_server_url():
+    return ServerSettings.get('server_url', '').rstrip('/')
+
+
+def _game_url(game, base_url):
+    path = reverse('dj4xol:game', args=[game.short_id])
+    if base_url:
+        return base_url + path
+    return path
+
+
+def _unsubscribe_url(account, base_url):
+    path = reverse('dj4xol:unsubscribe_email', args=[account.email_unsubscribe_key])
+    if base_url:
+        return base_url + path
+    return path
+
+
+def _profile_url(base_url):
+    path = reverse('dj4xol:profile')
+    if base_url:
+        return base_url + path
+    return path
+
+
+def _build_rollup_entries(account, base_url):
+    entries = []
+    total_messages = 0
+    any_new_turn = False
+
+    players = list(
+        account.players.select_related('game').filter(game__ended=False)
+    )
+    if not players:
+        return entries, total_messages, any_new_turn, players
+
+    last_logs = {}
+    for log in EmailRollupLog.objects.filter(player__in=players).order_by('-sent_at'):
+        if log.player_id not in last_logs:
+            last_logs[log.player_id] = log
+
+    new_turn_by_player = {}
+    for player in players:
+        last_log = last_logs.get(player.id)
+        last_year = last_log.year if last_log else None
+        has_new_turn = (last_year is None) or (player.game.year > int(last_year))
+        new_turn_by_player[player.id] = has_new_turn
+        if has_new_turn:
+            any_new_turn = True
+
+    for player in players:
+        qs = player.messages.filter(
+            models.Q(priority=True) | models.Q(category__in=ROLLUP_CATEGORIES)
+        ).order_by('-priority', '-year', '-id')
+        if player.last_seen_year is not None:
+            qs = qs.filter(year__gt=player.last_seen_year)
+        messages = list(qs)
+        if not messages:
+            continue
+
+        entry_messages = [
+            {
+                'year': msg.year,
+                'priority': bool(msg.priority),
+                'text': strip_tags(msg.message or ''),
+            }
+            for msg in messages
+        ]
+        entries.append({
+            'player': player,
+            'game': player.game,
+            'game_url': _game_url(player.game, base_url),
+            'has_new_turn': new_turn_by_player.get(player.id, False),
+            'messages': entry_messages,
+        })
+        total_messages += len(entry_messages)
+
+    entries.sort(key=lambda item: (
+        not item['has_new_turn'],
+        item['game'].name.lower(),
+    ))
+
+    return entries, total_messages, any_new_turn, players
+
+
+def _send_rollup_email(account, entries, total_messages, players, dry_run, stdout):
+    base_url = _get_server_url()
+    from_email = _get_from_email()
+    subject = 'DJ4XOL: Priority message rollup'
+    body = render_to_string('dj4xol/email/message_rollup.txt', {
+        'account': account,
+        'games': entries,
+        'profile_url': _profile_url(base_url),
+        'unsubscribe_url': _unsubscribe_url(account, base_url),
+    })
+
+    if dry_run:
+        if stdout:
+            stdout.write(
+                f'[DRY RUN] Would send rollup to {account.email} '
+                f'({len(entries)} game(s), {total_messages} message(s))'
+            )
+        return False
+
+    send_mail(
+        subject=subject,
+        message=body,
+        from_email=from_email,
+        recipient_list=[account.email],
+        fail_silently=False,
+    )
+
+    message_counts = {entry['player'].id: len(entry['messages']) for entry in entries}
+    for player in players:
+        EmailRollupLog.objects.create(
+            account=account,
+            player=player,
+            game=player.game,
+            year=int(player.game.year),
+            message_count=message_counts.get(player.id, 0),
+        )
+    if stdout:
+        stdout.write(
+            f'Sent rollup to {account.email} '
+            f'({len(entries)} game(s), {total_messages} message(s))'
+        )
+    return True
+
+
+def send_message_rollup_for_account(account, ignore_frequency=False, dry_run=False, stdout=None):
+    if not _email_enabled():
+        if stdout:
+            stdout.write('Email disabled; skipping rollups.')
+        return False, 'Email disabled'
+    if not account.email_game_updates or not account.email:
+        return False, 'Email updates disabled'
+
+    rollups_per_day = int(account.email_game_rollups_per_day or 0)
+    if rollups_per_day <= 0:
+        return False, 'Rollups disabled'
+
+    if not ignore_frequency:
+        last_sent = (
+            EmailRollupLog.objects
+            .filter(account=account)
+            .order_by('-sent_at')
+            .first()
+        )
+        if last_sent:
+            interval = timedelta(seconds=86400.0 / float(rollups_per_day))
+            if last_sent.sent_at + interval > timezone.now():
+                return False, 'Rollup interval not reached'
+
+    base_url = _get_server_url()
+    entries, total_messages, any_new_turn, players = _build_rollup_entries(
+        account, base_url
+    )
+    if total_messages <= 0:
+        return False, 'No new messages'
+    if not any_new_turn:
+        return False, 'No new turns'
+
+    try:
+        _send_rollup_email(account, entries, total_messages, players, dry_run, stdout)
+    except Exception as exc:
+        logger.exception('Failed sending rollup to %s: %s', account.email, exc)
+        if stdout:
+            stdout.write(f'Failed rollup for {account.email}: {exc}')
+        return False, str(exc)
+
+    return True, 'Sent'
+
+
+def send_message_rollups(dry_run=False, stdout=None):
+    if not _email_enabled():
+        if stdout:
+            stdout.write('Email disabled; skipping rollups.')
+        return 0
+
+    now = timezone.now()
+    sent = 0
+
+    accounts = (
+        Account.objects
+        .filter(email_game_updates=True)
+        .exclude(email='')
+        .prefetch_related('players__game')
+    )
+
+    for account in accounts:
+        rollups_per_day = int(account.email_game_rollups_per_day or 0)
+        if rollups_per_day <= 0:
+            continue
+        last_sent = (
+            EmailRollupLog.objects
+            .filter(account=account)
+            .order_by('-sent_at')
+            .first()
+        )
+        if last_sent:
+            interval = timedelta(seconds=86400.0 / float(rollups_per_day))
+            if last_sent.sent_at + interval > now:
+                continue
+
+        base_url = _get_server_url()
+        entries, total_messages, any_new_turn, players = _build_rollup_entries(
+            account, base_url
+        )
+        if total_messages <= 0:
+            continue
+        if not any_new_turn:
+            continue
+
+        try:
+            _send_rollup_email(account, entries, total_messages, players, dry_run, stdout)
+        except Exception as exc:
+            logger.exception('Failed sending rollup to %s: %s', account.email, exc)
+            if stdout:
+                stdout.write(f'Failed rollup for {account.email}: {exc}')
+            continue
+
+        sent += 1
+
+    return sent
