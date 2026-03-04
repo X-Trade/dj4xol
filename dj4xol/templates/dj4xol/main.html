@@ -211,6 +211,7 @@
                 var remainingMs = targetMs - Date.now();
                 if (remainingMs <= 60000) {
                     countdownEl.textContent = 'Due';
+                    countdownEl.classList.add('status-due');
                     if (!window.turnIsDue) {
                         window.turnIsDue = true;
                         if (window.__applyTurnLock) {
@@ -222,6 +223,7 @@
                     }
                     return;
                 }
+                countdownEl.classList.remove('status-due');
 
                 var totalMinutes = Math.floor(remainingMs / 60000);
                 var hours = Math.floor(totalMinutes / 60);
