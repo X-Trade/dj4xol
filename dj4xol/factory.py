@@ -23,6 +23,8 @@ class GameFactory():
     def __init__(self, game=None):
         self.starnamer = StarNamer()
         self.stars = []
+        self.pending_anomalies = []
+        self._spiral_black_holes = []
         self.owner = None
         self.game = game or Game()
 
@@ -30,6 +32,8 @@ class GameFactory():
         """Create a new game instance."""
         self.game = Game()
         self.stars = []
+        self.pending_anomalies = []
+        self._spiral_black_holes = []
         return self.game
     
     def validate(self):
@@ -52,6 +56,8 @@ class GameFactory():
             raise TypeError("game is not an instance of the Game model object")
         self.game = game
         self.owner = game.owner
+        self.pending_anomalies = []
+        self._spiral_black_holes = []
         return self
 
     def save(self):
@@ -69,6 +75,11 @@ class GameFactory():
             if not star.short_id:
                 star.short_id = self.game.short_id[:4] + star.id.hex[-8:]
         Star.objects.bulk_create(self.stars)
+        if self.pending_anomalies:
+            for anomaly in self.pending_anomalies:
+                if not anomaly.short_id:
+                    anomaly.short_id = self.game.short_id[:4] + anomaly.id.hex[-8:]
+            Anomaly.objects.bulk_create(self.pending_anomalies)
         self._create_initial_anomalies()
         return self.game
 
@@ -83,7 +94,11 @@ class GameFactory():
         count = max(1, int(round(len(stars) * 0.05)))
         count = min(max_count, count)
         occupied = {(star.x, star.y) for star in stars}
+        existing_anomalies = list(Anomaly.objects.filter(game=self.game))
+        if existing_anomalies:
+            occupied.update({(anomaly.x, anomaly.y) for anomaly in existing_anomalies})
         created = []
+        existing_count = len(existing_anomalies)
         type_names = {
             Anomaly.TYPE_NEBULA: 'Nebula',
             Anomaly.TYPE_COMET: 'Comet',
@@ -127,7 +142,7 @@ class GameFactory():
                     break
                 if x2 is None:
                     continue
-                ordinal = len(created) + 1
+                ordinal = existing_count + len(created) + 1
                 pair_name = '%s %s' % (type_names.get(anomaly_type, 'Anomaly'), ordinal)
                 pair_name_b = '%s %s' % (type_names.get(anomaly_type, 'Anomaly'), ordinal + 1)
                 wormhole_a = Anomaly(
@@ -158,7 +173,7 @@ class GameFactory():
             key = (x, y)
             if key in occupied:
                 continue
-            ordinal = len(created) + 1
+            ordinal = existing_count + len(created) + 1
             created.append(Anomaly(
                 game=self.game,
                 x=x,
@@ -205,10 +220,12 @@ class GameFactory():
         self.game.map_size_y = y
         return self
 
-    def create_stars(self, stars, clusters=False, systems=False):
+    def create_stars(self, stars, clusters=False, spiral_arms=False, systems=False):
         if not (self.game.map_size_x or self.game.map_size_y):
             raise Exception("cannot add stars to game until map size is set")
-        if clusters:
+        if spiral_arms:
+            self._create_spiral_arm_galaxy(stars)
+        elif clusters:
             self._create_star_clusters(stars)
         else:
             self._create_random_stars(stars)
@@ -216,17 +233,193 @@ class GameFactory():
             self._add_systems()
         return self
 
+    def _reserve_spiral_black_holes(self, center_x, center_y, total_stars):
+        if not bool(getattr(self.game, 'anomalies_enabled', False)):
+            return
+        if total_stars >= 200:
+            count = random.choice([1, 2, 3])
+        elif total_stars >= 100:
+            count = random.choice([1, 2])
+        else:
+            count = 1
+        occupied = set(self._spiral_black_holes)
+        candidates = []
+        for _ in range(count):
+            placed = False
+            for _ in range(120):
+                radius = random.random() * 7.0
+                angle = random.random() * 2.0 * math.pi
+                x = int(round(center_x + math.cos(angle) * radius))
+                y = int(round(center_y + math.sin(angle) * radius))
+                x = max(1, min(self.game.map_size_x - 1, x))
+                y = max(1, min(self.game.map_size_y - 1, y))
+                key = (x, y)
+                if key in occupied:
+                    continue
+                candidates.append(key)
+                occupied.add(key)
+                placed = True
+                break
+            if not placed:
+                break
+        if not candidates:
+            return
+        central = min(
+            candidates,
+            key=lambda pos: (pos[0] - center_x) ** 2 + (pos[1] - center_y) ** 2
+        )
+        for x, y in candidates:
+            stability = 100 if (x, y) == central else random.randint(60, 90)
+            ordinal = len(self.pending_anomalies) + 1
+            self.pending_anomalies.append(Anomaly(
+                game=self.game,
+                x=x,
+                y=y,
+                anomaly_type=Anomaly.TYPE_BLACK_HOLE,
+                name='Black Hole %s' % ordinal,
+                heading=random.random() * 360.0,
+                stability=stability,
+            ))
+            self._spiral_black_holes.append((x, y))
+
+    def _is_near_black_hole(self, x, y, min_distance=3.0):
+        if not self._spiral_black_holes:
+            return False
+        min_sq = float(min_distance) ** 2
+        for bx, by in self._spiral_black_holes:
+            dx = float(x - bx)
+            dy = float(y - by)
+            if (dx * dx + dy * dy) < min_sq:
+                return True
+        return False
+
+    def _create_spiral_arm_galaxy(self, stars):
+        min_x = 1
+        min_y = 1
+        max_x = self.game.map_size_x - 1
+        max_y = self.game.map_size_y - 1
+        center_x = self.game.map_size_x / 2.0
+        center_y = self.game.map_size_y / 2.0
+        max_radius = (min(self.game.map_size_x, self.game.map_size_y) / 2.0) - 2.0
+        max_radius = max(10.0, max_radius)
+
+        total = max(1, int(stars))
+        self._reserve_spiral_black_holes(center_x, center_y, total)
+        edge_count = max(1, int(round(total * 0.05)))
+        core_count = max(1, int(round(total * 0.18)))
+        arm_count = max(0, total - edge_count - core_count)
+
+        inner_gap = max(3.0, min(7.0, max_radius * 0.08))
+        core_radius = max(inner_gap + 2.0, max_radius * 0.22)
+        arm_inner = max(core_radius * 0.85, inner_gap + 2.0)
+        edge_min = max_radius * 0.70
+
+        def clamp_point(x, y):
+            return (
+                max(min_x, min(max_x, int(round(x)))),
+                max(min_y, min(max_y, int(round(y)))),
+            )
+
+        occupied = set()
+
+        def add_star(x, y):
+            x, y = clamp_point(x, y)
+            if self._is_near_black_hole(x, y, min_distance=3.0):
+                return False
+            if (x, y) in occupied:
+                return False
+            name = self.starnamer.get_unique()
+            self.stars.append(Star(name=name, x=x, y=y))
+            occupied.add((x, y))
+            return True
+
+        def place_with_attempts(generator, attempts=80):
+            for _ in range(attempts):
+                x, y = generator()
+                if add_star(x, y):
+                    return True
+            # Fallback: random placement away from black holes.
+            for _ in range(120):
+                x = random.randint(min_x, max_x)
+                y = random.randint(min_y, max_y)
+                if add_star(x, y):
+                    return True
+            return False
+
+        arms = random.choice([2, 3, 4])
+        arm_twists = 2.4
+        arm_offsets = [2.0 * math.pi * i / float(arms) for i in range(arms)]
+        arm_width = max(1.5, max_radius * 0.02)
+
+        for _ in range(arm_count):
+            arm_idx = random.randrange(arms)
+            base_angle = arm_offsets[arm_idx]
+
+            def arm_generator():
+                radial = arm_inner + (max_radius - arm_inner) * (random.random() ** 0.75)
+                theta = base_angle + (radial / max_radius) * (arm_twists * 2.0 * math.pi)
+                radial += random.gauss(0.0, arm_width)
+                theta += random.gauss(0.0, 0.18)
+                x = center_x + math.cos(theta) * radial
+                y = center_y + math.sin(theta) * radial
+                return x, y
+
+            place_with_attempts(arm_generator)
+
+        for _ in range(core_count):
+            def core_generator():
+                radial = inner_gap + (core_radius - inner_gap) * (random.random() ** 2.0)
+                theta = random.random() * 2.0 * math.pi
+                radial += random.gauss(0.0, 1.0)
+                x = center_x + math.cos(theta) * radial
+                y = center_y + math.sin(theta) * radial
+                return x, y
+
+            place_with_attempts(core_generator)
+
+        for _ in range(edge_count):
+            def edge_generator():
+                radial = edge_min + (max_radius - edge_min) * (random.random() ** 0.5)
+                theta = random.random() * 2.0 * math.pi
+                x = center_x + math.cos(theta) * radial
+                y = center_y + math.sin(theta) * radial
+                return x, y
+
+            place_with_attempts(edge_generator)
+
     def _create_random_stars(self, stars):
         """Create stars randomly in the game."""
         min_x = 1
         min_y = 1
         max_x = self.game.map_size_x - 1
         max_y = self.game.map_size_y - 1
+        occupied = set()
         for _ in range(stars):
-            x = random.randint(min_x, max_x)
-            y = random.randint(min_y, max_y)
+            x = None
+            y = None
+            for _ in range(200):
+                cand_x = random.randint(min_x, max_x)
+                cand_y = random.randint(min_y, max_y)
+                if (cand_x, cand_y) not in occupied:
+                    x = cand_x
+                    y = cand_y
+                    break
+            if x is None or y is None:
+                found = False
+                for cand_x in range(min_x, max_x + 1):
+                    for cand_y in range(min_y, max_y + 1):
+                        if (cand_x, cand_y) not in occupied:
+                            x = cand_x
+                            y = cand_y
+                            found = True
+                            break
+                    if found:
+                        break
+            if x is None or y is None:
+                break
             name = self.starnamer.get_unique()
             self.stars.append(Star(name=name, x=x, y=y))
+            occupied.add((x, y))
         return self
 
     def _create_star_clusters(self, stars, system_size=6, cluster_radius=25, min_cluster_distance=40):
@@ -237,6 +430,7 @@ class GameFactory():
         max_y = self.game.map_size_y - 1
         
         cluster_centers = []
+        occupied = set()
         created = 0
         
         while created < stars:
@@ -266,15 +460,31 @@ class GameFactory():
             for _ in range(stars_in_cluster):
                 name = self.starnamer.get_unique()
                 # Use larger, more varied offsets for better spread
-                angle = random.random() * 2 * math.pi  # Random angle
-                radius = random.random() * cluster_radius  # Random distance from center
-                ofs_x = int(radius * math.cos(angle))
-                ofs_y = int(radius * math.sin(angle))
-                
-                x = max(min_x, min(max_x, cluster_x + ofs_x))
-                y = max(min_y, min(max_y, cluster_y + ofs_y))
-                
+                x = None
+                y = None
+                for _ in range(80):
+                    angle = random.random() * 2 * math.pi  # Random angle
+                    radius = random.random() * cluster_radius  # Random distance from center
+                    ofs_x = int(radius * math.cos(angle))
+                    ofs_y = int(radius * math.sin(angle))
+                    cand_x = max(min_x, min(max_x, cluster_x + ofs_x))
+                    cand_y = max(min_y, min(max_y, cluster_y + ofs_y))
+                    if (cand_x, cand_y) not in occupied:
+                        x = cand_x
+                        y = cand_y
+                        break
+                if x is None or y is None:
+                    for _ in range(200):
+                        cand_x = random.randint(min_x, max_x)
+                        cand_y = random.randint(min_y, max_y)
+                        if (cand_x, cand_y) not in occupied:
+                            x = cand_x
+                            y = cand_y
+                            break
+                if x is None or y is None:
+                    break
                 self.stars.append(Star(name=name, x=x, y=y))
+                occupied.add((x, y))
                 created += 1
                 
                 if created >= stars:

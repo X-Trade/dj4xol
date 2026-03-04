@@ -1188,7 +1188,12 @@ def create_game(request):
                 factory.game.join_until_year = d['starting_year'] + d['join_open_years']
             factory.set_map_size(d['map_size_x'], d['map_size_y'])
             factory.set_owner(account)
-            factory.create_stars(d['num_stars'], clusters=d.get('clusters', False), systems=d.get('systems', False))
+            factory.create_stars(
+                d['num_stars'],
+                clusters=d.get('clusters', False),
+                spiral_arms=d.get('spiral_arms', False),
+                systems=d.get('systems', False),
+            )
             game = factory.save()
             factory.join_player(account, d['race'])
             _create_invitations(game, form.parse_invitations())

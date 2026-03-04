@@ -159,13 +159,18 @@ class NewGameForm(forms.Form):
     num_stars = forms.IntegerField(
         label="Number of Stars",
         min_value=10,
-        max_value=200,
+        max_value=300,
         initial=50
     )
     clusters = forms.BooleanField(
         label="Clusters",
         required=False,
         help_text="Group stars into clusters"
+    )
+    spiral_arms = forms.BooleanField(
+        label="Spiral Arm Galaxy",
+        required=False,
+        help_text="Generate a spiral arm galaxy (exclusive with clusters)"
     )
     systems = forms.BooleanField(
         label="Systems",
@@ -251,6 +256,7 @@ class NewGameForm(forms.Form):
             'map_size_y',
             'num_stars',
             'clusters',
+            'spiral_arms',
             'systems',
             'public',
             'joinable',
@@ -282,6 +288,13 @@ class NewGameForm(forms.Form):
                 'Max starting tech level cannot exceed %s.' % max_level
             )
         return value
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('clusters') and cleaned.get('spiral_arms'):
+            self.add_error('clusters', 'Clusters cannot be combined with spiral arm galaxy generation.')
+            self.add_error('spiral_arms', 'Spiral arm galaxy generation cannot be combined with clusters.')
+        return cleaned
 
     def parse_invitations(self):
         """Parse invitations field into list of (type, value) tuples."""

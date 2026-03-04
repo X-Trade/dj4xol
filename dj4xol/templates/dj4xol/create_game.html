@@ -85,6 +85,33 @@
                         });
                     }
                 });
+
+                var clusters = document.querySelector('input[name="clusters"]');
+                var spiral = document.querySelector('input[name="spiral_arms"]');
+                function syncGalaxyOptions() {
+                    if (!clusters || !spiral) {
+                        return;
+                    }
+                    if (clusters.checked) {
+                        spiral.checked = false;
+                        spiral.disabled = true;
+                        clusters.disabled = false;
+                    } else if (spiral.checked) {
+                        clusters.checked = false;
+                        clusters.disabled = true;
+                        spiral.disabled = false;
+                    } else {
+                        clusters.disabled = false;
+                        spiral.disabled = false;
+                    }
+                }
+                if (clusters) {
+                    clusters.addEventListener('change', syncGalaxyOptions);
+                }
+                if (spiral) {
+                    spiral.addEventListener('change', syncGalaxyOptions);
+                }
+                syncGalaxyOptions();
             })();
         </script>
         <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython.min.js"></script>
