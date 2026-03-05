@@ -25,6 +25,21 @@
     value: 'A Django 4X OL server demo'
 - model: dj4xol.ServerSettings
   fields:
+    key: 'secret_resource_x_name'
+    description: 'Secret resource X name'
+    value: 'Uniquium'
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'secret_resource_y_name'
+    description: 'Secret resource Y name'
+    value: 'Rarium'
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'secret_resource_z_name'
+    description: 'Secret resource Z name'
+    value: 'Mysterium'
+- model: dj4xol.ServerSettings
+  fields:
     key: 'server_welcome'
     description: 'Welcome message on homepage'
     long_value: |

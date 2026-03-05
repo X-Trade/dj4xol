@@ -13,6 +13,7 @@ import json
 import random
 
 from dj4xol.objectdetails import DetailBuilder
+from dj4xol.secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
 
 from .models import (
     Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
@@ -1058,6 +1059,9 @@ def add_fleet_order(request, game_short_id):
         order.transfer_ironium = int(request.POST.get('transfer_ironium', 0))
         order.transfer_boranium = int(request.POST.get('transfer_boranium', 0))
         order.transfer_germanium = int(request.POST.get('transfer_germanium', 0))
+        order.transfer_resource_x = int(request.POST.get('transfer_resource_x', 0))
+        order.transfer_resource_y = int(request.POST.get('transfer_resource_y', 0))
+        order.transfer_resource_z = int(request.POST.get('transfer_resource_z', 0))
         order.transfer_colonists = int(request.POST.get('transfer_colonists', 0))
 
         # Parse transfer target: "star:abc123", "fleet:def456", or "salvage:ghi789"
@@ -1393,6 +1397,9 @@ def hull_design_edit(request, hull_id=None):
             hull.ironium_cost = int(request.POST.get('ironium_cost') or 0)
             hull.boranium_cost = int(request.POST.get('boranium_cost') or 0)
             hull.germanium_cost = int(request.POST.get('germanium_cost') or 0)
+            hull.resource_x_cost = int(request.POST.get('resource_x_cost') or 0)
+            hull.resource_y_cost = int(request.POST.get('resource_y_cost') or 0)
+            hull.resource_z_cost = int(request.POST.get('resource_z_cost') or 0)
             hull.cargo_capacity = int(request.POST.get('cargo_capacity') or 0)
             hull.fuel_capacity = int(request.POST.get('fuel_capacity') or 100)
             hull.cargo_hold_grid_width = int(request.POST.get('cargo_hold_grid_width') or 0)
@@ -1444,6 +1451,13 @@ def hull_design_edit(request, hull_id=None):
         'selected_theme': selected_theme,
         'hull': hull,
         'errors': errors,
+        'secret_resource_labels': {
+            key: get_secret_resource_label(
+                key,
+                bool(getattr(account, f'discovered_{key}', False)) if account else False,
+            )
+            for key in SECRET_RESOURCE_KEYS
+        },
         'initial_slots_json': initial_slots,
         'tech_type_choices_json': json.dumps([
             {'value': code, 'label': label}
@@ -1596,6 +1610,13 @@ def _safe_tech_params(tech):
 def help_technology(request):
     """Browse technology unlocks by category and level."""
     account = request.user.dj4xol_account
+    resource_labels = {
+        key: get_secret_resource_label(
+            key,
+            bool(getattr(account, f'discovered_{key}', False)) if account else False,
+        )
+        for key in SECRET_RESOURCE_KEYS
+    }
     categories = list(
         ResearchCategory.objects.filter(enabled=True).order_by('display_order', 'name')
     )
@@ -1688,7 +1709,7 @@ def help_technology(request):
             for key, value in params.items()
             if _should_show_tech_param(key, value)
         ]
-        tech.params_display += build_production_cost_entries(params)
+        tech.params_display += build_production_cost_entries(params, resource_labels=resource_labels)
         tech.prerequisites = [
             {
                 'category': prereq.requires_category,

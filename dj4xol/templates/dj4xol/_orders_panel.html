@@ -27,6 +27,9 @@
                                 {% if order.transfer_ironium %}<tr class="res-iron"><td>Ironium</td><td>{{ order.transfer_ironium }}kt</td></tr>{% endif %}
                                 {% if order.transfer_boranium %}<tr class="res-bor"><td>Boranium</td><td>{{ order.transfer_boranium }}kt</td></tr>{% endif %}
                                 {% if order.transfer_germanium %}<tr class="res-germ"><td>Germanium</td><td>{{ order.transfer_germanium }}kt</td></tr>{% endif %}
+                                {% if order.transfer_resource_x %}<tr class="res-secret"><td>{{ detail.secret_resource_labels.resource_x }}</td><td>{{ order.transfer_resource_x }}kt</td></tr>{% endif %}
+                                {% if order.transfer_resource_y %}<tr class="res-secret"><td>{{ detail.secret_resource_labels.resource_y }}</td><td>{{ order.transfer_resource_y }}kt</td></tr>{% endif %}
+                                {% if order.transfer_resource_z %}<tr class="res-secret"><td>{{ detail.secret_resource_labels.resource_z }}</td><td>{{ order.transfer_resource_z }}kt</td></tr>{% endif %}
                                 {% if order.transfer_colonists %}<tr class="res-col"><td>Colonists</td><td>{{ order.transfer_colonists }}k</td></tr>{% endif %}
                             </table>
                         </div>
@@ -93,6 +96,9 @@
             <input type="hidden" name="transfer_ironium" id="transfer-ironium-input" value="0">
             <input type="hidden" name="transfer_boranium" id="transfer-boranium-input" value="0">
             <input type="hidden" name="transfer_germanium" id="transfer-germanium-input" value="0">
+            <input type="hidden" name="transfer_resource_x" id="transfer-resource_x-input" value="0">
+            <input type="hidden" name="transfer_resource_y" id="transfer-resource_y-input" value="0">
+            <input type="hidden" name="transfer_resource_z" id="transfer-resource_z-input" value="0">
             <input type="hidden" name="transfer_colonists" id="transfer-colonists-input" value="0">
             <input type="hidden" name="colonise_target" id="colonise-target-input" value="">
             <input type="hidden" name="bomb_target" id="bomb-target-input" value="">
@@ -134,7 +140,7 @@
                                     {% if obj.type == 'space' %}
                                         <option value="space" data-x="{{ destination_targets.location.0 }}" data-y="{{ destination_targets.location.1 }}"{% if destination_targets.selected_target == 'space' %} selected{% endif %}>{{ obj.name }} (Space)</option>
                                     {% elif obj.type == 'star' %}
-                                        <option value="star:{{ obj.short_id }}"{% if destination_targets.selected_target == "star:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }} (Star)</option>
+                                        <option value="star:{{ obj.short_id }}"{% if destination_targets.selected_target == "star:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% else %} (Star){% endif %}</option>
                                     {% elif obj.type == 'fleet' %}
                                         <option value="fleet:{{ obj.short_id }}"{% if destination_targets.selected_target == "fleet:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
                                     {% elif obj.type == 'salvage' %}
@@ -175,7 +181,7 @@
                                     {% if obj.type == 'space' %}
                                         <option value="space" data-x="{{ detail.transfer_targets.location.0 }}" data-y="{{ detail.transfer_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Space)</option>
                                     {% elif obj.type == 'star' %}
-                                        <option value="star:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Star)</option>
+                                        <option value="star:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% else %} (Star){% endif %}</option>
                                     {% elif obj.type == 'fleet' %}
                                         <option value="fleet:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
                                     {% elif obj.type == 'salvage' %}
@@ -198,7 +204,7 @@
                                     {% if obj.type == 'space' %}
                                         <option value="space" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Space)</option>
                                     {% elif obj.type == 'star' %}
-                                        <option value="star:{{ obj.short_id }}" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Star)</option>
+                                        <option value="star:{{ obj.short_id }}" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% else %} (Star){% endif %}</option>
                                     {% elif obj.type == 'fleet' %}
                                         <option value="fleet:{{ obj.short_id }}" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
                                     {% endif %}
@@ -209,7 +215,7 @@
                     <div class="dest-display-row" id="colonise-destination" style="display: none;">
                         {% if detail.colonise_targets.display_mode == 'single' %}
                             <!-- Single star target -->
-                            <span class="dest-display">{{ detail.colonise_targets.default_target.name }}</span>
+                            <span class="dest-display">{{ detail.colonise_targets.default_target.name }}{% if detail.colonise_targets.default_target.is_homeworld %} (Home){% endif %}</span>
                             <input type="hidden" id="colonise-single-target-value" data-target="{{ detail.colonise_targets.default_target.short_id }}">
                         {% elif detail.colonise_targets.display_mode == 'empty' %}
                             <!-- No star at location -->
@@ -219,14 +225,14 @@
                             <!-- Multiple stars (rare) -->
                             <select id="colonise-target" class="transfer-target-select">
                                 {% for obj in detail.colonise_targets.targets %}
-                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}</option>
+                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% endif %}</option>
                                 {% endfor %}
                             </select>
                         {% endif %}
                     </div>
                     <div class="dest-display-row" id="bomb-destination" style="display: none;">
                         {% if detail.bomb_targets.display_mode == 'single' %}
-                            <span class="dest-display">{{ detail.bomb_targets.default_target.name }}</span>
+                            <span class="dest-display">{{ detail.bomb_targets.default_target.name }}{% if detail.bomb_targets.default_target.is_homeworld %} (Home){% endif %}</span>
                             <input type="hidden" id="bomb-single-target-value" data-target="{{ detail.bomb_targets.default_target.short_id }}">
                         {% elif detail.bomb_targets.display_mode == 'empty' %}
                             <span class="dest-display"><em>No star at location</em></span>
@@ -234,14 +240,14 @@
                         {% else %}
                             <select id="bomb-target" class="transfer-target-select">
                                 {% for obj in detail.bomb_targets.targets %}
-                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}</option>
+                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% endif %}</option>
                                 {% endfor %}
                             </select>
                         {% endif %}
                     </div>
                     <div class="dest-display-row" id="remotemine-destination" style="display: none;">
                         {% if detail.remotemine_targets.display_mode == 'single' %}
-                            <span class="dest-display">{{ detail.remotemine_targets.default_target.name }}</span>
+                            <span class="dest-display">{{ detail.remotemine_targets.default_target.name }}{% if detail.remotemine_targets.default_target.is_homeworld %} (Home){% endif %}</span>
                             <input type="hidden" id="remotemine-single-target-value" data-target="{{ detail.remotemine_targets.default_target.short_id }}">
                         {% elif detail.remotemine_targets.display_mode == 'empty' %}
                             <span class="dest-display"><em>No star at location</em></span>
@@ -249,7 +255,7 @@
                         {% else %}
                             <select id="remotemine-target" class="transfer-target-select">
                                 {% for obj in detail.remotemine_targets.targets %}
-                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}</option>
+                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% endif %}</option>
                                 {% endfor %}
                             </select>
                         {% endif %}
@@ -338,6 +344,36 @@
                                 <span id="germanium-value" class="transfer-value">0kt</span>
                             </div>
                         </div>
+
+                        {% if detail.transfer_targets.resource_flags.resource_x %}
+                        <div class="order-param-row">
+                            <label for="resource_x-slider">{{ detail.secret_resource_labels.resource_x }}</label>
+                            <div class="transfer-slider-row">
+                                <input type="range" id="resource_x-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
+                                <span id="resource_x-value" class="transfer-value">0kt</span>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {% if detail.transfer_targets.resource_flags.resource_y %}
+                        <div class="order-param-row">
+                            <label for="resource_y-slider">{{ detail.secret_resource_labels.resource_y }}</label>
+                            <div class="transfer-slider-row">
+                                <input type="range" id="resource_y-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
+                                <span id="resource_y-value" class="transfer-value">0kt</span>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {% if detail.transfer_targets.resource_flags.resource_z %}
+                        <div class="order-param-row">
+                            <label for="resource_z-slider">{{ detail.secret_resource_labels.resource_z }}</label>
+                            <div class="transfer-slider-row">
+                                <input type="range" id="resource_z-slider" min="0" max="{{ detail.fleet_cargo.capacity }}" value="0" class="transfer-slider">
+                                <span id="resource_z-value" class="transfer-value">0kt</span>
+                            </div>
+                        </div>
+                        {% endif %}
 
                         <div class="order-param-row">
                             <label for="colonists-slider">Colonists</label>
@@ -441,7 +477,7 @@
     var patrolDestinationContainer = document.getElementById('patrol-destination');
     
     // Transfer sliders - define at top level
-    var transferSliders = ['ironium', 'boranium', 'germanium', 'colonists'];
+    var transferSliders = ['ironium', 'boranium', 'germanium', 'resource_x', 'resource_y', 'resource_z', 'colonists'];
     
     // Define utility functions first
     function updateAddButtonState() {

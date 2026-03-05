@@ -28,6 +28,7 @@ from .technology_thumbnails import (
     get_technology_thumbnail_path,
     get_technology_thumbnail_paths,
 )
+from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
 
 TECH_PARAM_LABELS = {
     'max_warp_speed': 'Maximum Warp',
@@ -50,6 +51,17 @@ TERRAFORM_ORDER_LABELS = {
     'TERRAFORM_GRAVITY': 'Terraform Gravity',
     'TERRAFORM_TEMPERATURE': 'Terraform Temperature',
     'TERRAFORM_RADIATION': 'Terraform Radiation',
+}
+
+RESEARCH_RESOURCE_KEYS = (
+    'ironium', 'boranium', 'germanium',
+    'resource_x', 'resource_y', 'resource_z',
+)
+
+RESEARCH_RESOURCE_LABELS = {
+    'ironium': 'Ironium',
+    'boranium': 'Boranium',
+    'germanium': 'Germanium',
 }
 
 
@@ -130,6 +142,9 @@ def _normalise_cost_dict(cost):
         'ironium': 0,
         'boranium': 0,
         'germanium': 0,
+        'resource_x': 0,
+        'resource_y': 0,
+        'resource_z': 0,
         'colonists': 0,
     }
     if not isinstance(cost, dict):
@@ -235,23 +250,35 @@ def get_player_available_production_orders(player, star):
     return orders
 
 
-def build_production_cost_entries(params):
+def build_production_cost_entries(params, resource_labels=None):
     """Return display entries for production cost overrides."""
     overrides = params.get('production_cost_overrides') if isinstance(params, dict) else None
     if not isinstance(overrides, dict):
         return []
     entries = []
+    label_map = dict(RESEARCH_RESOURCE_LABELS)
+    if resource_labels:
+        label_map.update(resource_labels)
+    else:
+        for key in SECRET_RESOURCE_KEYS:
+            label_map[key] = get_secret_resource_label(key, True)
     for order_type, cost in overrides.items():
         if order_type not in TERRAFORM_ORDER_LABELS:
             continue
         normalised = _normalise_cost_dict(cost)
         label = '%s Cost' % format_terraform_order_label(order_type, None)
-        value = 'BP {bp}, Fe {iron}kt, Bo {bor}kt, Ge {germ}kt'.format(
-            bp=normalised.get('bp', 0),
-            iron=normalised.get('ironium', 0),
-            bor=normalised.get('boranium', 0),
-            germ=normalised.get('germanium', 0),
-        )
+        parts = []
+        bp_val = normalised.get('bp', 0)
+        if bp_val:
+            parts.append('BP %s' % bp_val)
+        for key in RESEARCH_RESOURCE_KEYS:
+            amount = int(normalised.get(key, 0) or 0)
+            if amount > 0:
+                parts.append('%s %skt' % (label_map.get(key, str(key).title()), amount))
+        colonists = int(normalised.get('colonists', 0) or 0)
+        if colonists:
+            parts.append('Colonists %s' % colonists)
+        value = ', '.join(parts) if parts else 'No cost'
         entries.append({'label': label, 'value': value})
     return entries
 
@@ -297,6 +324,9 @@ def ensure_default_level_requirements(max_level=26):
             ironium_cost=0,
             boranium_cost=0,
             germanium_cost=0,
+            resource_x_cost=0,
+            resource_y_cost=0,
+            resource_z_cost=0,
         ))
     if missing:
         DefaultResearchLevelRequirement.objects.bulk_create(missing)
@@ -324,6 +354,9 @@ def copy_default_requirements_to_category(
                 ironium_cost=default.ironium_cost,
                 boranium_cost=default.boranium_cost,
                 germanium_cost=default.germanium_cost,
+                resource_x_cost=default.resource_x_cost,
+                resource_y_cost=default.resource_y_cost,
+                resource_z_cost=default.resource_z_cost,
             ))
             continue
         if not overwrite_existing:
@@ -341,13 +374,23 @@ def copy_default_requirements_to_category(
         if existing.germanium_cost != default.germanium_cost:
             existing.germanium_cost = default.germanium_cost
             changed = True
+        if existing.resource_x_cost != default.resource_x_cost:
+            existing.resource_x_cost = default.resource_x_cost
+            changed = True
+        if existing.resource_y_cost != default.resource_y_cost:
+            existing.resource_y_cost = default.resource_y_cost
+            changed = True
+        if existing.resource_z_cost != default.resource_z_cost:
+            existing.resource_z_cost = default.resource_z_cost
+            changed = True
         if changed:
             dirty.append(existing)
     if missing:
         ResearchLevelRequirement.objects.bulk_create(missing)
     for row in dirty:
         row.save(update_fields=[
-            'rp_cost', 'ironium_cost', 'boranium_cost', 'germanium_cost'
+            'rp_cost', 'ironium_cost', 'boranium_cost', 'germanium_cost',
+            'resource_x_cost', 'resource_y_cost', 'resource_z_cost',
         ])
 
 
@@ -362,6 +405,9 @@ def get_level_requirement(category_id, level):
             'ironium_cost': int(req.ironium_cost),
             'boranium_cost': int(req.boranium_cost),
             'germanium_cost': int(req.germanium_cost),
+            'resource_x_cost': int(req.resource_x_cost),
+            'resource_y_cost': int(req.resource_y_cost),
+            'resource_z_cost': int(req.resource_z_cost),
         }
     except ResearchLevelRequirement.DoesNotExist:
         pass
@@ -373,12 +419,18 @@ def get_level_requirement(category_id, level):
             'ironium_cost': int(default.ironium_cost),
             'boranium_cost': int(default.boranium_cost),
             'germanium_cost': int(default.germanium_cost),
+            'resource_x_cost': int(default.resource_x_cost),
+            'resource_y_cost': int(default.resource_y_cost),
+            'resource_z_cost': int(default.resource_z_cost),
         }
     return {
         'rp_cost': int(rp_cost_for_level(level)),
         'ironium_cost': 0,
         'boranium_cost': 0,
         'germanium_cost': 0,
+        'resource_x_cost': 0,
+        'resource_y_cost': 0,
+        'resource_z_cost': 0,
     }
 
 
@@ -493,15 +545,13 @@ def _consume_resource_partial(stars, inventory_field, amount):
 
 def _clamp_paid_to_requirement(paid, requirement):
     """Clamp paid minerals to the current requirement."""
-    paid = {
-        'ironium_paid': int(paid.get('ironium_paid', 0) or 0),
-        'boranium_paid': int(paid.get('boranium_paid', 0) or 0),
-        'germanium_paid': int(paid.get('germanium_paid', 0) or 0),
-    }
-    paid['ironium_paid'] = min(paid['ironium_paid'], int(requirement.get('ironium_cost', 0)))
-    paid['boranium_paid'] = min(paid['boranium_paid'], int(requirement.get('boranium_cost', 0)))
-    paid['germanium_paid'] = min(paid['germanium_paid'], int(requirement.get('germanium_cost', 0)))
-    return paid
+    clamped = {}
+    for key in RESEARCH_RESOURCE_KEYS:
+        paid_key = f'{key}_paid'
+        cost_key = f'{key}_cost'
+        current_paid = int(paid.get(paid_key, 0) or 0)
+        clamped[paid_key] = min(current_paid, int(requirement.get(cost_key, 0) or 0))
+    return clamped
 
 
 def _allocate_mineral_progress(rows, eligible_stars, max_level_by_category):
@@ -517,20 +567,16 @@ def _allocate_mineral_progress(rows, eligible_stars, max_level_by_category):
         next_level = int(row.current_level) + 1
         requirement = get_level_requirement(row.category_id, next_level)
         paid = _clamp_paid_to_requirement({
-            'ironium_paid': getattr(row, 'ironium_paid', 0),
-            'boranium_paid': getattr(row, 'boranium_paid', 0),
-            'germanium_paid': getattr(row, 'germanium_paid', 0),
+            f'{key}_paid': getattr(row, f'{key}_paid', 0) for key in RESEARCH_RESOURCE_KEYS
         }, requirement)
-        row.ironium_paid = paid['ironium_paid']
-        row.boranium_paid = paid['boranium_paid']
-        row.germanium_paid = paid['germanium_paid']
+        for key in RESEARCH_RESOURCE_KEYS:
+            setattr(row, f'{key}_paid', paid.get(f'{key}_paid', 0))
         requirements[row.id] = requirement
 
-    resource_specs = (
-        ('ironium_cost', 'ironium_paid', 'ironium_inventory'),
-        ('boranium_cost', 'boranium_paid', 'boranium_inventory'),
-        ('germanium_cost', 'germanium_paid', 'germanium_inventory'),
-    )
+    resource_specs = [
+        (f'{key}_cost', f'{key}_paid', f'{key}_inventory')
+        for key in RESEARCH_RESOURCE_KEYS
+    ]
 
     for cost_key, paid_attr, inventory_field in resource_specs:
         available = sum(int(getattr(star, inventory_field, 0) or 0) for star in eligible_stars)
@@ -592,26 +638,22 @@ def _allocate_mineral_progress(rows, eligible_stars, max_level_by_category):
 
 def _can_pay_requirement(stars, requirement):
     """Check if eligible stars have enough minerals for this requirement."""
-    needed_iron = int(requirement.get('ironium_cost', 0))
-    needed_bor = int(requirement.get('boranium_cost', 0))
-    needed_germ = int(requirement.get('germanium_cost', 0))
-    total_iron = sum(star.ironium_inventory for star in stars)
-    total_bor = sum(star.boranium_inventory for star in stars)
-    total_germ = sum(star.germanium_inventory for star in stars)
-    return (
-        total_iron >= needed_iron and
-        total_bor >= needed_bor and
-        total_germ >= needed_germ
-    )
+    for key in RESEARCH_RESOURCE_KEYS:
+        needed = int(requirement.get(f'{key}_cost', 0) or 0)
+        if needed <= 0:
+            continue
+        total = sum(int(getattr(star, f'{key}_inventory', 0) or 0) for star in stars)
+        if total < needed:
+            return False
+    return True
 
 
 def _consume_requirement(stars, requirement):
     """Consume required minerals from eligible stars, largest labs first."""
-    fields = (
-        ('ironium_inventory', int(requirement.get('ironium_cost', 0))),
-        ('boranium_inventory', int(requirement.get('boranium_cost', 0))),
-        ('germanium_inventory', int(requirement.get('germanium_cost', 0))),
-    )
+    fields = [
+        (f'{key}_inventory', int(requirement.get(f'{key}_cost', 0) or 0))
+        for key in RESEARCH_RESOURCE_KEYS
+    ]
     dirty_stars = {}
     for field, amount in fields:
         remaining = amount
@@ -630,9 +672,10 @@ def _consume_requirement(stars, requirement):
         if remaining > 0:
             return False
     for star in dirty_stars.values():
-        star.save(update_fields=[
-            'ironium_inventory', 'boranium_inventory', 'germanium_inventory'
-        ])
+        update_fields = [
+            f'{key}_inventory' for key in RESEARCH_RESOURCE_KEYS
+        ]
+        star.save(update_fields=update_fields)
     return True
 
 
@@ -710,9 +753,9 @@ def _advance_research_row_with_requirements(
     old_level = float(row.current_level or 0.0)
     level = old_level
     stored_rp = int(row.stored_rp) + int(added_rp or 0)
-    ironium_paid = int(getattr(row, 'ironium_paid', 0) or 0)
-    boranium_paid = int(getattr(row, 'boranium_paid', 0) or 0)
-    germanium_paid = int(getattr(row, 'germanium_paid', 0) or 0)
+    paid_by_key = {
+        key: int(getattr(row, f'{key}_paid', 0) or 0) for key in RESEARCH_RESOURCE_KEYS
+    }
     while int(level) < int(max_level):
         next_level = int(level) + 1
         requirement = get_level_requirement(row.category_id, next_level)
@@ -720,49 +763,37 @@ def _advance_research_row_with_requirements(
             break
         rp_cost = int(requirement['rp_cost'])
         paid = _clamp_paid_to_requirement({
-            'ironium_paid': ironium_paid,
-            'boranium_paid': boranium_paid,
-            'germanium_paid': germanium_paid,
+            f'{key}_paid': paid_by_key.get(key, 0) for key in RESEARCH_RESOURCE_KEYS
         }, requirement)
-        ironium_paid = paid['ironium_paid']
-        boranium_paid = paid['boranium_paid']
-        germanium_paid = paid['germanium_paid']
+        for key in RESEARCH_RESOURCE_KEYS:
+            paid_by_key[key] = paid.get(f'{key}_paid', 0)
 
         if allow_mineral_payment:
-            iron_needed = max(0, int(requirement.get('ironium_cost', 0)) - ironium_paid)
-            bor_needed = max(0, int(requirement.get('boranium_cost', 0)) - boranium_paid)
-            germ_needed = max(0, int(requirement.get('germanium_cost', 0)) - germanium_paid)
-            if iron_needed > 0:
-                ironium_paid += _consume_resource_partial(
-                    eligible_stars, 'ironium_inventory', iron_needed
+            for key in RESEARCH_RESOURCE_KEYS:
+                needed = max(
+                    0,
+                    int(requirement.get(f'{key}_cost', 0) or 0) - int(paid_by_key.get(key, 0) or 0)
                 )
-            if bor_needed > 0:
-                boranium_paid += _consume_resource_partial(
-                    eligible_stars, 'boranium_inventory', bor_needed
-                )
-            if germ_needed > 0:
-                germanium_paid += _consume_resource_partial(
-                    eligible_stars, 'germanium_inventory', germ_needed
-                )
+                if needed > 0:
+                    paid_by_key[key] += _consume_resource_partial(
+                        eligible_stars, f'{key}_inventory', needed
+                    )
 
-        if ironium_paid < int(requirement.get('ironium_cost', 0)):
-            break
-        if boranium_paid < int(requirement.get('boranium_cost', 0)):
-            break
-        if germanium_paid < int(requirement.get('germanium_cost', 0)):
+        if any(
+            int(paid_by_key.get(key, 0) or 0) < int(requirement.get(f'{key}_cost', 0) or 0)
+            for key in RESEARCH_RESOURCE_KEYS
+        ):
             break
         if stored_rp < rp_cost:
             break
         stored_rp -= rp_cost
         level += 1.0
-        ironium_paid = 0
-        boranium_paid = 0
-        germanium_paid = 0
+        for key in RESEARCH_RESOURCE_KEYS:
+            paid_by_key[key] = 0
     row.current_level = level
     row.stored_rp = stored_rp
-    row.ironium_paid = ironium_paid
-    row.boranium_paid = boranium_paid
-    row.germanium_paid = germanium_paid
+    for key in RESEARCH_RESOURCE_KEYS:
+        setattr(row, f'{key}_paid', int(paid_by_key.get(key, 0) or 0))
     return old_level, level
 
 
@@ -1215,6 +1246,9 @@ def process_player_research_for_year(player):
             'ironium_paid',
             'boranium_paid',
             'germanium_paid',
+            'resource_x_paid',
+            'resource_y_paid',
+            'resource_z_paid',
         ])
     if budget.get('leftover_bonus_rp', 0) > 0 and player.spend_leftover_points_on_research:
         player.leftover_points = 0.0
@@ -1254,6 +1288,9 @@ def apply_research_bonus_rp(player, category_id, bonus_rp):
         'ironium_paid',
         'boranium_paid',
         'germanium_paid',
+        'resource_x_paid',
+        'resource_y_paid',
+        'resource_z_paid',
     ])
     return {
         'category': row.category,
@@ -1291,6 +1328,13 @@ def build_research_screen_data(player, selected_category_id=None):
     next_level_blocked = False
     selected_is_maxed = False
     selected_max_level = None
+    resource_labels = {
+        key: get_secret_resource_label(
+            key,
+            bool(getattr(player, f'discovered_{key}', False)),
+        )
+        for key in SECRET_RESOURCE_KEYS
+    }
     level_map = {row.category_id: int(row.current_level or 0) for row in rows}
     max_level_by_category = _max_level_by_category(
         [row.category_id for row in rows]
@@ -1353,19 +1397,21 @@ def build_research_screen_data(player, selected_category_id=None):
 
         if not selected_is_maxed and next_level_req:
             paid_by_resource = {
-                'ironium_cost': int(getattr(selected_research, 'ironium_paid', 0) or 0),
-                'boranium_cost': int(getattr(selected_research, 'boranium_paid', 0) or 0),
-                'germanium_cost': int(getattr(selected_research, 'germanium_paid', 0) or 0),
+                f'{key}_cost': int(getattr(selected_research, f'{key}_paid', 0) or 0)
+                for key in RESEARCH_RESOURCE_KEYS
             }
-            for key, label in (
-                ('ironium_cost', 'Ironium'),
-                ('boranium_cost', 'Boranium'),
-                ('germanium_cost', 'Germanium'),
-            ):
-                cost = int(next_level_req.get(key, 0))
+            for key in RESEARCH_RESOURCE_KEYS:
+                cost = int(next_level_req.get(f'{key}_cost', 0) or 0)
                 if cost <= 0:
                     continue
-                current = int(min(max(0, paid_by_resource.get(key, 0)), cost))
+                current = int(min(max(0, paid_by_resource.get(f'{key}_cost', 0)), cost))
+                if key in SECRET_RESOURCE_KEYS:
+                    label = get_secret_resource_label(
+                        key,
+                        bool(getattr(player, f'discovered_{key}', False)),
+                    )
+                else:
+                    label = RESEARCH_RESOURCE_LABELS.get(key, str(key).title())
                 next_level_resource_rows.append({
                     'label': label,
                     'current': current,
@@ -1395,7 +1441,7 @@ def build_research_screen_data(player, selected_category_id=None):
                         {'label': _format_param_key(key), 'value': _format_param_value(key, value)}
                         for key, value in params.items()
                         if _should_show_param(key, value)
-                    ] + build_production_cost_entries(params),
+                    ] + build_production_cost_entries(params, resource_labels=resource_labels),
                 })
 
     for row in rows:

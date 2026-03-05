@@ -1610,6 +1610,32 @@ class TestEconomicCalculations(TestCase):
         # Mining should have added to the existing inventory
         self.assertGreater(star.ironium_inventory, 100)
 
+    def test_secret_resource_yield_depletes(self):
+        """Secret resource yields should deplete with heavy mining."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        star = game.stars.exclude(pk=player.homeworld.pk).first()
+
+        star.player = player
+        star.colonists = 20000000  # 20M colonists to staff 20k mines
+        star.mines = 20000
+        star.factories = 0
+        star.labs = 0
+        star.defenses = 0
+        star.shipyards = 0
+        star.resource_x_yield = 100
+        star.resource_x_inventory = 0
+        star.ironium_yield = 0
+        star.boranium_yield = 0
+        star.germanium_yield = 0
+        star.save()
+
+        initial_yield = star.resource_x_yield
+        GameTurn(game).mining()
+
+        star.refresh_from_db()
+        self.assertLess(star.resource_x_yield, initial_yield)
+
     def test_mining_low_yield_has_chance(self):
         """Low yield resources should still have a chance to produce."""
         game = default_game()
@@ -1978,6 +2004,49 @@ class TestFleetTransferOrderExecution(TestCase):
         self.assertEqual(star.boranium_inventory, 4750)
         self.assertEqual(star.germanium_inventory, 4750)
         self.assertEqual(star.colonists, 0)  # 100000 individuals transferred (100kt)
+
+    def test_transfer_overprovision_includes_secret_resources(self):
+        """Overprovisioned transfers should allocate secret resources proportionally."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        star.ironium_inventory = 1000
+        star.resource_x_inventory = 1000
+        star.colonists = 0
+        star.save()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Secret Cargo Fleet",
+            x=star.x,
+            y=star.y,
+            cargo_capacity=100
+        )
+
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='LOAD',
+            transfer_ironium=100,
+            transfer_resource_x=100,
+        )
+
+        GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+
+        self.assertEqual(fleet.ironium_inventory, 50)
+        self.assertEqual(fleet.resource_x_inventory, 50)
+        self.assertEqual(fleet.cargo_used, 100)
+        self.assertEqual(star.ironium_inventory, 950)
+        self.assertEqual(star.resource_x_inventory, 950)
 
     def test_transfer_move_then_execute(self):
         """Test transfer that requires movement first."""
@@ -2911,6 +2980,27 @@ class TestFleetCargo(TestCase):
         # Remaining: 1,000 - 1,000 = 0kt (full)
         self.assertEqual(fleet.cargo_remaining, 0)
 
+    def test_cargo_used_includes_secret_resources(self):
+        """Secret resources should contribute to cargo usage."""
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Secret Cargo",
+            x=5,
+            y=5,
+            cargo_capacity=1000,
+            ironium_inventory=100,
+            resource_x_inventory=200,
+            resource_y_inventory=50,
+            colonists=25
+        )
+
+        self.assertEqual(fleet.cargo_used, 375)
+        self.assertEqual(fleet.cargo_remaining, 625)
+
     def test_full_cargo_capacity(self):
         """Test fleet at maximum capacity."""
         game = default_game()
@@ -2997,24 +3087,24 @@ class TestFleetCargo(TestCase):
 
         # Test inventory display data
         inventory = details['fleet_inventory']
-        self.assertEqual(inventory['Fuel']['amount'], 50.0)
-        self.assertEqual(inventory['Fuel']['percent'], 100.0)
-        self.assertEqual(inventory['Fuel']['display'], '50.0mg')
-        self.assertEqual(inventory['Ironium']['amount'], 500)
-        self.assertEqual(inventory['Ironium']['percent'], 50.0)  # 500/1000 = 50%
-        self.assertEqual(inventory['Ironium']['display'], '500kt')
+        self.assertEqual(inventory['fuel']['amount'], 50.0)
+        self.assertEqual(inventory['fuel']['percent'], 100.0)
+        self.assertEqual(inventory['fuel']['display'], '50.0mg')
+        self.assertEqual(inventory['ironium']['amount'], 500)
+        self.assertEqual(inventory['ironium']['percent'], 50.0)  # 500/1000 = 50%
+        self.assertEqual(inventory['ironium']['display'], '500kt')
 
-        self.assertEqual(inventory['Boranium']['amount'], 300)
-        self.assertEqual(inventory['Boranium']['percent'], 30.0)  # 300/1000 = 30%
-        self.assertEqual(inventory['Boranium']['display'], '300kt')
+        self.assertEqual(inventory['boranium']['amount'], 300)
+        self.assertEqual(inventory['boranium']['percent'], 30.0)  # 300/1000 = 30%
+        self.assertEqual(inventory['boranium']['display'], '300kt')
 
-        self.assertEqual(inventory['Germanium']['amount'], 150)
-        self.assertEqual(inventory['Germanium']['percent'], 15.0)  # 150/1000 = 15%
-        self.assertEqual(inventory['Germanium']['display'], '150kt')
+        self.assertEqual(inventory['germanium']['amount'], 150)
+        self.assertEqual(inventory['germanium']['percent'], 15.0)  # 150/1000 = 15%
+        self.assertEqual(inventory['germanium']['display'], '150kt')
 
-        self.assertEqual(inventory['Colonists']['amount'], 50)
-        self.assertEqual(inventory['Colonists']['percent'], 5.0)  # 50/1000 = 5%
-        self.assertEqual(inventory['Colonists']['display'], '50k')
+        self.assertEqual(inventory['colonists']['amount'], 50)
+        self.assertEqual(inventory['colonists']['percent'], 5.0)  # 50/1000 = 5%
+        self.assertEqual(inventory['colonists']['display'], '50k')
 
     def test_object_details_fleet_composition_includes_tech_modifiers(self):
         from ..objectdetails import DetailBuilder
@@ -3071,9 +3161,9 @@ class TestFleetCargo(TestCase):
         details = detail_builder.build_detail()
         resources = details['resources']
 
-        iron_rate = resources['Ironium']['mining_rate']
-        bor_rate = resources['Boranium']['mining_rate']
-        germ_rate = resources['Germanium']['mining_rate']
+        iron_rate = resources['ironium']['mining_rate']
+        bor_rate = resources['boranium']['mining_rate']
+        germ_rate = resources['germanium']['mining_rate']
         total_rate = iron_rate + bor_rate + germ_rate
         self.assertGreater(total_rate, 0)
         self.assertLessEqual(total_rate, star.mines * KT_PER_MINE)
@@ -4847,6 +4937,49 @@ class TestResourceFieldNaming(TestCase):
         self.assertGreaterEqual(star.ironium_inventory, initial_ironium)
 
 
+class TestSecretResourceDetailPanel(TestCase):
+    def test_detail_panel_secret_resource_labels(self):
+        """Secret resources should display as ??? until discovered."""
+        from ..objectdetails import DetailBuilder
+        from ..secret_resources import get_secret_resource_name
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        star.resource_x_yield = 60
+        star.resource_x_inventory = 500
+        star.save(update_fields=['resource_x_yield', 'resource_x_inventory'])
+
+        player.discovered_resource_x = False
+        player.save(update_fields=['discovered_resource_x'])
+
+        detail = DetailBuilder(
+            game,
+            x=star.x,
+            y=star.y,
+            selected=star.short_id.lower(),
+            player=player,
+        ).build_detail()
+        self.assertIn('resource_x', detail['resources'])
+        self.assertEqual(detail['resources']['resource_x']['label'], '???')
+
+        player.discovered_resource_x = True
+        player.save(update_fields=['discovered_resource_x'])
+
+        detail = DetailBuilder(
+            game,
+            x=star.x,
+            y=star.y,
+            selected=star.short_id.lower(),
+            player=player,
+        ).build_detail()
+        self.assertEqual(
+            detail['resources']['resource_x']['label'],
+            get_secret_resource_name('resource_x'),
+        )
+
+
 class TestFleetOrderExecution(TestCase):
     """Test fleet order execution behavior fixes."""
 
@@ -6106,8 +6239,9 @@ class TestWormholeDriveMovement(TestCase):
             GameTurn(game).generate_turn()
 
         self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
-        msg = player.messages.latest('id')
-        self.assertIn('wormhole', msg.message.lower())
+        self.assertTrue(
+            player.messages.filter(message__icontains='wormhole').exists()
+        )
 
     def test_wormhole_destruction_can_spawn_nearby_rift(self):
         game = default_game(stars=2)
@@ -6926,7 +7060,7 @@ class TestCombat(TestCase):
         )
 
         with patch('dj4xol.turn.roll_chance', return_value=False), \
-             patch('dj4xol.turn.calculate_salvage_minerals', return_value=(10, 0, 0)):
+             patch('dj4xol.turn.calculate_salvage_minerals', return_value=(10, 0, 0, 0, 0, 0)):
             GameTurn(game).generate_turn()
 
         self.assertTrue(Salvage.objects.filter(game=game, x=20, y=20).exists())
@@ -7038,7 +7172,7 @@ class TestCombat(TestCase):
             x=40, y=40, ship_count=2, integrity=100
         )
 
-        with patch('dj4xol.turn.calculate_salvage_minerals', return_value=(0, 0, 0)), \
+        with patch('dj4xol.turn.calculate_salvage_minerals', return_value=(0, 0, 0, 0, 0, 0)), \
              patch('dj4xol.turn.random.uniform', side_effect=[0.10, -0.10, 0.0, 0.0]):
             GameTurn(game).generate_turn()
 
@@ -7915,7 +8049,14 @@ class TestRemoteMineOrders(TestCase):
         star.ironium_yield = 100
         star.boranium_yield = 0
         star.germanium_yield = 0
-        star.save(update_fields=['player', 'ironium_yield', 'boranium_yield', 'germanium_yield'])
+        star.resource_x_yield = 0
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
+        star.save(update_fields=[
+            'player',
+            'ironium_yield', 'boranium_yield', 'germanium_yield',
+            'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
+        ])
 
         fleet = Fleet.objects.create(
             game=game,
@@ -7959,7 +8100,14 @@ class TestRemoteMineOrders(TestCase):
         star.ironium_yield = 100
         star.boranium_yield = 0
         star.germanium_yield = 0
-        star.save(update_fields=['player', 'ironium_yield', 'boranium_yield', 'germanium_yield'])
+        star.resource_x_yield = 0
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
+        star.save(update_fields=[
+            'player',
+            'ironium_yield', 'boranium_yield', 'germanium_yield',
+            'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
+        ])
 
         fleet = Fleet.objects.create(
             game=game,
@@ -8000,7 +8148,14 @@ class TestRemoteMineOrders(TestCase):
             star.ironium_yield = 100
             star.boranium_yield = 0
             star.germanium_yield = 0
-            star.save(update_fields=['player', 'ironium_yield', 'boranium_yield', 'germanium_yield'])
+            star.resource_x_yield = 0
+            star.resource_y_yield = 0
+            star.resource_z_yield = 0
+            star.save(update_fields=[
+                'player',
+                'ironium_yield', 'boranium_yield', 'germanium_yield',
+                'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
+            ])
 
         small_fleet = Fleet.objects.create(
             game=game, player=player, name='Small Miner',
@@ -8041,8 +8196,14 @@ class TestRemoteMineOrders(TestCase):
         star.boranium_yield = 0
         star.germanium_yield = 0
         star.ironium_inventory = 0
+        star.resource_x_yield = 0
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
         star.save(update_fields=[
-            'player', 'ironium_yield', 'boranium_yield', 'germanium_yield', 'ironium_inventory'
+            'player',
+            'ironium_yield', 'boranium_yield', 'germanium_yield',
+            'ironium_inventory',
+            'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
         ])
 
         fleet = Fleet.objects.create(

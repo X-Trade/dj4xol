@@ -2,6 +2,8 @@ from django.db import models
 from dj4xol.models import Fleet, Star, Salvage, Anomaly, Report
 from dj4xol.scanners import get_scanner_sources_for_player, fleet_visible_to_player
 from dj4xol.turn import apply_population_change, KT_PER_MINE
+from dj4xol.mineral_rules import ALL_RESOURCE_KEYS, SECRET_RESOURCE_KEYS
+from dj4xol.secret_resources import get_secret_resource_label
 from dj4xol.research import (
     get_player_colony_defense_level,
     get_player_production_costs,
@@ -34,6 +36,12 @@ class DetailBuilder():
     at_cursor = []
     x = None
     y = None
+
+    RESOURCE_LABELS = {
+        'ironium': 'Ironium',
+        'boranium': 'Boranium',
+        'germanium': 'Germanium',
+    }
 
     @staticmethod
     def format_empty_space(x, y):
@@ -156,6 +164,7 @@ class DetailBuilder():
                      'merge_targets': self.get_merge_targets(),
                      'patrol_targets': self.get_patrol_targets(),
                      'effective_location': self.get_fleet_effective_location() if isinstance(self.selected_obj, Fleet) else None,
+                     'secret_resource_labels': {key: self._resource_label(key) for key in SECRET_RESOURCE_KEYS},
                      'x': self.selected_obj.x,
                      'y': self.selected_obj.y,
                      'report_year': None,
@@ -216,23 +225,20 @@ class DetailBuilder():
                 'ironium_yield', 'boranium_yield', 'germanium_yield',
                 'ironium_inventory', 'boranium_inventory', 'germanium_inventory',
             ]):
-                detail['resources'] = {
-                    'Ironium': {
-                        'yield': data['ironium_yield'],
-                        'surface': data['ironium_inventory'],
+                resources = {}
+                for key in ALL_RESOURCE_KEYS:
+                    yield_val = int(data.get(f'{key}_yield', 0) or 0)
+                    surface_val = int(data.get(f'{key}_inventory', 0) or 0)
+                    if yield_val <= 0 and surface_val <= 0:
+                        continue
+                    resources[key] = {
+                        'label': self._resource_label(key),
+                        'yield': yield_val,
+                        'surface': surface_val,
                         'mining_rate': 0,
-                    },
-                    'Boranium': {
-                        'yield': data['boranium_yield'],
-                        'surface': data['boranium_inventory'],
-                        'mining_rate': 0,
-                    },
-                    'Germanium': {
-                        'yield': data['germanium_yield'],
-                        'surface': data['germanium_inventory'],
-                        'mining_rate': 0,
-                    },
-                }
+                    }
+                if resources:
+                    detail['resources'] = resources
             # Build environmental detail from cached data
             if all(k in data for k in ['gravity', 'temperature', 'radiation']):
                 detail['environmentals'] = self._build_env_from_report(data)
@@ -285,10 +291,17 @@ class DetailBuilder():
         elif target_type == 'salvage':
             detail['salvage_short_id'] = self.selected_obj.short_id
             if 'total_minerals' in data:
+                items = []
+                for key in ALL_RESOURCE_KEYS:
+                    amount = int(data.get(f'{key}_inventory', 0) or 0)
+                    if amount <= 0:
+                        continue
+                    items.append({
+                        'label': self._resource_label(key),
+                        'amount': amount,
+                    })
                 detail['salvage_inventory'] = {
-                    'ironium': data.get('ironium_inventory', 0),
-                    'boranium': data.get('boranium_inventory', 0),
-                    'germanium': data.get('germanium_inventory', 0),
+                    'items': items,
                     'total': data['total_minerals'],
                 }
         elif target_type == 'anomaly':
@@ -326,12 +339,20 @@ class DetailBuilder():
         except (TypeError, ValueError):
             fuel_cap = 0.0
         inventory = {
-            'Fuel': self._build_cargo_data(data.get('fuel') or 0, fuel_cap, 'mg'),
-            'Ironium': self._build_cargo_data(data.get('ironium_inventory') or 0, capacity, 'kt'),
-            'Boranium': self._build_cargo_data(data.get('boranium_inventory') or 0, capacity, 'kt'),
-            'Germanium': self._build_cargo_data(data.get('germanium_inventory') or 0, capacity, 'kt'),
-            'Colonists': self._build_cargo_data(data.get('colonists') or 0, capacity, 'k'),
+            'fuel': dict(self._build_cargo_data(data.get('fuel') or 0, fuel_cap, 'mg'), label='Fuel'),
+            'ironium': dict(self._build_cargo_data(data.get('ironium_inventory') or 0, capacity, 'kt'), label='Ironium'),
+            'boranium': dict(self._build_cargo_data(data.get('boranium_inventory') or 0, capacity, 'kt'), label='Boranium'),
+            'germanium': dict(self._build_cargo_data(data.get('germanium_inventory') or 0, capacity, 'kt'), label='Germanium'),
+            'colonists': dict(self._build_cargo_data(data.get('colonists') or 0, capacity, 'k'), label='Colonists'),
         }
+        for key in SECRET_RESOURCE_KEYS:
+            amount = int(data.get(f'{key}_inventory', 0) or 0)
+            if amount <= 0:
+                continue
+            inventory[key] = dict(
+                self._build_cargo_data(amount, capacity, 'kt'),
+                label=self._resource_label(key),
+            )
         return inventory
 
     def get_objects_here(self):
@@ -559,40 +580,41 @@ class DetailBuilder():
             data['is_habitable'] = hab_min <= value <= hab_max
         return data
 
+    def _resource_label(self, resource_key):
+        if resource_key in SECRET_RESOURCE_KEYS:
+            discovered = bool(getattr(self.player, f'discovered_{resource_key}', False)) if self.player else False
+            return get_secret_resource_label(resource_key, discovered)
+        return self.RESOURCE_LABELS.get(resource_key, str(resource_key).title())
+
     def build_resource_detail(self):
         resources = None
         if self.selected_obj and isinstance(self.selected_obj, Star):
             mining_rates = self._build_resource_mining_rates()
-            resources = {
-                'Ironium': {
-                    'yield': self.selected_obj.ironium_yield,
-                    'surface': self.selected_obj.ironium_inventory,
-                    'mining_rate': mining_rates['ironium'],
-                },
-                'Boranium': {
-                    'yield': self.selected_obj.boranium_yield,
-                    'surface': self.selected_obj.boranium_inventory,
-                    'mining_rate': mining_rates['boranium'],
-                },
-                'Germanium': {
-                    'yield': self.selected_obj.germanium_yield,
-                    'surface': self.selected_obj.germanium_inventory,
-                    'mining_rate': mining_rates['germanium'],
-                },
-            }
+            resources = {}
+            for key in ALL_RESOURCE_KEYS:
+                yield_val = int(getattr(self.selected_obj, f'{key}_yield', 0) or 0)
+                surface_val = int(getattr(self.selected_obj, f'{key}_inventory', 0) or 0)
+                if yield_val <= 0 and surface_val <= 0:
+                    continue
+                resources[key] = {
+                    'label': self._resource_label(key),
+                    'yield': yield_val,
+                    'surface': surface_val,
+                    'mining_rate': mining_rates.get(key, 0),
+                }
         return resources
 
     def _build_resource_mining_rates(self):
         """Build per-resource expected mining output for one year."""
-        rates = {'ironium': 0, 'boranium': 0, 'germanium': 0}
+        rates = {key: 0 for key in ALL_RESOURCE_KEYS}
         if not self.selected_obj or not isinstance(self.selected_obj, Star):
             return rates
         if not self.player or self.selected_obj.player != self.player:
             return rates
 
         star = self.selected_obj
-        total_yield = (
-            star.ironium_yield + star.boranium_yield + star.germanium_yield
+        total_yield = sum(
+            int(getattr(star, f'{key}_yield', 0) or 0) for key in ALL_RESOURCE_KEYS
         )
         if total_yield <= 0 or star.mines <= 0:
             return rates
@@ -604,11 +626,12 @@ class DetailBuilder():
         productivity = calculate_productivity_multiplier(staffing_ratio)
         total_extraction = star.mines * KT_PER_MINE * productivity
 
-        rates['ironium'] = int(total_extraction * star.ironium_yield / total_yield)
-        rates['boranium'] = int(total_extraction * star.boranium_yield / total_yield)
-        rates['germanium'] = int(
-            total_extraction * star.germanium_yield / total_yield
-        )
+        for key in ALL_RESOURCE_KEYS:
+            yield_val = int(getattr(star, f'{key}_yield', 0) or 0)
+            if yield_val <= 0:
+                rates[key] = 0
+            else:
+                rates[key] = int(total_extraction * yield_val / total_yield)
         return rates
 
     def build_infrastructure_detail(self):
@@ -666,12 +689,13 @@ class DetailBuilder():
             
             # Calculate progress based on what has actually been spent
             labor_cost = cost.get('bp', 0)
-            resource_cost = cost.get('ironium', 0) + cost.get('boranium', 0) + cost.get('germanium', 0)
+            resource_cost = sum(cost.get(key, 0) for key in ALL_RESOURCE_KEYS)
+            spent_resource_total = sum(int(getattr(o, f'spent_{key}', 0) or 0) for key in ALL_RESOURCE_KEYS)
             
             if labor_cost > 0 and resource_cost > 0:
                 # Items with both labor and resources: each contributes 50%
                 resource_progress = min(
-                    (o.spent_ironium + o.spent_boranium + o.spent_germanium) / resource_cost * 50, 50
+                    (spent_resource_total / resource_cost) * 50, 50
                 )
                 labor_progress = min(o.spent_bp / labor_cost * 50, 50)
                 total_progress = resource_progress + labor_progress
@@ -683,7 +707,7 @@ class DetailBuilder():
             elif resource_cost > 0:
                 # Resources only: contribute 100%
                 resource_progress = min(
-                    (o.spent_ironium + o.spent_boranium + o.spent_germanium) / resource_cost * 100, 100
+                    (spent_resource_total / resource_cost) * 100, 100
                 )
                 labor_progress = 0
                 total_progress = resource_progress
@@ -704,22 +728,16 @@ class DetailBuilder():
                 'has_labor': labor_cost > 0,
                 'cost': {
                     'bp': cost.get('bp', 0),
-                    'ironium': cost.get('ironium', 0),
-                    'boranium': cost.get('boranium', 0),
-                    'germanium': cost.get('germanium', 0),
+                    **{key: cost.get(key, 0) for key in ALL_RESOURCE_KEYS},
                     'colonists': cost.get('colonists', 0),
                 },
                 'spent': {
                     'bp': o.spent_bp,
-                    'ironium': self.format_kt(o.spent_ironium),
-                    'boranium': self.format_kt(o.spent_boranium),
-                    'germanium': self.format_kt(o.spent_germanium),
+                    **{key: self.format_kt(getattr(o, f'spent_{key}', 0)) for key in ALL_RESOURCE_KEYS},
                 },
                 'remaining': {
                     'bp': cost.get('bp', 0) - o.spent_bp,
-                    'ironium': self.format_kt(cost.get('ironium', 0) - o.spent_ironium),
-                    'boranium': self.format_kt(cost.get('boranium', 0) - o.spent_boranium),
-                    'germanium': self.format_kt(cost.get('germanium', 0) - o.spent_germanium),
+                    **{key: self.format_kt(cost.get(key, 0) - int(getattr(o, f'spent_{key}', 0) or 0)) for key in ALL_RESOURCE_KEYS},
                 },
             })
         return orders
@@ -737,9 +755,7 @@ class DetailBuilder():
             cost = cost_map.get(order_type, {}) if order_type else {}
             option['cost'] = {
                 'bp': int(cost.get('bp', 0) or 0),
-                'ironium': int(cost.get('ironium', 0) or 0),
-                'boranium': int(cost.get('boranium', 0) or 0),
-                'germanium': int(cost.get('germanium', 0) or 0),
+                **{key: int(cost.get(key, 0) or 0) for key in ALL_RESOURCE_KEYS},
                 'colonists': int(cost.get('colonists', 0) or 0),
             }
         return orders
@@ -793,6 +809,9 @@ class DetailBuilder():
                 'transfer_ironium': o.transfer_ironium,
                 'transfer_boranium': o.transfer_boranium,
                 'transfer_germanium': o.transfer_germanium,
+                'transfer_resource_x': o.transfer_resource_x,
+                'transfer_resource_y': o.transfer_resource_y,
+                'transfer_resource_z': o.transfer_resource_z,
                 'transfer_colonists': o.transfer_colonists,
                 'target_star': obj if kind == 'star' else None,  # For template access
                 'target_salvage': obj if kind == 'salvage' else None,  # For template access
@@ -817,6 +836,9 @@ class DetailBuilder():
                 'ironium': self.selected_obj.ironium_inventory,
                 'boranium': self.selected_obj.boranium_inventory,
                 'germanium': self.selected_obj.germanium_inventory,
+                'resource_x': self.selected_obj.resource_x_inventory,
+                'resource_y': self.selected_obj.resource_y_inventory,
+                'resource_z': self.selected_obj.resource_z_inventory,
                 'colonists': self.selected_obj.colonists,
             })
         return cargo
@@ -916,12 +938,20 @@ class DetailBuilder():
         capacity = self.selected_obj.cargo_capacity
         fuel_cap = max(0.0, float(self.selected_obj.max_fuel))
         inventory = {
-            'Fuel': self._build_cargo_data(self.selected_obj.fuel, fuel_cap, 'mg'),
-            'Ironium': self._build_cargo_data(self.selected_obj.ironium_inventory, capacity, 'kt'),
-            'Boranium': self._build_cargo_data(self.selected_obj.boranium_inventory, capacity, 'kt'),
-            'Germanium': self._build_cargo_data(self.selected_obj.germanium_inventory, capacity, 'kt'),
-            'Colonists': self._build_cargo_data(self.selected_obj.colonists, capacity, 'k'),
+            'fuel': dict(self._build_cargo_data(self.selected_obj.fuel, fuel_cap, 'mg'), label='Fuel'),
+            'ironium': dict(self._build_cargo_data(self.selected_obj.ironium_inventory, capacity, 'kt'), label='Ironium'),
+            'boranium': dict(self._build_cargo_data(self.selected_obj.boranium_inventory, capacity, 'kt'), label='Boranium'),
+            'germanium': dict(self._build_cargo_data(self.selected_obj.germanium_inventory, capacity, 'kt'), label='Germanium'),
+            'colonists': dict(self._build_cargo_data(self.selected_obj.colonists, capacity, 'k'), label='Colonists'),
         }
+        for key in SECRET_RESOURCE_KEYS:
+            amount = int(getattr(self.selected_obj, f'{key}_inventory', 0) or 0)
+            if amount <= 0:
+                continue
+            inventory[key] = dict(
+                self._build_cargo_data(amount, capacity, 'kt'),
+                label=self._resource_label(key),
+            )
         return inventory
 
     def _build_cargo_data(self, amount, capacity, unit):
@@ -941,11 +971,17 @@ class DetailBuilder():
         """Build salvage mineral inventory data."""
         if not self.selected_obj or not isinstance(self.selected_obj, Salvage):
             return None
-
+        items = []
+        for key in ALL_RESOURCE_KEYS:
+            amount = int(getattr(self.selected_obj, f'{key}_inventory', 0) or 0)
+            if amount <= 0:
+                continue
+            items.append({
+                'label': self._resource_label(key),
+                'amount': amount,
+            })
         return {
-            'ironium': self.selected_obj.ironium_inventory,
-            'boranium': self.selected_obj.boranium_inventory,
-            'germanium': self.selected_obj.germanium_inventory,
+            'items': items,
             'total': self.selected_obj.total_minerals,
         }
 
@@ -1024,7 +1060,7 @@ class DetailBuilder():
 
         if len(targets) == 1:
             target = targets[0]
-            display_name = f"{target['name']} ({target['type'].title()})"
+            display_name = self._format_target_display(target)
             return {
                 'targets': targets,
                 'location': (x, y),
@@ -1061,7 +1097,9 @@ class DetailBuilder():
         location or a star at this location.
         """
         targets = []
+        homeworld_id = self.player.homeworld_id if self.player else None
         seen = set()
+        homeworld_id = self.player.homeworld_id if self.player else None
 
         def add_target(target):
             key = (target.get('type'), target.get('short_id'))
@@ -1079,6 +1117,7 @@ class DetailBuilder():
                     'name': star.name,
                     'short_id': star.short_id,
                     'type': 'star',
+                    'is_homeworld': bool(homeworld_id and star.id == homeworld_id),
                 })
 
         if include_anomalies:
@@ -1172,6 +1211,12 @@ class DetailBuilder():
             })
 
         return targets
+
+    def _format_target_display(self, target):
+        """Return display name for a target, marking homeworlds."""
+        if target.get('type') == 'star' and target.get('is_homeworld'):
+            return f"{target['name']} (Home)"
+        return f"{target['name']} ({target['type'].title()})"
     
     def get_transfer_targets(self):
         """Get available transfer targets at the fleet's effective location.
@@ -1188,7 +1233,13 @@ class DetailBuilder():
         - Fleets that have orders targeting the effective location
         """
         if not isinstance(self.selected_obj, Fleet):
-            return {'targets': [], 'location': (0, 0), 'display_mode': 'empty', 'default_target': None}
+            return {
+                'targets': [],
+                'location': (0, 0),
+                'display_mode': 'empty',
+                'default_target': None,
+                'resource_flags': {key: False for key in SECRET_RESOURCE_KEYS},
+            }
         
         # Get the location where the fleet will be when the transfer executes
         effective_x, effective_y = self.get_fleet_effective_location()
@@ -1216,13 +1267,32 @@ class DetailBuilder():
                     'type': 'space',
                 })
 
+        resource_flags = {key: False for key in SECRET_RESOURCE_KEYS}
+        if self.player and self.selected_obj.player == self.player:
+            for key in SECRET_RESOURCE_KEYS:
+                if int(getattr(self.selected_obj, f'{key}_inventory', 0) or 0) > 0:
+                    resource_flags[key] = True
+            for star in self.game.stars.filter(x=effective_x, y=effective_y):
+                for key in SECRET_RESOURCE_KEYS:
+                    if int(getattr(star, f'{key}_inventory', 0) or 0) > 0:
+                        resource_flags[key] = True
+            for fleet in self.game.fleets.filter(x=effective_x, y=effective_y, player=self.player):
+                for key in SECRET_RESOURCE_KEYS:
+                    if int(getattr(fleet, f'{key}_inventory', 0) or 0) > 0:
+                        resource_flags[key] = True
+            for salvage in self.game.salvages.filter(x=effective_x, y=effective_y):
+                for key in SECRET_RESOURCE_KEYS:
+                    if int(getattr(salvage, f'{key}_inventory', 0) or 0) > 0:
+                        resource_flags[key] = True
+
         # Determine display mode and default target
         if not targets:
             return {
                 'targets': [],
                 'location': (effective_x, effective_y),
                 'display_mode': 'empty',
-                'default_target': None
+                'default_target': None,
+                'resource_flags': resource_flags,
             }
         if len(targets) == 1 and targets[0].get('type') == 'space':
             empty_space_name = DetailBuilder.format_empty_space(effective_x, effective_y)
@@ -1230,22 +1300,25 @@ class DetailBuilder():
                 'targets': targets,
                 'location': (effective_x, effective_y),
                 'display_mode': 'empty',
-                'default_target': empty_space_name
+                'default_target': empty_space_name,
+                'resource_flags': resource_flags,
             }
         if len(targets) == 1:
             target = targets[0]
-            display_name = f"{target['name']} ({target['type'].title()})"
+            display_name = self._format_target_display(target)
             return {
                 'targets': targets,
                 'location': (effective_x, effective_y),
                 'display_mode': 'single',
-                'default_target': display_name
+                'default_target': display_name,
+                'resource_flags': resource_flags,
             }
         return {
             'targets': targets,
             'location': (effective_x, effective_y),
             'display_mode': 'multiple',
-            'default_target': targets[0]
+            'default_target': targets[0],
+            'resource_flags': resource_flags,
         }
 
     def get_colonise_targets(self):
@@ -1266,6 +1339,7 @@ class DetailBuilder():
         effective_x, effective_y = self.get_fleet_effective_location()
 
         targets = []
+        homeworld_id = self.player.homeworld_id if self.player else None
 
         # Add stars at the effective location (only stars, no fleets)
         stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
@@ -1273,7 +1347,8 @@ class DetailBuilder():
             targets.append({
                 'name': star.name,
                 'short_id': star.short_id,
-                'type': 'star'
+                'type': 'star',
+                'is_homeworld': bool(homeworld_id and star.id == homeworld_id),
             })
 
         # Determine display mode and default target
@@ -1312,12 +1387,14 @@ class DetailBuilder():
 
         effective_x, effective_y = self.get_fleet_effective_location()
         targets = []
+        homeworld_id = self.player.homeworld_id if self.player else None
         stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
         for star in stars_at_location:
             targets.append({
                 'name': star.name,
                 'short_id': star.short_id,
-                'type': 'star'
+                'type': 'star',
+                'is_homeworld': bool(homeworld_id and star.id == homeworld_id),
             })
 
         if not targets:
@@ -1350,12 +1427,14 @@ class DetailBuilder():
 
         effective_x, effective_y = self.get_fleet_effective_location()
         targets = []
+        homeworld_id = self.player.homeworld_id if self.player else None
         stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
         for star in stars_at_location:
             targets.append({
                 'name': star.name,
                 'short_id': star.short_id,
-                'type': 'star'
+                'type': 'star',
+                'is_homeworld': bool(homeworld_id and star.id == homeworld_id),
             })
 
         if not targets:
@@ -1493,7 +1572,7 @@ class DetailBuilder():
             }
         if len(targets) == 1:
             target = targets[0]
-            display_name = f"{target['name']} ({target['type'].title()})"
+            display_name = self._format_target_display(target)
             return {
                 'targets': targets,
                 'location': (effective_x, effective_y),

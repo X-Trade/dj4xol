@@ -247,6 +247,9 @@ class Account(models.Model):
     email_unsubscribe_key = models.CharField(max_length=64, blank=True, default='')
     theme = models.CharField(max_length=20, choices=THEME_CHOICES, default='classic')
     website_url = models.URLField(blank=True, default='')
+    discovered_resource_x = models.BooleanField(default=False)
+    discovered_resource_y = models.BooleanField(default=False)
+    discovered_resource_z = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         if not self.alias:
@@ -468,12 +471,16 @@ class Salvage(AbstractMapObject):
     ironium_inventory = models.IntegerField(default=0)
     boranium_inventory = models.IntegerField(default=0)
     germanium_inventory = models.IntegerField(default=0)
+    resource_x_inventory = models.IntegerField(default=0)
+    resource_y_inventory = models.IntegerField(default=0)
+    resource_z_inventory = models.IntegerField(default=0)
 
     @property
     def total_minerals(self):
         """Total minerals in this salvage pile."""
         return (self.ironium_inventory + self.boranium_inventory +
-                self.germanium_inventory)
+                self.germanium_inventory + self.resource_x_inventory +
+                self.resource_y_inventory + self.resource_z_inventory)
 
     @property
     def name(self):
@@ -544,6 +551,9 @@ class Fleet(AbstractMapObject):
     ironium_inventory = models.IntegerField(default=0)  # Current ironium cargo in kt
     boranium_inventory = models.IntegerField(default=0)  # Current boranium cargo in kt
     germanium_inventory = models.IntegerField(default=0)  # Current germanium cargo in kt
+    resource_x_inventory = models.IntegerField(default=0)  # Secret resource X cargo in kt
+    resource_y_inventory = models.IntegerField(default=0)  # Secret resource Y cargo in kt
+    resource_z_inventory = models.IntegerField(default=0)  # Secret resource Z cargo in kt
     colonists = models.IntegerField(default=0)  # Current colonist cargo in thousands
     dry_mass = models.IntegerField(default=100)  # Dry mass in kt for colonise bonus
     max_safe_warp = models.IntegerField(default=2)
@@ -610,7 +620,10 @@ class Fleet(AbstractMapObject):
     @property
     def cargo_used(self):
         """Total cargo currently loaded (in kt equivalent)."""
-        return self.ironium_inventory + self.boranium_inventory + self.germanium_inventory + self.colonists
+        return (self.ironium_inventory + self.boranium_inventory +
+                self.germanium_inventory + self.resource_x_inventory +
+                self.resource_y_inventory + self.resource_z_inventory +
+                self.colonists)
 
     @property
     def cargo_remaining(self):
@@ -637,11 +650,17 @@ class Star(AbstractMapObject):
                                          validators=[MinValueValidator(0), MaxValueValidator(100)])
     germanium_yield = models.IntegerField(default=random_germanium_yield,
                                           validators=[MinValueValidator(0), MaxValueValidator(100)])
+    resource_x_yield = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    resource_y_yield = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    resource_z_yield = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(100)])
 
     # Surface mineral inventory (kt)
     ironium_inventory = models.IntegerField(default=random_surface_ironium_init)
     boranium_inventory = models.IntegerField(default=random_surface_boranium_init)
     germanium_inventory = models.IntegerField(default=random_surface_germanium_init)
+    resource_x_inventory = models.IntegerField(default=0)
+    resource_y_inventory = models.IntegerField(default=0)
+    resource_z_inventory = models.IntegerField(default=0)
 
     colonists = models.IntegerField(default=0)
     # Base carrying capacity (in millions), scaled by nonlinear habitability.
@@ -713,6 +732,9 @@ class Player(AbstractGameObject, HabitabilityMixin):
     turned_in = models.BooleanField(default=False)
     last_seen_year = models.IntegerField(null=True, blank=True)
     messages_seen_year = models.IntegerField(null=True, blank=True)
+    discovered_resource_x = models.BooleanField(default=False)
+    discovered_resource_y = models.BooleanField(default=False)
+    discovered_resource_z = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         if self.plural_name is None:
@@ -771,6 +793,9 @@ class FleetOrders(AbstractGameObject):
     transfer_ironium = models.IntegerField(default=0)  # Amount to transfer
     transfer_boranium = models.IntegerField(default=0)
     transfer_germanium = models.IntegerField(default=0)
+    transfer_resource_x = models.IntegerField(default=0)
+    transfer_resource_y = models.IntegerField(default=0)
+    transfer_resource_z = models.IntegerField(default=0)
     transfer_colonists = models.IntegerField(default=0)
 
     # Patrol parameters
@@ -972,6 +997,9 @@ class HullDesign(models.Model):
     ironium_cost = models.IntegerField(default=0)
     boranium_cost = models.IntegerField(default=0)
     germanium_cost = models.IntegerField(default=0)
+    resource_x_cost = models.IntegerField(default=0)
+    resource_y_cost = models.IntegerField(default=0)
+    resource_z_cost = models.IntegerField(default=0)
     cargo_capacity = models.IntegerField(default=0)
     fuel_capacity = models.IntegerField(default=100)
     cargo_hold_grid_width = models.IntegerField(default=0, validators=[MinValueValidator(0), MaxValueValidator(24)])
@@ -1074,6 +1102,9 @@ class PlayerResearch(models.Model):
     ironium_paid = models.IntegerField(default=0)
     boranium_paid = models.IntegerField(default=0)
     germanium_paid = models.IntegerField(default=0)
+    resource_x_paid = models.IntegerField(default=0)
+    resource_y_paid = models.IntegerField(default=0)
+    resource_z_paid = models.IntegerField(default=0)
 
     class Meta:
         unique_together = [['player', 'category']]
@@ -1090,6 +1121,9 @@ class DefaultResearchLevelRequirement(models.Model):
     ironium_cost = models.IntegerField(default=0)
     boranium_cost = models.IntegerField(default=0)
     germanium_cost = models.IntegerField(default=0)
+    resource_x_cost = models.IntegerField(default=0)
+    resource_y_cost = models.IntegerField(default=0)
+    resource_z_cost = models.IntegerField(default=0)
 
     class Meta:
         ordering = ['level']
@@ -1109,6 +1143,9 @@ class ResearchLevelRequirement(models.Model):
     ironium_cost = models.IntegerField(default=0)
     boranium_cost = models.IntegerField(default=0)
     germanium_cost = models.IntegerField(default=0)
+    resource_x_cost = models.IntegerField(default=0)
+    resource_y_cost = models.IntegerField(default=0)
+    resource_z_cost = models.IntegerField(default=0)
 
     class Meta:
         unique_together = [['category', 'level']]
@@ -1224,6 +1261,9 @@ class ProductionOrder(AbstractGameObject):
     spent_ironium = models.IntegerField(default=0)
     spent_boranium = models.IntegerField(default=0)
     spent_germanium = models.IntegerField(default=0)
+    spent_resource_x = models.IntegerField(default=0)
+    spent_resource_y = models.IntegerField(default=0)
+    spent_resource_z = models.IntegerField(default=0)
     spent_bp = models.IntegerField(default=0)
 
     class Meta:

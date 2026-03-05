@@ -40,11 +40,14 @@ from .messages import (
     StarVanishedOminousMessageFactory,
     ResearchLevelUnlockedMessageFactory,
     ResearchBreakthroughMessageFactory,
+    SecretResourceDiscoveryMessageFactory,
     format_map_object,
     format_location,
 )
 import random
 
+from .mineral_rules import ALL_RESOURCE_KEYS
+from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_name
 from .colony_rules import (
     BILLION,
     MILLION,
@@ -228,12 +231,20 @@ def calculate_cargo_loss_percent(excess_warp):
     return sum(random.randint(2, 10) for _ in range(excess_warp)) / 100.0
 
 
-def calculate_salvage_minerals(dry_mass, cargo_iron, cargo_bor, cargo_germ):
+def calculate_salvage_minerals(
+    dry_mass,
+    cargo_iron,
+    cargo_bor,
+    cargo_germ,
+    cargo_resource_x=0,
+    cargo_resource_y=0,
+    cargo_resource_z=0,
+):
     """Calculate salvage minerals from a destroyed/scuttled fleet.
 
     Uses the same dry_mass split formula as colonise (random distribution).
     Applies random degradation (30-70% loss) to simulate battle damage.
-    Returns (ironium, boranium, germanium) tuple.
+    Returns (ironium, boranium, germanium, resource_x, resource_y, resource_z) tuple.
     """
     # Split dry_mass into mineral bonuses (same formula as colonise)
     bonus_ironium = random.randint(0, dry_mass)
@@ -245,6 +256,9 @@ def calculate_salvage_minerals(dry_mass, cargo_iron, cargo_bor, cargo_germ):
     total_iron = cargo_iron + bonus_ironium
     total_bor = cargo_bor + bonus_boranium
     total_germ = cargo_germ + bonus_germanium
+    total_resource_x = int(cargo_resource_x or 0)
+    total_resource_y = int(cargo_resource_y or 0)
+    total_resource_z = int(cargo_resource_z or 0)
 
     # Apply random degradation (30-70% survives)
     survival_rate = random.uniform(
@@ -255,6 +269,9 @@ def calculate_salvage_minerals(dry_mass, cargo_iron, cargo_bor, cargo_germ):
         int(total_iron * survival_rate),
         int(total_bor * survival_rate),
         int(total_germ * survival_rate),
+        int(total_resource_x * survival_rate),
+        int(total_resource_y * survival_rate),
+        int(total_resource_z * survival_rate),
     )
 
 
@@ -819,13 +836,21 @@ class GameTurn():
         iron_loss = int((fleet.ironium_inventory or 0) * loss_ratio)
         bor_loss = int((fleet.boranium_inventory or 0) * loss_ratio)
         germ_loss = int((fleet.germanium_inventory or 0) * loss_ratio)
+        res_x_loss = int((fleet.resource_x_inventory or 0) * loss_ratio)
+        res_y_loss = int((fleet.resource_y_inventory or 0) * loss_ratio)
+        res_z_loss = int((fleet.resource_z_inventory or 0) * loss_ratio)
         colonist_loss = int((fleet.colonists or 0) * loss_ratio)
         fleet.ironium_inventory = max(0, int(fleet.ironium_inventory or 0) - iron_loss)
         fleet.boranium_inventory = max(0, int(fleet.boranium_inventory or 0) - bor_loss)
         fleet.germanium_inventory = max(0, int(fleet.germanium_inventory or 0) - germ_loss)
+        fleet.resource_x_inventory = max(0, int(fleet.resource_x_inventory or 0) - res_x_loss)
+        fleet.resource_y_inventory = max(0, int(fleet.resource_y_inventory or 0) - res_y_loss)
+        fleet.resource_z_inventory = max(0, int(fleet.resource_z_inventory or 0) - res_z_loss)
         fleet.colonists = max(0, int(fleet.colonists or 0) - colonist_loss)
         fleet.save(update_fields=[
-            'ironium_inventory', 'boranium_inventory', 'germanium_inventory', 'colonists',
+            'ironium_inventory', 'boranium_inventory', 'germanium_inventory',
+            'resource_x_inventory', 'resource_y_inventory', 'resource_z_inventory',
+            'colonists',
         ])
         losses = []
         if iron_loss:
@@ -834,6 +859,12 @@ class GameTurn():
             losses.append('%skt Boranium' % bor_loss)
         if germ_loss:
             losses.append('%skt Germanium' % germ_loss)
+        if res_x_loss:
+            losses.append('%skt %s' % (res_x_loss, get_secret_resource_name('resource_x')))
+        if res_y_loss:
+            losses.append('%skt %s' % (res_y_loss, get_secret_resource_name('resource_y')))
+        if res_z_loss:
+            losses.append('%skt %s' % (res_z_loss, get_secret_resource_name('resource_z')))
         if colonist_loss:
             losses.append('%sk colonists' % colonist_loss)
         if not losses:
@@ -1070,6 +1101,7 @@ class GameTurn():
                     self._create_or_update_report(
                         player, 'star', star, self.game.year, report_tier='advanced'
                     )
+                    self._discover_secret_resources_from_star(player, star)
                     continue
                 if has_basic and position_in_scanner_range(
                     star.x, star.y, sources, range_key='basic'
@@ -1123,6 +1155,8 @@ class GameTurn():
         # Report on all stars at this location
         for star in Star.objects.filter(game=self.game, x=x, y=y):
             self._create_or_update_report(player, 'star', star, year, report_tier=report_tier)
+            if report_tier in ('encounter', 'advanced'):
+                self._discover_secret_resources_from_star(player, star, fleet=fleet)
 
         # Report on other players' fleets at this location
         for other_fleet in Fleet.objects.filter(
@@ -1185,6 +1219,49 @@ class GameTurn():
                 msg.year = self.game.year
                 msg.save()
 
+    def _mark_secret_resource_discovered(self, player, resource_key, star=None, fleet=None):
+        if not player:
+            return False
+        player_field = f'discovered_{resource_key}'
+        account_field = f'discovered_{resource_key}'
+        player_discovered = bool(getattr(player, player_field, False))
+        account = getattr(player, 'account', None)
+        account_discovered = bool(getattr(account, account_field, False)) if account else False
+
+        if not player_discovered:
+            setattr(player, player_field, True)
+            player.save(update_fields=[player_field])
+        if account and not account_discovered:
+            setattr(account, account_field, True)
+            account.save(update_fields=[account_field])
+
+        if not player_discovered and star is not None:
+            factory = SecretResourceDiscoveryMessageFactory(
+                self.game,
+                player,
+                star=star,
+                resource_name=get_secret_resource_name(resource_key),
+                fleet=fleet,
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+        return not player_discovered
+
+    def _discover_secret_resources_from_star(self, player, star, fleet=None):
+        if not player or not star:
+            return
+        for key in SECRET_RESOURCE_KEYS:
+            if int(getattr(star, f'{key}_yield', 0) or 0) > 0 or int(getattr(star, f'{key}_inventory', 0) or 0) > 0:
+                self._mark_secret_resource_discovered(player, key, star=star, fleet=fleet)
+
+    def _discover_secret_resources_from_fleet(self, player, fleet):
+        if not player or not fleet:
+            return
+        for key in SECRET_RESOURCE_KEYS:
+            if int(getattr(fleet, f'{key}_inventory', 0) or 0) > 0:
+                self._mark_secret_resource_discovered(player, key, star=None, fleet=fleet)
+
     def _build_report_data(self, player, obj, target_type, report_tier='advanced'):
         """Build the data dict to cache in a report."""
         if target_type == 'star':
@@ -1212,9 +1289,15 @@ class GameTurn():
                 'ironium_yield': obj.ironium_yield,
                 'boranium_yield': obj.boranium_yield,
                 'germanium_yield': obj.germanium_yield,
+                'resource_x_yield': obj.resource_x_yield,
+                'resource_y_yield': obj.resource_y_yield,
+                'resource_z_yield': obj.resource_z_yield,
                 'ironium_inventory': obj.ironium_inventory,
                 'boranium_inventory': obj.boranium_inventory,
                 'germanium_inventory': obj.germanium_inventory,
+                'resource_x_inventory': obj.resource_x_inventory,
+                'resource_y_inventory': obj.resource_y_inventory,
+                'resource_z_inventory': obj.resource_z_inventory,
             })
             if report_tier == 'encounter':
                 jobs = ((obj.mines + obj.factories + obj.labs + obj.defenses) * COLONISTS_PER_JOB
@@ -1258,6 +1341,9 @@ class GameTurn():
                 'ironium_inventory': getattr(obj, 'ironium_inventory', None),
                 'boranium_inventory': getattr(obj, 'boranium_inventory', None),
                 'germanium_inventory': getattr(obj, 'germanium_inventory', None),
+                'resource_x_inventory': getattr(obj, 'resource_x_inventory', None),
+                'resource_y_inventory': getattr(obj, 'resource_y_inventory', None),
+                'resource_z_inventory': getattr(obj, 'resource_z_inventory', None),
                 'colonists': getattr(obj, 'colonists', None),
             })
             if report_tier == 'encounter':
@@ -1290,6 +1376,9 @@ class GameTurn():
                 'ironium_inventory': obj.ironium_inventory,
                 'boranium_inventory': obj.boranium_inventory,
                 'germanium_inventory': obj.germanium_inventory,
+                'resource_x_inventory': obj.resource_x_inventory,
+                'resource_y_inventory': obj.resource_y_inventory,
+                'resource_z_inventory': obj.resource_z_inventory,
                 'total_minerals': obj.total_minerals,
                 'report_tier': report_tier,
             }
@@ -1745,23 +1834,28 @@ class GameTurn():
         salvage_iron = int(fleet.ironium_inventory * damage_fraction * COMBAT_SALVAGE_DAMAGE_FACTOR)
         salvage_bor = int(fleet.boranium_inventory * damage_fraction * COMBAT_SALVAGE_DAMAGE_FACTOR)
         salvage_germ = int(fleet.germanium_inventory * damage_fraction * COMBAT_SALVAGE_DAMAGE_FACTOR)
+        salvage_res_x = int(fleet.resource_x_inventory * damage_fraction * COMBAT_SALVAGE_DAMAGE_FACTOR)
+        salvage_res_y = int(fleet.resource_y_inventory * damage_fraction * COMBAT_SALVAGE_DAMAGE_FACTOR)
+        salvage_res_z = int(fleet.resource_z_inventory * damage_fraction * COMBAT_SALVAGE_DAMAGE_FACTOR)
 
-        if salvage_dry_mass == 0 and salvage_iron == 0 and salvage_bor == 0 and salvage_germ == 0:
+        if (salvage_dry_mass == 0 and salvage_iron == 0 and salvage_bor == 0 and
+                salvage_germ == 0 and salvage_res_x == 0 and salvage_res_y == 0 and salvage_res_z == 0):
             return False
 
-        iron, bor, germ = calculate_salvage_minerals(
-            salvage_dry_mass, salvage_iron, salvage_bor, salvage_germ
+        iron, bor, germ, res_x, res_y, res_z = calculate_salvage_minerals(
+            salvage_dry_mass, salvage_iron, salvage_bor, salvage_germ,
+            salvage_res_x, salvage_res_y, salvage_res_z,
         )
-        if iron == 0 and bor == 0 and germ == 0:
+        if iron == 0 and bor == 0 and germ == 0 and res_x == 0 and res_y == 0 and res_z == 0:
             return False
 
-        self._create_salvage_at_location(fleet.x, fleet.y, iron, bor, germ)
+        self._create_salvage_at_location(fleet.x, fleet.y, iron, bor, germ, res_x, res_y, res_z)
         return True
 
-    def _create_salvage_at_location(self, x, y, iron, bor, germ):
+    def _create_salvage_at_location(self, x, y, iron, bor, germ, res_x=0, res_y=0, res_z=0):
         """Create salvage at location, or deposit on star if present."""
         from .models import Star, Salvage
-        if iron == 0 and bor == 0 and germ == 0:
+        if iron == 0 and bor == 0 and germ == 0 and res_x == 0 and res_y == 0 and res_z == 0:
             return None
 
         star = Star.objects.filter(game=self.game, x=x, y=y).first()
@@ -1769,7 +1863,11 @@ class GameTurn():
             star.ironium_inventory += iron
             star.boranium_inventory += bor
             star.germanium_inventory += germ
+            star.resource_x_inventory += res_x
+            star.resource_y_inventory += res_y
+            star.resource_z_inventory += res_z
             star.save()
+            self._discover_secret_resources_from_star(star.player, star)
             return star
 
         salvage, created = Salvage.objects.get_or_create(
@@ -1778,12 +1876,18 @@ class GameTurn():
                 'ironium_inventory': iron,
                 'boranium_inventory': bor,
                 'germanium_inventory': germ,
+                'resource_x_inventory': res_x,
+                'resource_y_inventory': res_y,
+                'resource_z_inventory': res_z,
             }
         )
         if not created:
             salvage.ironium_inventory += iron
             salvage.boranium_inventory += bor
             salvage.germanium_inventory += germ
+            salvage.resource_x_inventory += res_x
+            salvage.resource_y_inventory += res_y
+            salvage.resource_z_inventory += res_z
             salvage.save()
         return salvage
 
@@ -2446,6 +2550,24 @@ class GameTurn():
                 cargo_losses['germanium'] = loss
                 fleet.germanium_inventory -= loss
 
+        if fleet.resource_x_inventory > 0:
+            loss = int(fleet.resource_x_inventory * cargo_loss_percent)
+            if loss > 0:
+                cargo_losses['resource_x'] = loss
+                fleet.resource_x_inventory -= loss
+
+        if fleet.resource_y_inventory > 0:
+            loss = int(fleet.resource_y_inventory * cargo_loss_percent)
+            if loss > 0:
+                cargo_losses['resource_y'] = loss
+                fleet.resource_y_inventory -= loss
+
+        if fleet.resource_z_inventory > 0:
+            loss = int(fleet.resource_z_inventory * cargo_loss_percent)
+            if loss > 0:
+                cargo_losses['resource_z'] = loss
+                fleet.resource_z_inventory -= loss
+
         if fleet.colonists > 0:
             colonist_deaths = int(fleet.colonists * cargo_loss_percent)
             if colonist_deaths > 0:
@@ -2648,15 +2770,18 @@ class GameTurn():
         """
         from .models import Star, Salvage
 
-        iron, bor, germ = calculate_salvage_minerals(
+        iron, bor, germ, res_x, res_y, res_z = calculate_salvage_minerals(
             fleet.dry_mass,
             fleet.ironium_inventory,
             fleet.boranium_inventory,
-            fleet.germanium_inventory
+            fleet.germanium_inventory,
+            fleet.resource_x_inventory,
+            fleet.resource_y_inventory,
+            fleet.resource_z_inventory,
         )
 
         # If no minerals, no salvage created
-        if iron == 0 and bor == 0 and germ == 0:
+        if iron == 0 and bor == 0 and germ == 0 and res_x == 0 and res_y == 0 and res_z == 0:
             return None
 
         # Check for star at location - deposit on surface instead
@@ -2668,7 +2793,11 @@ class GameTurn():
             star.ironium_inventory += iron
             star.boranium_inventory += bor
             star.germanium_inventory += germ
+            star.resource_x_inventory += res_x
+            star.resource_y_inventory += res_y
+            star.resource_z_inventory += res_z
             star.save()
+            self._discover_secret_resources_from_star(star.player, star)
             return star
 
         # No star - create or add to existing salvage pile
@@ -2678,6 +2807,9 @@ class GameTurn():
                 'ironium_inventory': iron,
                 'boranium_inventory': bor,
                 'germanium_inventory': germ,
+                'resource_x_inventory': res_x,
+                'resource_y_inventory': res_y,
+                'resource_z_inventory': res_z,
             }
         )
         if not created:
@@ -2685,6 +2817,9 @@ class GameTurn():
             salvage.ironium_inventory += iron
             salvage.boranium_inventory += bor
             salvage.germanium_inventory += germ
+            salvage.resource_x_inventory += res_x
+            salvage.resource_y_inventory += res_y
+            salvage.resource_z_inventory += res_z
             salvage.save()
 
         return salvage
@@ -2725,6 +2860,9 @@ class GameTurn():
                 transfer_ironium=order.transfer_ironium,
                 transfer_boranium=order.transfer_boranium,
                 transfer_germanium=order.transfer_germanium,
+                transfer_resource_x=order.transfer_resource_x,
+                transfer_resource_y=order.transfer_resource_y,
+                transfer_resource_z=order.transfer_resource_z,
                 transfer_colonists=order.transfer_colonists,
                 patrol_radius=order.patrol_radius,
                 intercept_speed=order.intercept_speed,
@@ -2793,23 +2931,28 @@ class GameTurn():
         if order.transfer_type not in ('UNLOAD', 'UNLOAD_ALL'):
             return
 
+        resource_keys = ALL_RESOURCE_KEYS
+        transfers = {}
         if order.transfer_type == 'UNLOAD_ALL':
-            ironium_transfer = fleet.ironium_inventory
-            boranium_transfer = fleet.boranium_inventory
-            germanium_transfer = fleet.germanium_inventory
-            colonists_transfer = fleet.colonists
+            for key in resource_keys:
+                transfers[key] = int(getattr(fleet, f'{key}_inventory', 0) or 0)
+            colonists_transfer = int(fleet.colonists or 0)
         else:
-            ironium_transfer = min(order.transfer_ironium, fleet.ironium_inventory)
-            boranium_transfer = min(order.transfer_boranium, fleet.boranium_inventory)
-            germanium_transfer = min(order.transfer_germanium, fleet.germanium_inventory)
-            colonists_transfer = min(order.transfer_colonists, fleet.colonists)
+            for key in resource_keys:
+                requested = int(getattr(order, f'transfer_{key}', 0) or 0)
+                available = int(getattr(fleet, f'{key}_inventory', 0) or 0)
+                transfers[key] = min(requested, available)
+            colonists_transfer = min(int(order.transfer_colonists or 0), int(fleet.colonists or 0))
 
-        if ironium_transfer == 0 and boranium_transfer == 0 and germanium_transfer == 0 and colonists_transfer == 0:
+        if sum(transfers.values()) == 0 and colonists_transfer == 0:
             return
 
-        fleet.ironium_inventory -= ironium_transfer
-        fleet.boranium_inventory -= boranium_transfer
-        fleet.germanium_inventory -= germanium_transfer
+        for key in resource_keys:
+            setattr(
+                fleet,
+                f'{key}_inventory',
+                int(getattr(fleet, f'{key}_inventory', 0) or 0) - transfers[key]
+            )
         fleet.colonists -= colonists_transfer
         fleet.save()
 
@@ -2821,9 +2964,16 @@ class GameTurn():
             msg.year = self.game.year
             msg.save()
 
-        if ironium_transfer or boranium_transfer or germanium_transfer:
-            self._create_salvage_at_location(target_x, target_y,
-                                             ironium_transfer, boranium_transfer, germanium_transfer)
+        if sum(transfers.values()) > 0:
+            self._create_salvage_at_location(
+                target_x, target_y,
+                transfers.get('ironium', 0),
+                transfers.get('boranium', 0),
+                transfers.get('germanium', 0),
+                transfers.get('resource_x', 0),
+                transfers.get('resource_y', 0),
+                transfers.get('resource_z', 0),
+            )
 
     def _handle_invasion(self, fleet, star, invader_colonists_kt):
         """Resolve invasion when colonists are transferred to an enemy colony."""
@@ -3038,64 +3188,68 @@ class GameTurn():
     def _transfer_with_star(self, fleet, order, star):
         """Execute transfer between fleet and star."""
         fleet_max_capacity = fleet.cargo_capacity  # Use fleet's actual capacity
+        resource_keys = ALL_RESOURCE_KEYS
 
         if order.transfer_type == 'LOAD':
             # Load from star to fleet
-            # Calculate total transfer amount and proportions
-            total_requested = (order.transfer_ironium + order.transfer_boranium +
-                             order.transfer_germanium + order.transfer_colonists)
+            total_requested = sum(
+                int(getattr(order, f'transfer_{key}', 0) or 0) for key in resource_keys
+            ) + int(order.transfer_colonists or 0)
 
             if total_requested == 0:
                 return
 
-            # Limit total transfer by fleet available space
-            fleet_used = fleet.cargo_used
-            fleet_available = fleet_max_capacity - fleet_used
+            fleet_available = fleet_max_capacity - fleet.cargo_used
             total_transfer = min(fleet_available, total_requested)
 
             if total_transfer <= 0:
                 return
 
-            # Calculate proportional transfers
-            transfer_factor = total_transfer / total_requested
+            transfer_factor = total_transfer / float(total_requested)
+            transfers = {}
+            for key in resource_keys:
+                requested = int(getattr(order, f'transfer_{key}', 0) or 0)
+                available = int(getattr(star, f'{key}_inventory', 0) or 0)
+                transfers[key] = min(int(requested * transfer_factor), available)
 
-            ironium_transfer = min(int(order.transfer_ironium * transfer_factor), star.ironium_inventory)
-            boranium_transfer = min(int(order.transfer_boranium * transfer_factor), star.boranium_inventory)
-            germanium_transfer = min(int(order.transfer_germanium * transfer_factor), star.germanium_inventory)
-            # Convert colonists: star.colonists is individual units, fleet.colonists is thousands
-            colonists_transfer_kt = int(order.transfer_colonists * transfer_factor)  # This is in kt
-            colonists_transfer_individuals = min(colonists_transfer_kt * 1000, star.colonists)
+            colonists_transfer_kt = int((order.transfer_colonists or 0) * transfer_factor)
+            colonists_transfer_individuals = min(colonists_transfer_kt * 1000, int(star.colonists or 0))
             colonists_transfer_kt_actual = colonists_transfer_individuals // 1000
 
-            # Execute the transfers
-            star.ironium_inventory -= ironium_transfer
-            star.boranium_inventory -= boranium_transfer
-            star.germanium_inventory -= germanium_transfer
-            star.colonists -= colonists_transfer_individuals
+            for key in resource_keys:
+                setattr(
+                    star,
+                    f'{key}_inventory',
+                    int(getattr(star, f'{key}_inventory', 0) or 0) - transfers[key]
+                )
+                setattr(
+                    fleet,
+                    f'{key}_inventory',
+                    int(getattr(fleet, f'{key}_inventory', 0) or 0) + transfers[key]
+                )
 
-            fleet.ironium_inventory += ironium_transfer
-            fleet.boranium_inventory += boranium_transfer
-            fleet.germanium_inventory += germanium_transfer
+            star.colonists -= colonists_transfer_individuals
             fleet.colonists += colonists_transfer_kt_actual
 
             star.save()
             fleet.save()
 
+            self._discover_secret_resources_from_star(fleet.player, star, fleet=fleet)
+
         elif order.transfer_type in ('UNLOAD', 'UNLOAD_ALL'):
             # Unload from fleet to star
-            # For UNLOAD_ALL, transfer everything; for UNLOAD, use order amounts
+            transfers = {}
             if order.transfer_type == 'UNLOAD_ALL':
-                ironium_transfer = fleet.ironium_inventory
-                boranium_transfer = fleet.boranium_inventory
-                germanium_transfer = fleet.germanium_inventory
-                colonists_transfer_kt = fleet.colonists
+                for key in resource_keys:
+                    transfers[key] = int(getattr(fleet, f'{key}_inventory', 0) or 0)
+                colonists_transfer_kt = int(fleet.colonists or 0)
             else:
-                ironium_transfer = min(order.transfer_ironium, fleet.ironium_inventory)
-                boranium_transfer = min(order.transfer_boranium, fleet.boranium_inventory)
-                germanium_transfer = min(order.transfer_germanium, fleet.germanium_inventory)
-                colonists_transfer_kt = min(order.transfer_colonists, fleet.colonists)
+                for key in resource_keys:
+                    requested = int(getattr(order, f'transfer_{key}', 0) or 0)
+                    available = int(getattr(fleet, f'{key}_inventory', 0) or 0)
+                    transfers[key] = min(requested, available)
+                colonists_transfer_kt = min(int(order.transfer_colonists or 0), int(fleet.colonists or 0))
 
-            # If transferring colonists to an unowned star, allow low-chance colonisation
             if colonists_transfer_kt > 0 and star.player is None:
                 if random.random() < 0.10:
                     star.player = fleet.player
@@ -3106,7 +3260,6 @@ class GameTurn():
                     msg.year = self.game.year
                     msg.save()
                 else:
-                    # Colonists perish
                     fleet.colonists -= colonists_transfer_kt
                     factory = ColonistsFailedToColoniseMessageFactory(
                         self.game, fleet.player, fleet.name, colonists_transfer_kt, star
@@ -3116,39 +3269,41 @@ class GameTurn():
                     msg.save()
                     colonists_transfer_kt = 0
 
-            # If transferring colonists to an enemy colony, trigger invasion
             if colonists_transfer_kt > 0 and star.player and star.player != fleet.player:
                 self._handle_invasion(fleet, star, colonists_transfer_kt)
-                # Remove colonists from fleet regardless of invasion outcome
                 fleet.colonists -= colonists_transfer_kt
-                # Continue with mineral transfers only
                 colonists_transfer_kt = 0
 
-            # Convert colonists: fleet.colonists is thousands, star.colonists is individual units
             colonists_transfer_individuals = colonists_transfer_kt * 1000
 
-            # Execute the transfers
-            fleet.ironium_inventory -= ironium_transfer
-            fleet.boranium_inventory -= boranium_transfer
-            fleet.germanium_inventory -= germanium_transfer
-            fleet.colonists -= colonists_transfer_kt
+            for key in resource_keys:
+                setattr(
+                    fleet,
+                    f'{key}_inventory',
+                    int(getattr(fleet, f'{key}_inventory', 0) or 0) - transfers[key]
+                )
+                setattr(
+                    star,
+                    f'{key}_inventory',
+                    int(getattr(star, f'{key}_inventory', 0) or 0) + transfers[key]
+                )
 
-            star.ironium_inventory += ironium_transfer
-            star.boranium_inventory += boranium_transfer
-            star.germanium_inventory += germanium_transfer
+            fleet.colonists -= colonists_transfer_kt
             star.colonists += colonists_transfer_individuals
 
             star.save()
             fleet.save()
 
-            if (ironium_transfer or boranium_transfer or germanium_transfer) and star.player and star.player != fleet.player:
+            if any(transfers.values()) and star.player and star.player != fleet.player:
                 gift_factory = MineralGiftMessageFactory(
-                    self.game, star.player, fleet.name, star,
-                    ironium_transfer, boranium_transfer, germanium_transfer
+                    self.game, star.player, fleet.name, star, transfers
                 )
                 gift_msg = gift_factory.new_message()
                 gift_msg.year = self.game.year
                 gift_msg.save()
+
+            if star.player:
+                self._discover_secret_resources_from_star(star.player, star)
 
     def _transfer_with_fleet(self, source_fleet, order, target_fleet):
         """Execute transfer between two fleets.
@@ -3156,87 +3311,88 @@ class GameTurn():
         Both fleets store colonists in thousands (1 unit = 1000 colonists),
         so no unit conversion is needed for fleet-to-fleet transfers.
         """
+        resource_keys = ALL_RESOURCE_KEYS
         if order.transfer_type == 'LOAD':
-            # Load from target fleet to source fleet
-            # Calculate total transfer amount and proportions
-            total_requested = (order.transfer_ironium + order.transfer_boranium +
-                             order.transfer_germanium + order.transfer_colonists)
+            total_requested = sum(
+                int(getattr(order, f'transfer_{key}', 0) or 0) for key in resource_keys
+            ) + int(order.transfer_colonists or 0)
 
             if total_requested == 0:
                 return
 
-            # Limit total transfer by source fleet available space
-            source_used = source_fleet.cargo_used
-            source_available = source_fleet.cargo_capacity - source_used
+            source_available = source_fleet.cargo_capacity - source_fleet.cargo_used
             total_transfer = min(source_available, total_requested)
-
             if total_transfer <= 0:
                 return
 
-            # Calculate proportional transfers
-            transfer_factor = total_transfer / total_requested
+            transfer_factor = total_transfer / float(total_requested)
+            transfers = {}
+            for key in resource_keys:
+                requested = int(getattr(order, f'transfer_{key}', 0) or 0)
+                available = int(getattr(target_fleet, f'{key}_inventory', 0) or 0)
+                transfers[key] = min(int(requested * transfer_factor), available)
+            colonists_transfer = min(
+                int((order.transfer_colonists or 0) * transfer_factor),
+                int(target_fleet.colonists or 0)
+            )
 
-            ironium_transfer = min(int(order.transfer_ironium * transfer_factor), target_fleet.ironium_inventory)
-            boranium_transfer = min(int(order.transfer_boranium * transfer_factor), target_fleet.boranium_inventory)
-            germanium_transfer = min(int(order.transfer_germanium * transfer_factor), target_fleet.germanium_inventory)
-            colonists_transfer = min(int(order.transfer_colonists * transfer_factor), target_fleet.colonists)
-
-            # Execute the transfers (both fleets store colonists as thousands)
-            target_fleet.ironium_inventory -= ironium_transfer
-            target_fleet.boranium_inventory -= boranium_transfer
-            target_fleet.germanium_inventory -= germanium_transfer
+            for key in resource_keys:
+                setattr(
+                    target_fleet,
+                    f'{key}_inventory',
+                    int(getattr(target_fleet, f'{key}_inventory', 0) or 0) - transfers[key]
+                )
+                setattr(
+                    source_fleet,
+                    f'{key}_inventory',
+                    int(getattr(source_fleet, f'{key}_inventory', 0) or 0) + transfers[key]
+                )
             target_fleet.colonists -= colonists_transfer
-
-            source_fleet.ironium_inventory += ironium_transfer
-            source_fleet.boranium_inventory += boranium_transfer
-            source_fleet.germanium_inventory += germanium_transfer
             source_fleet.colonists += colonists_transfer
 
             target_fleet.save()
             source_fleet.save()
-
+            self._discover_secret_resources_from_fleet(source_fleet.player, source_fleet)
         else:  # UNLOAD or UNLOAD_ALL
-            # Unload from source fleet to target fleet
-            # For UNLOAD_ALL, transfer everything; for UNLOAD, use order amounts
+            transfers = {}
             if order.transfer_type == 'UNLOAD_ALL':
-                ironium_transfer = source_fleet.ironium_inventory
-                boranium_transfer = source_fleet.boranium_inventory
-                germanium_transfer = source_fleet.germanium_inventory
-                colonists_transfer = source_fleet.colonists
+                for key in resource_keys:
+                    transfers[key] = int(getattr(source_fleet, f'{key}_inventory', 0) or 0)
+                colonists_transfer = int(source_fleet.colonists or 0)
             else:
-                ironium_transfer = min(order.transfer_ironium, source_fleet.ironium_inventory)
-                boranium_transfer = min(order.transfer_boranium, source_fleet.boranium_inventory)
-                germanium_transfer = min(order.transfer_germanium, source_fleet.germanium_inventory)
-                colonists_transfer = min(order.transfer_colonists, source_fleet.colonists)
+                for key in resource_keys:
+                    requested = int(getattr(order, f'transfer_{key}', 0) or 0)
+                    available = int(getattr(source_fleet, f'{key}_inventory', 0) or 0)
+                    transfers[key] = min(requested, available)
+                colonists_transfer = min(int(order.transfer_colonists or 0), int(source_fleet.colonists or 0))
 
-            # Check if target fleet has capacity
-            target_used = target_fleet.cargo_used
-            target_available = target_fleet.cargo_capacity - target_used
-            total_transfer = ironium_transfer + boranium_transfer + germanium_transfer + colonists_transfer
-
+            target_available = target_fleet.cargo_capacity - target_fleet.cargo_used
+            total_transfer = sum(transfers.values()) + colonists_transfer
             if total_transfer > target_available:
-                # Scale down transfers proportionally
                 if target_available <= 0:
                     return
-                scale_factor = target_available / total_transfer
-                ironium_transfer = int(ironium_transfer * scale_factor)
-                boranium_transfer = int(boranium_transfer * scale_factor)
-                germanium_transfer = int(germanium_transfer * scale_factor)
+                scale_factor = target_available / float(total_transfer)
+                for key in resource_keys:
+                    transfers[key] = int(transfers[key] * scale_factor)
                 colonists_transfer = int(colonists_transfer * scale_factor)
 
-            # Execute the transfers
-            source_fleet.ironium_inventory -= ironium_transfer
-            source_fleet.boranium_inventory -= boranium_transfer
-            source_fleet.germanium_inventory -= germanium_transfer
+            for key in resource_keys:
+                setattr(
+                    source_fleet,
+                    f'{key}_inventory',
+                    int(getattr(source_fleet, f'{key}_inventory', 0) or 0) - transfers[key]
+                )
+                setattr(
+                    target_fleet,
+                    f'{key}_inventory',
+                    int(getattr(target_fleet, f'{key}_inventory', 0) or 0) + transfers[key]
+                )
             source_fleet.colonists -= colonists_transfer
-
-            target_fleet.ironium_inventory += ironium_transfer
-            target_fleet.boranium_inventory += boranium_transfer
-            target_fleet.germanium_inventory += germanium_transfer
             target_fleet.colonists += colonists_transfer
 
             source_fleet.save()
             target_fleet.save()
+            self._discover_secret_resources_from_fleet(target_fleet.player, target_fleet)
 
     def _transfer_with_salvage(self, fleet, order, salvage):
         """Execute transfer from salvage to fleet (LOAD only).
@@ -3254,28 +3410,28 @@ class GameTurn():
         fleet_available = fleet.cargo_remaining
 
         # If no specific amounts requested, load everything we can
-        if (order.transfer_ironium == 0 and order.transfer_boranium == 0 and
-                order.transfer_germanium == 0):
+        if all(
+            int(getattr(order, f'transfer_{key}', 0) or 0) == 0
+            for key in ALL_RESOURCE_KEYS
+        ):
             # Load all salvage, respecting capacity
             total_salvage = salvage.total_minerals
             if total_salvage == 0:
                 return
 
+            transfers = {}
             if total_salvage <= fleet_available:
-                # Take everything
-                ironium_transfer = salvage.ironium_inventory
-                boranium_transfer = salvage.boranium_inventory
-                germanium_transfer = salvage.germanium_inventory
+                for key in ALL_RESOURCE_KEYS:
+                    transfers[key] = int(getattr(salvage, f'{key}_inventory', 0) or 0)
             else:
-                # Proportional transfer
-                ratio = fleet_available / total_salvage
-                ironium_transfer = int(salvage.ironium_inventory * ratio)
-                boranium_transfer = int(salvage.boranium_inventory * ratio)
-                germanium_transfer = int(salvage.germanium_inventory * ratio)
+                ratio = fleet_available / float(total_salvage)
+                for key in ALL_RESOURCE_KEYS:
+                    transfers[key] = int((getattr(salvage, f'{key}_inventory', 0) or 0) * ratio)
         else:
             # Transfer requested amounts (limited by available)
-            total_requested = (order.transfer_ironium + order.transfer_boranium +
-                               order.transfer_germanium)
+            total_requested = sum(
+                int(getattr(order, f'transfer_{key}', 0) or 0) for key in ALL_RESOURCE_KEYS
+            )
             if total_requested == 0:
                 return
 
@@ -3286,27 +3442,26 @@ class GameTurn():
 
             # Calculate proportional transfers
             transfer_factor = total_transfer / total_requested
-            ironium_transfer = min(
-                int(order.transfer_ironium * transfer_factor),
-                salvage.ironium_inventory
-            )
-            boranium_transfer = min(
-                int(order.transfer_boranium * transfer_factor),
-                salvage.boranium_inventory
-            )
-            germanium_transfer = min(
-                int(order.transfer_germanium * transfer_factor),
-                salvage.germanium_inventory
-            )
+            transfers = {}
+            for key in ALL_RESOURCE_KEYS:
+                transfers[key] = min(
+                    int(getattr(order, f'transfer_{key}', 0) or 0) * transfer_factor,
+                    int(getattr(salvage, f'{key}_inventory', 0) or 0)
+                )
+            transfers = {key: int(val) for key, val in transfers.items()}
 
         # Execute the transfer
-        salvage.ironium_inventory -= ironium_transfer
-        salvage.boranium_inventory -= boranium_transfer
-        salvage.germanium_inventory -= germanium_transfer
-
-        fleet.ironium_inventory += ironium_transfer
-        fleet.boranium_inventory += boranium_transfer
-        fleet.germanium_inventory += germanium_transfer
+        for key in ALL_RESOURCE_KEYS:
+            setattr(
+                salvage,
+                f'{key}_inventory',
+                int(getattr(salvage, f'{key}_inventory', 0) or 0) - transfers[key]
+            )
+            setattr(
+                fleet,
+                f'{key}_inventory',
+                int(getattr(fleet, f'{key}_inventory', 0) or 0) + transfers[key]
+            )
 
         fleet.save()
 
@@ -3317,14 +3472,15 @@ class GameTurn():
             salvage.save()
 
         # Create collection message if anything was transferred
-        if ironium_transfer > 0 or boranium_transfer > 0 or germanium_transfer > 0:
+        if any(transfers.values()):
             factory = SalvageCollectedMessageFactory(
-                self.game, fleet.player, fleet,
-                ironium_transfer, boranium_transfer, germanium_transfer
+                self.game, fleet.player, fleet, transfers
             )
             msg = factory.new_message()
             msg.year = self.game.year
             msg.save()
+
+        self._discover_secret_resources_from_fleet(fleet.player, fleet)
 
     def _try_execute_colonise(self, fleet, order):
         """Try to execute a colonise order.
@@ -3654,23 +3810,26 @@ class GameTurn():
         """Extract minerals from a star using standard mining/depletion mechanics.
 
         Returns per-resource extracted whole kt:
-        {'ironium': int, 'boranium': int, 'germanium': int}
+        {'ironium': int, 'boranium': int, 'germanium': int, 'resource_x': int, ...}
         and updates star yield fields in-place.
         """
         total_extraction = max(0.0, float(total_extraction or 0.0))
         if total_extraction <= 0:
-            return {'ironium': 0, 'boranium': 0, 'germanium': 0}
+            return {key: 0 for key in ALL_RESOURCE_KEYS}
 
-        total_yield = int(star.ironium_yield or 0) + int(star.boranium_yield or 0) + int(star.germanium_yield or 0)
+        total_yield = sum(
+            int(getattr(star, f'{key}_yield', 0) or 0) for key in ALL_RESOURCE_KEYS
+        )
         if total_yield <= 0:
-            return {'ironium': 0, 'boranium': 0, 'germanium': 0}
+            return {key: 0 for key in ALL_RESOURCE_KEYS}
 
         is_homeworld = star.homeworld_of.exists()
         min_yield = HOMEWORLD_MIN_YIELD if is_homeworld else 0
-        produced = {'ironium': 0, 'boranium': 0, 'germanium': 0}
+        produced = {key: 0 for key in ALL_RESOURCE_KEYS}
 
-        for resource in ['ironium_yield', 'boranium_yield', 'germanium_yield']:
-            yield_val = int(getattr(star, resource) or 0)
+        for key in ALL_RESOURCE_KEYS:
+            resource = f'{key}_yield'
+            yield_val = int(getattr(star, resource, 0) or 0)
             if yield_val <= 0:
                 continue
 
@@ -3771,29 +3930,27 @@ class GameTurn():
         produced = self._extract_minerals_with_standard_rules(star, total_extraction)
 
         remaining_capacity = max(0, int(fleet.cargo_remaining or 0))
-        fleet_iron = min(produced['ironium'], remaining_capacity)
-        remaining_capacity -= fleet_iron
-        fleet_bor = min(produced['boranium'], remaining_capacity)
-        remaining_capacity -= fleet_bor
-        fleet_germ = min(produced['germanium'], remaining_capacity)
+        fleet_added = {}
+        surface_added = {}
+        for key in ALL_RESOURCE_KEYS:
+            amount = int(produced.get(key, 0) or 0)
+            take = min(amount, remaining_capacity)
+            remaining_capacity -= take
+            fleet_added[key] = take
+            surface_added[key] = amount - take
 
-        surface_iron = produced['ironium'] - fleet_iron
-        surface_bor = produced['boranium'] - fleet_bor
-        surface_germ = produced['germanium'] - fleet_germ
+        for key in ALL_RESOURCE_KEYS:
+            setattr(fleet, f'{key}_inventory', int(getattr(fleet, f'{key}_inventory', 0) or 0) + fleet_added[key])
+            setattr(star, f'{key}_inventory', int(getattr(star, f'{key}_inventory', 0) or 0) + surface_added[key])
 
-        fleet.ironium_inventory += fleet_iron
-        fleet.boranium_inventory += fleet_bor
-        fleet.germanium_inventory += fleet_germ
-        star.ironium_inventory += surface_iron
-        star.boranium_inventory += surface_bor
-        star.germanium_inventory += surface_germ
-
-        fleet.save(update_fields=['ironium_inventory', 'boranium_inventory', 'germanium_inventory'])
+        fleet.save(update_fields=[f'{key}_inventory' for key in ALL_RESOURCE_KEYS])
         star.save(update_fields=[
-            'ironium_inventory', 'boranium_inventory', 'germanium_inventory',
+            *[f'{key}_inventory' for key in ALL_RESOURCE_KEYS],
             'defenses', 'colonists', 'mines', 'factories', 'labs', 'shipyards',
-            'ironium_yield', 'boranium_yield', 'germanium_yield',
+            *[f'{key}_yield' for key in ALL_RESOURCE_KEYS],
         ])
+
+        self._discover_secret_resources_from_star(fleet.player, star, fleet=fleet)
 
         if mine_until_full and int(fleet.cargo_remaining or 0) > 0:
             return 'blocked'
@@ -3863,6 +4020,9 @@ class GameTurn():
         ironium = fleet.ironium_inventory
         boranium = fleet.boranium_inventory
         germanium = fleet.germanium_inventory
+        resource_x = fleet.resource_x_inventory
+        resource_y = fleet.resource_y_inventory
+        resource_z = fleet.resource_z_inventory
         colonists_kt = fleet.colonists
         dry_mass = fleet.dry_mass
 
@@ -3884,6 +4044,12 @@ class GameTurn():
             cargo_parts.append(f"{total_boranium}kt Boranium")
         if total_germanium > 0:
             cargo_parts.append(f"{total_germanium}kt Germanium")
+        if resource_x > 0:
+            cargo_parts.append(f"{resource_x}kt {get_secret_resource_name('resource_x')}")
+        if resource_y > 0:
+            cargo_parts.append(f"{resource_y}kt {get_secret_resource_name('resource_y')}")
+        if resource_z > 0:
+            cargo_parts.append(f"{resource_z}kt {get_secret_resource_name('resource_z')}")
         if colonists_kt > 0:
             cargo_parts.append(f"{colonists_kt}k colonists")
         if len(cargo_parts) > 1:
@@ -3903,6 +4069,9 @@ class GameTurn():
             star.ironium_inventory += ironium + bonus_ironium
             star.boranium_inventory += boranium + bonus_boranium
             star.germanium_inventory += germanium + bonus_germanium
+            star.resource_x_inventory += resource_x
+            star.resource_y_inventory += resource_y
+            star.resource_z_inventory += resource_z
             star.colonists += colonists_kt * 1000  # Convert thousands to individuals
 
             # Set ownership of the star
@@ -3916,6 +4085,8 @@ class GameTurn():
             msg = factory.new_message()
             msg.year = self.game.year
             msg.save()
+
+            self._discover_secret_resources_from_star(player, star, fleet=fleet)
 
         return 'executed'
 
@@ -4029,6 +4200,9 @@ class GameTurn():
         target_fleet.ironium_inventory += source_fleet.ironium_inventory
         target_fleet.boranium_inventory += source_fleet.boranium_inventory
         target_fleet.germanium_inventory += source_fleet.germanium_inventory
+        target_fleet.resource_x_inventory += source_fleet.resource_x_inventory
+        target_fleet.resource_y_inventory += source_fleet.resource_y_inventory
+        target_fleet.resource_z_inventory += source_fleet.resource_z_inventory
         target_fleet.colonists += source_fleet.colonists
 
         target_fleet.save()
@@ -4268,7 +4442,9 @@ class GameTurn():
         """
         from .models import Star
         for star in Star.objects.filter(game=self.game, player__isnull=False, mines__gt=0):
-            total_yield = star.ironium_yield + star.boranium_yield + star.germanium_yield
+            total_yield = sum(
+                int(getattr(star, f'{key}_yield', 0) or 0) for key in ALL_RESOURCE_KEYS
+            )
             if total_yield == 0:
                 continue
 
@@ -4279,11 +4455,15 @@ class GameTurn():
             total_extraction = star.mines * KT_PER_MINE * productivity
 
             produced = self._extract_minerals_with_standard_rules(star, total_extraction)
-            star.ironium_inventory += produced['ironium']
-            star.boranium_inventory += produced['boranium']
-            star.germanium_inventory += produced['germanium']
+            for key in ALL_RESOURCE_KEYS:
+                setattr(
+                    star,
+                    f'{key}_inventory',
+                    int(getattr(star, f'{key}_inventory', 0) or 0) + int(produced.get(key, 0) or 0)
+                )
 
             star.save()
+            self._discover_secret_resources_from_star(star.player, star)
 
     def production(self):
         """Process production orders for all colonized planets.
@@ -4354,7 +4534,7 @@ class GameTurn():
                             break
 
                     # Phase 2: Consume resources (must complete before BP)
-                    for resource in ['ironium', 'boranium', 'germanium']:
+                    for resource in ALL_RESOURCE_KEYS:
                         resource_cost = cost.get(resource, 0)
                         spent_field = f'spent_{resource}'
                         inventory_field = f'{resource}_inventory'
@@ -4371,7 +4551,7 @@ class GameTurn():
                     # Check if all resources satisfied
                     resources_satisfied = all(
                         getattr(order, f'spent_{resource}') >= cost.get(resource, 0)
-                        for resource in ['ironium', 'boranium', 'germanium']
+                        for resource in ALL_RESOURCE_KEYS
                     )
 
                     if not resources_satisfied:
@@ -4410,6 +4590,9 @@ class GameTurn():
                     order.spent_ironium = 0
                     order.spent_boranium = 0
                     order.spent_germanium = 0
+                    order.spent_resource_x = 0
+                    order.spent_resource_y = 0
+                    order.spent_resource_z = 0
                     order.spent_bp = 0
 
                 # After while loop, check if order is fully complete

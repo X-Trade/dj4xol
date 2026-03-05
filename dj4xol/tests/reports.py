@@ -373,10 +373,10 @@ class ReportGenerationTest(TestCase):
         ).build_detail()
 
         self.assertIn('resources', detail)
-        self.assertEqual(detail['resources']['Ironium']['yield'], 61)
-        self.assertEqual(detail['resources']['Ironium']['surface'], 1500)
-        self.assertEqual(detail['resources']['Boranium']['yield'], 42)
-        self.assertEqual(detail['resources']['Germanium']['yield'], 27)
+        self.assertEqual(detail['resources']['ironium']['yield'], 61)
+        self.assertEqual(detail['resources']['ironium']['surface'], 1500)
+        self.assertEqual(detail['resources']['boranium']['yield'], 42)
+        self.assertEqual(detail['resources']['germanium']['yield'], 27)
 
     def test_cached_star_detail_includes_infrastructure(self):
         """Cached star detail should include infrastructure values from report."""
@@ -483,9 +483,10 @@ class ReportGenerationTest(TestCase):
         ).build_detail()
 
         self.assertIn('salvage_inventory', detail)
-        self.assertEqual(detail['salvage_inventory']['ironium'], 130)
-        self.assertEqual(detail['salvage_inventory']['boranium'], 70)
-        self.assertEqual(detail['salvage_inventory']['germanium'], 20)
+        items = {item['label']: item['amount'] for item in detail['salvage_inventory']['items']}
+        self.assertEqual(items['Ironium'], 130)
+        self.assertEqual(items['Boranium'], 70)
+        self.assertEqual(items['Germanium'], 20)
         self.assertEqual(detail['salvage_inventory']['total'], 220)
 
     def test_report_on_other_player_fleet(self):

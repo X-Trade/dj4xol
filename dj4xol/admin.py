@@ -91,7 +91,8 @@ class ResearchLevelRequirementInline(admin.TabularInline):
     model = ResearchLevelRequirement
     extra = 0
     fields = (
-        'level', 'rp_cost', 'ironium_cost', 'boranium_cost', 'germanium_cost'
+        'level', 'rp_cost', 'ironium_cost', 'boranium_cost', 'germanium_cost',
+        'resource_x_cost', 'resource_y_cost', 'resource_z_cost',
     )
     ordering = ('level',)
 
@@ -203,6 +204,7 @@ class HullDesignAdmin(admin.ModelAdmin):
 @admin.register(DefaultResearchLevelRequirement)
 class DefaultResearchLevelRequirementAdmin(admin.ModelAdmin):
     list_display = (
-        'level', 'rp_cost', 'ironium_cost', 'boranium_cost', 'germanium_cost'
+        'level', 'rp_cost', 'ironium_cost', 'boranium_cost', 'germanium_cost',
+        'resource_x_cost', 'resource_y_cost', 'resource_z_cost',
     )
     ordering = ('level',)

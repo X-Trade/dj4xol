@@ -811,6 +811,18 @@ body.turned-in.lcars .order-params::after {
     background: linear-gradient(to right, #45b7d1, #2e86ab); /* Germanium - blue */
 }
 
+.inventory-fill.inventory-resource_x {
+    background: linear-gradient(to right, #f4c542, #c7932c); /* Secret X - gold */
+}
+
+.inventory-fill.inventory-resource_y {
+    background: linear-gradient(to right, #b46ee6, #7c3db5); /* Secret Y - violet */
+}
+
+.inventory-fill.inventory-resource_z {
+    background: linear-gradient(to right, #8a98a8, #5b6774); /* Secret Z - slate */
+}
+
 .inventory-fill.inventory-colonists {
     background: linear-gradient(to right, #96ceb4, #71a085); /* Colonists - green */
 }
