@@ -242,7 +242,7 @@ class DetailBuilder():
                 for key in ALL_RESOURCE_KEYS:
                     yield_val = int(data.get(f'{key}_yield', 0) or 0)
                     surface_val = int(data.get(f'{key}_inventory', 0) or 0)
-                    if yield_val <= 0 and surface_val <= 0:
+                    if key in SECRET_RESOURCE_KEYS and yield_val <= 0 and surface_val <= 0:
                         continue
                     resources[key] = {
                         'label': self._resource_label(key),
@@ -607,7 +607,7 @@ class DetailBuilder():
             for key in ALL_RESOURCE_KEYS:
                 yield_val = int(getattr(self.selected_obj, f'{key}_yield', 0) or 0)
                 surface_val = int(getattr(self.selected_obj, f'{key}_inventory', 0) or 0)
-                if yield_val <= 0 and surface_val <= 0:
+                if key in SECRET_RESOURCE_KEYS and yield_val <= 0 and surface_val <= 0:
                     continue
                 resources[key] = {
                     'label': self._resource_label(key),

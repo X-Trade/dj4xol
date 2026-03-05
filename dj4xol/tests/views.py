@@ -313,6 +313,37 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'data-section="resources"')
         self.assertNotContains(response, 'data-section="infrastructure"')
 
+    def test_advanced_star_report_shows_base_resources_even_when_empty(self):
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='star',
+            target_id=self.star.id,
+            cached_report=json.dumps({
+                'name': self.star.name,
+                'x': self.star.x,
+                'y': self.star.y,
+                'gravity': self.star.gravity,
+                'temperature': self.star.temperature,
+                'radiation': self.star.radiation,
+                'player_name': 'Enemy',
+                'colonists': 0,
+                'ironium_yield': 0,
+                'boranium_yield': 0,
+                'germanium_yield': 0,
+                'ironium_inventory': 0,
+                'boranium_inventory': 0,
+                'germanium_inventory': 0,
+                'report_tier': 'advanced',
+            }),
+        )
+        response = self._get_detail_response(self.star)
+        self.assertContains(response, 'data-section="resources"')
+        self.assertContains(response, 'Ironium')
+        self.assertContains(response, 'Boranium')
+        self.assertContains(response, 'Germanium')
+
     def test_encounter_star_report_shows_infrastructure(self):
         Report.objects.create(
             game=self.game,
