@@ -9,14 +9,18 @@ from django.test import TestCase
 from ..factory import GameFactory
 from ..models import (
     Account,
+    Fleet,
     FleetOrders,
     GameMessage,
     PlayerResearch,
     ProductionOrder,
     ResearchCategory,
+    ResearchLevelPrerequisite,
+    ResearchLevelRequirement,
     Report,
 )
 from ..research import ensure_player_research_rows
+from ..turn import GameTurn
 from ._util import get_default_race, get_default_race_type
 
 
@@ -63,6 +67,27 @@ class PlayCommandTest(TestCase):
         self.assertIn('boranium_kt', output)
         self.assertIn('germanium_kt', output)
         self.assertIn('colonists_kt', output)
+
+    def test_colonies_command_outputs_secret_resources_when_present(self):
+        home = self.player1.homeworld
+        home.resource_x_inventory = 12
+        home.resource_y_inventory = 0
+        home.resource_z_inventory = 0
+        home.save(update_fields=[
+            'resource_x_inventory',
+            'resource_y_inventory',
+            'resource_z_inventory',
+        ])
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/colonies', '/exit'],
+        )
+        self.assertIn('resource_x_kt', output)
+        self.assertNotIn('resource_y_kt', output)
+        self.assertNotIn('resource_z_kt', output)
 
     def test_stars_command_respects_player_knowledge_status(self):
         output = self._run_play(
@@ -118,6 +143,19 @@ class PlayCommandTest(TestCase):
         self.assertIn('integrity_pct', output)
         self.assertIn('max_safe_warp', output)
         self.assertIn('position: (', output)
+
+    def test_fleets_command_outputs_secret_resources_when_present(self):
+        fleet = self.player1.fleets.first()
+        fleet.resource_y_inventory = 9
+        fleet.save(update_fields=['resource_y_inventory'])
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/fleets', '/exit'],
+        )
+        self.assertIn('resource_y_kt', output)
 
     def test_orders_command_lists_fleet_orders(self):
         fleet = self.player1.fleets.first()
@@ -209,6 +247,44 @@ class PlayCommandTest(TestCase):
         self.assertEqual(orders[1].transfer_type, 'LOAD')
         self.assertTrue(orders[1].repeat)
         self.assertEqual(orders[1].transfer_ironium, 123)
+
+    def test_orders_add_transfer_executes_secret_resources(self):
+        fleets = list(self.player1.fleets.order_by('id'))
+        source = fleets[0]
+        target = fleets[1] if len(fleets) > 1 else Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Transfer Target',
+            x=source.x,
+            y=source.y,
+            cargo_capacity=100,
+        )
+        target.x = source.x
+        target.y = source.y
+        target.resource_x_inventory = 5
+        target.resource_y_inventory = 3
+        target.save(update_fields=['x', 'y', 'resource_x_inventory', 'resource_y_inventory'])
+
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add TRANSFER %s load resource_x=5 resource_y=3' % (
+                    source.short_id, target.short_id
+                ),
+                '/exit',
+            ],
+        )
+        GameTurn(self.game).generate_turn()
+
+        source.refresh_from_db()
+        target.refresh_from_db()
+        self.assertEqual(source.resource_x_inventory, 5)
+        self.assertEqual(source.resource_y_inventory, 3)
+        self.assertEqual(target.resource_x_inventory, 0)
+        self.assertEqual(target.resource_y_inventory, 0)
 
     def test_orders_add_move_wormhole_requires_drive(self):
         fleet = self.player1.fleets.first()
@@ -407,6 +483,55 @@ class PlayCommandTest(TestCase):
         self.assertIsNotNone(order)
         self.assertFalse(order.mine_until_full)
 
+    def test_orders_add_remotemine_mines_secret_resources(self):
+        fleet = self.player1.fleets.first()
+        fleet.has_miners = 'SMALL'
+        fleet.save(update_fields=['has_miners'])
+        star = self.game.stars.exclude(pk=self.player1.homeworld.pk).first()
+        star.player = None
+        star.ironium_yield = 0
+        star.boranium_yield = 0
+        star.germanium_yield = 0
+        star.resource_x_yield = 100
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
+        star.save(update_fields=[
+            'player',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+            'resource_x_yield',
+            'resource_y_yield',
+            'resource_z_yield',
+        ])
+        fleet.x = star.x
+        fleet.y = star.y
+        fleet.save(update_fields=['x', 'y'])
+
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add REMOTEMINE %s' % (fleet.short_id, star.short_id),
+                '/exit',
+            ],
+        )
+
+        GameTurn(self.game).generate_turn()
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.resource_x_inventory, 10)
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/fleets', '/exit'],
+        )
+        self.assertIn('resource_x_kt', output)
+
     def test_orders_add_and_clear_star_production(self):
         star = self.player1.homeworld
         self._run_play(
@@ -590,6 +715,71 @@ class PlayCommandTest(TestCase):
         self.assertIn('%s:' % category.code, output)
         self.assertIn('next_level_eta_years', output)
         self.assertIn('upcoming_technologies', output)
+
+    def test_research_category_detail_includes_prerequisites(self):
+        primary, _ = ResearchCategory.objects.get_or_create(
+            code='REQ_CLI_A',
+            defaults={'name': 'Req CLI A', 'enabled': True}
+        )
+        secondary, _ = ResearchCategory.objects.get_or_create(
+            code='REQ_CLI_B',
+            defaults={'name': 'Req CLI B', 'enabled': True}
+        )
+        ensure_player_research_rows(self.player1)
+        ResearchLevelPrerequisite.objects.create(
+            category=primary,
+            level=1,
+            requires_category=secondary,
+            min_level=2,
+        )
+        secondary_row = PlayerResearch.objects.filter(
+            player=self.player1, category=secondary
+        ).first()
+        if secondary_row is None:
+            secondary_row = PlayerResearch.objects.create(
+                player=self.player1, category=secondary, current_level=1
+            )
+        else:
+            secondary_row.current_level = 1
+            secondary_row.save(update_fields=['current_level'])
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/research %s' % primary.code, '/exit'],
+        )
+        self.assertIn('next_level_prerequisites', output)
+        self.assertIn('required: 2', output)
+        self.assertIn('current: 1', output)
+        self.assertIn('met: false', output)
+
+    def test_research_category_detail_includes_secret_resource_requirements(self):
+        category = ResearchCategory.objects.filter(code='ENERGY').first()
+        self.assertIsNotNone(category)
+        rows = ensure_player_research_rows(self.player1)
+        energy_row = next(row for row in rows if row.category_id == category.id)
+        energy_row.current_level = 0
+        energy_row.stored_rp = 0
+        energy_row.save(update_fields=['current_level', 'stored_rp'])
+
+        requirement = ResearchLevelRequirement.objects.get(
+            category=category, level=1
+        )
+        requirement.resource_x_cost = 10
+        requirement.save(update_fields=['resource_x_cost'])
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/research %s' % category.code, '/exit'],
+        )
+        self.assertIn('next_level_resource_requirements', output)
+        self.assertIn('label: ???', output)
+        self.assertIn('cost: 10', output)
 
     def test_research_set_allocation_rebalances_non_singular(self):
         rows = ensure_player_research_rows(self.player1)

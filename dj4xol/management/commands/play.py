@@ -20,6 +20,7 @@ from dj4xol.models import (
     Salvage,
     Star,
 )
+from dj4xol.mineral_rules import SECRET_RESOURCE_KEYS
 from dj4xol.colony_rules import calculate_habitability_factor
 from dj4xol.objectdetails import DetailBuilder
 from dj4xol.research import (
@@ -325,15 +326,20 @@ class Command(BaseCommand):
         ).order_by("name", "x", "y")
         data = {}
         for star in stars:
+            resources = {
+                "ironium_kt": star.ironium_inventory,
+                "boranium_kt": star.boranium_inventory,
+                "germanium_kt": star.germanium_inventory,
+            }
+            for key in SECRET_RESOURCE_KEYS:
+                amount = int(getattr(star, f"{key}_inventory", 0) or 0)
+                if amount > 0:
+                    resources[f"{key}_kt"] = amount
             data[star.short_id] = {
                 "name": star.name,
                 "position": "(%s, %s)" % (star.x, star.y),
                 "colonists_kt": star.colonists,
-                "resources": {
-                    "ironium_kt": star.ironium_inventory,
-                    "boranium_kt": star.boranium_inventory,
-                    "germanium_kt": star.germanium_inventory,
-                },
+                "resources": resources,
                 "infrastructure": {
                     "mines": star.mines,
                     "factories": star.factories,
@@ -384,6 +390,16 @@ class Command(BaseCommand):
         fleets = player.fleets.order_by("name", "x", "y")
         data = {}
         for fleet in fleets:
+            cargo = {
+                "ironium_kt": fleet.ironium_inventory,
+                "boranium_kt": fleet.boranium_inventory,
+                "germanium_kt": fleet.germanium_inventory,
+                "colonists_kt": fleet.colonists,
+            }
+            for key in SECRET_RESOURCE_KEYS:
+                amount = int(getattr(fleet, f"{key}_inventory", 0) or 0)
+                if amount > 0:
+                    cargo[f"{key}_kt"] = amount
             data[fleet.short_id] = {
                 "name": fleet.name,
                 "position": "(%s, %s)" % (fleet.x, fleet.y),
@@ -392,12 +408,7 @@ class Command(BaseCommand):
                 "integrity_pct": fleet.integrity,
                 "fuel_mg": float(fleet.fuel),
                 "cargo_capacity_kt": fleet.cargo_capacity,
-                "cargo": {
-                    "ironium_kt": fleet.ironium_inventory,
-                    "boranium_kt": fleet.boranium_inventory,
-                    "germanium_kt": fleet.germanium_inventory,
-                    "colonists_kt": fleet.colonists,
-                },
+                "cargo": cargo,
                 "max_safe_warp": fleet.max_safe_warp,
             }
         return data
@@ -506,7 +517,9 @@ class Command(BaseCommand):
                         "syntax": (
                             "/orders <fleet_id> add TRANSFER <target_id|x,y> "
                             "<load|unload|unload_all> "
-                            "[ironium=N] [boranium=N] [germanium=N] [colonists=N] [repeat]"
+                            "[ironium=N] [boranium=N] [germanium=N] "
+                            "[resource_x=N] [resource_y=N] [resource_z=N] "
+                            "[colonists=N] [repeat]"
                         ),
                     },
                     "COLONISE": {
@@ -655,6 +668,15 @@ class Command(BaseCommand):
             order.transfer_ironium = self._parse_nonnegative_int(extras["kwargs"].get("ironium", 0), "ironium")
             order.transfer_boranium = self._parse_nonnegative_int(extras["kwargs"].get("boranium", 0), "boranium")
             order.transfer_germanium = self._parse_nonnegative_int(extras["kwargs"].get("germanium", 0), "germanium")
+            order.transfer_resource_x = self._parse_nonnegative_int(
+                extras["kwargs"].get("resource_x", 0), "resource_x"
+            )
+            order.transfer_resource_y = self._parse_nonnegative_int(
+                extras["kwargs"].get("resource_y", 0), "resource_y"
+            )
+            order.transfer_resource_z = self._parse_nonnegative_int(
+                extras["kwargs"].get("resource_z", 0), "resource_z"
+            )
             order.transfer_colonists = self._parse_nonnegative_int(extras["kwargs"].get("colonists", 0), "colonists")
             self._apply_transfer_defaults_if_empty(order, target_obj, kind)
 
@@ -859,6 +881,9 @@ class Command(BaseCommand):
             order.transfer_ironium
             + order.transfer_boranium
             + order.transfer_germanium
+            + order.transfer_resource_x
+            + order.transfer_resource_y
+            + order.transfer_resource_z
             + order.transfer_colonists
         )
         if total_requested > 0:
@@ -867,16 +892,25 @@ class Command(BaseCommand):
             order.transfer_ironium = int(target_obj.ironium_inventory)
             order.transfer_boranium = int(target_obj.boranium_inventory)
             order.transfer_germanium = int(target_obj.germanium_inventory)
+            order.transfer_resource_x = int(target_obj.resource_x_inventory)
+            order.transfer_resource_y = int(target_obj.resource_y_inventory)
+            order.transfer_resource_z = int(target_obj.resource_z_inventory)
             order.transfer_colonists = int(target_obj.colonists // 1000)
         elif target_kind == "fleet":
             order.transfer_ironium = int(target_obj.ironium_inventory)
             order.transfer_boranium = int(target_obj.boranium_inventory)
             order.transfer_germanium = int(target_obj.germanium_inventory)
+            order.transfer_resource_x = int(target_obj.resource_x_inventory)
+            order.transfer_resource_y = int(target_obj.resource_y_inventory)
+            order.transfer_resource_z = int(target_obj.resource_z_inventory)
             order.transfer_colonists = int(target_obj.colonists)
         elif target_kind == "salvage":
             order.transfer_ironium = int(target_obj.ironium_inventory)
             order.transfer_boranium = int(target_obj.boranium_inventory)
             order.transfer_germanium = int(target_obj.germanium_inventory)
+            order.transfer_resource_x = int(target_obj.resource_x_inventory)
+            order.transfer_resource_y = int(target_obj.resource_y_inventory)
+            order.transfer_resource_z = int(target_obj.resource_z_inventory)
 
     def _fleet_orders_summary(self, fleet):
         orders = fleet.orders.order_by("position", "id")
@@ -902,6 +936,9 @@ class Command(BaseCommand):
                     "ironium_kt": order.transfer_ironium,
                     "boranium_kt": order.transfer_boranium,
                     "germanium_kt": order.transfer_germanium,
+                    "resource_x_kt": order.transfer_resource_x,
+                    "resource_y_kt": order.transfer_resource_y,
+                    "resource_z_kt": order.transfer_resource_z,
                     "colonists_kt": order.transfer_colonists,
                 },
                 "intercept_speed": order.intercept_speed,
@@ -995,6 +1032,8 @@ class Command(BaseCommand):
             "next_level_rp_per_year": data.get("next_level_rp_per_year"),
             "next_level_eta_years": data.get("next_level_eta_years"),
             "is_maxed": bool(data.get("selected_is_maxed")),
+            "next_level_prerequisites": data.get("next_level_prerequisites"),
+            "next_level_resource_requirements": data.get("next_level_resource_rows"),
             "upcoming_technologies": upcoming,
         }
         return {category.code: payload}
