@@ -801,7 +801,7 @@ class DetailBuilder():
                 current_x = int(x)
                 current_y = int(y)
             repeat_allowed = o.order_type not in ['COLONISE', 'MERGE', 'SCUTTLE']
-            orders.append({
+            order_data = {
                 'short_id': o.short_id,
                 'target': target,
                 'target_link': target_link,
@@ -811,6 +811,7 @@ class DetailBuilder():
                 'repeat_allowed': repeat_allowed,
                 'order_type': o.order_type,
                 'patrol_radius': o.patrol_radius,
+                'mine_until_full': bool(o.mine_until_full),
                 'transfer_type': o.transfer_type,
                 'transfer_ironium': o.transfer_ironium,
                 'transfer_boranium': o.transfer_boranium,
@@ -821,7 +822,37 @@ class DetailBuilder():
                 'transfer_colonists': o.transfer_colonists,
                 'target_star': obj if kind == 'star' else None,  # For template access
                 'target_salvage': obj if kind == 'salvage' else None,  # For template access
-            })
+            }
+
+            if o.order_type == 'REMOTEMINE':
+                focus_raw = (getattr(o, 'remotemine_focus', '') or '').strip()
+                focus_keys = [
+                    key.strip().lower()
+                    for key in focus_raw.replace(';', ',').split(',')
+                    if key.strip()
+                ]
+                focus_keys = [key for key in focus_keys if key in ALL_RESOURCE_KEYS]
+                focus_labels = [self._resource_label(key) for key in focus_keys]
+                if focus_labels:
+                    label_text = ', '.join(focus_labels)
+                    if o.mine_until_full:
+                        order_data['remotemine_tooltip'] = f'Mine {label_text} until full'
+                    else:
+                        order_data['remotemine_tooltip'] = f'Mine {label_text}'
+                else:
+                    order_data['remotemine_tooltip'] = (
+                        'Mine all until full' if o.mine_until_full else 'Mine all'
+                    )
+            elif o.order_type == 'BOMB':
+                bomb_until = (o.bomb_until or '').upper()
+                if bomb_until == 'DEFENSES_ZERO':
+                    order_data['bomb_tooltip'] = 'Bomb until 0 defenses'
+                elif bomb_until == 'ONCE':
+                    order_data['bomb_tooltip'] = 'Bomb once'
+                else:
+                    order_data['bomb_tooltip'] = 'Bomb until 0 colonists'
+
+            orders.append(order_data)
         return orders
 
     def get_fleet_cargo(self):

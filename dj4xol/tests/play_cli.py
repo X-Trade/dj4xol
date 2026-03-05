@@ -202,6 +202,29 @@ class PlayCommandTest(TestCase):
         self.assertIn('type: MOVE', output)
         self.assertIn('position: (8, 9)', output)
 
+    def test_orders_list_includes_remotemine_focus(self):
+        fleet = self.player1.fleets.first()
+        star = self.game.stars.exclude(pk=self.player1.homeworld.pk).first()
+        FleetOrders.objects.create(
+            game=self.game,
+            fleet=fleet,
+            order_type='REMOTEMINE',
+            target_star=star,
+            mine_until_full=True,
+            remotemine_focus='ironium,boranium',
+            position=1,
+        )
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/orders %s' % fleet.short_id, '/exit'],
+        )
+        self.assertIn('type: REMOTEMINE', output)
+        self.assertIn('remotemine_focus: ironium,boranium', output)
+        self.assertIn('mine_until_full: true', output)
+
     def test_orders_clear_removes_all_fleet_orders(self):
         fleet = self.player1.fleets.first()
         FleetOrders.objects.create(game=self.game, fleet=fleet, order_type='MOVE', x=1, y=1, position=1)
@@ -482,6 +505,62 @@ class PlayCommandTest(TestCase):
         order = fleet.orders.filter(order_type='REMOTEMINE').first()
         self.assertIsNotNone(order)
         self.assertFalse(order.mine_until_full)
+
+    def test_orders_add_remotemine_accepts_focus_for_large_miners(self):
+        fleet = self.player1.fleets.first()
+        fleet.has_miners = 'LARGE'
+        fleet.save(update_fields=['has_miners'])
+        star = self.game.stars.exclude(pk=self.player1.homeworld.pk).first()
+        star.player = None
+        star.ironium_yield = 100
+        star.boranium_yield = 100
+        star.germanium_yield = 0
+        star.resource_x_yield = 0
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
+        star.save(update_fields=[
+            'player',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+            'resource_x_yield',
+            'resource_y_yield',
+            'resource_z_yield',
+        ])
+
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add REMOTEMINE %s focus=boranium' % (fleet.short_id, star.short_id),
+                '/exit',
+            ],
+        )
+        order = fleet.orders.filter(order_type='REMOTEMINE').first()
+        self.assertIsNotNone(order)
+        self.assertEqual(order.remotemine_focus, 'boranium')
+
+    def test_orders_add_remotemine_ignores_focus_for_small_miners(self):
+        fleet = self.player1.fleets.first()
+        fleet.has_miners = 'SMALL'
+        fleet.save(update_fields=['has_miners'])
+        target_star = self.player2.homeworld
+
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add REMOTEMINE %s focus=boranium' % (fleet.short_id, target_star.short_id),
+                '/exit',
+            ],
+        )
+        order = fleet.orders.filter(order_type='REMOTEMINE').first()
+        self.assertIsNotNone(order)
+        self.assertEqual(order.remotemine_focus, '')
 
     def test_orders_add_remotemine_mines_secret_resources(self):
         fleet = self.player1.fleets.first()
