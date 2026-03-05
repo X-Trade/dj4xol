@@ -3,9 +3,10 @@ from ..starnamer import StarNamer
 from django.test import TestCase
 from ..models import (
     Game, Account, ServerRaceType, ServerRace, ResearchCategory, Technology, Anomaly,
-    random_anomaly_stability_init, random_wormhole_stability_init,
+    Star, Fleet, random_anomaly_stability_init, random_wormhole_stability_init,
 )
 from ..research import get_player_tech_effects
+from ._util import default_game
 from django.contrib.auth.models import User
 from unittest.mock import patch
 
@@ -202,6 +203,29 @@ class testGameFactory(TestCase):
             player.research_progress.values_list('current_level', flat=True)
         )
         self.assertEqual(levels, {3.0})
+
+    def test_game_scoped_short_ids_resolve_map_object_collision(self):
+        game = default_game(stars=1, fleets=0)
+        player = game.players.first()
+        base_id = f"{game.short_id[:4]}dup00000"
+        with patch(
+            'dj4xol.models.AbstractGameObject._generate_short_id_from_uuid',
+            return_value=base_id,
+        ):
+            star = Star.objects.create(game=game, name='Dup Star', x=2, y=2)
+            fleet = Fleet.objects.create(game=game, player=player, name='Dup Fleet', x=2, y=2)
+        self.assertEqual(star.short_id, base_id)
+        self.assertNotEqual(fleet.short_id, base_id)
+        self.assertTrue(fleet.short_id.startswith(base_id[:11]))
+
+    def test_game_scoped_short_ids_allow_cross_game_duplicates(self):
+        game_a = default_game(stars=1, fleets=0)
+        game_b = default_game(stars=1, fleets=0)
+        short_id = "dup000000000"
+        star_a = Star.objects.create(game=game_a, name='Dup A', x=3, y=3, short_id=short_id)
+        star_b = Star.objects.create(game=game_b, name='Dup B', x=4, y=4, short_id=short_id)
+        self.assertEqual(star_a.short_id, short_id)
+        self.assertEqual(star_b.short_id, short_id)
 
     def test_join_player_caps_starting_tech_level_and_refunds_leftover_points(self):
         self.races[0].starting_tech_level = 3

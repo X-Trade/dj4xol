@@ -4,6 +4,7 @@ from dj4xol.starnamer import StarNamer
 from .models import (
     Game, Star, Fleet, Player, Account, Anomaly, Salvage,
     random_anomaly_stability_init, random_wormhole_stability_init,
+    build_game_short_id, iter_short_id_suffixes,
 )
 from . import mineral_rules
 from .research import get_player_tech_effects
@@ -74,21 +75,47 @@ class GameFactory():
             self.game.next_generation = timezone.now() + interval
         self._place_secret_resources()
         self.game.save()
+        used_short_ids = self._collect_existing_short_ids()
         for star in self.stars:
             star.game = self.game
-            if not star.short_id:
-                star.short_id = self.game.short_id[:4] + star.id.hex[-8:]
+        self._assign_short_ids(self.stars, used_short_ids)
         Star.objects.bulk_create(self.stars)
-        self._create_initial_asteroid_fields()
+        self._create_initial_asteroid_fields(used_short_ids)
         if self.pending_anomalies:
-            for anomaly in self.pending_anomalies:
-                if not anomaly.short_id:
-                    anomaly.short_id = self.game.short_id[:4] + anomaly.id.hex[-8:]
+            self._assign_short_ids(self.pending_anomalies, used_short_ids)
             Anomaly.objects.bulk_create(self.pending_anomalies)
         self._create_initial_anomalies()
         return self.game
 
-    def _create_initial_asteroid_fields(self):
+    def _collect_existing_short_ids(self):
+        used = set()
+        if not self.game or not self.game.pk:
+            return used
+        models = [Star, Fleet, Salvage, Anomaly]
+        for model in models:
+            used.update(model.objects.filter(game=self.game).values_list('short_id', flat=True))
+        return used
+
+    def _assign_short_ids(self, objects, used_short_ids):
+        for obj in objects:
+            if obj.short_id:
+                used_short_ids.add(obj.short_id)
+                continue
+            base = build_game_short_id(self.game.short_id, obj.id.int)
+            candidate = self._resolve_short_id_collision(base, used_short_ids)
+            obj.short_id = candidate
+            used_short_ids.add(candidate)
+
+    def _resolve_short_id_collision(self, base, used_short_ids):
+        if base not in used_short_ids:
+            return base
+        for suffix in iter_short_id_suffixes():
+            candidate = f"{base[:12 - len(suffix)]}{suffix}"
+            if candidate not in used_short_ids:
+                return candidate
+        return base
+
+    def _create_initial_asteroid_fields(self, used_short_ids):
         """Seed asteroid fields as salvage objects (~10% of star count)."""
         stars = list(self.game.stars.all())
         if not stars:
@@ -128,7 +155,9 @@ class GameFactory():
                 germanium_inventory=germ,
             )
             if not salvage.short_id:
-                salvage.short_id = self.game.short_id[:4] + salvage.id.hex[-8:]
+                base = build_game_short_id(self.game.short_id, salvage.id.int)
+                salvage.short_id = self._resolve_short_id_collision(base, used_short_ids)
+                used_short_ids.add(salvage.short_id)
             created.append(salvage)
             occupied.add((x, y))
         if created:
@@ -239,9 +268,8 @@ class GameFactory():
             ))
             occupied.add(key)
         if created:
-            for anomaly in created:
-                if not anomaly.short_id:
-                    anomaly.short_id = self.game.short_id[:4] + anomaly.id.hex[-8:]
+            used_short_ids = self._collect_existing_short_ids()
+            self._assign_short_ids(created, used_short_ids)
             Anomaly.objects.bulk_create(created)
             wormholes = list(Anomaly.objects.filter(
                 game=self.game,
