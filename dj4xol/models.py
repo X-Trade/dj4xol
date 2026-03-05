@@ -12,7 +12,7 @@ from .fleet_thumbnails import (
     get_ship_class_from_path,
     is_valid_fleet_thumbnail,
 )
-from .star_thumbnails import choose_star_thumbnail
+from .star_thumbnails import choose_star_thumbnail, is_valid_star_thumbnail
 from .anomaly_thumbnails import (
     choose_anomaly_thumbnail,
     choose_random_anomaly_thumbnail,
@@ -697,9 +697,17 @@ class Star(AbstractMapObject):
     defenses = models.IntegerField(default=0)
     shipyards = models.IntegerField(default=0)
     buildpoints_consumed = models.IntegerField(default=0)  # Reset each turn
+    thumbnail_path = models.CharField(max_length=255, blank=True, default='')
+
+    def save(self, *args, **kwargs):
+        if not self.thumbnail_path or not is_valid_star_thumbnail(self.thumbnail_path):
+            self.thumbnail_path = choose_star_thumbnail(self.id or self.short_id or self.name)
+        super(Star, self).save(*args, **kwargs)
 
     @property
     def effective_thumbnail_path(self):
+        if self.thumbnail_path and is_valid_star_thumbnail(self.thumbnail_path):
+            return self.thumbnail_path
         return choose_star_thumbnail(self.id or self.short_id or self.name)
 
 
