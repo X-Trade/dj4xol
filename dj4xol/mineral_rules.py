@@ -20,8 +20,7 @@ def known_resource_keys(player, star):
         return []
     keys = []
     for key in BASE_MINERAL_KEYS:
-        if resource_present(star, key):
-            keys.append(key)
+        keys.append(key)
     for key in SECRET_RESOURCE_KEYS:
         if resource_present(star, key):
             if player and bool(getattr(player, f'discovered_{key}', False)):
