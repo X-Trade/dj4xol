@@ -1,4 +1,5 @@
 from .models import Game, Player, GameMessage
+from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_name
 import random
 from itertools import chain
 from django.utils.html import escape
@@ -48,6 +49,19 @@ def format_map_object(obj, link=True):
     if link and hasattr(obj, 'game'):
         return map_object_link(obj)
     return name
+
+
+RESOURCE_DISPLAY_NAMES = {
+    'ironium': 'Ironium',
+    'boranium': 'Boranium',
+    'germanium': 'Germanium',
+}
+
+
+def format_resource_name(resource_key):
+    if resource_key in SECRET_RESOURCE_KEYS:
+        return get_secret_resource_name(resource_key)
+    return RESOURCE_DISPLAY_NAMES.get(resource_key, str(resource_key).title())
 
 
 def format_location(obj=None, x=None, y=None, link=True, game=None):
@@ -324,6 +338,48 @@ class MiningDiscoveryMessageFactory(MessageFactory):
             star=format_map_object(self.star),
             qty=self.qty,
             resource=self.resource
+        )
+
+
+class SecretResourceDiscoveryMessageFactory(MessageFactory):
+    """Messages for secret resource discoveries."""
+    category = 'RANDOM'
+    priority = True
+    adjectives = [
+        'puzzling',
+        'perplexing',
+        'exciting',
+        'unique',
+        'disturbing',
+    ]
+    naming_phrases = [
+        'our scientists have dubbed it',
+        'called',
+        'colonists have voted and named it',
+    ]
+    impact_phrases = [
+        'It is believed this will',
+        'This will almost certainly',
+    ]
+
+    def __init__(self, game, player, star, resource_name, fleet=None, message=None):
+        super().__init__(game, player, message, intensity=0.6)
+        self.star = star
+        self.resource_name = resource_name
+        self.fleet = fleet
+
+    def format_message(self):
+        subjects = []
+        if self.fleet:
+            subjects.append(f"{format_map_object(self.fleet)} has")
+        subjects.extend(["We have", "Our scientists have"])
+        subject = random.choice(subjects)
+        adjective = random.choice(self.adjectives)
+        naming = random.choice(self.naming_phrases)
+        impact = random.choice(self.impact_phrases)
+        return (
+            f"{subject} discovered a {adjective} new element on {format_map_object(self.star)}, "
+            f"{naming} '{self.resource_name}'. {impact} open up new avenues of research."
         )
 
 
@@ -865,22 +921,17 @@ class MineralGiftMessageFactory(MessageFactory):
         "{fleet} left a mineral shipment on {star}: {cargo}.",
     ]
 
-    def __init__(self, game, player, fleet_name, star, iron, bor, germ, message=None):
+    def __init__(self, game, player, fleet_name, star, transfers, message=None):
         super().__init__(game, player, message, intensity=0.2)
         self.fleet_name = fleet_name
         self.star = star
-        self.iron = iron
-        self.bor = bor
-        self.germ = germ
+        self.transfers = transfers or {}
 
     def _format_cargo(self):
         parts = []
-        if self.iron > 0:
-            parts.append(f"{self.iron}kt Ironium")
-        if self.bor > 0:
-            parts.append(f"{self.bor}kt Boranium")
-        if self.germ > 0:
-            parts.append(f"{self.germ}kt Germanium")
+        for key, amount in self.transfers.items():
+            if amount > 0:
+                parts.append(f"{amount}kt {format_resource_name(key)}")
         return ", ".join(parts) if parts else "no minerals"
 
     def format_message(self):
@@ -973,7 +1024,7 @@ class FleetWarpDamageMessageFactory(MessageFactory):
         parts = []
         for resource, amount in self.cargo_losses.items():
             if amount > 0:
-                parts.append(f"{amount}kt {resource}")
+                parts.append(f"{amount}kt {format_resource_name(resource)}")
         return ", ".join(parts) if parts else "cargo"
 
     def format_message(self):
@@ -1356,21 +1407,16 @@ class SalvageCollectedMessageFactory(MessageFactory):
         "Salvage operation complete. {fleet} loaded {cargo}.",
     ]
 
-    def __init__(self, game, player, fleet, iron, bor, germ, message=None):
+    def __init__(self, game, player, fleet, transfers, message=None):
         super().__init__(game, player, message, intensity=0.2)
         self.fleet = fleet
-        self.iron = iron
-        self.bor = bor
-        self.germ = germ
+        self.transfers = transfers or {}
 
     def _format_cargo(self):
         parts = []
-        if self.iron > 0:
-            parts.append(f"{self.iron}kt ironium")
-        if self.bor > 0:
-            parts.append(f"{self.bor}kt boranium")
-        if self.germ > 0:
-            parts.append(f"{self.germ}kt germanium")
+        for key, amount in self.transfers.items():
+            if amount > 0:
+                parts.append(f"{amount}kt {format_resource_name(key).lower()}")
         return ", ".join(parts) if parts else "salvage"
 
     def format_message(self):

@@ -128,6 +128,25 @@
                                         </div>
                                         <div class="hull-form-row">
                                             <label class="hull-cost-input">
+                                                {{ secret_resource_labels.resource_x|default:"Resource X" }} Cost
+                                                <input type="number" name="resource_x_cost" min="0" value="{{ hull.resource_x_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <span class="hull-input-suffix">kt</span>
+                                            </label>
+                                            <label class="hull-cost-input">
+                                                {{ secret_resource_labels.resource_y|default:"Resource Y" }} Cost
+                                                <input type="number" name="resource_y_cost" min="0" value="{{ hull.resource_y_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <span class="hull-input-suffix">kt</span>
+                                            </label>
+                                        </div>
+                                        <div class="hull-form-row">
+                                            <label class="hull-cost-input">
+                                                {{ secret_resource_labels.resource_z|default:"Resource Z" }} Cost
+                                                <input type="number" name="resource_z_cost" min="0" value="{{ hull.resource_z_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <span class="hull-input-suffix">kt</span>
+                                            </label>
+                                        </div>
+                                        <div class="hull-form-row">
+                                            <label class="hull-cost-input">
                                                 Fuel Capacity
                                                 <input type="number" name="fuel_capacity" min="0" value="{{ hull.fuel_capacity|default:100 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                                                 <span class="hull-input-suffix">mg</span>

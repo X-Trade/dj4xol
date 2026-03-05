@@ -1,5 +1,9 @@
 import random
 
+BASE_MINERAL_KEYS = ('ironium', 'boranium', 'germanium')
+SECRET_RESOURCE_KEYS = ('resource_x', 'resource_y', 'resource_z')
+ALL_RESOURCE_KEYS = BASE_MINERAL_KEYS + SECRET_RESOURCE_KEYS
+
 
 def random_ironium_yield():
     """Random ironium yield with a stronger high-end bias."""

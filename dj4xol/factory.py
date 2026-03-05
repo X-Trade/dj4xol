@@ -5,6 +5,7 @@ from .models import (
     Game, Star, Fleet, Player, Account, Anomaly,
     random_anomaly_stability_init, random_wormhole_stability_init,
 )
+from . import mineral_rules
 from .research import get_player_tech_effects
 from .fleet_thumbnails import choose_fleet_thumbnail
 import random
@@ -15,6 +16,8 @@ TURN_INTERVALS = {
     'DAILY': timedelta(days=1),
     'WEEKLY': timedelta(weeks=1),
 }
+
+SECRET_RESOURCE_HOMEWORLD_BUFFER = 25
 
 class GameFactory():
     """A factory class to draft and initialise game instances.
@@ -69,6 +72,7 @@ class GameFactory():
         interval = TURN_INTERVALS.get(self.game.turn_scheme)
         if interval:
             self.game.next_generation = timezone.now() + interval
+        self._place_secret_resources()
         self.game.save()
         for star in self.stars:
             star.game = self.game
@@ -512,28 +516,113 @@ class GameFactory():
         """Calculate distance between two stars."""
         return math.sqrt((star1.x - star2.x) ** 2 + (star1.y - star2.y) ** 2)
 
+    def _star_has_secret_resources(self, star):
+        return any(
+            int(getattr(star, f'{key}_yield', 0) or 0) > 0 or
+            int(getattr(star, f'{key}_inventory', 0) or 0) > 0
+            for key in mineral_rules.SECRET_RESOURCE_KEYS
+        )
+
+    def _is_large_map(self):
+        return (
+            int(self.game.map_size_x or 0) > 200 and
+            int(self.game.map_size_y or 0) > 200 and
+            len(self.stars) > 150
+        )
+
+    def _pick_secret_resource_star(self, occupied_positions):
+        candidates = [
+            star for star in self.stars
+            if not self._star_has_secret_resources(star)
+            and star.player is None
+            and (star.x, star.y) not in occupied_positions
+        ]
+        if not candidates:
+            return None
+
+        homeworlds = [p.homeworld for p in self.game.players.select_related('homeworld') if p.homeworld]
+        if not homeworlds:
+            return random.choice(candidates)
+
+        min_dist = self._min_homeworld_distance()
+        far_candidates = [
+            star for star in candidates
+            if all(self._distance(star, hw) >= min_dist for hw in homeworlds)
+        ]
+        if far_candidates:
+            return random.choice(far_candidates)
+
+        return max(
+            candidates,
+            key=lambda s: min(self._distance(s, hw) for hw in homeworlds),
+        )
+
+    def _place_secret_resources(self):
+        if not self.stars:
+            return
+        occupied_positions = set()
+        for star in self.stars:
+            if self._star_has_secret_resources(star):
+                occupied_positions.add((star.x, star.y))
+
+        for key in mineral_rules.SECRET_RESOURCE_KEYS:
+            placements = 1
+            if self._is_large_map() and random.random() < 0.30:
+                placements = 2
+            for _ in range(placements):
+                star = self._pick_secret_resource_star(occupied_positions)
+                if not star:
+                    break
+                setattr(star, f'{key}_yield', random.randint(50, 100))
+                setattr(star, f'{key}_inventory', mineral_rules.random_surface_germanium_init())
+                occupied_positions.add((star.x, star.y))
+
     def _min_homeworld_distance(self):
         """Minimum distance between homeworlds: 250ly or 25% of shortest dimension."""
         return min(250, min(self.game.map_size_x, self.game.map_size_y) * 0.25)
 
     def _find_homeworld_star(self, available_stars):
         """Find a suitable star for a homeworld, respecting minimum distance from others."""
+        if self.game.pk:
+            from django.db.models import Q
+            secret_filter = Q()
+            for key in mineral_rules.SECRET_RESOURCE_KEYS:
+                secret_filter |= Q(**{f'{key}_yield__gt': 0})
+                secret_filter |= Q(**{f'{key}_inventory__gt': 0})
+            secret_stars = list(self.game.stars.filter(secret_filter))
+        else:
+            secret_stars = [
+                star for star in self.stars if self._star_has_secret_resources(star)
+            ]
+
+        def near_secret(star):
+            for secret in secret_stars:
+                if self._distance(star, secret) < SECRET_RESOURCE_HOMEWORLD_BUFFER:
+                    return True
+            return False
+
+        non_secret = [s for s in available_stars if not self._star_has_secret_resources(s)]
+        candidates = non_secret or list(available_stars)
+        preferred = [s for s in candidates if not near_secret(s)]
+        if preferred:
+            candidates = preferred
+
         existing_homeworlds = [p.homeworld for p in self.game.players.select_related('homeworld')
                               if p.homeworld]
         if not existing_homeworlds:
-            return random.choice(available_stars)
+            return random.choice(candidates)
 
         min_dist = self._min_homeworld_distance()
 
         # Find stars far enough from all existing homeworlds
-        suitable = [s for s in available_stars
+        suitable = [s for s in candidates
                     if all(self._distance(s, hw) >= min_dist for hw in existing_homeworlds)]
 
         if suitable:
             return random.choice(suitable)
 
         # Fallback: pick the star with maximum distance to nearest homeworld
-        return max(available_stars, key=lambda s: min(self._distance(s, hw) for hw in existing_homeworlds))
+        return max(candidates, key=lambda s: min(self._distance(s, hw) for hw in existing_homeworlds))
 
     def _assign_homeworld_to_player(self, player, star):
         """Assign a specific star as homeworld to a player with starting population.

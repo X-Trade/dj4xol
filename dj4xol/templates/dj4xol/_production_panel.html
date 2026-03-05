@@ -21,6 +21,9 @@
                             {% if order.cost.ironium %}<tr class="res-iron"><td>Ironium</td><td>{{ order.cost.ironium }}kt</td><td>{{ order.remaining.ironium }}</td></tr>{% endif %}
                             {% if order.cost.boranium %}<tr class="res-bor"><td>Boranium</td><td>{{ order.cost.boranium }}kt</td><td>{{ order.remaining.boranium }}</td></tr>{% endif %}
                             {% if order.cost.germanium %}<tr class="res-germ"><td>Germanium</td><td>{{ order.cost.germanium }}kt</td><td>{{ order.remaining.germanium }}</td></tr>{% endif %}
+                            {% if order.cost.resource_x %}<tr class="res-secret"><td>{{ detail.secret_resource_labels.resource_x }}</td><td>{{ order.cost.resource_x }}kt</td><td>{{ order.remaining.resource_x }}</td></tr>{% endif %}
+                            {% if order.cost.resource_y %}<tr class="res-secret"><td>{{ detail.secret_resource_labels.resource_y }}</td><td>{{ order.cost.resource_y }}kt</td><td>{{ order.remaining.resource_y }}</td></tr>{% endif %}
+                            {% if order.cost.resource_z %}<tr class="res-secret"><td>{{ detail.secret_resource_labels.resource_z }}</td><td>{{ order.cost.resource_z }}kt</td><td>{{ order.remaining.resource_z }}</td></tr>{% endif %}
                             {% if order.cost.colonists %}<tr class="res-col"><td>Colonists</td><td colspan="2">{{ order.cost.colonists }} required</td></tr>{% endif %}
                             {% if order.cost.bp %}<tr><td>BP</td><td>{{ order.cost.bp }}</td><td>{{ order.remaining.bp }}</td></tr>{% endif %}
                         </table>
@@ -62,6 +65,9 @@
                             data-cost-ironium="{{ option.cost.ironium }}"
                             data-cost-boranium="{{ option.cost.boranium }}"
                             data-cost-germanium="{{ option.cost.germanium }}"
+                            data-cost-resource_x="{{ option.cost.resource_x }}"
+                            data-cost-resource_y="{{ option.cost.resource_y }}"
+                            data-cost-resource_z="{{ option.cost.resource_z }}"
                             data-cost-colonists="{{ option.cost.colonists }}">
                         {{ option.label }}
                     </option>
@@ -84,6 +90,18 @@
             </div>
             <div class="detail-row cost-row" data-cost-key="germanium">
                 <span class="env-label">Germanium</span>
+                <span class="detail-value"><span class="cost-value"></span></span>
+            </div>
+            <div class="detail-row cost-row" data-cost-key="resource_x">
+                <span class="env-label">{{ detail.secret_resource_labels.resource_x }}</span>
+                <span class="detail-value"><span class="cost-value"></span></span>
+            </div>
+            <div class="detail-row cost-row" data-cost-key="resource_y">
+                <span class="env-label">{{ detail.secret_resource_labels.resource_y }}</span>
+                <span class="detail-value"><span class="cost-value"></span></span>
+            </div>
+            <div class="detail-row cost-row" data-cost-key="resource_z">
+                <span class="env-label">{{ detail.secret_resource_labels.resource_z }}</span>
                 <span class="detail-value"><span class="cost-value"></span></span>
             </div>
             <div class="detail-row cost-row" data-cost-key="colonists">

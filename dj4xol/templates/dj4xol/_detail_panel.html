@@ -101,7 +101,7 @@
         <div class="collapsible-content">
             {% for key, data in detail.resources.items %}
             <div class="detail-row">
-                <span class="env-label">{{ key }}</span>
+                <span class="env-label">{{ data.label|default:key }}</span>
                 <span class="detail-value">
                     {{ data.yield }}% / {{ data.surface }}kt
                     {% if detail.is_owned and data.mining_rate > 0 %}
@@ -122,7 +122,7 @@
         <div class="collapsible-content">
             {% for key, data in detail.fleet_inventory.items %}
             <div class="env-row">
-                <span class="env-label">{{ key }}</span>
+                <span class="env-label">{{ data.label|default:key }}</span>
                 <div class="inventory-bar">
                     <div class="inventory-fill inventory-{{ key|lower }}" style="width: {{ data.percent|floatformat:1 }}%;"></div>
                 </div>
@@ -190,18 +190,12 @@
             <span class="capacity-display">total: {{ detail.salvage_inventory.total|floatformat:0 }}kt</span>
         </div>
         <div class="collapsible-content">
+            {% for entry in detail.salvage_inventory.items %}
             <div class="detail-row">
-                <span class="env-label">Ironium</span>
-                <span class="detail-value">{{ detail.salvage_inventory.ironium|floatformat:0 }}kt</span>
+                <span class="env-label">{{ entry.label }}</span>
+                <span class="detail-value">{{ entry.amount|floatformat:0 }}kt</span>
             </div>
-            <div class="detail-row">
-                <span class="env-label">Boranium</span>
-                <span class="detail-value">{{ detail.salvage_inventory.boranium|floatformat:0 }}kt</span>
-            </div>
-            <div class="detail-row">
-                <span class="env-label">Germanium</span>
-                <span class="detail-value">{{ detail.salvage_inventory.germanium|floatformat:0 }}kt</span>
-            </div>
+            {% endfor %}
         </div>
     </div>
     {% endif %}
