@@ -1,6 +1,7 @@
 from math import cos, sin, radians
 from html import escape
 from .models import Game, Player, Fleet, Star, Salvage, Anomaly, Report
+from .anomaly_thumbnails import nebula_palette_from_thumbnail
 from .scanners import get_scanner_sources_for_player, fleet_visible_to_player
 
 class StarMap():
@@ -373,9 +374,14 @@ class StarMap():
             offset_x, offset_y = (-7, -8)
         nebula_palette_class = ""
         if anomaly_type == Anomaly.TYPE_NEBULA:
-            palettes = ("blue", "orange", "yellow", "red", "white")
-            idx = sum(ord(ch) for ch in (anomaly.short_id or anomaly.name or "")) % len(palettes)
-            nebula_palette_class = " mapanomaly-nebula-%s" % palettes[idx]
+            palette = None
+            if getattr(anomaly, "thumbnail_path", ""):
+                palette = nebula_palette_from_thumbnail(anomaly.thumbnail_path)
+            if not palette:
+                palettes = ("blue", "orange", "yellow", "red", "white")
+                idx = sum(ord(ch) for ch in (anomaly.short_id or anomaly.name or "")) % len(palettes)
+                palette = palettes[idx]
+            nebula_palette_class = " mapanomaly-nebula-%s" % palette
         return self.render_object(
             anomaly,
             extra_style=" z-index:4; transform: rotate(%.1fdeg);" % render_heading,

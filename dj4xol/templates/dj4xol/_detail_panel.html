@@ -7,6 +7,8 @@
         <img class="object-thumbnail thumb-pop-target" src="{% static detail.fleet_thumbnail %}" alt="Fleet thumbnail">
         {% elif detail.is_star and detail.star_thumbnail %}
         <img class="object-thumbnail thumb-pop-target" src="{% static detail.star_thumbnail %}" alt="Star thumbnail">
+        {% elif detail.is_anomaly and detail.anomaly_thumbnail %}
+        <img class="object-thumbnail thumb-pop-target" src="{% static detail.anomaly_thumbnail %}" alt="Anomaly thumbnail">
         {% endif %}
         {% if detail.objects_here|length > 1 %}
         <select class="detail-selector" onchange="window.location.href='?x={{ selection.x }}&y={{ selection.y }}&sel=' + this.value">
