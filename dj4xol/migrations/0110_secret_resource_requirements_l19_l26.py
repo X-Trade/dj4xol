@@ -25,7 +25,7 @@ EARLY_SINGLE_WEIGHTS = {
 COMBO_WEIGHTS = {
     'ENERGY': {'resource_x': 1},
     'ELECTRONICS': {'resource_y': 1},
-    'METAPHYSICS': {'resource_z': 2, 'resource_y': 1},
+    'METAPHYSICS': {'resource_z': 1},
     'MATERIALS': {'resource_x': 1, 'resource_y': 2},
     'CONSTRUCTION': {'resource_x': 2, 'resource_z': 1},
 }
