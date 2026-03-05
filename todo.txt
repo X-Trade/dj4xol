@@ -1,13 +1,13 @@
 ============= MAIN TODO =============
-1. More anomolies (asteroid field, ancient debris)
+1. More anomolies (ancient debris)
+2. Mine fields
 4. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
-5. Secret resources
 6. fuel factory
 7. fleet-to-fleet Refuelling
 8. Ship Design (Basic)
 9. Instant merge/split fleets (dedicated interactive screen)
 10. Custom server help pages (wiki/cms)
-11. Diplomacy
+11. Diplomacy/Trade
 12. Trade Contracts/Negotiation
 13. Ship Design (Advanced)
 14. LLM/AI integration

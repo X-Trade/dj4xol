@@ -7,6 +7,8 @@
         <img class="object-thumbnail thumb-pop-target" src="{% static detail.fleet_thumbnail %}" alt="Fleet thumbnail">
         {% elif detail.is_star and detail.star_thumbnail %}
         <img class="object-thumbnail thumb-pop-target" src="{% static detail.star_thumbnail %}" alt="Star thumbnail">
+        {% elif detail.is_salvage and detail.salvage_thumbnail %}
+        <img class="object-thumbnail thumb-pop-target" src="{% static detail.salvage_thumbnail %}" alt="Salvage thumbnail">
         {% elif detail.is_anomaly and detail.anomaly_thumbnail %}
         <img class="object-thumbnail thumb-pop-target" src="{% static detail.anomaly_thumbnail %}" alt="Anomaly thumbnail">
         {% endif %}

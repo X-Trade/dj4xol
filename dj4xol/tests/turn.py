@@ -3849,6 +3849,58 @@ class TestFleetTransferOrders(TestCase):
         self.assertEqual(salvage.germanium_inventory, 5)
         self.assertTrue(player.messages.filter(message__icontains="colonists").exists())
 
+    def test_asteroid_field_removed_when_depleted(self):
+        """Asteroid field salvage should be removed when minerals are depleted."""
+        game = default_game()
+        player = game.players.first()
+
+        occupied = {(s.x, s.y) for s in game.stars.all()}
+        target_x, target_y = 30, 30
+        if (target_x, target_y) in occupied:
+            for x in range(0, 100):
+                for y in range(0, 100):
+                    if (x, y) not in occupied:
+                        target_x, target_y = x, y
+                        break
+                else:
+                    continue
+                break
+
+        salvage = Salvage.objects.create(
+            game=game,
+            x=target_x,
+            y=target_y,
+            salvage_type=Salvage.TYPE_ASTEROID_FIELD,
+            ironium_inventory=20,
+            boranium_inventory=5,
+            germanium_inventory=0,
+        )
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Field Hauler",
+            x=target_x,
+            y=target_y,
+            cargo_capacity=100,
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_salvage=salvage,
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertFalse(Salvage.objects.filter(id=salvage.id).exists())
+        self.assertEqual(fleet.ironium_inventory, 20)
+        self.assertEqual(fleet.boranium_inventory, 5)
+        self.assertEqual(fleet.germanium_inventory, 0)
+
     def test_transfer_invasion_changes_owner_on_success(self):
         """Transferring colonists to enemy colony can capture the star."""
         from ..models import FleetOrders
