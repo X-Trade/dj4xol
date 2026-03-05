@@ -3236,6 +3236,82 @@ class TestFleetCargo(TestCase):
         self.assertIn('star_thumbnail', details)
         self.assertTrue(details['star_thumbnail'].startswith('dj4xol/images/thumbs/star/all/'))
 
+    def test_object_details_includes_anomaly_thumbnail(self):
+        from ..objectdetails import DetailBuilder
+        from ..models import Anomaly
+
+        game = default_game()
+        player = game.players.first()
+        anomaly = Anomaly.objects.create(
+            game=game,
+            name="Test Rift",
+            x=5,
+            y=6,
+            anomaly_type=Anomaly.TYPE_RIFT,
+        )
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Scout",
+            x=anomaly.x,
+            y=anomaly.y,
+        )
+
+        detail_builder = DetailBuilder(
+            game,
+            x=anomaly.x,
+            y=anomaly.y,
+            selected=anomaly.short_id.lower(),
+            player=player,
+        )
+        details = detail_builder.build_detail()
+        self.assertIsNotNone(details)
+        self.assertTrue(details['is_anomaly'])
+        self.assertIn('anomaly_thumbnail', details)
+        self.assertTrue(details['anomaly_thumbnail'].startswith('dj4xol/images/thumbs/anomaly/'))
+
+    def test_anomaly_assigns_thumbnail_when_missing(self):
+        from ..models import Anomaly
+
+        game = default_game()
+        anomaly = Anomaly.objects.create(
+            game=game,
+            name="Random Anomaly",
+            x=2,
+            y=3,
+            anomaly_type=Anomaly.TYPE_COMET,
+        )
+        self.assertTrue(anomaly.thumbnail_path)
+        self.assertTrue(anomaly.thumbnail_path.startswith('dj4xol/images/thumbs/anomaly/'))
+
+    def test_invalid_thumbnails_fallback_to_class(self):
+        from ..models import Anomaly, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Broken Thumb",
+            x=1,
+            y=1,
+            thumbnail_path="dj4xol/images/thumbs/ship/scout/missing.png",
+        )
+        fleet_thumb = fleet.effective_thumbnail_path
+        self.assertTrue(fleet_thumb.startswith('dj4xol/images/thumbs/ship/scout/'))
+
+        anomaly = Anomaly.objects.create(
+            game=game,
+            name="Missing Nebula",
+            x=3,
+            y=4,
+            anomaly_type=Anomaly.TYPE_NEBULA,
+            thumbnail_path="dj4xol/images/thumbs/anomaly/nebula/missing.png",
+        )
+        anomaly_thumb = anomaly.effective_thumbnail_path
+        self.assertTrue(anomaly_thumb.startswith('dj4xol/images/thumbs/anomaly/nebula/'))
+
 
 class TestProductionProgress(TestCase):
     """Test production order progress calculations."""

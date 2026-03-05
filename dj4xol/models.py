@@ -7,8 +7,17 @@ from django.core.exceptions import ValidationError
 from itertools import chain
 from .starnamer import StarNamer
 from .habitability_rules import HabitabilityRules
-from .fleet_thumbnails import choose_fleet_thumbnail
+from .fleet_thumbnails import (
+    choose_fleet_thumbnail,
+    get_ship_class_from_path,
+    is_valid_fleet_thumbnail,
+)
 from .star_thumbnails import choose_star_thumbnail
+from .anomaly_thumbnails import (
+    choose_anomaly_thumbnail,
+    choose_random_anomaly_thumbnail,
+    is_valid_anomaly_thumbnail,
+)
 from . import mineral_rules
 import random
 import uuid
@@ -531,10 +540,24 @@ class Anomaly(AbstractMapObject):
         on_delete=models.SET_NULL,
         related_name='wormhole_pair_reverse',
     )
+    thumbnail_path = models.CharField(max_length=255, blank=True, default='')
 
     @property
     def player(self):
         return None
+
+    def save(self, *args, **kwargs):
+        if not self.thumbnail_path or not is_valid_anomaly_thumbnail(self.thumbnail_path):
+            self.thumbnail_path = choose_random_anomaly_thumbnail(self.anomaly_type)
+        super(Anomaly, self).save(*args, **kwargs)
+
+    @property
+    def effective_thumbnail_path(self):
+        if self.thumbnail_path and is_valid_anomaly_thumbnail(self.thumbnail_path):
+            return self.thumbnail_path
+        return choose_random_anomaly_thumbnail(self.anomaly_type) or choose_anomaly_thumbnail(
+            self.id or self.short_id or self.name, self.anomaly_type
+        )
 
 
 class Fleet(AbstractMapObject):
@@ -613,9 +636,10 @@ class Fleet(AbstractMapObject):
 
     @property
     def effective_thumbnail_path(self):
-        if self.thumbnail_path:
+        if self.thumbnail_path and is_valid_fleet_thumbnail(self.thumbnail_path):
             return self.thumbnail_path
-        return choose_fleet_thumbnail(self.id or self.short_id or self.name)
+        ship_class = get_ship_class_from_path(self.thumbnail_path)
+        return choose_fleet_thumbnail(self.id or self.short_id or self.name, ship_class)
 
     @property
     def cargo_used(self):

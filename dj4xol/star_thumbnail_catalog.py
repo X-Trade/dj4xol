@@ -43,6 +43,12 @@ ALL_STAR_THUMBNAILS = [
     "dj4xol/images/thumbs/star/all/5__r02_c01.png",
     "dj4xol/images/thumbs/star/all/5__r02_c02.png",
     "dj4xol/images/thumbs/star/all/5__r02_c03.png",
+    "dj4xol/images/thumbs/star/all/6_r01_c01.png",
+    "dj4xol/images/thumbs/star/all/6_r01_c02.png",
+    "dj4xol/images/thumbs/star/all/6_r01_c03.png",
+    "dj4xol/images/thumbs/star/all/6_r02_c01.png",
+    "dj4xol/images/thumbs/star/all/6_r02_c02.png",
+    "dj4xol/images/thumbs/star/all/6_r02_c03.png",
 ]
 
 STAR_THUMBNAIL_COUNT = len(ALL_STAR_THUMBNAILS)
