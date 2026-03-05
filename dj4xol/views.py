@@ -1507,6 +1507,23 @@ def help_anomalies(request):
 
 
 @registration_required()
+def help_secret_resources(request):
+    account = request.user.dj4xol_account
+    from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
+    resource_labels = []
+    for key in SECRET_RESOURCE_KEYS:
+        discovered = bool(getattr(account, f'discovered_{key}', False)) if account else False
+        resource_labels.append({
+            'key': key,
+            'label': get_secret_resource_label(key, discovered),
+        })
+    return render(request, 'dj4xol/help_secret_resources.html', {
+        'user_theme': account.theme if account else 'classic',
+        'resource_labels': resource_labels,
+    })
+
+
+@registration_required()
 def help_space_combat(request):
     account = request.user.dj4xol_account
     return render(request, 'dj4xol/help_space_combat.html', {

@@ -934,11 +934,15 @@ class GameTurn():
             bonus_rp = int(round(float(bonus_rp) * extra_multiplier))
             bonus_rp = int(round(float(bonus_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
             bonus_rp = int(round(float(bonus_rp) * scanner_multiplier))
-            result = apply_research_bonus_rp(player, category.id, bonus_rp)
+            extra_rp = self._convert_secret_resources_to_rp(fleet)
+            total_rp = int(bonus_rp) + int(extra_rp)
+            result = apply_research_bonus_rp(player, category.id, total_rp)
             text = (
                 "Anomaly data from %s granted %s bonus RP in %s."
                 % (format_map_object(anomaly), bonus_rp, category.name)
             )
+            if extra_rp > 0:
+                text += " Exotic cargo yielded %s RP." % int(extra_rp)
             if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
                 text += " Level increased to %s." % int(result['new_level'])
             self._create_anomaly_message(player, text, priority=False)
@@ -947,14 +951,38 @@ class GameTurn():
         progress_rp = int(round(float(progress_rp) * extra_multiplier))
         progress_rp = int(round(float(progress_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
         progress_rp = int(round(float(progress_rp) * scanner_multiplier))
-        result = apply_research_bonus_rp(player, category.id, progress_rp)
+        extra_rp = self._convert_secret_resources_to_rp(fleet)
+        total_rp = int(progress_rp) + int(extra_rp)
+        result = apply_research_bonus_rp(player, category.id, total_rp)
         text = (
             "Major anomaly breakthrough at %s: %s RP applied to %s."
             % (format_map_object(anomaly), progress_rp, category.name)
         )
+        if extra_rp > 0:
+            text += " Exotic cargo yielded %s RP." % int(extra_rp)
         if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
             text += " Level increased to %s." % int(result['new_level'])
         self._create_anomaly_message(player, text, priority=False)
+
+    @staticmethod
+    def _convert_secret_resources_to_rp(fleet):
+        rates = {
+            'resource_x': 2,
+            'resource_y': 3,
+            'resource_z': 4,
+        }
+        extra_rp = 0
+        update_fields = []
+        for key, rate in rates.items():
+            amount = int(getattr(fleet, f'{key}_inventory', 0) or 0)
+            if amount <= 0:
+                continue
+            extra_rp += amount * int(rate)
+            setattr(fleet, f'{key}_inventory', 0)
+            update_fields.append(f'{key}_inventory')
+        if update_fields:
+            fleet.save(update_fields=update_fields)
+        return int(extra_rp)
 
     def _apply_black_hole_interaction(self, fleet, anomaly):
         """Resolve black hole interactions with a custom high-danger D6 table.

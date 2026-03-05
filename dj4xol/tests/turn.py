@@ -623,6 +623,52 @@ class TestAnomalyInteractions(TestCase):
             message__icontains='bonus RP',
         ).exists())
 
+    def test_anomaly_research_converts_secret_resources(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Anomaly Probe',
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+            advanced_scanner_range=1,
+            resource_x_inventory=5,
+            resource_y_inventory=4,
+            resource_z_inventory=3,
+        )
+        Anomaly.objects.create(
+            game=game,
+            x=fleet.x,
+            y=fleet.y,
+            name='Research Nebula',
+            anomaly_type=Anomaly.TYPE_NEBULA,
+            stability=100,
+        )
+        row = ensure_player_research_rows(player)[0]
+        captured = {}
+
+        def _record_bonus(player_arg, category_id, bonus_rp):
+            captured['category_id'] = category_id
+            captured['bonus_rp'] = bonus_rp
+            return {'old_level': 0, 'new_level': 0}
+
+        with patch('dj4xol.turn.random.randint', side_effect=[6, 200]):
+            with patch('dj4xol.turn.random.random', return_value=0.1):
+                with patch('dj4xol.turn.random.choice', return_value=row):
+                    with patch('dj4xol.turn.apply_research_bonus_rp', side_effect=_record_bonus):
+                        GameTurn(game).anomaly_interactions()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.resource_x_inventory, 0)
+        self.assertEqual(fleet.resource_y_inventory, 0)
+        self.assertEqual(fleet.resource_z_inventory, 0)
+        self.assertEqual(captured.get('category_id'), row.category_id)
+        self.assertEqual(captured.get('bonus_rp'), 200 + (5 * 2 + 4 * 3 + 3 * 4))
+
     def test_anomaly_damage_and_destroy_send_messages(self):
         game = default_game()
         game.anomalies_enabled = True
