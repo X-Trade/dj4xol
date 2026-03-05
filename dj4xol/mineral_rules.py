@@ -5,6 +5,30 @@ SECRET_RESOURCE_KEYS = ('resource_x', 'resource_y', 'resource_z')
 ALL_RESOURCE_KEYS = BASE_MINERAL_KEYS + SECRET_RESOURCE_KEYS
 
 
+def resource_present(star, resource_key):
+    """Return True if the star has yield or surface stockpiles for a resource."""
+    if not star or not resource_key:
+        return False
+    yield_val = int(getattr(star, f'{resource_key}_yield', 0) or 0)
+    inventory_val = int(getattr(star, f'{resource_key}_inventory', 0) or 0)
+    return yield_val > 0 or inventory_val > 0
+
+
+def known_resource_keys(player, star):
+    """Return resource keys known to the player and present on the star."""
+    if not star:
+        return []
+    keys = []
+    for key in BASE_MINERAL_KEYS:
+        if resource_present(star, key):
+            keys.append(key)
+    for key in SECRET_RESOURCE_KEYS:
+        if resource_present(star, key):
+            if player and bool(getattr(player, f'discovered_{key}', False)):
+                keys.append(key)
+    return keys
+
+
 def random_ironium_yield():
     """Random ironium yield with a stronger high-end bias."""
     base = random.random()

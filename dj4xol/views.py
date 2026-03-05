@@ -14,6 +14,7 @@ import random
 
 from dj4xol.objectdetails import DetailBuilder
 from dj4xol.secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
+from dj4xol.mineral_rules import ALL_RESOURCE_KEYS, known_resource_keys
 
 from .models import (
     Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
@@ -1111,6 +1112,22 @@ def add_fleet_order(request, game_short_id):
         remotemine_target = request.POST.get('remotemine_target', '')
         if remotemine_target:
             order.target_star = Star.objects.get(short_id=remotemine_target, game=game)
+        focus_raw = (request.POST.get('remotemine_focus', '') or '').strip()
+        focus_keys = []
+        if focus_raw:
+            focus_keys = [
+                key.strip().lower()
+                for key in focus_raw.replace(';', ',').split(',')
+                if key.strip()
+            ]
+            focus_keys = [key for key in focus_keys if key in ALL_RESOURCE_KEYS]
+        if str(fleet.has_miners).strip().upper() == 'LARGE' and focus_keys:
+            if order.target_star:
+                allowed = set(known_resource_keys(player, order.target_star))
+                focus_keys = [key for key in focus_keys if key in allowed]
+            order.remotemine_focus = ','.join(focus_keys)
+        else:
+            order.remotemine_focus = ''
 
     elif order_type == 'MERGE':
         # Merge orders always have repeat=False (fleet is deleted on merge)

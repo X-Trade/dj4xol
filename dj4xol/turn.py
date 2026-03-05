@@ -3834,28 +3834,35 @@ class GameTurn():
             return 'waiting'
         return self._execute_remote_mine_order(fleet, order)
 
-    def _extract_minerals_with_standard_rules(self, star, total_extraction):
+    def _extract_minerals_with_standard_rules(self, star, total_extraction, resource_keys=None):
         """Extract minerals from a star using standard mining/depletion mechanics.
 
         Returns per-resource extracted whole kt:
         {'ironium': int, 'boranium': int, 'germanium': int, 'resource_x': int, ...}
         and updates star yield fields in-place.
         """
+        if resource_keys is None:
+            resource_keys = ALL_RESOURCE_KEYS
+        else:
+            resource_keys = [key for key in resource_keys if key in ALL_RESOURCE_KEYS]
         total_extraction = max(0.0, float(total_extraction or 0.0))
+        produced = {key: 0 for key in ALL_RESOURCE_KEYS}
         if total_extraction <= 0:
-            return {key: 0 for key in ALL_RESOURCE_KEYS}
+            return produced
+
+        if not resource_keys:
+            return produced
 
         total_yield = sum(
-            int(getattr(star, f'{key}_yield', 0) or 0) for key in ALL_RESOURCE_KEYS
+            int(getattr(star, f'{key}_yield', 0) or 0) for key in resource_keys
         )
         if total_yield <= 0:
-            return {key: 0 for key in ALL_RESOURCE_KEYS}
+            return produced
 
         is_homeworld = star.homeworld_of.exists()
         min_yield = HOMEWORLD_MIN_YIELD if is_homeworld else 0
-        produced = {key: 0 for key in ALL_RESOURCE_KEYS}
 
-        for key in ALL_RESOURCE_KEYS:
+        for key in resource_keys:
             resource = f'{key}_yield'
             yield_val = int(getattr(star, resource, 0) or 0)
             if yield_val <= 0:
@@ -3893,6 +3900,28 @@ class GameTurn():
                 setattr(star, resource, new_yield)
 
         return produced
+
+    def _parse_remotemine_focus_keys(self, order):
+        raw = (getattr(order, 'remotemine_focus', '') or '').strip()
+        if not raw:
+            return []
+        parts = [
+            part.strip().lower()
+            for part in raw.replace(';', ',').split(',')
+            if part.strip()
+        ]
+        return [key for key in parts if key in ALL_RESOURCE_KEYS]
+
+    def _get_remotemine_focus_keys(self, order, fleet):
+        if not order or not fleet:
+            return ALL_RESOURCE_KEYS
+        miner_type = normalize_miner_type(getattr(fleet, 'has_miners', None))
+        if miner_type != 'LARGE':
+            return ALL_RESOURCE_KEYS
+        keys = self._parse_remotemine_focus_keys(order)
+        if not keys:
+            return ALL_RESOURCE_KEYS
+        return keys
 
     def _execute_remote_mine_order(self, fleet, order):
         """Execute one year of remote mining into fleet cargo with surface overflow."""
@@ -3955,7 +3984,12 @@ class GameTurn():
 
         virtual_mines = max(0, int(fleet.ship_count or 0)) * miner_units_per_ship
         total_extraction = float(virtual_mines) * KT_PER_MINE
-        produced = self._extract_minerals_with_standard_rules(star, total_extraction)
+        focus_keys = self._get_remotemine_focus_keys(order, fleet)
+        produced = self._extract_minerals_with_standard_rules(
+            star,
+            total_extraction,
+            resource_keys=focus_keys,
+        )
 
         remaining_capacity = max(0, int(fleet.cargo_remaining or 0))
         fleet_added = {}

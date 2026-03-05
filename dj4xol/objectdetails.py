@@ -2,7 +2,12 @@ from django.db import models
 from dj4xol.models import Fleet, Star, Salvage, Anomaly, Report
 from dj4xol.scanners import get_scanner_sources_for_player, fleet_visible_to_player
 from dj4xol.turn import apply_population_change, KT_PER_MINE
-from dj4xol.mineral_rules import ALL_RESOURCE_KEYS, SECRET_RESOURCE_KEYS
+from dj4xol.mineral_rules import (
+    ALL_RESOURCE_KEYS,
+    BASE_MINERAL_KEYS,
+    SECRET_RESOURCE_KEYS,
+    known_resource_keys,
+)
 from dj4xol.secret_resources import get_secret_resource_label
 from dj4xol.research import (
     get_player_colony_defense_level,
@@ -161,6 +166,7 @@ class DetailBuilder():
                      'colonise_targets': self.get_colonise_targets(),
                      'bomb_targets': self.get_bomb_targets(),
                      'remotemine_targets': self.get_remotemine_targets(),
+                     'remotemine_focus_options': self.get_remotemine_focus_options(),
                      'merge_targets': self.get_merge_targets(),
                      'patrol_targets': self.get_patrol_targets(),
                      'effective_location': self.get_fleet_effective_location() if isinstance(self.selected_obj, Fleet) else None,
@@ -1435,6 +1441,7 @@ class DetailBuilder():
                 'short_id': star.short_id,
                 'type': 'star',
                 'is_homeworld': bool(homeworld_id and star.id == homeworld_id),
+                'resource_keys': known_resource_keys(self.player, star),
             })
 
         if not targets:
@@ -1457,6 +1464,24 @@ class DetailBuilder():
             'display_mode': 'multiple',
             'default_target': targets[0]
         }
+
+    def get_remotemine_focus_options(self):
+        """Return mineral focus options for advanced remote miners."""
+        if not isinstance(self.selected_obj, Fleet):
+            return []
+        if not self.selected_obj.has_miners:
+            return []
+        if str(self.selected_obj.has_miners).strip().upper() != 'LARGE':
+            return []
+
+        options = []
+        for key in BASE_MINERAL_KEYS:
+            options.append({'key': key, 'label': self._resource_label(key)})
+        if self.player:
+            for key in SECRET_RESOURCE_KEYS:
+                if getattr(self.player, f'discovered_{key}', False):
+                    options.append({'key': key, 'label': self._resource_label(key)})
+        return options
 
     def get_merge_targets(self):
         """Get available merge targets at the fleet's effective location.
