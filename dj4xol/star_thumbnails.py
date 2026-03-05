@@ -24,6 +24,14 @@ def _filter_existing(paths):
     return list(existing) if existing else list(paths)
 
 
+def is_valid_star_thumbnail(path):
+    if not path:
+        return False
+    if path not in ALL_STAR_THUMBNAILS:
+        return False
+    return (STATIC_ROOT / path).exists()
+
+
 def _seed_to_index(seed, count):
     if count <= 0:
         return 0
