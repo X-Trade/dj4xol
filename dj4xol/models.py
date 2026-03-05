@@ -477,6 +477,18 @@ class ServerRaceType(HabitabilityMixin):
 
 class Salvage(AbstractMapObject):
     """Recoverable minerals left behind when vessels are destroyed or scuttled."""
+    TYPE_SALVAGE = 'SALVAGE'
+    TYPE_ASTEROID_FIELD = 'ASTEROID_FIELD'
+    TYPE_CHOICES = [
+        (TYPE_SALVAGE, 'Salvage'),
+        (TYPE_ASTEROID_FIELD, 'Asteroid Field'),
+    ]
+
+    salvage_type = models.CharField(
+        max_length=24,
+        choices=TYPE_CHOICES,
+        default=TYPE_SALVAGE,
+    )
     ironium_inventory = models.IntegerField(default=0)
     boranium_inventory = models.IntegerField(default=0)
     germanium_inventory = models.IntegerField(default=0)
@@ -494,6 +506,8 @@ class Salvage(AbstractMapObject):
     @property
     def name(self):
         """Display name for salvage."""
+        if self.salvage_type == self.TYPE_ASTEROID_FIELD:
+            return f"Asteroid Field ({self.x}, {self.y})"
         return f"Salvage ({self.x}, {self.y})"
 
     @property

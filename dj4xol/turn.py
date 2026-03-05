@@ -46,7 +46,7 @@ from .messages import (
 )
 import random
 
-from .mineral_rules import ALL_RESOURCE_KEYS
+from .mineral_rules import ALL_RESOURCE_KEYS, random_asteroid_field_minerals
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_name
 from .colony_rules import (
     BILLION,
@@ -174,7 +174,8 @@ ANOMALY_BONUS_RP_MIN = 150
 ANOMALY_BONUS_RP_MAX = 400
 ANOMALY_MAJOR_PROGRESS_RP_MIN = 500
 ANOMALY_MAJOR_PROGRESS_RP_MAX = 900
-ANOMALY_SPAWN_CHANCE_PER_YEAR = 0.05
+ANOMALY_SPAWN_CHANCE_PER_YEAR = 0.02
+ASTEROID_FIELD_SPAWN_SHARE = 0.25
 ANOMALY_MAX_STAR_RATIO = 0.15
 ANOMALY_COMET_DRIFT_WARP = 1.0
 ANOMALY_MAX_RISK_REWARD_BONUS = 0.50
@@ -701,7 +702,7 @@ class GameTurn():
             self._apply_anomaly_research_boon(fleet, anomaly)
 
     def spawn_anomalies(self):
-        """Very rarely spawn a new anomaly, respecting per-game cap."""
+        """Very rarely spawn a new anomaly or asteroid field."""
         if not bool(getattr(self.game, 'anomalies_enabled', False)):
             return
         if random.random() >= ANOMALY_SPAWN_CHANCE_PER_YEAR:
@@ -713,10 +714,6 @@ class GameTurn():
         star_count = int(Star.objects.filter(game=self.game).count())
         if star_count <= 0:
             return
-        max_allowed = max(1, int(round(star_count * ANOMALY_MAX_STAR_RATIO)))
-        current = int(Anomaly.objects.filter(game=self.game).count())
-        if current >= max_allowed:
-            return
 
         occupied = set(Star.objects.filter(game=self.game).values_list('x', 'y'))
         occupied.update(Fleet.objects.filter(game=self.game).values_list('x', 'y'))
@@ -726,6 +723,30 @@ class GameTurn():
         min_y = 1
         max_x = max(1, int(self.game.map_size_x) - 1)
         max_y = max(1, int(self.game.map_size_y) - 1)
+
+        if random.random() < ASTEROID_FIELD_SPAWN_SHARE:
+            for _ in range(120):
+                x = random.randint(min_x, max_x)
+                y = random.randint(min_y, max_y)
+                if (x, y) in occupied:
+                    continue
+                iron, bor, germ = random_asteroid_field_minerals()
+                Salvage.objects.create(
+                    game=self.game,
+                    x=x,
+                    y=y,
+                    salvage_type=Salvage.TYPE_ASTEROID_FIELD,
+                    ironium_inventory=iron,
+                    boranium_inventory=bor,
+                    germanium_inventory=germ,
+                )
+                break
+            return
+
+        max_allowed = max(1, int(round(star_count * ANOMALY_MAX_STAR_RATIO)))
+        current = int(Anomaly.objects.filter(game=self.game).count())
+        if current >= max_allowed:
+            return
         for _ in range(120):
             x = random.randint(min_x, max_x)
             y = random.randint(min_y, max_y)

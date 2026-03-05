@@ -94,3 +94,64 @@ def random_surface_germanium_init():
 def random_surface_mineral_init():
     """Random non-ironium surface minerals (Boranium/Germanium legacy default)."""
     return random_surface_boranium_init()
+
+
+def random_asteroid_field_minerals(total_min=1000, total_max=100000):
+    """Generate mineral totals for an asteroid field (avg ~50/30/20)."""
+    total = random.randint(int(total_min), int(total_max))
+    base = (0.50, 0.30, 0.20)
+    jitters = (
+        random.uniform(-0.45, 0.45),
+        random.uniform(-0.45, 0.45),
+        random.uniform(-0.45, 0.45),
+    )
+    weights = [
+        max(0.0, base[0] + jitters[0]),
+        max(0.0, base[1] + jitters[1]),
+        max(0.0, base[2] + jitters[2]),
+    ]
+    # Keep average iron-heavy but allow broad variance and occasional zeros.
+    if weights[0] <= 0.0:
+        weights[0] = random.uniform(0.05, 0.20)
+
+    zero_idx = [idx for idx, val in enumerate(weights) if val <= 0.0]
+    if len(zero_idx) > 1:
+        revive = random.choice(zero_idx)
+        weights[revive] = random.uniform(0.03, 0.12)
+
+    weight_sum = sum(weights)
+    if weight_sum <= 0:
+        weights = list(base)
+        weight_sum = sum(weights)
+
+    iron = int(round(total * (weights[0] / weight_sum)))
+    bor = int(round(total * (weights[1] / weight_sum)))
+    germ = total - iron - bor
+
+    if weights[0] > 0 and iron <= 0:
+        iron = 1
+    if weights[1] > 0 and bor <= 0:
+        bor = 1
+    if weights[2] > 0 and germ <= 0:
+        germ = 1
+
+    remainder = total - (iron + bor + germ)
+    if remainder != 0:
+        iron = max(0, iron + remainder)
+
+    if sum(1 for val in (iron, bor, germ) if val == 0) > 1:
+        if bor == 0 and germ == 0:
+            bor = 1
+            germ = 1
+            iron = max(0, total - bor - germ)
+        elif iron == 0:
+            iron = 1
+            if bor == 0:
+                bor = 1
+            if germ == 0:
+                germ = 1
+            remainder = total - (iron + bor + germ)
+            if remainder != 0:
+                iron = max(0, iron + remainder)
+
+    return iron, bor, germ

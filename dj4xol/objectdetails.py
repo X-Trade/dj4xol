@@ -9,6 +9,7 @@ from dj4xol.mineral_rules import (
     known_resource_keys,
 )
 from dj4xol.secret_resources import get_secret_resource_label
+from dj4xol.salvage_thumbnails import get_salvage_thumbnail
 from dj4xol.research import (
     get_player_colony_defense_level,
     get_player_production_costs,
@@ -152,6 +153,10 @@ class DetailBuilder():
                          self.selected_obj.effective_thumbnail_path
                          if isinstance(self.selected_obj, Anomaly) else None
                      ),
+                     'salvage_thumbnail': (
+                         get_salvage_thumbnail(self.selected_obj)
+                         if isinstance(self.selected_obj, Salvage) else None
+                     ),
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
                      'salvage_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Salvage) else None,
@@ -216,6 +221,9 @@ class DetailBuilder():
             ),
             'anomaly_thumbnail': (
                 self.selected_obj.effective_thumbnail_path if target_type == 'anomaly' else None
+            ),
+            'salvage_thumbnail': (
+                get_salvage_thumbnail(self.selected_obj) if target_type == 'salvage' else None
             ),
             'report_year': report_year,
             'report_age': self.game.year - report_year,

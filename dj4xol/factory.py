@@ -2,7 +2,7 @@ from datetime import timedelta
 from django.utils import timezone
 from dj4xol.starnamer import StarNamer
 from .models import (
-    Game, Star, Fleet, Player, Account, Anomaly,
+    Game, Star, Fleet, Player, Account, Anomaly, Salvage,
     random_anomaly_stability_init, random_wormhole_stability_init,
 )
 from . import mineral_rules
@@ -79,6 +79,7 @@ class GameFactory():
             if not star.short_id:
                 star.short_id = self.game.short_id[:4] + star.id.hex[-8:]
         Star.objects.bulk_create(self.stars)
+        self._create_initial_asteroid_fields()
         if self.pending_anomalies:
             for anomaly in self.pending_anomalies:
                 if not anomaly.short_id:
@@ -86,6 +87,52 @@ class GameFactory():
             Anomaly.objects.bulk_create(self.pending_anomalies)
         self._create_initial_anomalies()
         return self.game
+
+    def _create_initial_asteroid_fields(self):
+        """Seed asteroid fields as salvage objects (~10% of star count)."""
+        stars = list(self.game.stars.all())
+        if not stars:
+            return
+        count = int(round(len(stars) * 0.10))
+        if count <= 0:
+            return
+        occupied = {(star.x, star.y) for star in stars}
+        if self.pending_anomalies:
+            occupied.update({(a.x, a.y) for a in self.pending_anomalies})
+        existing_salvage = list(Salvage.objects.filter(game=self.game))
+        if existing_salvage:
+            occupied.update({(s.x, s.y) for s in existing_salvage})
+        existing_anomalies = list(Anomaly.objects.filter(game=self.game))
+        if existing_anomalies:
+            occupied.update({(a.x, a.y) for a in existing_anomalies})
+        min_x = 1
+        min_y = 1
+        max_x = max(1, self.game.map_size_x - 1)
+        max_y = max(1, self.game.map_size_y - 1)
+        created = []
+        attempts = max(100, count * 40)
+        while len(created) < count and attempts > 0:
+            attempts -= 1
+            x = random.randint(min_x, max_x)
+            y = random.randint(min_y, max_y)
+            if (x, y) in occupied:
+                continue
+            iron, bor, germ = mineral_rules.random_asteroid_field_minerals()
+            salvage = Salvage(
+                game=self.game,
+                x=x,
+                y=y,
+                salvage_type=Salvage.TYPE_ASTEROID_FIELD,
+                ironium_inventory=iron,
+                boranium_inventory=bor,
+                germanium_inventory=germ,
+            )
+            if not salvage.short_id:
+                salvage.short_id = self.game.short_id[:4] + salvage.id.hex[-8:]
+            created.append(salvage)
+            occupied.add((x, y))
+        if created:
+            Salvage.objects.bulk_create(created)
 
     def _create_initial_anomalies(self):
         """Seed low-density anomalies for games where anomalies are enabled."""
@@ -98,6 +145,9 @@ class GameFactory():
         count = max(1, int(round(len(stars) * 0.05)))
         count = min(max_count, count)
         occupied = {(star.x, star.y) for star in stars}
+        existing_salvage = list(Salvage.objects.filter(game=self.game))
+        if existing_salvage:
+            occupied.update({(salvage.x, salvage.y) for salvage in existing_salvage})
         existing_anomalies = list(Anomaly.objects.filter(game=self.game))
         if existing_anomalies:
             occupied.update({(anomaly.x, anomaly.y) for anomaly in existing_anomalies})

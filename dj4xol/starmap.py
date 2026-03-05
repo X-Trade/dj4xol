@@ -54,6 +54,7 @@ class StarMap():
         self.anomalies = game.anomalys.all()
         self.star_report_tiers = {}
         self.explored_star_ids = set()
+        self.explored_salvage_ids = set()
         if self.player:
             reports = list(Report.objects.filter(
                 game=self.game,
@@ -62,6 +63,14 @@ class StarMap():
             ))
             self.explored_star_ids = set(
                 report.target_id for report in reports
+            )
+            salvage_reports = list(Report.objects.filter(
+                game=self.game,
+                player=self.player,
+                target_type='salvage',
+            ))
+            self.explored_salvage_ids = set(
+                report.target_id for report in salvage_reports
             )
             for report in reports:
                 tier = 'advanced'
@@ -299,6 +308,14 @@ class StarMap():
             return "mapstar-explored"
         return "mapstar-unexplored"
 
+    def _get_salvage_exploration_class(self, salvage):
+        """Return salvage exploration visibility class for current player."""
+        if not self.player:
+            return "mapstar-explored"
+        if salvage.id in self.explored_salvage_ids:
+            return "mapstar-explored"
+        return "mapstar-unexplored"
+
     def _can_reveal_star_owner(self, star):
         """Return True if current player can see ownership of the star."""
         if not self.player:
@@ -330,6 +347,12 @@ class StarMap():
 
     def render_salvage(self, salvage):
         """Render a salvage pile on map using HTML (hollow yellow square)"""
+        if getattr(salvage, 'salvage_type', None) == Salvage.TYPE_ASTEROID_FIELD:
+            return self.render_object(
+                salvage,
+                class_override="mapsalvage-asteroid",
+                extra_classes=self._get_salvage_exploration_class(salvage),
+            )
         return self.render_object(salvage)
 
     def render_anomaly(self, anomaly):
