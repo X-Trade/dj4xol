@@ -20,7 +20,7 @@ from dj4xol.models import (
     Salvage,
     Star,
 )
-from dj4xol.mineral_rules import SECRET_RESOURCE_KEYS
+from dj4xol.mineral_rules import ALL_RESOURCE_KEYS, SECRET_RESOURCE_KEYS, known_resource_keys
 from dj4xol.colony_rules import calculate_habitability_factor
 from dj4xol.objectdetails import DetailBuilder
 from dj4xol.research import (
@@ -529,7 +529,7 @@ class Command(BaseCommand):
                         "syntax": "/orders <fleet_id> add BOMB <star_id> [bomb_until=colonists_zero|defenses_zero|once] [repeat]",
                     },
                     "REMOTEMINE": {
-                        "syntax": "/orders <fleet_id> add REMOTEMINE <star_id> [mine_until_full=1|0] [repeat]",
+                        "syntax": "/orders <fleet_id> add REMOTEMINE <star_id> [mine_until_full=1|0] [focus=ironium,boranium,...] [repeat]",
                     },
                     "MERGE": {
                         "syntax": "/orders <fleet_id> add MERGE <fleet_id>",
@@ -716,6 +716,14 @@ class Command(BaseCommand):
             mine_until_full = str(extras["kwargs"].get("mine_until_full", "1")).strip().lower()
             order.mine_until_full = mine_until_full not in ("0", "false", "off", "no")
             order.target_star = target_obj
+            focus_raw = extras["kwargs"].get("focus", extras["kwargs"].get("remotemine_focus", ""))
+            focus_keys = self._parse_remotemine_focus_keys(focus_raw)
+            if str(fleet.has_miners).strip().upper() == "LARGE" and focus_keys:
+                allowed = set(known_resource_keys(fleet.player, target_obj))
+                focus_keys = [key for key in focus_keys if key in allowed]
+                order.remotemine_focus = ",".join(focus_keys)
+            else:
+                order.remotemine_focus = ""
 
         elif order_type == "MERGE":
             if not extras["positionals"]:
@@ -874,6 +882,16 @@ class Command(BaseCommand):
             raise CommandError("%s must be >= 0" % label)
         return value
 
+    def _parse_remotemine_focus_keys(self, raw):
+        if raw is None:
+            return []
+        tokens = [
+            part.strip().lower()
+            for part in str(raw).replace(";", ",").split(",")
+            if part.strip()
+        ]
+        return [token for token in tokens if token in ALL_RESOURCE_KEYS]
+
     def _apply_transfer_defaults_if_empty(self, order, target_obj, target_kind):
         if order.transfer_type != "LOAD":
             return
@@ -917,7 +935,7 @@ class Command(BaseCommand):
         payload = {}
         for order in orders:
             target_obj, target_x, target_y, target_kind = order.get_actual_target()
-            payload[order.short_id] = {
+            order_data = {
                 "position": order.position,
                 "type": order.order_type,
                 "repeat": bool(order.repeat),
@@ -944,6 +962,16 @@ class Command(BaseCommand):
                 "intercept_speed": order.intercept_speed,
                 "patrol_radius": order.patrol_radius,
             }
+            if order.order_type == "REMOTEMINE":
+                focus_keys = self._parse_remotemine_focus_keys(order.remotemine_focus)
+                if focus_keys:
+                    order_data["remotemine_focus"] = ",".join(focus_keys)
+                else:
+                    order_data["remotemine_focus"] = "all"
+                order_data["mine_until_full"] = bool(order.mine_until_full)
+            if order.order_type == "BOMB":
+                order_data["bomb_until"] = order.bomb_until
+            payload[order.short_id] = order_data
         return payload
 
     def _handle_research_command(self, raw, player):

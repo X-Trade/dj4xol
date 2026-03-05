@@ -38,8 +38,14 @@
                         <span>Colonise {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
                     {% elif order.order_type == 'BOMB' %}
                         <span>Bomb {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
+                        {% if order.bomb_tooltip %}
+                        <div class="order-tooltip"><span>{{ order.bomb_tooltip }}</span></div>
+                        {% endif %}
                     {% elif order.order_type == 'REMOTEMINE' %}
                         <span>Remote Mine {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
+                        {% if order.remotemine_tooltip %}
+                        <div class="order-tooltip"><span>{{ order.remotemine_tooltip }}</span></div>
+                        {% endif %}
                     {% elif order.order_type == 'MERGE' %}
                         <span>Merge into {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
                     {% elif order.order_type == 'SCUTTLE' %}
