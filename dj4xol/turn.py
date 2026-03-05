@@ -1505,7 +1505,7 @@ class GameTurn():
         }
         # Get fleet IDs first, then fetch fresh for each processing
         # This ensures we see changes made by other fleet's transfers
-        fleet_ids = list(self.game.fleets.values_list('id', flat=True))
+        fleet_ids = list(self.game.fleets.order_by('id').values_list('id', flat=True))
         random.shuffle(fleet_ids)
         for fleet_id in fleet_ids:
             try:

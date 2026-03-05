@@ -164,7 +164,7 @@ class HabitabilityMixin(models.Model):
 class UUIDMixin(models.Model):
     """Mixin providing UUID primary key and short_id for URL-friendly identification."""
     id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
-    short_id = models.CharField(max_length=12, editable=False, unique=True)
+    short_id = models.CharField(max_length=12, editable=False)
 
     class Meta:
         abstract = True
@@ -329,6 +329,9 @@ class Game(UUIDMixin):
     _star_names = []
     _star_namer = None
 
+    class Meta:
+        unique_together = [['short_id']]
+
     def __str__(self):
         return f'{self.short_id} {self.name}'
 
@@ -364,6 +367,43 @@ class Game(UUIDMixin):
         return full_display.split(' - ')[0] if ' - ' in full_display else full_display
 
 
+def _base36_chars():
+    import string
+    return string.digits + string.ascii_lowercase
+
+
+def _int_to_base36(value, width):
+    chars = _base36_chars()
+    if value < 0:
+        value = -value
+    out = ''
+    temp = int(value)
+    for _ in range(width):
+        out = chars[temp % 36] + out
+        temp //= 36
+    return out or '0'.rjust(width, '0')
+
+
+def build_game_short_id(game_short_id, uuid_int):
+    """Generate a 12-char game-scoped short id from a UUID int."""
+    # XOR the 128-bit UUID in 32-bit chunks to get 32 bits
+    chunk1 = (uuid_int >> 96) & 0xFFFFFFFF  # Top 32 bits
+    chunk2 = (uuid_int >> 64) & 0xFFFFFFFF  # Next 32 bits
+    chunk3 = (uuid_int >> 32) & 0xFFFFFFFF  # Next 32 bits
+    chunk4 = uuid_int & 0xFFFFFFFF          # Bottom 32 bits
+
+    xor_result = chunk1 ^ chunk2 ^ chunk3 ^ chunk4
+    short_part = _int_to_base36(xor_result, 8)
+    return f"{(game_short_id or '')[:4]}{short_part}"
+
+
+def iter_short_id_suffixes(max_len=3):
+    """Yield deterministic base36 suffixes for collision resolution."""
+    for length in range(1, max_len + 1):
+        for counter in range(36 ** length):
+            yield _int_to_base36(counter, length)
+
+
 class AbstractGameObject(UUIDMixin):
     game = models.ForeignKey(Game, related_name="%(class)ss",
             on_delete=models.CASCADE)
@@ -376,35 +416,39 @@ class AbstractGameObject(UUIDMixin):
         if not self.short_id:
             # Generate deterministic short_id using XOR approach for better entropy distribution
             uuid_int = self.id.int
-            self.short_id = self._generate_short_id_from_uuid(uuid_int)
+            base = self._generate_short_id_from_uuid(uuid_int)
+            self.short_id = self._resolve_game_short_id_collision(base)
 
         super(UUIDMixin, self).save(*args, **kwargs)
 
     def _generate_short_id_from_uuid(self, uuid_int):
-        """Generate short_id by XORing UUID chunks for better entropy distribution."""
-        # XOR the 128-bit UUID in 32-bit chunks to get 32 bits
-        chunk1 = (uuid_int >> 96) & 0xFFFFFFFF  # Top 32 bits
-        chunk2 = (uuid_int >> 64) & 0xFFFFFFFF  # Next 32 bits
-        chunk3 = (uuid_int >> 32) & 0xFFFFFFFF  # Next 32 bits
-        chunk4 = uuid_int & 0xFFFFFFFF          # Bottom 32 bits
+        """Generate base short_id by XORing UUID chunks."""
+        return build_game_short_id(self.game.short_id, uuid_int)
 
-        # XOR all chunks together
-        xor_result = chunk1 ^ chunk2 ^ chunk3 ^ chunk4
+    def _short_id_in_use(self, candidate):
+        """Check if candidate short_id is already used within this game."""
+        if not self.game_id:
+            return False
+        if isinstance(self, AbstractMapObject):
+            model_candidates = [Star, Fleet, Salvage, Anomaly]
+        else:
+            model_candidates = [self.__class__]
+        for model in model_candidates:
+            qs = model.objects.filter(game_id=self.game_id, short_id=candidate)
+            if self.pk and model == self.__class__:
+                qs = qs.exclude(pk=self.pk)
+            if qs.exists():
+                return True
+        return False
 
-        # Add game prefix for scoping
-        game_prefix = self.game.short_id[:4]
-
-        # Convert to base36 (0-9, a-z) for readability, take 8 chars to fit in 12 total
-        import string
-        base36_chars = string.digits + string.ascii_lowercase
-
-        short_part = ''
-        temp = xor_result
-        for _ in range(8):  # Generate 8 characters
-            short_part = base36_chars[temp % 36] + short_part
-            temp //= 36
-
-        return game_prefix + short_part
+    def _resolve_game_short_id_collision(self, base):
+        if not self._short_id_in_use(base):
+            return base
+        for suffix in iter_short_id_suffixes():
+            candidate = f"{base[:12 - len(suffix)]}{suffix}"
+            if not self._short_id_in_use(candidate):
+                return candidate
+        return base
 
     class Meta:
         abstract = True
@@ -516,7 +560,7 @@ class Salvage(AbstractMapObject):
         return None
 
     class Meta:
-        unique_together = [['game', 'x', 'y']]
+        unique_together = [['game', 'x', 'y'], ['game', 'short_id']]
 
 
 class Anomaly(AbstractMapObject):
@@ -572,6 +616,9 @@ class Anomaly(AbstractMapObject):
         return choose_random_anomaly_thumbnail(self.anomaly_type) or choose_anomaly_thumbnail(
             self.id or self.short_id or self.name, self.anomaly_type
         )
+
+    class Meta:
+        unique_together = [['game', 'short_id']]
 
 
 class Fleet(AbstractMapObject):
@@ -668,6 +715,9 @@ class Fleet(AbstractMapObject):
         """Remaining cargo capacity (in kt equivalent)."""
         return self.cargo_capacity - self.cargo_used
 
+    class Meta:
+        unique_together = [['game', 'short_id']]
+
 
 class Star(AbstractMapObject):
     name = models.CharField(max_length=30)
@@ -724,6 +774,9 @@ class Star(AbstractMapObject):
             return self.thumbnail_path
         return choose_star_thumbnail(self.id or self.short_id or self.name)
 
+    class Meta:
+        unique_together = [['game', 'short_id']]
+
 
 class ServerRace(UUIDMixin, HabitabilityMixin):
     name = models.CharField(max_length=16)
@@ -749,6 +802,9 @@ class ServerRace(UUIDMixin, HabitabilityMixin):
 
     def __str__(self):
         return self.name
+
+    class Meta:
+        unique_together = [['short_id']]
 
 
 class Player(AbstractGameObject, HabitabilityMixin):
@@ -786,6 +842,9 @@ class Player(AbstractGameObject, HabitabilityMixin):
         if self.plural_name is None:
             self.plural_name = self.name + 's'
         super(Player, self).save(*args, **kwargs)
+
+    class Meta:
+        unique_together = [['game', 'short_id']]
 
 
 class FleetOrders(AbstractGameObject):
@@ -979,6 +1038,9 @@ class FleetOrders(AbstractGameObject):
             self.position = max_pos + 1
         super(FleetOrders, self).save(*args, **kwargs)
 
+    class Meta:
+        unique_together = [['game', 'short_id']]
+
 
 class ResearchCategory(models.Model):
     """Research category with configurable display order."""
@@ -1029,7 +1091,7 @@ class Technology(UUIDMixin):
 
     class Meta:
         ordering = ['category', 'level', 'display_order', 'name']
-        unique_together = [['category', 'level', 'name']]
+        unique_together = [['category', 'level', 'name'], ['short_id']]
 
     def __str__(self):
         return '%s L%s: %s' % (self.category.name, self.level, self.name)
@@ -1252,6 +1314,9 @@ class GameMessage(AbstractGameObject):
             self.year = self.game.year
         super(GameMessage, self).save(*args, **kwargs)
 
+    class Meta:
+        unique_together = [['game', 'short_id']]
+
 
 class GameInvitation(UUIDMixin):
     """Invitation to join a game, by account or email."""
@@ -1262,7 +1327,7 @@ class GameInvitation(UUIDMixin):
     created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = [['game', 'account'], ['game', 'email']]
+        unique_together = [['game', 'account'], ['game', 'email'], ['short_id']]
 
     def __str__(self):
         target = self.account.alias if self.account else self.email
@@ -1315,6 +1380,7 @@ class ProductionOrder(AbstractGameObject):
 
     class Meta:
         ordering = ['position']
+        unique_together = [['game', 'short_id']]
 
 
 class Report(AbstractGameObject):
@@ -1339,7 +1405,7 @@ class Report(AbstractGameObject):
     cached_report = models.TextField()  # JSON-serialised report data
 
     class Meta:
-        unique_together = [['player', 'target_type', 'target_id']]
+        unique_together = [['player', 'target_type', 'target_id'], ['game', 'short_id']]
 
     def __str__(self):
         return f'{self.player.name} report on {self.target_type} {self.target_id}'

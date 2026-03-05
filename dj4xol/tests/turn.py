@@ -779,12 +779,13 @@ class TestAnomalyInteractions(TestCase):
             star.save(update_fields=['x', 'y'])
         turn = GameTurn(game)
         randint_values = [50, 50, 60, 60]
-        with patch('dj4xol.turn.random.random', return_value=0.0):
-            with patch('dj4xol.turn.random.choice', return_value=Anomaly.TYPE_WORMHOLE):
-                with patch('dj4xol.turn.random.randint', side_effect=lambda *_: (
-                    randint_values.pop(0) if randint_values else 7
-                )):
-                    turn.spawn_anomalies()
+        with patch('dj4xol.turn.ASTEROID_FIELD_SPAWN_SHARE', 0.0):
+            with patch('dj4xol.turn.random.random', return_value=0.0):
+                with patch('dj4xol.turn.random.choice', return_value=Anomaly.TYPE_WORMHOLE):
+                    with patch('dj4xol.turn.random.randint', side_effect=lambda *_: (
+                        randint_values.pop(0) if randint_values else 7
+                    )):
+                        turn.spawn_anomalies()
         wormholes = list(Anomaly.objects.filter(
             game=game,
             anomaly_type=Anomaly.TYPE_WORMHOLE,
