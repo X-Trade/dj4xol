@@ -31,6 +31,7 @@ urlpatterns = [
     url(r'^help/fleet-composition/$', views.help_fleet_composition, name='help_fleet_composition'),
     url(r'^help/research-labs/$', views.help_research_labs, name='help_research_labs'),
     url(r'^help/anomalies/$', views.help_anomalies, name='help_anomalies'),
+    url(r'^help/secret-resources/$', views.help_secret_resources, name='help_secret_resources'),
     url(r'^help/space-combat/$', views.help_space_combat, name='help_space_combat'),
     url(r'^help/invasion/$', views.help_invasion, name='help_invasion'),
     url(r'^help/technology/$', views.help_technology, name='help_technology'),
