@@ -814,6 +814,7 @@ class FleetOrders(AbstractGameObject):
         default='COLONISTS_ZERO',
     )
     mine_until_full = models.BooleanField(default=True)
+    remotemine_focus = models.TextField(blank=True, default='')
 
     @property
     def target(self):

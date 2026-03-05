@@ -105,6 +105,7 @@
             <input type="hidden" name="bomb_until" id="bomb-until-input" value="COLONISTS_ZERO">
             <input type="hidden" name="remotemine_target" id="remotemine-target-input" value="">
             <input type="hidden" name="mine_until_full" id="mine-until-full-input" value="1">
+            <input type="hidden" name="remotemine_focus" id="remotemine-focus-input" value="">
             <input type="hidden" name="merge_target" id="merge-target-input" value="">
             <input type="hidden" name="patrol_radius" id="patrol-radius-input" value="15">
             <input type="hidden" name="intercept_speed" id="intercept-speed-input" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
@@ -248,14 +249,14 @@
                     <div class="dest-display-row" id="remotemine-destination" style="display: none;">
                         {% if detail.remotemine_targets.display_mode == 'single' %}
                             <span class="dest-display">{{ detail.remotemine_targets.default_target.name }}{% if detail.remotemine_targets.default_target.is_homeworld %} (Home){% endif %}</span>
-                            <input type="hidden" id="remotemine-single-target-value" data-target="{{ detail.remotemine_targets.default_target.short_id }}">
+                            <input type="hidden" id="remotemine-single-target-value" data-target="{{ detail.remotemine_targets.default_target.short_id }}" data-minerals="{{ detail.remotemine_targets.default_target.resource_keys|join:',' }}">
                         {% elif detail.remotemine_targets.display_mode == 'empty' %}
                             <span class="dest-display"><em>No star at location</em></span>
-                            <input type="hidden" id="remotemine-empty-target-value" data-target="">
+                            <input type="hidden" id="remotemine-empty-target-value" data-target="" data-minerals="">
                         {% else %}
                             <select id="remotemine-target" class="transfer-target-select">
                                 {% for obj in detail.remotemine_targets.targets %}
-                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% endif %}</option>
+                                    <option value="{{ obj.short_id }}" data-minerals="{{ obj.resource_keys|join:',' }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% endif %}</option>
                                 {% endfor %}
                             </select>
                         {% endif %}
@@ -420,6 +421,22 @@
                             <label><input type="checkbox" id="mine-until-full-checkbox" checked> Block queue until cargo is full</label>
                         </div>
                     </div>
+                    {% if detail.remotemine_focus_options %}
+                    <div class="order-param-row" id="remotemine-focus-row">
+                        <label>Focus Minerals</label>
+                        <div class="transfer-type-row">
+                            {% for option in detail.remotemine_focus_options %}
+                                <label class="remotemine-focus-option" data-resource="{{ option.key }}">
+                                    <input type="checkbox" class="remotemine-focus-checkbox" value="{{ option.key }}">
+                                    {{ option.label }}
+                                </label>
+                            {% endfor %}
+                        </div>
+                        <div class="colonise-warning" style="color: #888; font-style: italic; padding: 4px 0 0 0;">
+                            If none selected, all minerals will be mined.
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
 
                 <!-- Merge warning message -->
@@ -455,6 +472,8 @@
     var transferTypeInput = document.getElementById('transfer-type-input');
     var bombUntilInput = document.getElementById('bomb-until-input');
     var mineUntilFullInput = document.getElementById('mine-until-full-input');
+    var remotemineFocusInput = document.getElementById('remotemine-focus-input');
+    var remotemineFocusRow = document.getElementById('remotemine-focus-row');
     var addBtn = document.getElementById('add-order-btn');
     
     // Warp factor slider elements
@@ -726,6 +745,67 @@
         }
     }
 
+    function parseMineralList(value) {
+        if (!value) return [];
+        return value.split(',').map(function(part) {
+            return part.trim().toLowerCase();
+        }).filter(function(part) {
+            return part.length > 0;
+        });
+    }
+
+    function getRemotemineAvailableMinerals() {
+        var select = document.getElementById('remotemine-target');
+        if (select && select.options.length) {
+            var opt = select.options[select.selectedIndex];
+            return parseMineralList(opt.getAttribute('data-minerals'));
+        }
+        var single = document.getElementById('remotemine-single-target-value');
+        if (single) {
+            return parseMineralList(single.getAttribute('data-minerals'));
+        }
+        return [];
+    }
+
+    function syncRemotemineFocusInput() {
+        if (!remotemineFocusInput) return;
+        var checked = [];
+        var boxes = document.querySelectorAll('.remotemine-focus-checkbox');
+        boxes.forEach(function(box) {
+            if (!box.disabled && box.checked) {
+                checked.push(box.value);
+            }
+        });
+        remotemineFocusInput.value = checked.join(',');
+    }
+
+    function updateRemotemineFocusAvailability() {
+        if (!remotemineFocusRow) return;
+        var allowed = {};
+        getRemotemineAvailableMinerals().forEach(function(key) {
+            allowed[key] = true;
+        });
+        var anyVisible = false;
+        var options = document.querySelectorAll('.remotemine-focus-option');
+        options.forEach(function(option) {
+            var key = option.getAttribute('data-resource');
+            var checkbox = option.querySelector('input[type="checkbox"]');
+            var isVisible = !!allowed[key];
+            option.style.display = isVisible ? 'inline-flex' : 'none';
+            if (checkbox) {
+                checkbox.disabled = !isVisible;
+                if (!isVisible) {
+                    checkbox.checked = false;
+                }
+            }
+            if (isVisible) {
+                anyVisible = true;
+            }
+        });
+        remotemineFocusRow.style.display = anyVisible ? '' : 'none';
+        syncRemotemineFocusInput();
+    }
+
     // Initialize merge target input based on display mode
     function initializeMergeTarget() {
         var mergeTargetInput = document.getElementById('merge-target-input');
@@ -932,6 +1012,7 @@
 
             initializeRemoteMineTarget();
             initializeRemoteMineCompletionMode();
+            updateRemotemineFocusAvailability();
             updateAddButtonStateRemoteMine();
         } else if (currentType === 'MERGE') {
             moveParams.style.display = 'none';
@@ -1155,6 +1236,7 @@
         remotemineTargetSelect.addEventListener('change', function() {
             remotemineTargetInput.value = this.value;
             updateAddButtonStateRemoteMine();
+            updateRemotemineFocusAvailability();
         });
     }
 
@@ -1171,6 +1253,15 @@
     if (mineUntilFullCheckbox && mineUntilFullInput) {
         mineUntilFullCheckbox.addEventListener('change', function() {
             mineUntilFullInput.value = this.checked ? '1' : '0';
+        });
+    }
+
+    var remotemineFocusBoxes = document.querySelectorAll('.remotemine-focus-checkbox');
+    if (remotemineFocusBoxes.length) {
+        remotemineFocusBoxes.forEach(function(box) {
+            box.addEventListener('change', function() {
+                syncRemotemineFocusInput();
+            });
         });
     }
 

@@ -8231,6 +8231,49 @@ class TestRemoteMineOrders(TestCase):
         self.assertEqual(medium_fleet.ironium_inventory, 20)  # 1 * MEDIUM(2) * 10
         self.assertEqual(large_fleet.ironium_inventory, 80)   # 2 * LARGE(4) * 10
 
+    def test_remote_mine_focus_limits_extraction_to_selected_minerals(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        star = game.stars.exclude(pk=player.homeworld.pk).first()
+        star.player = None
+        star.ironium_yield = 100
+        star.boranium_yield = 100
+        star.germanium_yield = 0
+        star.resource_x_yield = 0
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
+        star.save(update_fields=[
+            'player',
+            'ironium_yield', 'boranium_yield', 'germanium_yield',
+            'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Focused Miner',
+            x=star.x,
+            y=star.y,
+            ship_count=1,
+            has_miners='LARGE',
+            cargo_capacity=1000,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='REMOTEMINE',
+            target_star=star,
+            remotemine_focus='boranium',
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.boranium_inventory, 40)
+        self.assertEqual(fleet.ironium_inventory, 0)
+
     def test_remote_mine_deposits_overflow_to_surface(self):
         from ..models import FleetOrders
 
