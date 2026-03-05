@@ -1,12 +1,13 @@
 # Secret Resources Plan
 
 **Summary**
-Add three hidden resources (`resource_x`, `resource_y`, `resource_z`) that are globally nameable via server settings, only visible to a player/account once discovered, and usable in research requirements and production costs. Each resource spawns on exactly one star per game, never on a homeworld, and not co-located. Discovery is account-level and unlocks naming in research/help screens and inventory displays.
+Add three hidden resources (`resource_x`, `resource_y`, `resource_z`) that are globally nameable via server settings, only visible to a player in-game once discovered, and usable in research requirements and production costs. Each resource spawns on exactly one star per game, never on a homeworld, and not co-located. Discovery is recorded on both `Player` (per-game) and `Account` (cross-game), with account-level discovery unlocking names in help/technology screens.
 
 **Terminology**
 - Internal keys: `resource_x`, `resource_y`, `resource_z`
 - Default display names (server settings): Uniquium, Rarium, Mysterium
-- “Discovered” means the account has encountered the resource in any game
+- “Discovered (player)” means the player has encountered the resource in the current game
+- “Discovered (account)” means the account has encountered the resource in any game
 
 **Player-Facing Rules**
 - Secret resources are hidden unless present in the viewed inventory/report.
@@ -53,7 +54,8 @@ Add three hidden resources (`resource_x`, `resource_y`, `resource_z`) that are g
 - Add helper accessors to map internal keys to display names, falling back to defaults.
 
 **Game Generation (Factory)**
-- Add a placement step after homeworlds are assigned so we can avoid them.
+- Place secret resources during game creation (before homeworld assignment).
+- When selecting homeworlds, exclude stars with secret resources and prefer a ~25ly buffer from them.
 - For each secret resource:
   - Choose exactly one star that is not a homeworld and does not already have another secret resource.
   - On very large maps (both dimensions > 200px and > 150 stars), allow *rarely* placing a second star for that resource.
