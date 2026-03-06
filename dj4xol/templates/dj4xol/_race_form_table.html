@@ -160,6 +160,15 @@
         <td class="hint">-16 points. One category focus instead of percentage budgeting.</td>
     </tr>
     <tr>
+        <th>Fixed Homeworld:</th>
+        <td>
+            {{ form.fixed_homeworld }}
+            <label for="id_fixed_homeworld">Fixed homeworld (no reassignment)</label>
+            {{ form.fixed_homeworld.errors }}
+        </td>
+        <td class="hint">-16 points. Homeworld defenses +50%, but losing it ends the game.</td>
+    </tr>
+    <tr>
         <th>Leftover Points:</th>
         <td>
             {{ form.spend_leftover_on_minerals }}

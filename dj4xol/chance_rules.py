@@ -86,3 +86,58 @@ def luck_ratio_chance(base_chance, source_luck, target_luck,
     if high < low:
         low, high = high, low
     return max(low, min(high, chance))
+
+
+def transfer_raid_success_chance(attacker_strength, defender_strength,
+                                 attacker_luck, defender_luck,
+                                 integrity_lost=0, ships_lost=0, ship_count=0,
+                                 damage_weight=0.5, ship_weight=0.4,
+                                 min_chance=0.0, max_chance=1.0):
+    """Return success chance for a transfer raid based on strength, luck, and damage."""
+    try:
+        attacker = float(attacker_strength)
+    except (TypeError, ValueError):
+        attacker = 0.0
+    try:
+        defender = float(defender_strength)
+    except (TypeError, ValueError):
+        defender = 0.0
+
+    if attacker <= 0.0:
+        base = 0.0
+    elif defender <= 0.0:
+        base = 1.0
+    else:
+        base = attacker / (attacker + defender)
+
+    base = luck_ratio_chance(base, attacker_luck, defender_luck,
+                             min_chance=min_chance, max_chance=max_chance)
+
+    try:
+        integrity = float(integrity_lost)
+    except (TypeError, ValueError):
+        integrity = 0.0
+    damage_ratio = max(0.0, min(1.0, integrity / 100.0))
+
+    try:
+        ships_lost_val = int(ships_lost or 0)
+    except (TypeError, ValueError):
+        ships_lost_val = 0
+    try:
+        ship_count_val = int(ship_count or 0)
+    except (TypeError, ValueError):
+        ship_count_val = 0
+    ship_total = max(1, ship_count_val + ships_lost_val)
+    ship_ratio = max(0.0, min(1.0, ships_lost_val / float(ship_total)))
+
+    try:
+        damage_weight_val = float(damage_weight)
+    except (TypeError, ValueError):
+        damage_weight_val = 0.0
+    try:
+        ship_weight_val = float(ship_weight)
+    except (TypeError, ValueError):
+        ship_weight_val = 0.0
+    penalty = (damage_ratio * damage_weight_val) + (ship_ratio * ship_weight_val)
+    chance = base * max(0.0, 1.0 - penalty)
+    return clamp_probability(chance)

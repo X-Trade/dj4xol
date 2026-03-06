@@ -1238,6 +1238,8 @@ def create_game(request):
             factory.game.max_players = d.get('max_players')
             factory.game.turn_scheme = d['turn_scheme']
             factory.game.years_per_turn = d['years_per_turn']
+            factory.game.research_cost_multiplier = d.get('research_cost_multiplier', 1.0)
+            factory.game.warp_speed_multiplier = d.get('warp_speed_multiplier', 1.0)
             factory.game.random_events = d.get('random_events', False)
             factory.game.anomalies_enabled = d.get('anomalies_enabled', False)
             factory.game.anomaly_spawn_rate = d.get('anomaly_spawn_rate', 'NORMAL') or 'NORMAL'

@@ -1398,6 +1398,41 @@ class OrbitalDefenseHitMessageFactory(MessageFactory):
         )
 
 
+class TransferRaidThwartedMessageFactory(MessageFactory):
+    """Messages when a fleet raid fails while stealing from an enemy star."""
+    category = 'COMBAT'
+    priority = True
+    templates_attacker = [
+        "Fleet {fleet} tried to take {resource_desc} from {owner} at {star}, but was thwarted and took {damage}% damage.",
+        "Raid on {star} failed: {fleet} could not seize {resource_desc} from {owner}, suffering {damage}% damage.",
+        "Theft run at {star} was repelled; {fleet} took {damage}% damage while trying to take {resource_desc} from {owner}.",
+    ]
+    templates_defender = [
+        "Defenses at {star} repelled a raid by {fleet}; the attackers took {damage}% damage.",
+        "Raiders from {fleet} were driven off at {star}, losing {damage}% integrity.",
+        "Planetary defenses stopped a theft attempt at {star}; {fleet} suffered {damage}% damage.",
+    ]
+
+    def __init__(self, game, player, fleet_name, star, owner_name, resource_desc, damage, perspective='attacker', message=None):
+        super().__init__(game, player, message, intensity=-0.3)
+        self.fleet_name = fleet_name
+        self.star = star
+        self.owner_name = owner_name
+        self.resource_desc = resource_desc
+        self.damage = int(damage)
+        self.perspective = perspective
+
+    def format_message(self):
+        templates = self.templates_attacker if self.perspective == 'attacker' else self.templates_defender
+        return random.choice(templates).format(
+            fleet=self.fleet_name,
+            star=format_map_object(self.star),
+            owner=self.owner_name,
+            resource_desc=self.resource_desc,
+            damage=self.damage,
+        )
+
+
 class SalvageCollectedMessageFactory(MessageFactory):
     """Messages for salvage collection via Transfer."""
     category = 'GENERAL'

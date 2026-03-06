@@ -14,6 +14,7 @@ from ..research import (
     get_player_tech_effects,
     get_player_colony_defense_level,
     get_player_colony_scanner_ranges,
+    get_level_requirement,
 )
 from ..turn import (
     GameTurn,
@@ -670,3 +671,31 @@ class ResearchTurnTest(TestCase):
         effects = get_player_tech_effects(self.player)
         self.assertEqual(effects['has_bombs'], 'NOVA')
         self.assertEqual(effects['has_miners'], 'LARGE')
+
+
+class ResearchCostMultiplierTest(TestCase):
+    def test_research_cost_multiplier_scales_requirements(self):
+        game = default_game(stars=3)
+        player = game.players.first()
+        game.research_cost_multiplier = 2.0
+        game.save(update_fields=['research_cost_multiplier'])
+        category = ResearchCategory.objects.create(
+            code='MULT', name='Multiplier Test', enabled=True
+        )
+        ResearchLevelRequirement.objects.create(
+            category=category,
+            level=1,
+            rp_cost=100,
+            ironium_cost=20,
+            boranium_cost=0,
+            germanium_cost=5,
+            resource_x_cost=2,
+            resource_y_cost=0,
+            resource_z_cost=1,
+        )
+        requirement = get_level_requirement(category.id, 1, player=player)
+        self.assertEqual(requirement['rp_cost'], 200)
+        self.assertEqual(requirement['ironium_cost'], 40)
+        self.assertEqual(requirement['germanium_cost'], 10)
+        self.assertEqual(requirement['resource_x_cost'], 4)
+        self.assertEqual(requirement['resource_z_cost'], 2)

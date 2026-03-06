@@ -18,6 +18,7 @@ from ..colony_rules import (
 from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, Report
 from ..factory import GameFactory
 from ..research import ensure_player_research_rows
+from ..chance_rules import transfer_raid_success_chance
 from django.test import TestCase
 from ._util import default_game, get_default_race, get_default_race_type
 from unittest.mock import patch, PropertyMock
@@ -8576,3 +8577,218 @@ class TestRemoteMineOrders(TestCase):
         fleet_base.refresh_from_db()
         fleet_boost.refresh_from_db()
         self.assertLessEqual(fleet_boost.integrity, fleet_base.integrity)
+
+
+class TestHomeworldLossAndDerelicts(TestCase):
+    def _make_two_player_game(self):
+        race = get_default_race()
+        user1 = User.objects.create_user('p1_user', 'p1@test.com', 'pass')
+        user2 = User.objects.create_user('p2_user', 'p2@test.com', 'pass')
+        account1 = Account.objects.create(django_user=user1)
+        account2 = Account.objects.create(django_user=user2)
+        factory = GameFactory()
+        factory.set_map_size(120, 120)
+        factory.set_owner(account1)
+        factory.game.joinable = True
+        factory.create_stars(6)
+        game = factory.save()
+        if game.random_events or game.anomalies_enabled:
+            game.random_events = False
+            game.anomalies_enabled = False
+            game.save(update_fields=['random_events', 'anomalies_enabled'])
+        player1 = factory.join_player(account1, race)
+        player2 = factory.join_player(account2, race)
+        return game, player1, player2
+
+    def _find_empty_location(self, game):
+        for x in range(0, int(game.map_size_x or 0)):
+            for y in range(0, int(game.map_size_y or 0)):
+                if not Star.objects.filter(game=game, x=x, y=y).exists():
+                    return x, y
+        return 0, 0
+
+    def test_transfer_raid_thwarted_blocks_load(self):
+        game, attacker, defender = self._make_two_player_game()
+        star = defender.homeworld
+        star.ironium_inventory = 120
+        star.save(update_fields=['ironium_inventory'])
+        fleet = attacker.fleets.first()
+        fleet.x = star.x
+        fleet.y = star.y
+        fleet.ironium_inventory = 0
+        fleet.save(update_fields=['x', 'y', 'ironium_inventory'])
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_star=star,
+        )
+        order.transfer_ironium = 50
+        order.save(update_fields=['transfer_ironium'])
+        turn = GameTurn(game)
+        with patch.object(GameTurn, '_resolve_transfer_raid_defense_fire', return_value={
+            'destroyed': False,
+            'integrity_lost': 50,
+            'ships_lost': 0,
+            'defense_mult': 1.0,
+        }):
+            with patch.object(GameTurn, '_transfer_raid_successful', return_value=False):
+                result = turn._execute_transfer_order(fleet, order)
+        self.assertEqual(result, 'executed')
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertEqual(star.ironium_inventory, 120)
+        self.assertEqual(fleet.ironium_inventory, 0)
+
+    def test_transfer_raid_success_allows_load_after_damage(self):
+        game, attacker, defender = self._make_two_player_game()
+        star = defender.homeworld
+        star.ironium_inventory = 120
+        star.save(update_fields=['ironium_inventory'])
+        fleet = attacker.fleets.first()
+        fleet.x = star.x
+        fleet.y = star.y
+        fleet.ironium_inventory = 0
+        fleet.save(update_fields=['x', 'y', 'ironium_inventory'])
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_star=star,
+        )
+        order.transfer_ironium = 50
+        order.save(update_fields=['transfer_ironium'])
+        turn = GameTurn(game)
+        with patch.object(GameTurn, '_resolve_transfer_raid_defense_fire', return_value={
+            'destroyed': False,
+            'integrity_lost': 40,
+            'ships_lost': 0,
+            'defense_mult': 1.0,
+        }):
+            with patch.object(GameTurn, '_transfer_raid_successful', return_value=True):
+                result = turn._execute_transfer_order(fleet, order)
+        self.assertEqual(result, 'executed')
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertLess(star.ironium_inventory, 120)
+        self.assertGreater(fleet.ironium_inventory, 0)
+
+    def test_transfer_raid_success_chance_scales_with_defense_and_damage(self):
+        base = transfer_raid_success_chance(
+            attacker_strength=2.0,
+            defender_strength=0.5,
+            attacker_luck=1.0,
+            defender_luck=1.0,
+        )
+        heavy = transfer_raid_success_chance(
+            attacker_strength=2.0,
+            defender_strength=5.0,
+            attacker_luck=1.0,
+            defender_luck=1.0,
+        )
+        damaged = transfer_raid_success_chance(
+            attacker_strength=2.0,
+            defender_strength=0.5,
+            attacker_luck=1.0,
+            defender_luck=1.0,
+            integrity_lost=50,
+            ships_lost=1,
+            ship_count=4,
+        )
+        self.assertGreater(base, heavy)
+        self.assertLess(damaged, base)
+
+    def test_homeworld_reassigned_to_highest_population(self):
+        game, player, _ = self._make_two_player_game()
+        homeworld = player.homeworld
+        other_stars = list(game.stars.exclude(id=homeworld.id)[:2])
+        star_a, star_b = other_stars
+        for star in (star_a, star_b):
+            star.player = player
+            star.gravity = player.gravity_center
+            star.temperature = player.temperature_center
+            star.radiation = player.radiation_center
+        star_a.colonists = 4000
+        star_b.colonists = 9000
+        star_a.save(update_fields=['player', 'gravity', 'temperature', 'radiation', 'colonists'])
+        star_b.save(update_fields=['player', 'gravity', 'temperature', 'radiation', 'colonists'])
+
+        turn = GameTurn(game)
+        turn._handle_homeworld_loss(player, lost_star=homeworld, location=(homeworld.x, homeworld.y))
+        player.refresh_from_db()
+        self.assertEqual(player.homeworld_id, star_b.id)
+
+    def test_fixed_homeworld_defeat_abandons_colonies(self):
+        game, player, _ = self._make_two_player_game()
+        player.fixed_homeworld = True
+        player.save(update_fields=['fixed_homeworld'])
+        homeworld = player.homeworld
+        other_star = game.stars.exclude(id=homeworld.id).first()
+        other_star.player = player
+        other_star.colonists = 6000
+        other_star.save(update_fields=['player', 'colonists'])
+        fleet = player.fleets.first()
+        turn = GameTurn(game)
+        turn._handle_homeworld_loss(player, lost_star=homeworld, location=(homeworld.x, homeworld.y))
+        player.refresh_from_db()
+        other_star.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertTrue(player.defeated)
+        self.assertIsNone(other_star.player)
+        self.assertEqual(other_star.colonists, 0)
+        self.assertIsNone(fleet.player)
+
+    def test_defeated_players_excluded_from_quorum(self):
+        game, player1, player2 = self._make_two_player_game()
+        player1.defeated = True
+        player1.turned_in = False
+        player1.save(update_fields=['defeated', 'turned_in'])
+        player2.turned_in = True
+        player2.save(update_fields=['turned_in'])
+        self.assertTrue(GameTurn(game).check_quorum())
+
+    def test_derelict_fleet_claimed_on_encounter(self):
+        game, player, _ = self._make_two_player_game()
+        x, y = self._find_empty_location(game)
+        player_fleet = player.fleets.first()
+        player_fleet.x = x
+        player_fleet.y = y
+        player_fleet.save(update_fields=['x', 'y'])
+        derelict = Fleet.objects.create(
+            game=game,
+            player=None,
+            name='Derelict',
+            x=x,
+            y=y,
+            ship_count=1,
+            integrity=40,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.roll_chance', return_value=True):
+            turn.resolve_derelict_encounters()
+        derelict.refresh_from_db()
+        self.assertEqual(derelict.player_id, player.id)
+
+    def test_warp_speed_multiplier_scales_distance(self):
+        game = default_game(stars=5)
+        game.warp_speed_multiplier = 2.0
+        game.save(update_fields=['warp_speed_multiplier'])
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.x = 0
+        fleet.y = 0
+        fleet.save(update_fields=['x', 'y'])
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            warpfactor=5,
+            target_kind='SPACE',
+            x=9,
+            y=0,
+        )
+        turn = GameTurn(game)
+        turn._move_toward_destination(fleet, order)
+        self.assertEqual((fleet.x, fleet.y), (9, 0))

@@ -53,8 +53,10 @@ class Command(BaseCommand):
                 ended=False,
                 is_generating=False,
             ).annotate(
-                total_players=Count('players'),
-                turned_in_players=Count('players', filter=Q(players__turned_in=True))
+                total_players=Count('players', filter=Q(players__defeated=False)),
+                turned_in_players=Count(
+                    'players', filter=Q(players__turned_in=True, players__defeated=False)
+                )
             ).filter(
                 total_players__gt=0,
                 total_players=F('turned_in_players')

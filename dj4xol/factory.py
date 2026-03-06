@@ -870,6 +870,7 @@ class GameFactory():
             race.convert_unused_buildpoints_to_research
         )
         player.singular_research = race.singular_research
+        player.fixed_homeworld = bool(getattr(race, 'fixed_homeworld', False))
         player.spend_leftover_points_on_research = race.spend_leftover_points_on_research
         player.leftover_points = float(race.leftover_points or 0.0) + float(refunded_points)
         player.copy_habitability_from(race)

@@ -394,13 +394,39 @@ def copy_default_requirements_to_category(
         ])
 
 
-def get_level_requirement(category_id, level):
+def _apply_research_cost_multiplier(requirement, multiplier):
+    try:
+        mult = float(multiplier)
+    except (TypeError, ValueError):
+        return requirement
+    if mult <= 0:
+        return requirement
+    if abs(mult - 1.0) < 1e-6:
+        return requirement
+    scaled = {}
+    for key in [
+        'rp_cost',
+        'ironium_cost',
+        'boranium_cost',
+        'germanium_cost',
+        'resource_x_cost',
+        'resource_y_cost',
+        'resource_z_cost',
+    ]:
+        value = int(requirement.get(key, 0) or 0)
+        scaled[key] = max(0, int(round(value * mult)))
+    return scaled
+
+
+def get_level_requirement(category_id, level, player=None, game=None):
     """Resolve RP/mineral requirements for a category level."""
+    if player is not None and game is None:
+        game = getattr(player, 'game', None)
     try:
         req = ResearchLevelRequirement.objects.get(
             category_id=category_id, level=level
         )
-        return {
+        base = {
             'rp_cost': int(req.rp_cost),
             'ironium_cost': int(req.ironium_cost),
             'boranium_cost': int(req.boranium_cost),
@@ -409,12 +435,17 @@ def get_level_requirement(category_id, level):
             'resource_y_cost': int(req.resource_y_cost),
             'resource_z_cost': int(req.resource_z_cost),
         }
+        if game is not None:
+            return _apply_research_cost_multiplier(
+                base, getattr(game, 'research_cost_multiplier', 1.0)
+            )
+        return base
     except ResearchLevelRequirement.DoesNotExist:
         pass
 
     default = DefaultResearchLevelRequirement.objects.filter(level=level).first()
     if default:
-        return {
+        base = {
             'rp_cost': int(default.rp_cost),
             'ironium_cost': int(default.ironium_cost),
             'boranium_cost': int(default.boranium_cost),
@@ -423,7 +454,12 @@ def get_level_requirement(category_id, level):
             'resource_y_cost': int(default.resource_y_cost),
             'resource_z_cost': int(default.resource_z_cost),
         }
-    return {
+        if game is not None:
+            return _apply_research_cost_multiplier(
+                base, getattr(game, 'research_cost_multiplier', 1.0)
+            )
+        return base
+    base = {
         'rp_cost': int(rp_cost_for_level(level)),
         'ironium_cost': 0,
         'boranium_cost': 0,
@@ -432,6 +468,11 @@ def get_level_requirement(category_id, level):
         'resource_y_cost': 0,
         'resource_z_cost': 0,
     }
+    if game is not None:
+        return _apply_research_cost_multiplier(
+            base, getattr(game, 'research_cost_multiplier', 1.0)
+        )
+    return base
 
 
 def get_level_prerequisites(category_id, level):
@@ -565,7 +606,7 @@ def _allocate_mineral_progress(rows, eligible_stars, max_level_by_category):
         if int(row.current_level) >= int(max_level):
             continue
         next_level = int(row.current_level) + 1
-        requirement = get_level_requirement(row.category_id, next_level)
+        requirement = get_level_requirement(row.category_id, next_level, player=row.player)
         paid = _clamp_paid_to_requirement({
             f'{key}_paid': getattr(row, f'{key}_paid', 0) for key in RESEARCH_RESOURCE_KEYS
         }, requirement)
@@ -758,7 +799,7 @@ def _advance_research_row_with_requirements(
     }
     while int(level) < int(max_level):
         next_level = int(level) + 1
-        requirement = get_level_requirement(row.category_id, next_level)
+        requirement = get_level_requirement(row.category_id, next_level, player=row.player)
         if not _prerequisites_met(row.category_id, next_level, level_map):
             break
         rp_cost = int(requirement['rp_cost'])
@@ -1354,7 +1395,7 @@ def build_research_screen_data(player, selected_category_id=None):
             progress_percent = 100
         else:
             next_level_number = next_level
-            next_level_req = get_level_requirement(selected.id, next_level)
+            next_level_req = get_level_requirement(selected.id, next_level, player=player)
             level_cost = int(next_level_req['rp_cost'])
             prereqs = get_level_prerequisites(selected.id, next_level)
             for prereq in prereqs:
@@ -1452,7 +1493,7 @@ def build_research_screen_data(player, selected_category_id=None):
             row.progress_percent = 100
         else:
             row_next_cost = int(get_level_requirement(
-                row.category_id, row_next_level
+                row.category_id, row_next_level, player=player
             )['rp_cost'])
             row.next_level_cost = row_next_cost
             if row_next_cost > 0:

@@ -96,6 +96,11 @@ class Command(BaseCommand):
             account_selector=options.get("account_selector"),
             no_auth=bool(options["no_auth"]),
         )
+        if bool(getattr(player, "defeated", False)):
+            self.stdout.write(self.style.ERROR(
+                "Game Over: your homeworld has fallen and you are out of this game."
+            ))
+            return
 
         self.stdout.write(
             self.style.SUCCESS(

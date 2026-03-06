@@ -24,6 +24,7 @@ class ServerRaceForm(forms.ModelForm):
             'starting_mines', 'starting_factories', 'starting_labs',
             'starting_shipyards', 'starting_fleets', 'starting_tech_level',
             'convert_unused_buildpoints_to_research', 'singular_research',
+            'fixed_homeworld',
             'gravity_center', 'gravity_width',
             'temperature_center', 'temperature_width',
             'radiation_center', 'radiation_width',
@@ -102,6 +103,7 @@ class ServerRaceForm(forms.ModelForm):
                 'convert_unused_buildpoints_to_research', False
             ),
             singular_research=cleaned_data.get('singular_research', False),
+            fixed_homeworld=cleaned_data.get('fixed_homeworld', False),
         )
         max_level = get_global_research_max_level()
         chosen_level = int(cleaned_data.get('starting_tech_level', 0) or 0)
@@ -133,6 +135,23 @@ class ServerRaceForm(forms.ModelForm):
 
 class NewGameForm(forms.Form):
     """Form for creating a new game."""
+    RESEARCH_COST_CHOICES = [
+        (0.1, '0.1x (/10)'),
+        (0.25, '0.25x (/4)'),
+        (0.5, '0.5x (/2)'),
+        (1.0, '1x (Normal)'),
+        (2.0, '2x'),
+        (3.0, '3x'),
+        (5.0, '5x'),
+        (10.0, '10x'),
+    ]
+    WARP_SPEED_CHOICES = [
+        (0.5, '0.5x (/2)'),
+        (1.0, '1x (Normal)'),
+        (2.0, '2x'),
+        (3.0, '3x'),
+        (4.0, '4x'),
+    ]
     name = forms.CharField(label="Game Name", max_length=30)
     description = forms.CharField(
         label="Description",
@@ -210,6 +229,20 @@ class NewGameForm(forms.Form):
         max_value=100,
         initial=1
     )
+    research_cost_multiplier = forms.TypedChoiceField(
+        label="Research Cost",
+        choices=RESEARCH_COST_CHOICES,
+        coerce=float,
+        initial=1.0,
+        help_text="Scales RP and mineral requirements for all technologies."
+    )
+    warp_speed_multiplier = forms.TypedChoiceField(
+        label="Warp Speed Multiplier",
+        choices=WARP_SPEED_CHOICES,
+        coerce=float,
+        initial=1.0,
+        help_text="Scales distance traveled per year without changing fuel use."
+    )
     random_events = forms.BooleanField(
         label="Random Events",
         required=False,
@@ -273,6 +306,8 @@ class NewGameForm(forms.Form):
             'max_players',
             'turn_scheme',
             'years_per_turn',
+            'research_cost_multiplier',
+            'warp_speed_multiplier',
             'random_events',
             'anomalies_enabled',
             'anomaly_spawn_rate',
@@ -298,6 +333,20 @@ class NewGameForm(forms.Form):
                 'Max starting tech level cannot exceed %s.' % max_level
             )
         return value
+
+    def clean_research_cost_multiplier(self):
+        value = self.cleaned_data.get('research_cost_multiplier')
+        if value is None:
+            return 1.0
+        value = float(value)
+        return max(0.1, min(10.0, value))
+
+    def clean_warp_speed_multiplier(self):
+        value = self.cleaned_data.get('warp_speed_multiplier')
+        if value is None:
+            return 1.0
+        value = float(value)
+        return max(0.5, min(4.0, value))
 
     def clean(self):
         cleaned = super().clean()
