@@ -1,8 +1,10 @@
+from django.core import mail
+from django.test import override_settings
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from ..models import Account
+from ..models import Account, ServerSettings
 
 
 class EmailUnsubscribeTest(TestCase):
@@ -48,3 +50,42 @@ class EmailUnsubscribeTest(TestCase):
         self.assertFalse(self.account.email_game_updates)
         self.assertEqual(self.account.email_game_rollups_per_day, 0)
         self.assertFalse(self.account.email_newsletter)
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class TestGenericEmailAction(TestCase):
+    def setUp(self):
+        ServerSettings.objects.update_or_create(
+            key='enable_email',
+            defaults={
+                'value': 'True',
+                'description': 'Enable outbound email',
+            }
+        )
+        self.user = User.objects.create_user(
+            'staffer', 'staffer@example.com', 'pw'
+        )
+        self.user.is_staff = True
+        self.user.save(update_fields=['is_staff'])
+        self.account = Account.objects.create(
+            django_user=self.user,
+            alias='staffer',
+            email='staffer@example.com',
+            full_name='Staff User',
+            email_game_updates=False,
+            email_game_rollups_per_day=0,
+            email_newsletter=False,
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_staff_action_sends_generic_test_email(self):
+        response = self.client.get(reverse('dj4xol:test_generic_email'))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dj4xol:index'))
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.subject, 'DJ4XOL: Test email')
+        self.assertEqual(message.to, ['staffer@example.com'])
+        self.assertIn('generic DJ4XOL test email', message.body)
+        self.assertIn('there are no message-rollup updates to send', message.body)
