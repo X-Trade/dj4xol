@@ -15,6 +15,7 @@ from ..models import (
     Fleet,
     FleetOrders,
     GameMessage,
+    PlayerNote,
     PlayerResearch,
     ProductionOrder,
     ResearchCategory,
@@ -765,6 +766,133 @@ class PlayCommandTest(TestCase):
         self.assertIn('is_anomaly: true', output)
         self.assertIn('anomaly_type: WORMHOLE', output)
         self.assertIn('stability: 61', output)
+
+    def test_detail_command_supports_exact_quoted_name_lookup(self):
+        home = self.player1.homeworld
+        home.name = 'Null Haven'
+        home.save(update_fields=['name'])
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/detail "Null Haven"', '/exit'],
+        )
+        self.assertIn('%s:' % home.short_id, output)
+        self.assertIn('name: Null Haven', output)
+
+    def test_salvages_alias_is_removed(self):
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/salvages', '/exit'],
+        )
+        self.assertIn('Unknown command. Type /help.', output)
+
+    def test_help_command_supports_filtered_command_help(self):
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/help rename', '/exit'],
+        )
+        self.assertIn('Usage: /rename <fleet_or_colony_id_or_"Exact Name"> "New Name"', output)
+        self.assertIn('Renames one of your own fleets or colonies.', output)
+
+    def test_inline_help_supports_subcommand_help(self):
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/notes add help', '/exit'],
+        )
+        self.assertIn('Usage: /notes add [id] text', output)
+        self.assertIn('If id is omitted, the next numeric id is used.', output)
+
+    def test_help_command_supports_orders_add_subcommand_help(self):
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/help orders add', '/exit'],
+        )
+        self.assertIn('Usage: /orders <fleet_id> add <ORDER_TYPE> <params...>', output)
+        self.assertIn('Run /orders <id> add to print the target-specific YAML syntax block.', output)
+
+    def test_rename_command_renames_owned_fleet_by_exact_name(self):
+        fleet = self.player1.fleets.first()
+        fleet.name = 'Old Spear'
+        fleet.save(update_fields=['name'])
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/rename "Old Spear" "New Spear"', '/exit'],
+        )
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.name, 'New Spear')
+        self.assertIn('Renamed Fleet <%s>' % fleet.short_id, output)
+
+    def test_notes_command_adds_lists_and_removes_notes(self):
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/notes add "Scout the east flank"',
+                '/notes add 7 "Claim the rift"',
+                '/notes',
+                '/notes remove 1',
+                '/exit',
+            ],
+        )
+        notes = list(PlayerNote.objects.filter(player=self.player1).order_by('note_id'))
+        self.assertEqual([note.note_id for note in notes], [7])
+        self.assertEqual(notes[0].text, 'Claim the rift')
+        self.assertIn('Saved note 1.', output)
+        self.assertIn('Saved note 7.', output)
+        self.assertIn('1: Scout the east flank', output)
+        self.assertIn('7: Claim the rift', output)
+        self.assertIn('Removed note 1.', output)
+
+    def test_messages_command_formats_locate_links_for_cli(self):
+        fleet = self.player1.fleets.first()
+        GameMessage.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year,
+            category='GENERAL',
+            message=(
+                '<a href="/4x/%s/?x=%s&y=%s&sel=%s&locate=1">%s</a> reached '
+                '<a href="/4x/%s/?x=1&y=2&locate=1">Empty Space (1, 2)</a>.'
+            ) % (
+                self.game.short_id,
+                fleet.x,
+                fleet.y,
+                fleet.short_id,
+                fleet.name,
+                self.game.short_id,
+            ),
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/messages limit=5', '/exit'],
+        )
+        self.assertIn('%s <%s> reached Empty Space (1, 2).' % (fleet.name, fleet.short_id), output)
+        self.assertNotIn('<a href=', output)
 
     def test_reports_command_lists_known_objects_with_minimal_fields(self):
         enemy_fleet = Fleet.objects.create(
