@@ -209,7 +209,10 @@ class StarMap():
 
     def _resolve_group_class(self, stars):
         """Determine CSS class for a group of stars based on ownership mix."""
-        has_owned = any(s.player == self.player for s in stars)
+        has_owned = any(
+            self.player is not None and s.player == self.player
+            for s in stars
+        )
         has_enemy = any(
             s.player is not None
             and s.player != self.player
@@ -243,7 +246,9 @@ class StarMap():
 
         if isinstance(object, Star) and not self._can_reveal_star_owner(object):
             class_additional = ""
-        elif object.player == self.player:
+        elif object.player is None:
+            class_additional = ""
+        elif self.player is not None and object.player == self.player:
             class_additional = "-owned"
         elif object.player is not None:
             class_additional = "-enemy"
@@ -342,7 +347,7 @@ class StarMap():
 
     def _get_satellite_class(self, star):
         """Get CSS class for satellite star based on ownership."""
-        if star.player == self.player:
+        if self.player is not None and star.player == self.player:
             return "mapstar-satellite-owned"
         elif star.player is not None and self._can_reveal_star_owner(star):
             return "mapstar-satellite-enemy"
