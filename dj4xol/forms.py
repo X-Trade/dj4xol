@@ -222,6 +222,15 @@ class NewGameForm(forms.Form):
         initial=True,
         help_text="Enable anomalies and anomaly interactions for fleets"
     )
+    anomaly_spawn_rate = forms.ChoiceField(
+        label="Anomaly Spawn Rate",
+        choices=[
+            ('HIGH', 'High (x2)'),
+            ('NORMAL', 'Normal'),
+            ('LOW', 'Low (/2)'),
+        ],
+        initial='NORMAL',
+    )
     no_scanners = forms.BooleanField(
         label="No Scanners",
         required=False,
@@ -266,6 +275,7 @@ class NewGameForm(forms.Form):
             'years_per_turn',
             'random_events',
             'anomalies_enabled',
+            'anomaly_spawn_rate',
             'no_scanners',
             'max_starting_tech_level',
             'invitations',

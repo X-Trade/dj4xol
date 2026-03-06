@@ -81,6 +81,7 @@ class GameFactory():
         self._assign_short_ids(self.stars, used_short_ids)
         Star.objects.bulk_create(self.stars)
         self._create_initial_asteroid_fields(used_short_ids)
+        self._create_initial_ancient_debris(used_short_ids)
         if self.pending_anomalies:
             self._assign_short_ids(self.pending_anomalies, used_short_ids)
             Anomaly.objects.bulk_create(self.pending_anomalies)
@@ -162,6 +163,55 @@ class GameFactory():
             occupied.add((x, y))
         if created:
             Salvage.objects.bulk_create(created)
+
+    def _create_initial_ancient_debris(self, used_short_ids):
+        """Seed a single ancient debris field if space permits."""
+        if Salvage.objects.filter(
+            game=self.game, salvage_type=Salvage.TYPE_ANCIENT_DEBRIS
+        ).exists():
+            return
+        stars = list(self.game.stars.all())
+        if not stars:
+            return
+        occupied = {(star.x, star.y) for star in stars}
+        if self.pending_anomalies:
+            occupied.update({(a.x, a.y) for a in self.pending_anomalies})
+        existing_salvage = list(Salvage.objects.filter(game=self.game))
+        if existing_salvage:
+            occupied.update({(s.x, s.y) for s in existing_salvage})
+        existing_anomalies = list(Anomaly.objects.filter(game=self.game))
+        if existing_anomalies:
+            occupied.update({(a.x, a.y) for a in existing_anomalies})
+        min_x = 1
+        min_y = 1
+        max_x = max(1, self.game.map_size_x - 1)
+        max_y = max(1, self.game.map_size_y - 1)
+        attempts = 200
+        while attempts > 0:
+            attempts -= 1
+            x = random.randint(min_x, max_x)
+            y = random.randint(min_y, max_y)
+            if (x, y) in occupied:
+                continue
+            iron, bor, germ, res_x, res_y, res_z = mineral_rules.random_ancient_debris_minerals()
+            salvage = Salvage(
+                game=self.game,
+                x=x,
+                y=y,
+                salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+                ironium_inventory=iron,
+                boranium_inventory=bor,
+                germanium_inventory=germ,
+                resource_x_inventory=res_x,
+                resource_y_inventory=res_y,
+                resource_z_inventory=res_z,
+            )
+            if not salvage.short_id:
+                base = build_game_short_id(self.game.short_id, salvage.id.int)
+                salvage.short_id = self._resolve_short_id_collision(base, used_short_ids)
+                used_short_ids.add(salvage.short_id)
+            salvage.save()
+            break
 
     def _create_initial_anomalies(self):
         """Seed low-density anomalies for games where anomalies are enabled."""

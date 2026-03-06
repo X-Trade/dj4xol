@@ -41,7 +41,7 @@ def format_map_object(obj, link=True):
         return ""
     from .models import Star, Fleet, Salvage
     if isinstance(obj, Salvage):
-        name = format_salvage(obj.x, obj.y)
+        name = obj.name
     elif isinstance(obj, (Star, Fleet)):
         name = obj.name
     else:

@@ -779,7 +779,8 @@ class TestAnomalyInteractions(TestCase):
             star.save(update_fields=['x', 'y'])
         turn = GameTurn(game)
         randint_values = [50, 50, 60, 60]
-        with patch('dj4xol.turn.ASTEROID_FIELD_SPAWN_SHARE', 0.0):
+        with patch('dj4xol.turn.ASTEROID_FIELD_SPAWN_SHARE', 0.0), \
+             patch('dj4xol.turn.ANCIENT_DEBRIS_SPAWN_SHARE', 0.0):
             with patch('dj4xol.turn.random.random', return_value=0.0):
                 with patch('dj4xol.turn.random.choice', return_value=Anomaly.TYPE_WORMHOLE):
                     with patch('dj4xol.turn.random.randint', side_effect=lambda *_: (
@@ -5152,6 +5153,58 @@ class TestSecretResourceDetailPanel(TestCase):
         self.assertEqual(
             detail['resources']['resource_x']['label'],
             get_secret_resource_name('resource_x'),
+        )
+
+
+class TestSecretResourceSalvageDiscovery(TestCase):
+    def test_salvage_transfer_discovers_secret_resource(self):
+        """Loading secret resources from salvage should reveal them and notify the player."""
+        from ..models import Salvage, FleetOrders
+        from ..secret_resources import get_secret_resource_name
+
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        account = player.account
+        fleet = game.fleets.first()
+
+        player.discovered_resource_x = False
+        player.save(update_fields=['discovered_resource_x'])
+        if account:
+            account.discovered_resource_x = False
+            account.save(update_fields=['discovered_resource_x'])
+
+        salvage = Salvage.objects.create(
+            game=game,
+            x=fleet.x,
+            y=fleet.y,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            ironium_inventory=10,
+            boranium_inventory=4,
+            germanium_inventory=4,
+            resource_x_inventory=12,
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_salvage=salvage,
+            transfer_resource_x=10,
+        )
+
+        GameTurn(game).fleet_movements()
+
+        player.refresh_from_db()
+        if account:
+            account.refresh_from_db()
+        self.assertTrue(player.discovered_resource_x)
+        if account:
+            self.assertTrue(account.discovered_resource_x)
+
+        resource_name = get_secret_resource_name('resource_x').lower()
+        self.assertTrue(
+            player.messages.filter(message__icontains=resource_name).exists()
         )
 
 

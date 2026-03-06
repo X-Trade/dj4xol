@@ -353,6 +353,12 @@ class StarMap():
                 class_override="mapsalvage-asteroid",
                 extra_classes=self._get_salvage_exploration_class(salvage),
             )
+        if getattr(salvage, 'salvage_type', None) == Salvage.TYPE_ANCIENT_DEBRIS:
+            return self.render_object(
+                salvage,
+                class_override="mapsalvage-ancient",
+                extra_classes=self._get_salvage_exploration_class(salvage),
+            )
         return self.render_object(salvage)
 
     def render_anomaly(self, anomaly):

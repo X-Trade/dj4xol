@@ -46,7 +46,7 @@ from .messages import (
 )
 import random
 
-from .mineral_rules import ALL_RESOURCE_KEYS, random_asteroid_field_minerals
+from .mineral_rules import ALL_RESOURCE_KEYS, random_asteroid_field_minerals, random_ancient_debris_minerals
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_name
 from .colony_rules import (
     BILLION,
@@ -176,6 +176,12 @@ ANOMALY_MAJOR_PROGRESS_RP_MIN = 500
 ANOMALY_MAJOR_PROGRESS_RP_MAX = 900
 ANOMALY_SPAWN_CHANCE_PER_YEAR = 0.02
 ASTEROID_FIELD_SPAWN_SHARE = 0.25
+ANCIENT_DEBRIS_SPAWN_SHARE = 0.02
+
+ASTEROID_FIELD_DAMAGE_MIN = 1
+ASTEROID_FIELD_DAMAGE_MAX = 4
+ANCIENT_DEBRIS_DAMAGE_MIN = 4
+ANCIENT_DEBRIS_DAMAGE_MAX = 12
 ANOMALY_MAX_STAR_RATIO = 0.15
 ANOMALY_COMET_DRIFT_WARP = 1.0
 ANOMALY_MAX_RISK_REWARD_BONUS = 0.50
@@ -367,6 +373,7 @@ class GameTurn():
         self.decay_anomalies()
         self.fleet_movements()
         self.anomaly_interactions()
+        self.salvage_interactions()
         self.check_lost_fleets()
         self.check_damaged_fleets()
         self.first_contact_checks()
@@ -701,11 +708,63 @@ class GameTurn():
                 continue
             self._apply_anomaly_research_boon(fleet, anomaly)
 
+    def salvage_interactions(self):
+        """Apply salvage hazard damage to fleets co-located with special salvage."""
+        from .models import Fleet, Salvage
+
+        salvages = list(Salvage.objects.filter(game=self.game))
+        if not salvages:
+            return
+        salvage_positions = {(s.x, s.y): s for s in salvages}
+        fleets = list(Fleet.objects.filter(game=self.game))
+        for fleet in fleets:
+            salvage = salvage_positions.get((fleet.x, fleet.y))
+            if salvage is None:
+                continue
+            salvage_type = getattr(salvage, 'salvage_type', None)
+            if salvage_type == Salvage.TYPE_ASTEROID_FIELD:
+                self._apply_salvage_damage(
+                    fleet, salvage, ASTEROID_FIELD_DAMAGE_MIN, ASTEROID_FIELD_DAMAGE_MAX
+                )
+            elif salvage_type == Salvage.TYPE_ANCIENT_DEBRIS:
+                self._apply_salvage_damage(
+                    fleet, salvage, ANCIENT_DEBRIS_DAMAGE_MIN, ANCIENT_DEBRIS_DAMAGE_MAX
+                )
+
+    def _apply_salvage_damage(self, fleet, salvage, min_damage, max_damage):
+        """Apply minor hazard damage when entering salvage fields."""
+        try:
+            base_damage = random.randint(int(min_damage), int(max_damage))
+        except (TypeError, ValueError):
+            base_damage = 0
+        if base_damage <= 0:
+            return
+        defense_mult = calculate_fleet_defense_multiplier(fleet)
+        if defense_mult <= 0:
+            defense_mult = 1.0
+        scaled = int(round(float(base_damage) / float(defense_mult)))
+        damage = max(0, scaled)
+        if damage <= 0:
+            return
+        if int(fleet.integrity or 0) <= damage:
+            damage = max(0, int(fleet.integrity or 0) - 1)
+        if damage <= 0:
+            return
+        fleet.integrity = max(0, int(fleet.integrity or 0) - damage)
+        fleet.save(update_fields=['integrity'])
+
     def spawn_anomalies(self):
-        """Very rarely spawn a new anomaly or asteroid field."""
+        """Very rarely spawn a new anomaly or special salvage field."""
         if not bool(getattr(self.game, 'anomalies_enabled', False)):
             return
-        if random.random() >= ANOMALY_SPAWN_CHANCE_PER_YEAR:
+        rate = str(getattr(self.game, 'anomaly_spawn_rate', 'NORMAL') or 'NORMAL').upper()
+        multiplier = 1.0
+        if rate == 'HIGH':
+            multiplier = 2.0
+        elif rate == 'LOW':
+            multiplier = 0.5
+        chance = min(1.0, float(ANOMALY_SPAWN_CHANCE_PER_YEAR) * multiplier)
+        if random.random() >= chance:
             return
         from .models import (
             Anomaly, Star, Fleet, Salvage, random_anomaly_stability_init,
@@ -724,7 +783,30 @@ class GameTurn():
         max_x = max(1, int(self.game.map_size_x) - 1)
         max_y = max(1, int(self.game.map_size_y) - 1)
 
-        if random.random() < ASTEROID_FIELD_SPAWN_SHARE:
+        roll = random.random()
+        if roll < ANCIENT_DEBRIS_SPAWN_SHARE:
+            for _ in range(120):
+                x = random.randint(min_x, max_x)
+                y = random.randint(min_y, max_y)
+                if (x, y) in occupied:
+                    continue
+                iron, bor, germ, res_x, res_y, res_z = random_ancient_debris_minerals()
+                Salvage.objects.create(
+                    game=self.game,
+                    x=x,
+                    y=y,
+                    salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+                    ironium_inventory=iron,
+                    boranium_inventory=bor,
+                    germanium_inventory=germ,
+                    resource_x_inventory=res_x,
+                    resource_y_inventory=res_y,
+                    resource_z_inventory=res_z,
+                )
+                break
+            return
+
+        if roll < ANCIENT_DEBRIS_SPAWN_SHARE + ASTEROID_FIELD_SPAWN_SHARE:
             for _ in range(120):
                 x = random.randint(min_x, max_x)
                 y = random.randint(min_y, max_y)
@@ -1268,7 +1350,7 @@ class GameTurn():
                 msg.year = self.game.year
                 msg.save()
 
-    def _mark_secret_resource_discovered(self, player, resource_key, star=None, fleet=None):
+    def _mark_secret_resource_discovered(self, player, resource_key, star=None, fleet=None, source=None):
         if not player:
             return False
         player_field = f'discovered_{resource_key}'
@@ -1284,11 +1366,12 @@ class GameTurn():
             setattr(account, account_field, True)
             account.save(update_fields=[account_field])
 
-        if not player_discovered and star is not None:
+        discovery_location = source or star or fleet
+        if not player_discovered and discovery_location is not None:
             factory = SecretResourceDiscoveryMessageFactory(
                 self.game,
                 player,
-                star=star,
+                star=discovery_location,
                 resource_name=get_secret_resource_name(resource_key),
                 fleet=fleet,
             )
@@ -3529,6 +3612,11 @@ class GameTurn():
             msg.year = self.game.year
             msg.save()
 
+        for key in SECRET_RESOURCE_KEYS:
+            if int(transfers.get(key, 0) or 0) > 0:
+                self._mark_secret_resource_discovered(
+                    fleet.player, key, star=salvage, fleet=fleet, source=salvage
+                )
         self._discover_secret_resources_from_fleet(fleet.player, fleet)
 
     def _try_execute_colonise(self, fleet, order):
