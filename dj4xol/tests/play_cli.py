@@ -148,6 +148,9 @@ class PlayCommandTest(TestCase):
         self.assertIn('integrity_pct', output)
         self.assertIn('max_safe_warp', output)
         self.assertIn('position: (', output)
+        self.assertIn('owner: %s' % self.player1.name, output)
+        self.assertIn('is_owned: true', output)
+        self.assertIn('visibility: current', output)
 
     def test_fleets_command_outputs_secret_resources_when_present(self):
         fleet = self.player1.fleets.first()
@@ -161,6 +164,92 @@ class PlayCommandTest(TestCase):
             input_values=['/fleets', '/exit'],
         )
         self.assertIn('resource_y_kt', output)
+
+    def test_fleets_all_shows_known_other_fleet_with_owner(self):
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Enemy Scout',
+            x=self.player1.homeworld.x + 2,
+            y=self.player1.homeworld.y + 1,
+            ship_count=6,
+        )
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year - 1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report='{}',
+        )
+        report.set_report_data({
+            'name': enemy_fleet.name,
+            'x': enemy_fleet.x,
+            'y': enemy_fleet.y,
+            'player_name': self.player2.name,
+            'ship_count': enemy_fleet.ship_count,
+            'report_tier': 'advanced',
+        })
+        report.save()
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/fleets all', '/exit'],
+        )
+        self.assertIn('%s:' % enemy_fleet.short_id, output)
+        self.assertIn('owner: %s' % self.player2.name, output)
+        self.assertIn('is_owned: false', output)
+        self.assertIn('visibility: report', output)
+        self.assertIn('ship_count: 6', output)
+
+    def test_fleets_other_excludes_owned_and_unknown_enemy_fleets(self):
+        known_enemy = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Known Raider',
+            x=self.player1.homeworld.x + 4,
+            y=self.player1.homeworld.y + 2,
+            ship_count=4,
+        )
+        hidden_enemy = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Hidden Raider',
+            x=self.player2.homeworld.x + 5,
+            y=self.player2.homeworld.y + 5,
+            ship_count=8,
+        )
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year - 2,
+            target_type='fleet',
+            target_id=known_enemy.id,
+            cached_report='{}',
+        )
+        report.set_report_data({
+            'name': known_enemy.name,
+            'x': known_enemy.x,
+            'y': known_enemy.y,
+            'player_name': self.player2.name,
+            'ship_count': known_enemy.ship_count,
+            'report_tier': 'basic',
+        })
+        report.save()
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/fleets other', '/exit'],
+        )
+        self.assertIn('%s:' % known_enemy.short_id, output)
+        self.assertNotIn('%s:' % self.player1.fleets.first().short_id, output)
+        self.assertNotIn('%s:' % hidden_enemy.short_id, output)
 
     def test_orders_command_lists_fleet_orders(self):
         fleet = self.player1.fleets.first()
@@ -961,12 +1050,15 @@ class PlayCommandTest(TestCase):
             input_values=['/reports', '/exit'],
         )
         self.assertIn('%s:' % self.player1.homeworld.short_id, output)
+        self.assertIn('name: %s' % self.player1.homeworld.name, output)
         self.assertIn('report_year: %s' % self.game.year, output)
         self.assertIn('owner: %s' % self.player1.name, output)
         self.assertIn('object_class: star', output)
         self.assertIn('%s:' % enemy_fleet.short_id, output)
+        self.assertIn('name: Enemy Scout', output)
         self.assertIn('fleet_count: 6', output)
         self.assertIn('%s:' % anomaly.short_id, output)
+        self.assertIn('name: Known Rift', output)
         self.assertIn('subclass: Rift', output)
         self.assertNotIn('%s:' % hidden_anomaly.short_id, output)
 

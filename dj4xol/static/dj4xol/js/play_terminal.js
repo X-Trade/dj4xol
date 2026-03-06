@@ -12,6 +12,7 @@
         isOpen: false,
         bootstrapped: false,
         busy: false,
+        dirty: false,
         blocks: [],
         history: [],
         historyIndex: null,
@@ -240,6 +241,10 @@
         document.body.classList.remove('play-terminal-open');
         input.blur();
         clearPersistedState();
+        if (state.dirty) {
+            state.dirty = false;
+            window.location.reload();
+        }
     }
 
     function bootstrap() {
@@ -312,6 +317,9 @@
             .then(function(result) {
                 var payload = result.data || {};
                 appendCommandBlock(command, payload.lines || [], !payload.ok);
+                if (payload.ok && payload.mutated) {
+                    state.dirty = true;
+                }
                 if (payload.close_overlay) {
                     closeOverlay();
                 } else if (payload.navigate_to) {

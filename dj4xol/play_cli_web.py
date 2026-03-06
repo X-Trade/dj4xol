@@ -43,12 +43,14 @@ def execute_browser_command(game, player, raw_command):
             "ok": True,
             "lines": ["Disconnected."],
             "close_overlay": True,
+            "mutated": False,
         }
     if not _is_allowed_browser_command(raw_command):
         return {
             "ok": False,
             "lines": ["Web Play CLI does not support that command."],
             "close_overlay": False,
+            "mutated": False,
         }
 
     collector = _TranscriptCollector()
@@ -61,11 +63,13 @@ def execute_browser_command(game, player, raw_command):
             "ok": False,
             "lines": collector.lines,
             "close_overlay": False,
+            "mutated": False,
         }
     result = {
         "ok": True,
         "lines": collector.lines,
         "close_overlay": False,
+        "mutated": _is_mutating_browser_command(command_parts),
     }
     navigate_to = _detail_navigation_payload(runner, player, command_parts)
     if navigate_to is not None:
@@ -104,6 +108,8 @@ def _is_allowed_browser_command(raw_command):
         return False
     if not parts:
         return False
+    if _is_browser_help_command(parts):
+        return True
 
     command = parts[0].lower()
     if command in (
@@ -111,7 +117,6 @@ def _is_allowed_browser_command(raw_command):
         "/status",
         "/reports",
         "/colonies",
-        "/fleets",
         "/stars",
         "/anomalies",
         "/salvage",
@@ -119,14 +124,22 @@ def _is_allowed_browser_command(raw_command):
         "/quit",
     ):
         return len(parts) == 1
+    if command == "/fleets":
+        return len(parts) == 1 or (len(parts) == 2 and parts[1].lower() in ("own", "other", "all"))
     if command == "/detail":
         return len(parts) == 2
     if command == "/messages":
         return True
     if command == "/orders":
-        return len(parts) == 2 or (len(parts) == 3 and parts[2].lower() == "list")
+        if len(parts) == 2:
+            return True
+        if len(parts) == 3 and parts[2].lower() in ("list", "clear", "add"):
+            return True
+        if len(parts) >= 4 and parts[2].lower() == "add":
+            return True
+        return False
     if command == "/research":
-        return len(parts) in (1, 2)
+        return len(parts) in (1, 2, 3)
     if command == "/rename":
         return len(parts) >= 3
     if command == "/notes":
@@ -137,6 +150,38 @@ def _is_allowed_browser_command(raw_command):
         if parts[1].lower() == "remove":
             return len(parts) == 3
         return False
+    return False
+
+
+def _is_browser_help_command(parts):
+    if not parts:
+        return False
+    command = parts[0].lower()
+    if command == "/help":
+        return len(parts) <= 3
+    if len(parts) == 2 and parts[1].lower() == "help":
+        return True
+    if len(parts) == 3 and parts[2].lower() == "help":
+        return True
+    return False
+
+
+def _is_mutating_browser_command(parts):
+    if not parts:
+        return False
+    command = parts[0].lower()
+    if command == "/rename":
+        return len(parts) >= 3
+    if command == "/notes":
+        return len(parts) >= 2 and parts[1].lower() in ("add", "remove")
+    if command == "/orders":
+        return (
+            len(parts) >= 3 and
+            parts[2].lower() in ("clear", "add") and
+            not _is_browser_help_command(parts)
+        )
+    if command == "/research":
+        return len(parts) == 3
     return False
 
 

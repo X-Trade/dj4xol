@@ -11,6 +11,7 @@ from datetime import timedelta
 import os
 import json
 import random
+from urllib.parse import urlparse
 
 from dj4xol.objectdetails import DetailBuilder
 from dj4xol.secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
@@ -215,6 +216,22 @@ def _allow_self_signup():
 def _debug_actions_enabled():
     value = ServerSettings.get('enable_debug_actions', 'False')
     return _setting_enabled(value, default=False)
+
+
+def _play_cli_web_enabled():
+    value = ServerSettings.get('enable_play_api', 'True')
+    return _setting_enabled(value, default=True)
+
+
+def _is_same_origin_request(request):
+    origin = (request.META.get('HTTP_ORIGIN') or '').strip()
+    if not origin:
+        return False
+    parsed = urlparse(origin)
+    if not parsed.scheme or not parsed.netloc:
+        return False
+    current_origin = '%s://%s' % (request.scheme, request.get_host())
+    return origin.rstrip('/') == current_origin.rstrip('/')
 
 
 def gamelist(request):
@@ -731,6 +748,7 @@ def starmap(request, game_short_id):
         'selected_object_short_id': selected_object_short_id,
         'selected_patrol_circles_json': json.dumps(selected_patrol_circles),
         'enable_debug_actions': _debug_actions_enabled(),
+        'play_cli_web_enabled': _play_cli_web_enabled(),
     })
 
 
@@ -2392,6 +2410,8 @@ def play_cli_bootstrap(request, game_short_id):
     """Return the initial Play CLI transcript for the web terminal overlay."""
     if request.method != 'GET':
         return JsonResponse({'error': 'GET required'}, status=405)
+    if not _play_cli_web_enabled():
+        return JsonResponse({'error': 'Play API disabled'}, status=404)
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
@@ -2407,6 +2427,10 @@ def play_cli_command(request, game_short_id):
     """Execute a browser Play CLI command via authenticated JSON."""
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
+    if not _play_cli_web_enabled():
+        return JsonResponse({'error': 'Play API disabled'}, status=404)
+    if not _is_same_origin_request(request):
+        return JsonResponse({'error': 'Origin mismatch'}, status=403)
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
