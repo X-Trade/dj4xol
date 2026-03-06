@@ -764,10 +764,63 @@ class TestAnomalyInteractions(TestCase):
             )
         before = Anomaly.objects.filter(game=game).count()
         turn = GameTurn(game)
-        with patch('dj4xol.turn.random.random', return_value=0.0):
+        with patch('dj4xol.turn.random.random', side_effect=[1.0, 1.0, 0.0]):
             turn.spawn_anomalies()
         after = Anomaly.objects.filter(game=game).count()
         self.assertEqual(before, after)
+
+    def test_special_salvage_can_spawn_even_when_anomalies_are_at_cap(self):
+        game = default_game(stars=10)
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        for idx in range(2):
+            Anomaly.objects.create(
+                game=game,
+                x=player.homeworld.x + idx + 1,
+                y=player.homeworld.y + idx + 1,
+                name='Cap %s' % idx,
+                anomaly_type=Anomaly.TYPE_RIFT,
+            )
+        turn = GameTurn(game)
+        with patch.object(turn, '_random_empty_spawn_point', return_value=(50, 50)):
+            with patch('dj4xol.turn.random.random', return_value=0.0):
+                turn.spawn_anomalies()
+        self.assertEqual(Anomaly.objects.filter(game=game).count(), 2)
+        self.assertTrue(Salvage.objects.filter(
+            game=game, salvage_type=Salvage.TYPE_ANCIENT_DEBRIS
+        ).exists())
+
+    def test_spawn_anomaly_uses_empty_map_boost(self):
+        game = default_game(stars=10)
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        turn = GameTurn(game)
+        with patch.object(turn, '_random_empty_spawn_point', return_value=(50, 50)):
+            with patch('dj4xol.turn.random.random', side_effect=[1.0, 1.0, 0.44, 0.1]):
+                with patch('dj4xol.turn.random.choice', return_value=Anomaly.TYPE_RIFT):
+                    turn.spawn_anomalies()
+        self.assertTrue(Anomaly.objects.filter(
+            game=game, anomaly_type=Anomaly.TYPE_RIFT, x=50, y=50
+        ).exists())
+
+    def test_spawn_anomaly_chance_scales_down_with_cap_fill(self):
+        game = default_game(stars=10)
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        Anomaly.objects.create(
+            game=game,
+            x=40,
+            y=40,
+            name='Existing Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+        )
+        turn = GameTurn(game)
+        with patch.object(turn, '_random_empty_spawn_point', return_value=(50, 50)):
+            with patch('dj4xol.turn.random.random', side_effect=[1.0, 1.0, 0.3]):
+                with patch('dj4xol.turn.random.choice', return_value=Anomaly.TYPE_RIFT):
+                    turn.spawn_anomalies()
+        self.assertEqual(Anomaly.objects.filter(game=game).count(), 1)
 
     def test_spawned_wormhole_names_are_serial(self):
         game = default_game(stars=10, fleets=0)
@@ -931,12 +984,30 @@ class TestAnomalyInteractions(TestCase):
             stability=80,
         )
         turn = GameTurn(game)
-        with patch('dj4xol.turn.random.randint', return_value=3):
+        with patch('dj4xol.turn.random.random', side_effect=[0.0, 1.0]):
             turn.decay_anomalies()
         anomaly.refresh_from_db()
-        self.assertEqual(anomaly.stability, 77)
+        self.assertEqual(anomaly.stability, 79)
 
-    def test_anomaly_below_20_stability_can_collapse(self):
+    def test_anomaly_above_90_stability_remains_stable(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=31,
+            y=31,
+            name='Stable',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=95,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.random', side_effect=[0.0, 0.0]):
+            turn.decay_anomalies()
+        anomaly.refresh_from_db()
+        self.assertEqual(anomaly.stability, 95)
+
+    def test_anomaly_at_29_stability_can_collapse(self):
         game = default_game()
         game.anomalies_enabled = True
         game.save(update_fields=['anomalies_enabled'])
@@ -946,13 +1017,130 @@ class TestAnomalyInteractions(TestCase):
             y=31,
             name='Collapsing',
             anomaly_type=Anomaly.TYPE_RIFT,
-            stability=10,
+            stability=29,
         )
         turn = GameTurn(game)
-        with patch('dj4xol.turn.random.randint', return_value=1):
-            with patch('dj4xol.turn.random.random', return_value=0.0):
-                turn.decay_anomalies()
+        with patch('dj4xol.turn.random.random', side_effect=[1.0, 0.0]):
+            turn.decay_anomalies()
         self.assertFalse(Anomaly.objects.filter(id=anomaly.id).exists())
+
+    def test_anomaly_at_30_stability_does_not_collapse(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=32,
+            y=32,
+            name='Threshold',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=30,
+        )
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.random', side_effect=[1.0, 0.0]):
+            turn.decay_anomalies()
+        self.assertTrue(Anomaly.objects.filter(id=anomaly.id).exists())
+
+    def test_anomaly_collapse_retargets_orders_and_warns_once_per_player(self):
+        game = default_game(stars=3, fleets=0)
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        home = player.homeworld
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=home.x + 3,
+            y=home.y + 3,
+            name='Survey Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=29,
+        )
+        fleet_a = Fleet.objects.create(
+            game=game, player=player, name='Scout A', x=home.x, y=home.y
+        )
+        fleet_b = Fleet.objects.create(
+            game=game, player=player, name='Scout B', x=home.x, y=home.y
+        )
+        order_a = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet_a,
+            order_type='MOVE',
+            target_kind='OBJECT',
+            target_short_id=anomaly.short_id,
+        )
+        order_b = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet_b,
+            order_type='MOVE',
+            target_kind='OBJECT',
+            target_short_id=anomaly.short_id,
+        )
+        with patch('dj4xol.turn.random.random', side_effect=[1.0, 0.0]), \
+             patch(
+                 'dj4xol.messages.AnomalyTargetLostMessageFactory.format_message',
+                 return_value='Scout warning at Empty Space (0, 0).'
+             ):
+            GameTurn(game).decay_anomalies()
+
+        order_a.refresh_from_db()
+        order_b.refresh_from_db()
+        self.assertEqual(order_a.target_kind, 'SPACE')
+        self.assertEqual(order_b.target_kind, 'SPACE')
+        self.assertIsNone(order_a.target_short_id)
+        self.assertIsNone(order_b.target_short_id)
+        self.assertEqual((order_a.x, order_a.y), (anomaly.x, anomaly.y))
+        self.assertEqual((order_b.x, order_b.y), (anomaly.x, anomaly.y))
+        messages = list(player.messages.filter(message__contains='Survey Rift'))
+        self.assertEqual(len(messages), 0)
+        warning_messages = list(player.messages.filter(message__contains='Scout warning'))
+        self.assertEqual(len(warning_messages), 1)
+
+    def test_wormhole_collapse_warns_with_enter_wording(self):
+        game = default_game(stars=3, fleets=0)
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        home = player.homeworld
+        a = Anomaly.objects.create(
+            game=game,
+            x=home.x + 4,
+            y=home.y + 4,
+            name='Wormhole 1',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=10,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=home.x + 8,
+            y=home.y + 8,
+            name='Wormhole 2',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=100,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+        fleet = Fleet.objects.create(
+            game=game, player=player, name='Gate Runner', x=home.x, y=home.y
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            target_kind='OBJECT',
+            target_short_id=a.short_id,
+        )
+        with patch('dj4xol.turn.random.random', side_effect=[0.0, 0.0, 1.0, 1.0, 1.0, 1.0]), \
+             patch('dj4xol.turn.random.randint', return_value=25), \
+             patch('dj4xol.messages.random.choice', return_value=('collapsed', 'into')):
+            GameTurn(game).decay_anomalies()
+
+        order.refresh_from_db()
+        self.assertEqual(order.target_kind, 'SPACE')
+        msg = player.messages.filter(message__contains='Wormhole 1').latest('id')
+        self.assertIn('orders to enter Wormhole 1', msg.message)
+        self.assertIn('collapsed into', msg.message)
+        self.assertNotIn('sel=%s' % a.short_id, msg.message)
 
     def test_low_stability_increases_anomaly_rewards(self):
         game = default_game()
@@ -1378,8 +1566,7 @@ class TestAnomalyInteractions(TestCase):
         a.wormhole_pair = b
         a.save(update_fields=['wormhole_pair'])
 
-        with patch('dj4xol.turn.random.randint', return_value=1), \
-             patch('dj4xol.turn.random.random', side_effect=[0.0, 0.0]):
+        with patch('dj4xol.turn.random.random', side_effect=[0.0, 0.0, 0.0]):
             GameTurn(game).decay_anomalies()
 
         self.assertFalse(Anomaly.objects.filter(id=a.id).exists())
@@ -1409,8 +1596,7 @@ class TestAnomalyInteractions(TestCase):
         a.wormhole_pair = b
         a.save(update_fields=['wormhole_pair'])
 
-        with patch('dj4xol.turn.random.randint', return_value=1), \
-             patch('dj4xol.turn.random.random', side_effect=[0.0, 0.75, 0.25, 1.0, 1.0, 1.0]):
+        with patch('dj4xol.turn.random.random', side_effect=[0.0, 0.0, 0.75, 0.25, 1.0, 1.0, 1.0]):
             GameTurn(game).decay_anomalies()
 
         self.assertFalse(Anomaly.objects.filter(id=a.id).exists())

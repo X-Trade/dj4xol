@@ -42,6 +42,7 @@ from .messages import (
     ResearchLevelUnlockedMessageFactory,
     ResearchBreakthroughMessageFactory,
     SecretResourceDiscoveryMessageFactory,
+    AnomalyTargetLostMessageFactory,
     format_map_object,
     format_location,
 )
@@ -85,10 +86,14 @@ from .research import (
 )
 from .fleet_thumbnails import choose_fleet_thumbnail
 from .chance_rules import (
+    clamp_percent,
     roll_chance as chance_roll,
     scaled_luck_roll,
     luck_ratio_chance,
     transfer_raid_success_chance,
+    anomaly_collapse_chance,
+    anomaly_decay_chance,
+    anomaly_spawn_chance,
 )
 from .bombardment_rules import (
     bombardment_damage_k,
@@ -188,6 +193,7 @@ ANOMALY_BONUS_RP_MAX = 400
 ANOMALY_MAJOR_PROGRESS_RP_MIN = 500
 ANOMALY_MAJOR_PROGRESS_RP_MAX = 900
 ANOMALY_SPAWN_CHANCE_PER_YEAR = 0.02
+ANOMALY_EMPTY_MAP_SPAWN_CHANCE = 0.45
 ASTEROID_FIELD_SPAWN_SHARE = 0.25
 ANCIENT_DEBRIS_SPAWN_SHARE = 0.02
 
@@ -417,11 +423,7 @@ class GameTurn():
 
     @staticmethod
     def _anomaly_stability(anomaly):
-        try:
-            value = int(anomaly.stability)
-        except (TypeError, ValueError):
-            value = 100
-        return max(0, min(100, value))
+        return int(clamp_percent(getattr(anomaly, 'stability', 100), default=100.0))
 
     @classmethod
     def _anomaly_instability_ratio(cls, anomaly):
@@ -446,19 +448,20 @@ class GameTurn():
                 continue
             stability = self._anomaly_stability(anomaly)
             changed = False
-            if stability < 90:
-                # Lower stability decays faster over time.
-                decay_ceiling = 1 + int((90 - stability) / 20)
-                stability = max(0, stability - random.randint(1, max(1, decay_ceiling)))
+            decay_chance = anomaly_decay_chance(stability)
+            if decay_chance > 0.0 and random.random() < decay_chance:
+                stability = max(0, stability - 1)
                 anomaly.stability = stability
                 changed = True
-            if stability < 20:
-                collapse_chance = (20.0 - float(stability)) / 20.0
-                if random.random() < collapse_chance:
-                    if getattr(anomaly, 'anomaly_type', None) == Anomaly.TYPE_WORMHOLE:
-                        self._resolve_wormhole_extinction(anomaly)
-                    anomaly.delete()
-                    continue
+            collapse_chance = anomaly_collapse_chance(stability)
+            if collapse_chance > 0.0 and random.random() < collapse_chance:
+                self._retarget_or_remove_orders_for_destroyed_anomaly(
+                    anomaly.name, anomaly.short_id, anomaly.x, anomaly.y, anomaly.anomaly_type
+                )
+                if getattr(anomaly, 'anomaly_type', None) == Anomaly.TYPE_WORMHOLE:
+                    self._resolve_wormhole_extinction(anomaly)
+                anomaly.delete()
+                continue
             if changed:
                 anomaly.save(update_fields=['stability'])
 
@@ -474,6 +477,9 @@ class GameTurn():
         pair = Anomaly.objects.get(id=pair.id)
         pair.wormhole_pair = None
         if random.random() < 0.5:
+            self._retarget_or_remove_orders_for_destroyed_anomaly(
+                pair.name, pair.short_id, pair.x, pair.y, pair.anomaly_type
+            )
             pair.delete()
             return
         pair.anomaly_type = Anomaly.TYPE_BLACK_HOLE
@@ -481,6 +487,43 @@ class GameTurn():
         pair.heading = random.random() * 360.0
         pair.name = 'Black Hole %s' % (Anomaly.objects.filter(game=self.game).count() + 1)
         pair.save(update_fields=['wormhole_pair', 'anomaly_type', 'stability', 'heading', 'name'])
+
+    def _retarget_or_remove_orders_for_destroyed_anomaly(
+        self, anomaly_name, anomaly_short_id, x, y, anomaly_type
+    ):
+        """Convert anomaly-bound movement targets to space and warn affected players once."""
+        from .models import FleetOrders
+
+        orders = FleetOrders.objects.filter(
+            game=self.game,
+            target_kind='OBJECT',
+            target_short_id=anomaly_short_id,
+        ).select_related('fleet__player').order_by('fleet__player_id', 'position', 'id')
+        if not orders.exists():
+            return
+
+        warned_players = set()
+        for order in orders:
+            fleet = getattr(order, 'fleet', None)
+            player = getattr(fleet, 'player', None) if fleet is not None else None
+            if player is None or player.id in warned_players:
+                continue
+            factory = AnomalyTargetLostMessageFactory(
+                self.game, player, fleet, anomaly_name, anomaly_type, x, y
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+            warned_players.add(player.id)
+
+        movement_types = ['MOVE', 'INTERCEPT', 'PATROL']
+        orders.filter(order_type__in=movement_types).update(
+            target_kind='SPACE',
+            target_short_id=None,
+            x=int(x),
+            y=int(y),
+        )
+        orders.exclude(order_type__in=movement_types).delete()
 
     def _quantized_axis_step(self, component, comet_short_id, axis_key, year=None):
         """Convert a sub-integer movement component into deterministic yearly tile steps."""
@@ -863,19 +906,68 @@ class GameTurn():
             priority=bool(priority),
         )
 
-    def spawn_anomalies(self):
-        """Very rarely spawn a new anomaly or special salvage field."""
-        if not bool(getattr(self.game, 'anomalies_enabled', False)):
-            return
-        rate = str(getattr(self.game, 'anomaly_spawn_rate', 'NORMAL') or 'NORMAL').upper()
+    def _random_empty_spawn_point(self, occupied, min_x, min_y, max_x, max_y, attempts=120):
+        """Find an unoccupied coordinate for anomaly or salvage spawning."""
+        for _ in range(attempts):
+            x = random.randint(min_x, max_x)
+            y = random.randint(min_y, max_y)
+            if (x, y) in occupied:
+                continue
+            return x, y
+        return None
+
+    def _spawn_special_salvage(self, salvage_type, occupied, min_x, min_y, max_x, max_y):
+        """Spawn special salvage fields that do not count toward the anomaly cap."""
+        from .models import Salvage
+
+        point = self._random_empty_spawn_point(occupied, min_x, min_y, max_x, max_y)
+        if point is None:
+            return False
+        x, y = point
+        if salvage_type == Salvage.TYPE_ANCIENT_DEBRIS:
+            iron, bor, germ, res_x, res_y, res_z = random_ancient_debris_minerals()
+            Salvage.objects.create(
+                game=self.game,
+                x=x,
+                y=y,
+                salvage_type=salvage_type,
+                ironium_inventory=iron,
+                boranium_inventory=bor,
+                germanium_inventory=germ,
+                resource_x_inventory=res_x,
+                resource_y_inventory=res_y,
+                resource_z_inventory=res_z,
+            )
+            return True
+        if salvage_type == Salvage.TYPE_ASTEROID_FIELD:
+            iron, bor, germ = random_asteroid_field_minerals()
+            Salvage.objects.create(
+                game=self.game,
+                x=x,
+                y=y,
+                salvage_type=salvage_type,
+                ironium_inventory=iron,
+                boranium_inventory=bor,
+                germanium_inventory=germ,
+            )
+            return True
+        return False
+
+    @staticmethod
+    def _anomaly_spawn_rate_multiplier(rate):
         multiplier = 1.0
         if rate == 'HIGH':
             multiplier = 2.0
         elif rate == 'LOW':
             multiplier = 0.5
-        chance = min(1.0, float(ANOMALY_SPAWN_CHANCE_PER_YEAR) * multiplier)
-        if random.random() >= chance:
+        return multiplier
+
+    def spawn_anomalies(self):
+        """Spawn rare special salvage and cap-aware anomalies."""
+        if not bool(getattr(self.game, 'anomalies_enabled', False)):
             return
+        rate = str(getattr(self.game, 'anomaly_spawn_rate', 'NORMAL') or 'NORMAL').upper()
+        multiplier = self._anomaly_spawn_rate_multiplier(rate)
         from .models import (
             Anomaly, Star, Fleet, Salvage, random_anomaly_stability_init,
             random_wormhole_stability_init,
@@ -893,120 +985,102 @@ class GameTurn():
         max_x = max(1, int(self.game.map_size_x) - 1)
         max_y = max(1, int(self.game.map_size_y) - 1)
 
-        roll = random.random()
-        if roll < ANCIENT_DEBRIS_SPAWN_SHARE:
-            for _ in range(120):
-                x = random.randint(min_x, max_x)
-                y = random.randint(min_y, max_y)
-                if (x, y) in occupied:
-                    continue
-                iron, bor, germ, res_x, res_y, res_z = random_ancient_debris_minerals()
-                Salvage.objects.create(
-                    game=self.game,
-                    x=x,
-                    y=y,
-                    salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
-                    ironium_inventory=iron,
-                    boranium_inventory=bor,
-                    germanium_inventory=germ,
-                    resource_x_inventory=res_x,
-                    resource_y_inventory=res_y,
-                    resource_z_inventory=res_z,
-                )
-                break
+        ancient_debris_chance = min(
+            1.0,
+            float(ANOMALY_SPAWN_CHANCE_PER_YEAR) * multiplier * float(ANCIENT_DEBRIS_SPAWN_SHARE),
+        )
+        if random.random() < ancient_debris_chance:
+            self._spawn_special_salvage(
+                Salvage.TYPE_ANCIENT_DEBRIS, occupied, min_x, min_y, max_x, max_y
+            )
             return
 
-        if roll < ANCIENT_DEBRIS_SPAWN_SHARE + ASTEROID_FIELD_SPAWN_SHARE:
-            for _ in range(120):
-                x = random.randint(min_x, max_x)
-                y = random.randint(min_y, max_y)
-                if (x, y) in occupied:
-                    continue
-                iron, bor, germ = random_asteroid_field_minerals()
-                Salvage.objects.create(
-                    game=self.game,
-                    x=x,
-                    y=y,
-                    salvage_type=Salvage.TYPE_ASTEROID_FIELD,
-                    ironium_inventory=iron,
-                    boranium_inventory=bor,
-                    germanium_inventory=germ,
-                )
-                break
+        asteroid_field_chance = min(
+            1.0,
+            float(ANOMALY_SPAWN_CHANCE_PER_YEAR) * multiplier * float(ASTEROID_FIELD_SPAWN_SHARE),
+        )
+        if random.random() < asteroid_field_chance:
+            self._spawn_special_salvage(
+                Salvage.TYPE_ASTEROID_FIELD, occupied, min_x, min_y, max_x, max_y
+            )
             return
 
         max_allowed = max(1, int(round(star_count * ANOMALY_MAX_STAR_RATIO)))
         current = int(Anomaly.objects.filter(game=self.game).count())
+        chance = min(
+            1.0,
+            anomaly_spawn_chance(
+                current, max_allowed, empty_map_chance=ANOMALY_EMPTY_MAP_SPAWN_CHANCE
+            ) * multiplier,
+        )
+        if chance <= 0.0 or random.random() >= chance:
+            return
         if current >= max_allowed:
             return
-        for _ in range(120):
-            x = random.randint(min_x, max_x)
-            y = random.randint(min_y, max_y)
-            if (x, y) in occupied:
-                continue
-            anomaly_type = random.choice([
-                Anomaly.TYPE_NEBULA,
-                Anomaly.TYPE_COMET,
-                Anomaly.TYPE_RIFT,
-                Anomaly.TYPE_BLACK_HOLE,
-                Anomaly.TYPE_WORMHOLE,
-            ])
-            type_labels = {
-                Anomaly.TYPE_NEBULA: 'Nebula',
-                Anomaly.TYPE_COMET: 'Comet',
-                Anomaly.TYPE_RIFT: 'Rift',
-                Anomaly.TYPE_BLACK_HOLE: 'Black Hole',
-                Anomaly.TYPE_WORMHOLE: 'Wormhole',
-            }
-            if anomaly_type == Anomaly.TYPE_WORMHOLE:
-                if current + 2 > max_allowed:
-                    continue
-                name = '%s %s' % (type_labels.get(anomaly_type, 'Anomaly'), current + 1)
-                pair_name = '%s %s' % (type_labels.get(anomaly_type, 'Anomaly'), current + 2)
-                pair_x = pair_y = None
-                for _ in range(120):
-                    px = random.randint(min_x, max_x)
-                    py = random.randint(min_y, max_y)
-                    if (px, py) in occupied or (px, py) == (x, y):
-                        continue
-                    pair_x = px
-                    pair_y = py
-                    break
-                if pair_x is None:
-                    continue
-                a = Anomaly.objects.create(
-                    game=self.game,
-                    x=x,
-                    y=y,
-                    anomaly_type=anomaly_type,
-                    name=name,
-                    heading=random.random() * 360.0,
-                    stability=random_wormhole_stability_init(),
-                )
-                b = Anomaly.objects.create(
-                    game=self.game,
-                    x=pair_x,
-                    y=pair_y,
-                    anomaly_type=anomaly_type,
-                    name=pair_name,
-                    heading=random.random() * 360.0,
-                    stability=random_wormhole_stability_init(),
-                    wormhole_pair=a,
-                )
-                a.wormhole_pair = b
-                a.save(update_fields=['wormhole_pair'])
-            else:
-                name = '%s %s' % (type_labels.get(anomaly_type, 'Anomaly'), current + 1)
-                Anomaly.objects.create(
-                    game=self.game,
-                    x=x,
-                    y=y,
-                    anomaly_type=anomaly_type,
-                    name=name,
-                    heading=random.random() * 360.0,
-                    stability=random_anomaly_stability_init(),
-                )
-            break
+        point = self._random_empty_spawn_point(occupied, min_x, min_y, max_x, max_y)
+        if point is None:
+            return
+        x, y = point
+        anomaly_type = random.choice([
+            Anomaly.TYPE_NEBULA,
+            Anomaly.TYPE_COMET,
+            Anomaly.TYPE_RIFT,
+            Anomaly.TYPE_BLACK_HOLE,
+            Anomaly.TYPE_WORMHOLE,
+        ])
+        type_labels = {
+            Anomaly.TYPE_NEBULA: 'Nebula',
+            Anomaly.TYPE_COMET: 'Comet',
+            Anomaly.TYPE_RIFT: 'Rift',
+            Anomaly.TYPE_BLACK_HOLE: 'Black Hole',
+            Anomaly.TYPE_WORMHOLE: 'Wormhole',
+        }
+        if anomaly_type == Anomaly.TYPE_WORMHOLE:
+            if current + 2 > max_allowed:
+                return
+            name = '%s %s' % (type_labels.get(anomaly_type, 'Anomaly'), current + 1)
+            pair_name = '%s %s' % (type_labels.get(anomaly_type, 'Anomaly'), current + 2)
+            occupied_with_primary = set(occupied)
+            occupied_with_primary.add((x, y))
+            pair_point = self._random_empty_spawn_point(
+                occupied_with_primary, min_x, min_y, max_x, max_y
+            )
+            if pair_point is None:
+                return
+            pair_x, pair_y = pair_point
+            a = Anomaly.objects.create(
+                game=self.game,
+                x=x,
+                y=y,
+                anomaly_type=anomaly_type,
+                name=name,
+                heading=random.random() * 360.0,
+                stability=random_wormhole_stability_init(),
+            )
+            b = Anomaly.objects.create(
+                game=self.game,
+                x=pair_x,
+                y=pair_y,
+                anomaly_type=anomaly_type,
+                name=pair_name,
+                heading=random.random() * 360.0,
+                stability=random_wormhole_stability_init(),
+                wormhole_pair=a,
+            )
+            a.wormhole_pair = b
+            a.save(update_fields=['wormhole_pair'])
+            return
+
+        name = '%s %s' % (type_labels.get(anomaly_type, 'Anomaly'), current + 1)
+        Anomaly.objects.create(
+            game=self.game,
+            x=x,
+            y=y,
+            anomaly_type=anomaly_type,
+            name=name,
+            heading=random.random() * 360.0,
+            stability=random_anomaly_stability_init(),
+        )
 
     def _create_anomaly_message(self, player, text, priority=False):
         from .models import GameMessage

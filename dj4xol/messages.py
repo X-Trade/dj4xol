@@ -1,5 +1,10 @@
 from .models import Game, Player, GameMessage
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_name
+from .map_object_rules import (
+    format_space_label,
+    format_salvage_label,
+    format_map_link,
+)
 import random
 from itertools import chain
 from django.utils.html import escape
@@ -8,9 +13,8 @@ from django.utils.html import escape
 def map_object_link(obj):
     """Format a map object (Star/Fleet) as a clickable link."""
     from django.urls import reverse
-    name = escape(obj.name)
     base_url = reverse('dj4xol:game', args=[obj.game.short_id])
-    return f'<a href="{base_url}?x={obj.x}&y={obj.y}&sel={obj.short_id}&locate=1">{name}</a>'
+    return format_map_link(base_url, obj.x, obj.y, obj.name, short_id=obj.short_id)
 
 
 def map_coordinate_link(game, x, y, label=None):
@@ -19,20 +23,19 @@ def map_coordinate_link(game, x, y, label=None):
     if label is None:
         label = format_space(x, y)
     base_url = reverse('dj4xol:game', args=[game.short_id])
-    return f'<a href="{base_url}?x={x}&y={y}&locate=1">{escape(label)}</a>'
+    return format_map_link(base_url, x, y, label)
 
 
 def format_space(x, y):
-    return f"Empty Space ({x}, {y})"
+    return format_space_label(x, y)
 
 
 def format_space_link(game, x, y):
-    label = f"Empty Space ({x}, {y})"
-    return map_coordinate_link(game, x, y, label=label)
+    return map_coordinate_link(game, x, y, label=format_space_label(x, y))
 
 
 def format_salvage(x, y):
-    return f"Salvage ({x}, {y})"
+    return format_salvage_label(x, y)
 
 
 def format_map_object(obj, link=True):
@@ -813,6 +816,53 @@ class StarVanishedOminousMessageFactory(MessageFactory):
         return (
             f"Astronomers report that {escape(self.star_name)} has mysteriously "
             f"vanished into {location}."
+        )
+
+
+class AnomalyTargetLostMessageFactory(MessageFactory):
+    """Messages for fleets whose anomaly target vanished before arrival."""
+    category = 'EXCEPTION'
+    priority = True
+    anomaly_fates = [
+        ('evaporated', 'into'),
+        ('vanished', 'at'),
+        ('collapsed', 'at'),
+        ('disappeared', 'at'),
+    ]
+    wormhole_fates = [
+        ('collapsed', 'into'),
+        ('evaporated', 'into'),
+        ('dissipated', 'into'),
+    ]
+
+    def __init__(self, game, player, fleet, anomaly_name, anomaly_type, x, y, message=None):
+        super().__init__(game, player, message, intensity=-0.5)
+        self.fleet = fleet
+        self.anomaly_name = anomaly_name or 'Unknown Anomaly'
+        self.anomaly_type = anomaly_type or 'ANOMALY'
+        self.x = x
+        self.y = y
+
+    def format_message(self):
+        fleet_label = format_map_object(self.fleet)
+        anomaly_label = escape(self.anomaly_name)
+        location = format_space_link(self.game, self.x, self.y)
+        if str(self.anomaly_type).upper() == 'WORMHOLE':
+            fate, prep = random.choice(self.wormhole_fates)
+            return (
+                f"{fleet_label} has orders to enter {anomaly_label}, but it has "
+                f"{fate} {prep} {location}."
+            )
+        if random.random() < 0.5:
+            action = random.choice(['visit', 'investigate'])
+            fate, prep = random.choice(self.anomaly_fates)
+            return (
+                f"{fleet_label} has orders to {action} {anomaly_label}, but it has "
+                f"{fate} {prep} {location}."
+            )
+        return (
+            f"{fleet_label} has orders to investigate {anomaly_label}, but it can no "
+            f"longer be found at {location}."
         )
 
 
