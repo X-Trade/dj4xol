@@ -303,7 +303,7 @@ class TestPlayCliWebApi(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertFalse(payload['ok'])
-        self.assertIn('read-only commands only', '\n'.join(payload['lines']))
+        self.assertIn('does not support that command', '\n'.join(payload['lines']))
         self.player.refresh_from_db()
         self.assertFalse(self.player.turned_in)
 

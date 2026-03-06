@@ -47,7 +47,7 @@ def execute_browser_command(game, player, raw_command):
     if not _is_allowed_browser_command(raw_command):
         return {
             "ok": False,
-            "lines": ["Web Play CLI currently allows read-only commands only."],
+            "lines": ["Web Play CLI does not support that command."],
             "close_overlay": False,
         }
 
@@ -115,7 +115,6 @@ def _is_allowed_browser_command(raw_command):
         "/stars",
         "/anomalies",
         "/salvage",
-        "/salvages",
         "/exit",
         "/quit",
     ):
@@ -128,6 +127,16 @@ def _is_allowed_browser_command(raw_command):
         return len(parts) == 2 or (len(parts) == 3 and parts[2].lower() == "list")
     if command == "/research":
         return len(parts) in (1, 2)
+    if command == "/rename":
+        return len(parts) >= 3
+    if command == "/notes":
+        if len(parts) == 1:
+            return True
+        if parts[1].lower() == "add":
+            return len(parts) >= 3
+        if parts[1].lower() == "remove":
+            return len(parts) == 3
+        return False
     return False
 
 
@@ -147,7 +156,10 @@ def _detail_navigation_payload(runner, player, command_parts):
         return None
     if command_parts[0].lower() != "/detail":
         return None
-    obj = runner._resolve_detail_object(player, command_parts[1])
+    try:
+        obj = runner._resolve_detail_object(player, command_parts[1])
+    except CommandError:
+        return None
     if obj is None:
         return None
     return {

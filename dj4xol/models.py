@@ -866,6 +866,21 @@ class Player(AbstractGameObject, HabitabilityMixin):
         unique_together = [['game', 'short_id']]
 
 
+class PlayerNote(models.Model):
+    """Player-authored notes for a specific game session."""
+    player = models.ForeignKey(
+        Player, related_name='notes', on_delete=models.CASCADE
+    )
+    note_id = models.IntegerField()
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['note_id']
+        unique_together = [['player', 'note_id']]
+
+
 class FleetOrders(AbstractGameObject):
     """Movement and action orders for a fleet."""
     ORDER_TYPE_CHOICES = [

@@ -154,6 +154,9 @@
                 overlay.hidden = false;
                 document.body.classList.add('play-terminal-open');
                 setPromptValue('');
+                requestAnimationFrame(function() {
+                    scrollOutputToBottom('auto');
+                });
             }
         } catch (e) {}
     }

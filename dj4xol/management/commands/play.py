@@ -1,6 +1,9 @@
 import getpass
+import html
 import os
+import re
 import shlex
+from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import authenticate
 from django.core.management.base import BaseCommand, CommandError
@@ -14,6 +17,7 @@ from dj4xol.models import (
     FleetOrders,
     Game,
     Player,
+    PlayerNote,
     PRODUCTION_COSTS,
     ProductionOrder,
     ResearchCategory,
@@ -49,6 +53,13 @@ class Command(BaseCommand):
     help = "Interactive CLI for playing a game as a player."
     HISTORY_PATH = os.path.expanduser("~/.dj4xol_play_history")
     HISTORY_LENGTH = 500
+    SHORT_ID_RE = re.compile(r"^[0-9a-z]{12}$")
+    HTML_LINK_RE = re.compile(
+        r'<a\s+[^>]*href="(?P<href>[^"]+)"[^>]*>(?P<label>.*?)</a>',
+        re.IGNORECASE,
+    )
+    HTML_TAG_RE = re.compile(r"<[^>]+>")
+    CLI_SHORT_ID_TOKEN = "__DJ4XOL_SHORT_ID__%s__"
 
     def add_arguments(self, parser):
         parser.add_argument("game_short_id", help="Game short_id (e.g. abcdef66)")
@@ -162,11 +173,10 @@ class Command(BaseCommand):
             pass
 
     def _execute_cli_command(self, raw, player, game):
+        if self._handle_help_request(raw):
+            return
         if raw == "/done":
             self._handle_done_command(player, game)
-            return
-        if raw == "/help":
-            self._print_help()
             return
         if raw == "/colonies":
             self._print_yaml(self._colonies_summary(player))
@@ -186,8 +196,14 @@ class Command(BaseCommand):
         if raw == "/anomalies":
             self._print_yaml(self._anomalies_summary(player))
             return
-        if raw in ("/salvage", "/salvages"):
+        if raw == "/salvage":
             self._print_yaml(self._salvage_summary(player))
+            return
+        if raw.startswith("/rename"):
+            self._handle_rename_command(raw, player)
+            return
+        if raw.startswith("/notes"):
+            self._handle_notes_command(raw, player)
             return
         if raw.startswith("/orders"):
             self._handle_orders_command(raw, player)
@@ -312,35 +328,245 @@ class Command(BaseCommand):
             payload[msg.short_id] = {
                 "year": msg.year,
                 "category": msg.category,
-                "message": msg.message,
+                "message": self._format_message_text_for_cli(msg.message),
             }
         self._print_yaml({"priority_messages": payload})
 
-    def _print_help(self):
-        self.stdout.write(
-            "\n".join([
-                "/help                    Show this help.",
-                "/colonies                YAML summary of your colonies.",
-                "/fleets                  YAML summary of your fleets.",
-                "/stars                   YAML summary of stars and known status.",
-                "/status                  YAML turn/year status for this game.",
-                "/reports                 YAML summary of known objects and report years.",
-                "/anomalies               YAML summary of all visible anomalies.",
-                "/salvage, /salvages      YAML summary of known salvage.",
-                "/orders <id>             List orders for your fleet/star.",
-                "/orders <id> clear       Clear all orders for your fleet/star.",
-                "/orders <id> add         Show add syntax for this fleet/star.",
-                "/orders <id> add ...     Add an order (see add help).",
-                "/research                Budget + category levels/allocations.",
-                "/research <CODE>         Detail for one research category.",
-                "/research <CODE> <PCT>   Set allocation to PCT and rebalance.",
-                "/detail <object_id>      YAML detail panel data as visible to this player.",
-                "/messages [filters...]   YAML messages list (same defaults as game panel).",
-                "                         Filters: year=YYYY since=YYYY category=CAT",
-                "                                  priority=1|0 limit=N contains=text",
-                "/quit or /exit           Exit CLI.",
-            ])
-        )
+    def _handle_help_request(self, raw):
+        try:
+            parts = shlex.split(raw)
+        except ValueError:
+            return False
+        if not parts:
+            return False
+
+        command = self._normalize_help_token(parts[0])
+        if command == "help":
+            if len(parts) > 3:
+                self.stdout.write("Usage: /help [command [action]]")
+                return True
+            topic = self._normalize_help_token(parts[1]) if len(parts) >= 2 else None
+            action = self._normalize_help_token(parts[2]) if len(parts) >= 3 else None
+            self._print_help(topic, action)
+            return True
+
+        if len(parts) == 2 and parts[1].strip().lower() == "help":
+            self._print_help(command)
+            return True
+
+        if len(parts) == 3 and parts[2].strip().lower() == "help":
+            action = self._normalize_help_token(parts[1])
+            if self._command_has_help_action(command, action):
+                self._print_help(command, action)
+                return True
+
+        return False
+
+    def _normalize_help_token(self, token):
+        return str(token or "").strip().lower().lstrip("/")
+
+    def _command_has_help_action(self, command, action):
+        topic = self._help_topics().get(command) or {}
+        return action in (topic.get("actions") or {})
+
+    def _help_topics(self):
+        return {
+            "help": {
+                "summary": "/help                    Show general or filtered help.",
+                "lines": [
+                    "/help",
+                    "Usage: /help [command [action]]",
+                    "Also supported: /<command> help and /<command> <action> help.",
+                ],
+            },
+            "colonies": {
+                "summary": "/colonies                YAML summary of your colonies.",
+                "lines": [
+                    "/colonies",
+                    "Shows your colonies with current visible data.",
+                ],
+            },
+            "fleets": {
+                "summary": "/fleets                  YAML summary of your fleets.",
+                "lines": [
+                    "/fleets",
+                    "Shows your fleets with current visible data.",
+                ],
+            },
+            "stars": {
+                "summary": "/stars                   YAML summary of stars and known status.",
+                "lines": [
+                    "/stars",
+                    "Shows stars with your current knowledge status.",
+                ],
+            },
+            "status": {
+                "summary": "/status                  YAML turn/year status for this game.",
+                "lines": [
+                    "/status",
+                    "Shows current year, turn scheme, quorum/turn-in status, and next turn timing when available.",
+                ],
+            },
+            "reports": {
+                "summary": "/reports                 YAML summary of known objects and report years.",
+                "lines": [
+                    "/reports",
+                    "Lists your known objects with report year, owner, location, class, and subclass/fleet count.",
+                ],
+            },
+            "anomalies": {
+                "summary": "/anomalies               YAML summary of all visible anomalies.",
+                "lines": [
+                    "/anomalies",
+                    "Lists all map-visible anomalies. Hidden detail fields remain obscured.",
+                ],
+            },
+            "salvage": {
+                "summary": "/salvage                 YAML summary of known salvage.",
+                "lines": [
+                    "/salvage",
+                    "Lists salvage you currently know about.",
+                ],
+            },
+            "rename": {
+                "summary": "/rename <id> \"Name\"      Rename one of your fleets or colonies.",
+                "lines": [
+                    "/rename",
+                    'Usage: /rename <fleet_or_colony_id_or_"Exact Name"> "New Name"',
+                    "Renames one of your own fleets or colonies.",
+                    "Selector may be a short_id or a quoted exact current name.",
+                ],
+            },
+            "notes": {
+                "summary": "/notes                   YAML list of your saved notes.",
+                "lines": [
+                    "/notes",
+                    "Usage: /notes [add [id] text|remove <id>]",
+                    "Lists your saved player notes, or routes to note subcommands.",
+                ],
+                "actions": {
+                    "add": [
+                        "/notes add",
+                        "Usage: /notes add [id] text",
+                        "Adds a note. If id is omitted, the next numeric id is used.",
+                    ],
+                    "remove": [
+                        "/notes remove",
+                        "Usage: /notes remove <id>",
+                        "Removes one of your saved notes.",
+                    ],
+                },
+            },
+            "orders": {
+                "summary": "/orders <id>             List orders for your fleet/star.",
+                "lines": [
+                    "/orders",
+                    "Usage: /orders <fleet_or_star_short_id> [list|clear|add ...]",
+                    "Lists, clears, or adds orders for one of your fleets or colonies.",
+                    "Use /help orders add or /orders add help for add syntax guidance.",
+                ],
+                "actions": {
+                    "list": [
+                        "/orders list",
+                        "Usage: /orders <fleet_or_star_short_id> [list]",
+                        "Lists the current orders for the selected fleet or colony.",
+                    ],
+                    "clear": [
+                        "/orders clear",
+                        "Usage: /orders <fleet_or_star_short_id> clear",
+                        "Clears all orders for the selected fleet or colony.",
+                    ],
+                    "add": [
+                        "/orders add",
+                        "Usage: /orders <fleet_id> add",
+                        "Usage: /orders <fleet_id> add <ORDER_TYPE> <params...>",
+                        "Usage: /orders <star_id> add",
+                        "Usage: /orders <star_id> add <TYPE_OR_ALIAS> [quantity] [repeat]",
+                        "Run /orders <id> add to print the target-specific YAML syntax block.",
+                    ],
+                },
+            },
+            "research": {
+                "summary": "/research                Budget + category levels/allocations.",
+                "lines": [
+                    "/research",
+                    "Usage: /research [CODE [PERCENT]]",
+                    "Without arguments: show budget and category overview.",
+                    "With CODE: show category detail.",
+                    "With CODE and PERCENT: set allocation and rebalance.",
+                ],
+            },
+            "detail": {
+                "summary": "/detail <object_id>      YAML detail panel data as visible to this player.",
+                "lines": [
+                    "/detail",
+                    'Usage: /detail <object_short_id_or_"Exact Name">',
+                    "Shows detail panel data for one object visible to this player.",
+                    "Quote exact names to search by name.",
+                ],
+            },
+            "messages": {
+                "summary": "/messages [filters...]   YAML messages list (same defaults as game panel).",
+                "lines": [
+                    "/messages",
+                    "Usage: /messages [year=YYYY] [since=YYYY] [category=CAT] [priority=1|0] [limit=N] [contains=text]",
+                    "Shows messages with the same defaults as the main game panel.",
+                ],
+            },
+            "done": {
+                "summary": "/done                    Turn in and exit in quorum games.",
+                "lines": [
+                    "/done",
+                    "Marks you ready for turn generation and exits the CLI.",
+                ],
+            },
+            "quit": {
+                "summary": "/quit or /exit           Exit CLI.",
+                "lines": [
+                    "/quit or /exit",
+                    "Exit the Play CLI.",
+                ],
+            },
+            "exit": {
+                "summary": "/quit or /exit           Exit CLI.",
+                "lines": [
+                    "/quit or /exit",
+                    "Exit the Play CLI.",
+                ],
+            },
+        }
+
+    def _print_help(self, command=None, action=None):
+        topics = self._help_topics()
+        if not command:
+            lines = [
+                topic["summary"]
+                for name, topic in topics.items()
+                if name in (
+                    "help", "colonies", "fleets", "stars", "status", "reports",
+                    "anomalies", "salvage", "rename", "notes", "orders",
+                    "research", "detail", "messages", "done", "quit",
+                )
+            ]
+            lines.append("Type /help <command> or /<command> help for details.")
+            lines.append("Type /help <command> <action> or /<command> <action> help for subcommands.")
+            self.stdout.write("\n".join(lines))
+            return
+
+        topic = topics.get(command)
+        if topic is None:
+            self.stdout.write("Unknown help topic: %s" % command)
+            return
+
+        if action:
+            action_lines = (topic.get("actions") or {}).get(action)
+            if action_lines is None:
+                self.stdout.write("Unknown /%s help topic: %s" % (command, action))
+                return
+            self.stdout.write("\n".join(action_lines))
+            return
+
+        self.stdout.write("\n".join(topic["lines"]))
 
     def _colonies_summary(self, player):
         stars = Star.objects.filter(
@@ -522,6 +748,109 @@ class Command(BaseCommand):
                 entry["total_minerals_kt"] = total
             data[salvage.short_id] = entry
         return data
+
+    def _handle_rename_command(self, raw, player):
+        try:
+            parts = shlex.split(raw)
+        except ValueError as exc:
+            self.stdout.write("Invalid command syntax: %s" % exc)
+            return
+        if len(parts) < 3:
+            self.stdout.write('Usage: /rename <fleet_or_colony_id_or_"Exact Name"> "New Name"')
+            return
+        selector = parts[1]
+        new_name = " ".join(parts[2:]).strip()
+        if not new_name:
+            self.stdout.write("New name is required.")
+            return
+        if len(new_name) > 30:
+            self.stdout.write("Name must be 30 characters or less.")
+            return
+        try:
+            obj = self._resolve_owned_rename_target(player, selector)
+        except CommandError as exc:
+            self.stdout.write(str(exc))
+            return
+        if obj is None:
+            self.stdout.write("Rename target not found for this player: %s" % selector)
+            return
+        old_name = obj.name
+        obj.name = new_name
+        obj.save(update_fields=["name"])
+        self.stdout.write(
+            'Renamed %s <%s> from "%s" to "%s".'
+            % (obj.__class__.__name__, obj.short_id, old_name, new_name)
+        )
+
+    def _handle_notes_command(self, raw, player):
+        try:
+            parts = shlex.split(raw)
+        except ValueError as exc:
+            self.stdout.write("Invalid command syntax: %s" % exc)
+            return
+        if len(parts) == 1:
+            self._print_yaml(self._notes_summary(player))
+            return
+        action = parts[1].strip().lower()
+        if action == "add":
+            self._handle_notes_add(player, parts[2:])
+            return
+        if action == "remove":
+            self._handle_notes_remove(player, parts[2:])
+            return
+        self.stdout.write("Usage: /notes [add [id] text|remove <id>]")
+
+    def _notes_summary(self, player):
+        payload = {}
+        for note in player.notes.order_by("note_id"):
+            payload[int(note.note_id)] = note.text
+        return payload
+
+    def _handle_notes_add(self, player, args):
+        if not args:
+            self.stdout.write("Usage: /notes add [id] text")
+            return
+        note_id = None
+        text_parts = list(args)
+        try:
+            note_id = int(args[0])
+            text_parts = args[1:]
+        except (TypeError, ValueError):
+            note_id = None
+        text = " ".join(text_parts).strip()
+        if not text:
+            self.stdout.write("Note text is required.")
+            return
+        if note_id is None:
+            note_id = self._next_note_id(player)
+        if note_id <= 0:
+            self.stdout.write("Note id must be a positive integer.")
+            return
+        if player.notes.filter(note_id=note_id).exists():
+            self.stdout.write("Note id already exists: %s" % note_id)
+            return
+        PlayerNote.objects.create(player=player, note_id=note_id, text=text)
+        self.stdout.write("Saved note %s." % note_id)
+
+    def _handle_notes_remove(self, player, args):
+        if len(args) != 1:
+            self.stdout.write("Usage: /notes remove <id>")
+            return
+        try:
+            note_id = int(args[0])
+        except ValueError:
+            self.stdout.write("Note id must be a positive integer.")
+            return
+        note = player.notes.filter(note_id=note_id).first()
+        if note is None:
+            self.stdout.write("Note not found: %s" % note_id)
+            return
+        note.delete()
+        self.stdout.write("Removed note %s." % note_id)
+
+    def _next_note_id(self, player):
+        current_max = player.notes.aggregate(max_note_id=Max("note_id")).get("max_note_id")
+        return int(current_max or 0) + 1
 
     def _build_map_object_summary_entry(self, detail):
         if detail.get("unexplored"):
@@ -1281,31 +1610,103 @@ class Command(BaseCommand):
             self.stdout.write("Invalid command syntax: %s" % exc)
             return
         if len(parts) != 2:
-            self.stdout.write("Usage: /detail <object_short_id>")
+            self.stdout.write('Usage: /detail <object_short_id_or_"Exact Name">')
             return
-        selected = parts[1].strip().lower()
+        selected = parts[1].strip()
 
-        obj = self._resolve_detail_object(player, selected)
+        try:
+            obj = self._resolve_detail_object(player, selected)
+        except CommandError as exc:
+            self.stdout.write(str(exc))
+            return
         if obj is None:
             self.stdout.write("Object not found in this game: %s" % selected)
             return
 
-        builder = DetailBuilder(player.game, selected=selected, player=player)
+        builder = DetailBuilder(player.game, selected=obj.short_id, player=player)
         detail = builder.build_detail()
         if not detail:
             self.stdout.write("No detail available for: %s" % selected)
             return
         detail = self._format_detail_for_cli(detail)
-        self._print_yaml({selected: detail})
+        self._print_yaml({obj.short_id: detail})
 
     def _resolve_detail_object(self, player, selected):
-        selected = (selected or "").strip().lower()
+        selected = (selected or "").strip()
+        obj = self._resolve_object_by_short_id(player, selected)
+        if obj is not None:
+            return obj
+        return self._resolve_named_detail_object(player, selected)
+
+    def _resolve_object_by_short_id(self, player, selected):
+        short_id = (selected or "").strip().lower()
+        if not self.SHORT_ID_RE.match(short_id):
+            return None
         return (
-            Star.objects.filter(game=player.game, short_id=selected).first() or
-            Fleet.objects.filter(game=player.game, short_id=selected).first() or
-            player.game.salvages.filter(short_id=selected).first() or
-            player.game.anomalys.filter(short_id=selected).first()
+            Star.objects.filter(game=player.game, short_id=short_id).first() or
+            Fleet.objects.filter(game=player.game, short_id=short_id).first() or
+            player.game.salvages.filter(short_id=short_id).first() or
+            player.game.anomalys.filter(short_id=short_id).first()
         )
+
+    def _resolve_named_detail_object(self, player, selected_name):
+        selected_name = (selected_name or "").strip()
+        if not selected_name:
+            return None
+        matches = []
+        for obj in self._iter_named_objects(player.game, selected_name):
+            if self._object_is_name_visible_to_player(player, obj):
+                matches.append(obj)
+        return self._resolve_single_named_match(matches, selected_name)
+
+    def _resolve_owned_rename_target(self, player, selector):
+        selector = (selector or "").strip()
+        obj = None
+        if self.SHORT_ID_RE.match(selector.lower()):
+            obj = (
+                Star.objects.filter(game=player.game, player=player, short_id=selector.lower()).first() or
+                Fleet.objects.filter(game=player.game, player=player, short_id=selector.lower()).first()
+            )
+            if obj is not None:
+                return obj
+        matches = list(
+            Star.objects.filter(game=player.game, player=player, name__iexact=selector)
+        ) + list(
+            Fleet.objects.filter(game=player.game, player=player, name__iexact=selector)
+        )
+        return self._resolve_single_named_match(matches, selector)
+
+    def _iter_named_objects(self, game, selected_name):
+        for qs in (
+            Star.objects.filter(game=game, name__iexact=selected_name).order_by("x", "y", "name", "id"),
+            Fleet.objects.filter(game=game, name__iexact=selected_name).order_by("x", "y", "name", "id"),
+            Anomaly.objects.filter(game=game, name__iexact=selected_name).order_by("x", "y", "name", "id"),
+        ):
+            for obj in qs:
+                yield obj
+        selected_name = str(selected_name or "").strip().lower()
+        for obj in Salvage.objects.filter(game=game).order_by("x", "y", "id"):
+            if str(obj.name).strip().lower() == selected_name:
+                yield obj
+
+    def _object_is_name_visible_to_player(self, player, obj):
+        if isinstance(obj, Anomaly):
+            return True
+        detail = DetailBuilder(player.game, selected=obj.short_id, player=player).build_detail()
+        return bool(detail) and not bool(detail.get("unexplored"))
+
+    def _resolve_single_named_match(self, matches, selector):
+        if not matches:
+            return None
+        if len(matches) > 1:
+            match_list = ", ".join(
+                "%s <%s>" % (obj.__class__.__name__, obj.short_id)
+                for obj in matches[:5]
+            )
+            raise CommandError(
+                'Ambiguous name "%s". Matches: %s' % (selector, match_list)
+            )
+        return matches[0]
 
     def _format_detail_for_cli(self, detail):
         """Apply CLI-friendly numeric formatting to detail payload."""
@@ -1390,7 +1791,7 @@ class Command(BaseCommand):
                 "year": msg.year,
                 "category": msg.category,
                 "priority": bool(msg.priority),
-                "text": msg.message,
+                "text": self._format_message_text_for_cli(msg.message),
             }
         return payload
 
@@ -1399,6 +1800,33 @@ class Command(BaseCommand):
         if player.messages_seen_year is not None:
             qs = qs.filter(year__gte=player.messages_seen_year)
         return qs
+
+    def _format_message_text_for_cli(self, message):
+        text = str(message or "")
+
+        def replace_link(match):
+            href = html.unescape(match.group("href") or "")
+            label = self._strip_html_tags(html.unescape(match.group("label") or ""))
+            try:
+                params = parse_qs(urlparse(href).query)
+            except Exception:
+                params = {}
+            short_id = (params.get("sel") or [None])[0]
+            if short_id:
+                return "%s %s" % (label, self.CLI_SHORT_ID_TOKEN % short_id)
+            return label
+
+        text = self.HTML_LINK_RE.sub(replace_link, text)
+        text = self._strip_html_tags(text)
+        text = html.unescape(text)
+        return re.sub(
+            r"%s([0-9a-z]{12})__" % re.escape(self.CLI_SHORT_ID_TOKEN.split("%s")[0]),
+            r"<\1>",
+            text,
+        ).strip()
+
+    def _strip_html_tags(self, text):
+        return self.HTML_TAG_RE.sub("", str(text or ""))
 
     def _print_yaml(self, payload):
         if yaml is None:
