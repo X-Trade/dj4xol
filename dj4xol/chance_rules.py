@@ -141,3 +141,50 @@ def transfer_raid_success_chance(attacker_strength, defender_strength,
     penalty = (damage_ratio * damage_weight_val) + (ship_ratio * ship_weight_val)
     chance = base * max(0.0, 1.0 - penalty)
     return clamp_probability(chance)
+
+
+def clamp_percent(value, default=0.0):
+    """Clamp a percentage-like value to the inclusive range 0..100."""
+    try:
+        percent = float(value)
+    except (TypeError, ValueError):
+        percent = float(default)
+    return max(0.0, min(100.0, percent))
+
+
+def anomaly_decay_chance(stability):
+    """Return the per-turn chance of an anomaly losing 1 stability point."""
+    stability = clamp_percent(stability, default=100.0)
+    if stability > 90.0:
+        return 0.0
+    return clamp_probability((100.0 - stability) / 100.0)
+
+
+def anomaly_collapse_chance(stability):
+    """Return the per-turn chance of an unstable anomaly vanishing."""
+    stability = clamp_percent(stability, default=100.0)
+    if stability > 30.0:
+        return 0.0
+    return clamp_probability(((30.0 - stability) * 2.0) / 100.0)
+
+
+def anomaly_spawn_fill_ratio(current_anomalies, anomaly_cap):
+    """Return the filled fraction of the anomaly cap."""
+    try:
+        current = float(current_anomalies)
+    except (TypeError, ValueError):
+        current = 0.0
+    try:
+        cap = float(anomaly_cap)
+    except (TypeError, ValueError):
+        cap = 0.0
+    if cap <= 0.0:
+        return 1.0
+    return clamp_probability(current / cap)
+
+
+def anomaly_spawn_chance(current_anomalies, anomaly_cap, empty_map_chance=0.45):
+    """Return anomaly spawn chance scaled down by cap fill percentage."""
+    fill_ratio = anomaly_spawn_fill_ratio(current_anomalies, anomaly_cap)
+    max_chance = clamp_probability(empty_map_chance)
+    return clamp_probability(max_chance * (1.0 - fill_ratio))
