@@ -1,10 +1,12 @@
 from io import StringIO
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.management import call_command, CommandError
 from django.test import TestCase
+from django.utils import timezone
 
 from ..factory import GameFactory
 from ..models import (
@@ -763,6 +765,115 @@ class PlayCommandTest(TestCase):
         self.assertIn('is_anomaly: true', output)
         self.assertIn('anomaly_type: WORMHOLE', output)
         self.assertIn('stability: 61', output)
+
+    def test_reports_command_lists_known_objects_with_minimal_fields(self):
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Enemy Scout',
+            x=self.player1.homeworld.x + 2,
+            y=self.player1.homeworld.y + 1,
+            ship_count=6,
+        )
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year - 1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report='{}',
+        )
+        report.set_report_data({
+            'name': enemy_fleet.name,
+            'x': enemy_fleet.x,
+            'y': enemy_fleet.y,
+            'player_name': self.player2.name,
+            'ship_count': enemy_fleet.ship_count,
+            'report_tier': 'advanced',
+        })
+        report.save()
+
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=self.player1.homeworld.x + 3,
+            y=self.player1.homeworld.y + 2,
+            name='Known Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+        )
+        anomaly_report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year - 2,
+            target_type='anomaly',
+            target_id=anomaly.id,
+            cached_report='{}',
+        )
+        anomaly_report.set_report_data({
+            'name': anomaly.name,
+            'x': anomaly.x,
+            'y': anomaly.y,
+            'anomaly_type': anomaly.anomaly_type,
+            'report_tier': 'basic',
+        })
+        anomaly_report.save()
+
+        hidden_anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=self.player2.homeworld.x,
+            y=self.player2.homeworld.y,
+            name='Visible Only Nebula',
+            anomaly_type=Anomaly.TYPE_NEBULA,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/reports', '/exit'],
+        )
+        self.assertIn('%s:' % self.player1.homeworld.short_id, output)
+        self.assertIn('report_year: %s' % self.game.year, output)
+        self.assertIn('owner: %s' % self.player1.name, output)
+        self.assertIn('object_class: star', output)
+        self.assertIn('%s:' % enemy_fleet.short_id, output)
+        self.assertIn('fleet_count: 6', output)
+        self.assertIn('%s:' % anomaly.short_id, output)
+        self.assertIn('subclass: Rift', output)
+        self.assertNotIn('%s:' % hidden_anomaly.short_id, output)
+
+    def test_status_command_shows_quorum_progress(self):
+        self.player2.turned_in = True
+        self.player2.save(update_fields=['turned_in'])
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/status', '/exit'],
+        )
+        self.assertIn('year: %s' % self.game.year, output)
+        self.assertIn('turn_scheme: QUORUM', output)
+        self.assertIn('turned_in: false', output)
+        self.assertIn('active_players: 2', output)
+        self.assertIn('ready_players: 1', output)
+
+    def test_status_command_shows_next_generation_when_scheduled(self):
+        self.game.turn_scheme = 'DAILY'
+        self.game.next_generation = timezone.now() + timedelta(hours=2, minutes=30)
+        self.game.save(update_fields=['turn_scheme', 'next_generation'])
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/status', '/exit'],
+        )
+        self.assertIn('turn_scheme: DAILY', output)
+        self.assertIn('next_generation:', output)
+        self.assertIn('time_to_next_turn:', output)
 
     def test_priority_messages_shown_on_login_and_messages_filters_work(self):
         GameMessage.objects.create(

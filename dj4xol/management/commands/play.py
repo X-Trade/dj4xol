@@ -5,6 +5,7 @@ import shlex
 from django.contrib.auth import authenticate
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Max, Q
+from django.utils import timezone
 
 from dj4xol.models import (
     Account,
@@ -176,6 +177,12 @@ class Command(BaseCommand):
         if raw == "/stars":
             self._print_yaml(self._stars_summary(game, player))
             return
+        if raw == "/status":
+            self._print_yaml(self._status_summary(player, game))
+            return
+        if raw == "/reports":
+            self._print_yaml(self._reports_summary(player))
+            return
         if raw == "/anomalies":
             self._print_yaml(self._anomalies_summary(player))
             return
@@ -316,6 +323,8 @@ class Command(BaseCommand):
                 "/colonies                YAML summary of your colonies.",
                 "/fleets                  YAML summary of your fleets.",
                 "/stars                   YAML summary of stars and known status.",
+                "/status                  YAML turn/year status for this game.",
+                "/reports                 YAML summary of known objects and report years.",
                 "/anomalies               YAML summary of all visible anomalies.",
                 "/salvage, /salvages      YAML summary of known salvage.",
                 "/orders <id>             List orders for your fleet/star.",
@@ -445,6 +454,56 @@ class Command(BaseCommand):
             data[anomaly.short_id] = entry
         return data
 
+    def _status_summary(self, player, game):
+        active_players = game.players.filter(defeated=False).count()
+        summary = {
+            "year": game.year,
+            "turn_scheme": game.turn_scheme,
+            "turn_scheme_label": game.get_turn_scheme_short_display(),
+            "is_generating": bool(game.is_generating),
+            "turned_in": bool(player.turned_in),
+            "active_players": active_players,
+        }
+        if game.turn_scheme == "QUORUM":
+            ready_players = game.players.filter(defeated=False, turned_in=True).count()
+            summary["ready_players"] = ready_players
+        if game.next_generation:
+            summary["next_generation"] = timezone.localtime(game.next_generation).isoformat()
+            summary["time_to_next_turn"] = self._format_time_to_next_turn(game.next_generation)
+        if game.turn_scheme == "OWNER":
+            summary["owner_can_generate"] = bool(player.account_id and player.account_id == game.owner_id)
+        return summary
+
+    def _reports_summary(self, player):
+        objects = []
+        objects.extend(Star.objects.filter(game=player.game).order_by("x", "y", "name", "id"))
+        objects.extend(Fleet.objects.filter(game=player.game).order_by("x", "y", "name", "id"))
+        objects.extend(Salvage.objects.filter(game=player.game).order_by("x", "y", "id"))
+        objects.extend(Anomaly.objects.filter(game=player.game).order_by("x", "y", "name", "id"))
+
+        data = {}
+        for obj in objects:
+            detail = DetailBuilder(player.game, selected=obj.short_id, player=player).build_detail()
+            if not detail or detail.get("unexplored"):
+                continue
+            report_year = detail.get("report_year")
+            if report_year is None and detail.get("is_current"):
+                report_year = player.game.year
+            entry = {
+                "report_year": report_year,
+                "owner": self._report_owner_name(obj, detail),
+                "location": "(%s, %s)" % (detail.get("x"), detail.get("y")),
+                "object_class": self._report_object_class(detail),
+            }
+            subclass = self._report_object_subclass(obj, detail)
+            if subclass:
+                entry["subclass"] = subclass
+            fleet_count = self._report_fleet_count(obj, detail)
+            if fleet_count is not None:
+                entry["fleet_count"] = fleet_count
+            data[obj.short_id] = entry
+        return data
+
     def _salvage_summary(self, player):
         salvages = Salvage.objects.filter(game=player.game).order_by("x", "y", "id")
         data = {}
@@ -477,6 +536,54 @@ class Command(BaseCommand):
         if detail.get("report_tier"):
             entry["report_tier"] = detail.get("report_tier")
         return entry
+
+    def _format_time_to_next_turn(self, next_generation):
+        delta = timezone.localtime(next_generation) - timezone.localtime(timezone.now())
+        if delta.total_seconds() <= 0:
+            return "due"
+        return self._format_duration(delta)
+
+    def _format_duration(self, delta):
+        total_seconds = int(delta.total_seconds())
+        days, rem = divmod(total_seconds, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes, _seconds = divmod(rem, 60)
+        parts = []
+        if days:
+            parts.append("%dd" % days)
+        if hours or days:
+            parts.append("%dh" % hours)
+        parts.append("%dm" % minutes)
+        return " ".join(parts)
+
+    def _report_owner_name(self, obj, detail):
+        owner = detail.get("player")
+        if owner and detail.get("is_current") and getattr(obj, "player", None) is not None:
+            return obj.player.name
+        return owner
+
+    def _report_object_class(self, detail):
+        if detail.get("is_star"):
+            return "star"
+        if detail.get("is_fleet"):
+            return "fleet"
+        if detail.get("is_salvage"):
+            return "salvage"
+        if detail.get("is_anomaly"):
+            return "anomaly"
+        return "object"
+
+    def _report_object_subclass(self, obj, detail):
+        if detail.get("is_salvage"):
+            return obj.get_salvage_type_display()
+        if detail.get("is_anomaly") and detail.get("anomaly_type"):
+            return obj.get_anomaly_type_display()
+        return None
+
+    def _report_fleet_count(self, obj, detail):
+        if detail.get("is_fleet"):
+            return int(getattr(obj, "ship_count", 0) or 0)
+        return None
 
     def _handle_orders_command(self, raw, player):
         try:
