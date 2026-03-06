@@ -88,6 +88,8 @@
 
                 var clusters = document.querySelector('input[name="clusters"]');
                 var spiral = document.querySelector('input[name="spiral_arms"]');
+                var anomalies = document.querySelector('input[name="anomalies_enabled"]');
+                var anomalyRate = document.querySelector('select[name="anomaly_spawn_rate"]');
                 function syncGalaxyOptions() {
                     if (!clusters || !spiral) {
                         return;
@@ -112,6 +114,17 @@
                     spiral.addEventListener('change', syncGalaxyOptions);
                 }
                 syncGalaxyOptions();
+
+                function syncAnomalyRate() {
+                    if (!anomalies || !anomalyRate) {
+                        return;
+                    }
+                    anomalyRate.disabled = !anomalies.checked;
+                }
+                if (anomalies) {
+                    anomalies.addEventListener('change', syncAnomalyRate);
+                }
+                syncAnomalyRate();
             })();
         </script>
         <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython.min.js"></script>

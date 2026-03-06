@@ -245,14 +245,14 @@ class StarMap():
 
         return f'{html_class}{class_additional}'
 
-    def render_object(self, object, extra_style="", offset_x=0, offset_y=0, class_override=None, extra_classes=""):
+    def render_object(self, object, extra_style="", offset_x=0, offset_y=0, class_override=None, extra_classes="", name_override=None):
         """Render a game object on map using HTML"""
         x = object.x * self.MAP_SCALE + offset_x + self.border_offset
         y = object.y * self.MAP_SCALE + offset_y + self.border_offset
         html_class = class_override or self.resolve_html_class(object)
         if extra_classes:
             html_class = f"{html_class} {extra_classes}"
-        name = object.name
+        name = name_override if name_override is not None else object.name
         style = f"left:{x}px; top:{y}px;{extra_style}"
         if isinstance(object, Fleet):
             object_type = 'fleet'
@@ -354,10 +354,13 @@ class StarMap():
                 extra_classes=self._get_salvage_exploration_class(salvage),
             )
         if getattr(salvage, 'salvage_type', None) == Salvage.TYPE_ANCIENT_DEBRIS:
+            explored = self._get_salvage_exploration_class(salvage) == "mapstar-explored"
+            name = salvage.name if explored or not self.player else "???"
             return self.render_object(
                 salvage,
                 class_override="mapsalvage-ancient",
                 extra_classes=self._get_salvage_exploration_class(salvage),
+                name_override=name,
             )
         return self.render_object(salvage)
 

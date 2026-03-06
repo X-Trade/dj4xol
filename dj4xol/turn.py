@@ -180,8 +180,8 @@ ANCIENT_DEBRIS_SPAWN_SHARE = 0.02
 
 ASTEROID_FIELD_DAMAGE_MIN = 1
 ASTEROID_FIELD_DAMAGE_MAX = 4
-ANCIENT_DEBRIS_DAMAGE_MIN = 4
-ANCIENT_DEBRIS_DAMAGE_MAX = 12
+ANCIENT_DEBRIS_DAMAGE_MIN = 40
+ANCIENT_DEBRIS_DAMAGE_MAX = 90
 ANOMALY_MAX_STAR_RATIO = 0.15
 ANOMALY_COMET_DRIFT_WARP = 1.0
 ANOMALY_MAX_RISK_REWARD_BONUS = 0.50
@@ -727,11 +727,33 @@ class GameTurn():
                     fleet, salvage, ASTEROID_FIELD_DAMAGE_MIN, ASTEROID_FIELD_DAMAGE_MAX
                 )
             elif salvage_type == Salvage.TYPE_ANCIENT_DEBRIS:
+                templates = [
+                    "Unknown forces within %s inflicted %s%% integrity damage on %s.",
+                    "Automated defences in %s struck %s, causing %s%% integrity damage.",
+                ]
+                destruction_templates = [
+                    "Unknown forces within %s destroyed %s.",
+                    "Automated defences in %s destroyed %s.",
+                ]
                 self._apply_salvage_damage(
-                    fleet, salvage, ANCIENT_DEBRIS_DAMAGE_MIN, ANCIENT_DEBRIS_DAMAGE_MAX
+                    fleet, salvage, ANCIENT_DEBRIS_DAMAGE_MIN, ANCIENT_DEBRIS_DAMAGE_MAX,
+                    message_templates=templates,
+                    destruction_templates=destruction_templates,
+                    allow_destroy=True,
+                    min_defense_for_survival=10,
                 )
 
-    def _apply_salvage_damage(self, fleet, salvage, min_damage, max_damage):
+    def _apply_salvage_damage(
+        self,
+        fleet,
+        salvage,
+        min_damage,
+        max_damage,
+        message_templates=None,
+        destruction_templates=None,
+        allow_destroy=False,
+        min_defense_for_survival=None,
+    ):
         """Apply minor hazard damage when entering salvage fields."""
         try:
             base_damage = random.randint(int(min_damage), int(max_damage))
@@ -739,19 +761,67 @@ class GameTurn():
             base_damage = 0
         if base_damage <= 0:
             return
-        defense_mult = calculate_fleet_defense_multiplier(fleet)
-        if defense_mult <= 0:
-            defense_mult = 1.0
-        scaled = int(round(float(base_damage) / float(defense_mult)))
+        try:
+            defense_level = int(getattr(fleet, 'defense_level', 0) or 0)
+        except (TypeError, ValueError):
+            defense_level = 0
+        defense_factor = 1.0 + (max(0, defense_level) / 2.0)
+        scaled = int(round(float(base_damage) / float(defense_factor)))
         damage = max(0, scaled)
         if damage <= 0:
             return
+        if allow_destroy and min_defense_for_survival is not None:
+            if defense_level < int(min_defense_for_survival):
+                deficit = int(min_defense_for_survival) - defense_level
+                destruction_chance = min(1.0, max(0.0, deficit / float(min_defense_for_survival)))
+                if roll_chance(destruction_chance):
+                    fleet_name = fleet.name
+                    player = fleet.player
+                    fleet.delete()
+                    if destruction_templates:
+                        template = random.choice(destruction_templates)
+                        text = template % (format_map_object(salvage), fleet_name)
+                    else:
+                        text = "%s was destroyed while exploring %s." % (
+                            fleet_name, format_map_object(salvage)
+                        )
+                    self._create_salvage_hazard_message(player, text, priority=True)
+                    return
+
         if int(fleet.integrity or 0) <= damage:
+            if allow_destroy:
+                fleet_name = fleet.name
+                player = fleet.player
+                fleet.delete()
+                if destruction_templates:
+                    template = random.choice(destruction_templates)
+                    text = template % (format_map_object(salvage), fleet_name)
+                else:
+                    text = "%s was destroyed while exploring %s." % (
+                        fleet_name, format_map_object(salvage)
+                    )
+                self._create_salvage_hazard_message(player, text, priority=True)
+                return
             damage = max(0, int(fleet.integrity or 0) - 1)
         if damage <= 0:
             return
         fleet.integrity = max(0, int(fleet.integrity or 0) - damage)
         fleet.save(update_fields=['integrity'])
+        if message_templates:
+            template = random.choice(message_templates)
+            text = template % (format_map_object(salvage), damage, fleet.name)
+            self._create_salvage_hazard_message(fleet.player, text, priority=True)
+
+    def _create_salvage_hazard_message(self, player, text, priority=False):
+        from .models import GameMessage
+        GameMessage.objects.create(
+            game=self.game,
+            player=player,
+            message=text,
+            year=self.game.year,
+            category='RANDOM',
+            priority=bool(priority),
+        )
 
     def spawn_anomalies(self):
         """Very rarely spawn a new anomaly or special salvage field."""

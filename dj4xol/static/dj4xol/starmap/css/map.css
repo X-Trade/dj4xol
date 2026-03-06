@@ -185,6 +185,7 @@ body.lcars .maparea a.mapstar-name {
     border: solid white;
     border-width: 0 3px 3px 0;
     position: absolute;
+    z-index: 3;
 }
 
 .mapstar-owned {
@@ -201,6 +202,7 @@ body.lcars .maparea a.mapstar-name {
     border: solid rgb(0, 255, 0);
     border-width: 0 3px 3px 0;
     position: absolute;
+    z-index: 3;
 }
 
 .mapstar-enemy {
@@ -217,6 +219,7 @@ body.lcars .maparea a.mapstar-name {
     border: solid rgb(255, 0, 0);
     border-width: 0 3px 3px 0;
     position: absolute;
+    z-index: 3;
 }
 
 .mapsalvage {
@@ -225,6 +228,7 @@ body.lcars .maparea a.mapstar-name {
     border: 1.5px solid #ffff00;
     background-color: transparent;
     position: absolute;
+    z-index: 2;
 }
 
 .mapsalvage-asteroid {
@@ -234,7 +238,7 @@ body.lcars .maparea a.mapstar-name {
     background-size: 100% 100%;
     background-repeat: no-repeat;
     position: absolute;
-    z-index: 4;
+    z-index: 2;
     pointer-events: auto;
 }
 
@@ -248,7 +252,7 @@ body.lcars .maparea a.mapstar-name {
     line-height: 7px;
     text-align: center;
     position: absolute;
-    z-index: 4;
+    z-index: 2;
     pointer-events: auto;
 }
 
