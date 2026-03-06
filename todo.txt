@@ -16,3 +16,5 @@
 2. Ship design
 3. Brython expansion/refactor
 
+============= cleanup ==============
+1. Migrate `FleetOrders` anomaly targets away from `target_short_id` toward backend FK storage without breaking existing queued orders or order execution semantics. See `doc/order_target_backend_cleanup.md`.

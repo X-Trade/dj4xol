@@ -51,6 +51,12 @@ A Django-based 4X space strategy game inspired by Stars!
 - If `python` is not on PATH in a shell session, still use `pyenv exec python ...`
 - Do not try to source `.venv/bin/activate` or similar
 
+## Docs Workflow
+
+- Use `doc/` for focused implementation notes, cleanup rationales, migration writeups, and other task-specific design docs.
+- Add actionable follow-up items to `todo.txt` when a doc introduces concrete cleanup or feature work.
+- `doc/plan.txt` is mainly reserved for broader future gameplay-device ideas and exploratory design notes, not general implementation cleanup tracking.
+
 ## Game Rules
 
 - Games can exist with zero players (allows cleanup/admin scenarios)
