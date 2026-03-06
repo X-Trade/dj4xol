@@ -20,6 +20,7 @@ from .models import (
     Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology,
     ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
+    Spectator,
 )
 from .email_rollups import send_message_rollup_for_account
 from .decorators import registration_required, player_only_view
@@ -222,9 +223,12 @@ def gamelist(request):
 
     account = request.user.dj4xol_account
     playing_game_ids = Player.objects.filter(account=account).values('game')
+    spectating_game_ids = set(
+        Spectator.objects.filter(account=account).values_list('game_id', flat=True)
+    )
 
     my_games = Game.objects.filter(pk__in=playing_game_ids, ended=False)
-    open_games = Game.objects.filter(public=True, joinable=True, ended=False).exclude(pk__in=playing_game_ids)
+    open_games = Game.objects.filter(public=True, ended=False).exclude(pk__in=playing_game_ids)
 
     # Games I'm invited to (by account or email) that I haven't joined yet
     invited_games = Game.objects.filter(
@@ -239,6 +243,7 @@ def gamelist(request):
         'my_games': my_games,
         'invited_games': invited_games,
         'open_games': open_games,
+        'spectating_game_ids': spectating_game_ids,
         'server_name': ServerSettings.get('server_name', 'dj4xol'),
         'server_tagline': ServerSettings.get('server_tagline', ''),
         'server_welcome': ServerSettings.get('server_welcome', ''),
@@ -371,6 +376,11 @@ def join_game(request, game_short_id):
     account = request.user.dj4xol_account
     selected_theme = account.theme if account else 'classic'
 
+    if Spectator.objects.filter(game=game, account=account).exists():
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'You are already spectating this game and cannot join it.'
+        }, status=403)
+
     if game.players.filter(account=account).exists():
         return render(request, 'dj4xol/forbidden.html', {
             'message': 'You are already playing in this game.'
@@ -443,6 +453,107 @@ def join_game(request, game_short_id):
         'selected_theme': selected_theme,
         'race_refunds_json': json.dumps(race_refunds),
         'player_count': player_count,
+    })
+
+
+@registration_required()
+def spectate_game_confirm(request, game_short_id):
+    """Confirm spectator consent for a public game."""
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    selected_theme = account.theme if account else 'classic'
+
+    if Player.objects.filter(game=game, account=account).exists():
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'You are already playing in this game.'
+        }, status=403)
+
+    if not game.public:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'This game is not open for spectating.'
+        }, status=403)
+
+    spectator = Spectator.objects.filter(game=game, account=account).first()
+    if spectator:
+        return redirect('dj4xol:spectate_game', game_short_id=game.short_id)
+
+    if request.method == 'POST':
+        Spectator.objects.create(game=game, account=account)
+        return redirect('dj4xol:spectate_game', game_short_id=game.short_id)
+
+    return render(request, 'dj4xol/spectate_confirm.html', {
+        'game': game,
+        'selected_theme': selected_theme,
+    })
+
+
+@registration_required()
+def spectate_starmap(request, game_short_id):
+    """Read-only starmap for spectators."""
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    selected_theme = account.theme if account else 'classic'
+
+    if Player.objects.filter(game=game, account=account).exists():
+        return redirect('dj4xol:game', game_short_id=game.short_id)
+
+    if not game.public:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'This game is not open for spectating.'
+        }, status=403)
+
+    spectator = Spectator.objects.filter(game=game, account=account).first()
+    if not spectator:
+        return redirect('dj4xol:spectate_game_confirm', game_short_id=game.short_id)
+
+    is_admin_view = bool(request.user.is_staff or request.user.is_superuser)
+    x = request.GET.get('x', None)
+    y = request.GET.get('y', None)
+    selected = request.GET.get('sel', None)
+
+    detail_mode = 'spectator_admin' if is_admin_view else 'spectator_basic'
+    detail_builder = DetailBuilder(
+        game,
+        x,
+        y,
+        selected,
+        player=None,
+        viewer_account=account,
+        detail_mode=detail_mode,
+    )
+    detail = detail_builder.build_detail()
+
+    starmap_obj = StarMap(game, None, dest_mode=False, spectator=True)
+
+    selected_object_type = ''
+    selected_object_short_id = ''
+    if detail and detail.get('selected_id'):
+        selected_object_short_id = detail.get('selected_id') or ''
+        if detail.get('is_star'):
+            selected_object_type = 'star'
+        elif detail.get('is_fleet'):
+            selected_object_type = 'fleet'
+        elif detail.get('is_salvage'):
+            selected_object_type = 'salvage'
+        elif detail.get('is_anomaly'):
+            selected_object_type = 'anomaly'
+
+    return render(request, 'dj4xol/spectator_starmap.html', {
+        'game': game,
+        'account': account,
+        'starmap': starmap_obj,
+        'detail': detail,
+        'selection': {'x': x, 'y': y, 'sel': selected},
+        'selected_object_type': selected_object_type,
+        'selected_object_short_id': selected_object_short_id,
+        'user_theme': selected_theme,
+        'movement_paths_json': json.dumps([]),
+        'wormhole_links_json': json.dumps([]),
+        'scanner_basic_json': json.dumps([]),
+        'scanner_advanced_json': json.dumps([]),
+        'selected_patrol_circles_json': json.dumps([]),
+        'enable_debug_actions': False,
+        'is_admin_view': is_admin_view,
     })
 
 @player_only_view()

@@ -77,10 +77,18 @@ class DetailBuilder():
             return 1
         return max(1, int(ceil(distance / float(speed))))
 
-    def __init__(self, game, x=None, y=None, selected=None, player=None):
+    def __init__(self, game, x=None, y=None, selected=None, player=None,
+                 viewer_account=None, detail_mode=None):
         self.game = game
         self.player = player
-        self._scanner_sources = get_scanner_sources_for_player(game, player) if player else []
+        self.viewer_account = viewer_account
+        self.detail_mode = detail_mode
+        self.spectator_mode = detail_mode in ('spectator_basic', 'spectator_admin')
+        self.admin_view = detail_mode == 'spectator_admin'
+        self._scanner_sources = (
+            get_scanner_sources_for_player(game, player)
+            if player and not self.spectator_mode else []
+        )
         self.set_coordinates(x, y)
         self.find(x, y, selected)
 
@@ -103,6 +111,10 @@ class DetailBuilder():
 
     def build_detail(self):
         if self.selected_obj:
+            if self.admin_view:
+                return self._build_admin_detail()
+            if self.spectator_mode:
+                return self._build_spectator_detail()
             can_view, report_year = self.can_view_object(self.selected_obj)
 
             if not can_view:
@@ -112,6 +124,7 @@ class DetailBuilder():
                     'selected_id': self.selected_obj.short_id,
                     'objects_here': self.get_objects_here(),
                     'unexplored': True,
+                    'owner_known': False,
                     'x': self.selected_obj.x,
                     'y': self.selected_obj.y,
                     'is_star': isinstance(self.selected_obj, Star),
@@ -130,6 +143,8 @@ class DetailBuilder():
                      'objects_here': self.get_objects_here(),
                      'player': self.get_object_player(),
                      'is_owned': self.selected_obj.player == self.player if self.player else False,
+                     'owner_known': bool(self.get_object_player()),
+                     'show_composition': True,
                      'is_survivable': self.get_survivability(),
                      'population': self.get_population(),
                      'population_change': self.get_population_change(),
@@ -192,6 +207,97 @@ class DetailBuilder():
             detail = None
         return detail
 
+    def _build_detail_shell(self):
+        obj = self.selected_obj
+        return {
+            'name': self.get_object_name(),
+            'selected_id': obj.short_id,
+            'objects_here': self.get_objects_here(),
+            'is_star': isinstance(obj, Star),
+            'is_fleet': isinstance(obj, Fleet),
+            'is_salvage': isinstance(obj, Salvage),
+            'is_anomaly': isinstance(obj, Anomaly),
+            'fleet_thumbnail': (
+                obj.effective_thumbnail_path if isinstance(obj, Fleet) else None
+            ),
+            'star_thumbnail': (
+                obj.effective_thumbnail_path if isinstance(obj, Star) else None
+            ),
+            'anomaly_thumbnail': (
+                obj.effective_thumbnail_path if isinstance(obj, Anomaly) else None
+            ),
+            'salvage_thumbnail': (
+                get_salvage_thumbnail(obj) if isinstance(obj, Salvage) else None
+            ),
+            'star_short_id': obj.short_id if isinstance(obj, Star) else None,
+            'fleet_short_id': obj.short_id if isinstance(obj, Fleet) else None,
+            'salvage_short_id': obj.short_id if isinstance(obj, Salvage) else None,
+            'anomaly_short_id': obj.short_id if isinstance(obj, Anomaly) else None,
+            'anomaly_type': obj.anomaly_type if isinstance(obj, Anomaly) else None,
+            'stability': obj.stability if isinstance(obj, Anomaly) else None,
+            'heading': obj.heading if isinstance(obj, Anomaly) else None,
+            'secret_resource_labels': {key: self._resource_label(key) for key in SECRET_RESOURCE_KEYS},
+            'x': obj.x,
+            'y': obj.y,
+        }
+
+    def _build_spectator_detail(self):
+        detail = self._build_detail_shell()
+        detail.update({
+            'player': self.get_object_player(),
+            'is_owned': False,
+            'owner_known': True,
+            'show_composition': False,
+            'report_tier': 'basic',
+            'is_survivable': None,
+            'population': self.get_population(),
+            'population_change': None,
+            'capacity': None,
+            'environmentals': self.build_environmental_detail(),
+            'resources': self.build_resource_detail(),
+            'infrastructure': None,
+            'salvage_inventory': None,
+            'fleet_inventory': self.build_fleet_inventory(allow_foreign=True),
+            'fleet_cargo': self._build_spectator_fleet_capacity(),
+            'fleet_capabilities': None,
+            'report_year': None,
+            'is_current': True,
+        })
+        if detail.get('is_anomaly'):
+            detail['stability'] = None
+        return detail
+
+    def _build_admin_detail(self):
+        detail = self._build_detail_shell()
+        detail.update({
+            'player': self.get_object_player(),
+            'is_owned': False,
+            'owner_known': True,
+            'show_composition': True,
+            'report_tier': None,
+            'is_survivable': None,
+            'population': self.get_population(),
+            'population_change': None,
+            'capacity': None,
+            'environmentals': self.build_environmental_detail(),
+            'resources': self.build_resource_detail(),
+            'infrastructure': self.build_infrastructure_detail(),
+            'salvage_inventory': self.build_salvage_inventory(),
+            'fleet_inventory': self.build_fleet_inventory(allow_foreign=True),
+            'fleet_cargo': self.get_fleet_cargo(include_cargo=True),
+            'fleet_capabilities': self.get_fleet_capabilities(),
+            'report_year': None,
+            'is_current': True,
+        })
+        return detail
+
+    def _build_spectator_fleet_capacity(self):
+        if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
+            return None
+        return {
+            'capacity': self.selected_obj.cargo_capacity,
+        }
+
     def _build_detail_from_report(self, report_year):
         """Build detail dict from a cached report."""
         target_type = self._get_target_type(self.selected_obj)
@@ -230,6 +336,8 @@ class DetailBuilder():
             'is_current': False,
             'is_owned': False,
             'report_tier': data.get('report_tier'),
+            'owner_known': bool(data.get('player_name')),
+            'show_composition': True,
         }
 
         # Add player name from cached data
@@ -494,7 +602,9 @@ class DetailBuilder():
         salvages = self.game.salvages.filter(x=x, y=y).all()
         anomalies = self.game.anomalys.filter(x=x, y=y).all()
         visible_fleets = []
-        if self.player:
+        if self.spectator_mode or self.admin_view:
+            visible_fleets = list(fleets)
+        elif self.player:
             for fleet in fleets:
                 if fleet_visible_to_player(fleet, self.player, sources=self._scanner_sources):
                     visible_fleets.append(fleet)
@@ -619,7 +729,13 @@ class DetailBuilder():
 
     def _resource_label(self, resource_key):
         if resource_key in SECRET_RESOURCE_KEYS:
-            discovered = bool(getattr(self.player, f'discovered_{resource_key}', False)) if self.player else False
+            discovered = False
+            if (self.spectator_mode or self.admin_view) and self.viewer_account:
+                discovered = bool(getattr(self.viewer_account, f'discovered_{resource_key}', False))
+            elif self.player:
+                discovered = bool(getattr(self.player, f'discovered_{resource_key}', False))
+            elif self.viewer_account:
+                discovered = bool(getattr(self.viewer_account, f'discovered_{resource_key}', False))
             return get_secret_resource_label(resource_key, discovered)
         return self.RESOURCE_LABELS.get(resource_key, str(resource_key).title())
 
@@ -886,7 +1002,7 @@ class DetailBuilder():
             orders.append(order_data)
         return orders
 
-    def get_fleet_cargo(self):
+    def get_fleet_cargo(self, include_cargo=False):
         """Get cargo details for selected fleet."""
         if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
             return None
@@ -894,7 +1010,7 @@ class DetailBuilder():
         # Always expose composition for visible fleets (own or observed).
         # Cargo/inventory remains owner-only.
         cargo = self._build_fleet_composition(self.selected_obj)
-        if self.player and self.selected_obj.player == self.player:
+        if include_cargo or (self.player and self.selected_obj.player == self.player):
             cargo.update({
                 'capacity': self.selected_obj.cargo_capacity,
                 'used': self.selected_obj.cargo_used,
@@ -996,12 +1112,13 @@ class DetailBuilder():
             return None
         return f'{basic_val}ly/{advanced_val}ly'
 
-    def build_fleet_inventory(self):
+    def build_fleet_inventory(self, allow_foreign=False):
         """Build fleet cargo inventory data for progress bar display."""
         if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
             return None
-        if not self.player or self.selected_obj.player != self.player:
-            return None
+        if not allow_foreign:
+            if not self.player or self.selected_obj.player != self.player:
+                return None
         
         capacity = self.selected_obj.cargo_capacity
         fuel_cap = max(0.0, float(self.selected_obj.max_fuel))

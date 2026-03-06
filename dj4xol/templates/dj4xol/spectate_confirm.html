@@ -1,0 +1,42 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Spectate Game</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        {% if selected_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if selected_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} join-game single-panel-page">
+        <div class="title-bar">
+            <span class="title">Spectate Game</span>
+            <span class="tagline">Read-only view</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='games' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="spectate-game">
+                    <h2><span>Spectate {{ game.name }}</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                            <p>
+                                If you spectate this game, you will never be allowed to play it.
+                                Spectator access is read-only.
+                            </p>
+                            <form method="post" class="game-form">
+                                {% csrf_token %}
+                                <div class="form-nav">
+                                    <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:index' %}'">Back to Games</button>
+                                    <button type="submit" class="nav-button primary">Confirm Spectate</button>
+                                </div>
+                            </form>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
