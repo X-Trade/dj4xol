@@ -150,7 +150,8 @@ $(document).ready(function() {
     var $movementBtn = $('#starmap-movement-paths');
     var $scannerBtn = $('#starmap-scanners');
     var $starNamesBtn = $('#starmap-star-names');
-    var scannersEnabled = localStorage.getItem(storageKey + ':scannerRanges') === 'true';
+    var scannerSetting = localStorage.getItem(storageKey + ':scannerRanges');
+    var scannersEnabled = (scannerSetting === null) ? true : (scannerSetting === 'true');
 
     (function loadMovementPaths() {
         var el = document.getElementById('movement-paths-json');
