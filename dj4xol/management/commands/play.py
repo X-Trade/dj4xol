@@ -181,8 +181,8 @@ class Command(BaseCommand):
         if raw == "/colonies":
             self._print_yaml(self._colonies_summary(player))
             return
-        if raw == "/fleets":
-            self._print_yaml(self._fleets_summary(player))
+        if raw.startswith("/fleets"):
+            self._handle_fleets_command(raw, player)
             return
         if raw == "/stars":
             self._print_yaml(self._stars_summary(game, player))
@@ -387,11 +387,30 @@ class Command(BaseCommand):
                 ],
             },
             "fleets": {
-                "summary": "/fleets                  YAML summary of your fleets.",
+                "summary": "/fleets [own|other|all]  YAML summary of fleet intelligence.",
                 "lines": [
                     "/fleets",
-                    "Shows your fleets with current visible data.",
+                    "Usage: /fleets [own|other|all]",
+                    "Default /fleets is the same as /fleets own.",
+                    "Shows your fleets in detail, or known other/all fleets through the report/scanner system.",
                 ],
+                "actions": {
+                    "own": [
+                        "/fleets own",
+                        "Usage: /fleets [own]",
+                        "Shows your own fleets with full current management detail.",
+                    ],
+                    "other": [
+                        "/fleets other",
+                        "Usage: /fleets other",
+                        "Shows only known non-owned fleets, gated by current visibility or cached reports.",
+                    ],
+                    "all": [
+                        "/fleets all",
+                        "Usage: /fleets all",
+                        "Shows both your fleets and known non-owned fleets.",
+                    ],
+                },
             },
             "stars": {
                 "summary": "/stars                   YAML summary of stars and known status.",
@@ -411,7 +430,7 @@ class Command(BaseCommand):
                 "summary": "/reports                 YAML summary of known objects and report years.",
                 "lines": [
                     "/reports",
-                    "Lists your known objects with report year, owner, location, class, and subclass/fleet count.",
+                    "Lists your known objects with name, report year, owner, location, class, and subclass/fleet count.",
                 ],
             },
             "anomalies": {
@@ -634,7 +653,30 @@ class Command(BaseCommand):
             }
         return data
 
-    def _fleets_summary(self, player):
+    def _handle_fleets_command(self, raw, player):
+        try:
+            parts = shlex.split(raw)
+        except ValueError as exc:
+            self.stdout.write("Invalid command syntax: %s" % exc)
+            return
+        if len(parts) == 1:
+            scope = "own"
+        elif len(parts) == 2:
+            scope = parts[1].strip().lower()
+        else:
+            self.stdout.write("Usage: /fleets [own|other|all]")
+            return
+        if scope not in ("own", "other", "all"):
+            self.stdout.write("Usage: /fleets [own|other|all]")
+            return
+        self._print_yaml(self._fleets_summary(player, scope))
+
+    def _fleets_summary(self, player, scope="own"):
+        if scope == "own":
+            return self._own_fleets_summary(player)
+        return self._known_fleets_summary(player, scope)
+
+    def _own_fleets_summary(self, player):
         fleets = player.fleets.order_by("name", "x", "y")
         data = {}
         for fleet in fleets:
@@ -650,6 +692,9 @@ class Command(BaseCommand):
                     cargo[f"{key}_kt"] = amount
             data[fleet.short_id] = {
                 "name": fleet.name,
+                "owner": fleet.player.name if fleet.player_id else None,
+                "is_owned": True,
+                "visibility": "current",
                 "position": "(%s, %s)" % (fleet.x, fleet.y),
                 "ship_count": fleet.ship_count,
                 "number_of_orders": fleet.orders.count(),
@@ -660,6 +705,40 @@ class Command(BaseCommand):
                 "max_safe_warp": fleet.max_safe_warp,
             }
         return data
+
+    def _known_fleets_summary(self, player, scope):
+        fleets = Fleet.objects.filter(game=player.game).order_by("x", "y", "name", "id")
+        data = {}
+        for fleet in fleets:
+            detail = DetailBuilder(
+                player.game, selected=fleet.short_id, player=player
+            ).build_detail()
+            if not detail or detail.get("unexplored"):
+                continue
+            is_owned = bool(fleet.player_id == player.id)
+            if scope == "other" and is_owned:
+                continue
+
+            entry = self._build_map_object_summary_entry(detail)
+            entry["owner"] = self._report_owner_name(fleet, detail)
+            entry["is_owned"] = is_owned
+            ship_count = self._fleet_ship_count_from_detail(fleet, detail)
+            if ship_count is not None:
+                entry["ship_count"] = ship_count
+            data[fleet.short_id] = entry
+        return data
+
+    def _fleet_ship_count_from_detail(self, fleet, detail):
+        if detail.get("is_current"):
+            return int(getattr(fleet, "ship_count", 0) or 0)
+        fleet_cargo = detail.get("fleet_cargo") or {}
+        ship_count = fleet_cargo.get("ship_count")
+        if ship_count is None:
+            return None
+        try:
+            return int(ship_count)
+        except (TypeError, ValueError):
+            return None
 
     def _anomalies_summary(self, player):
         anomalies = Anomaly.objects.filter(game=player.game).order_by("x", "y", "name", "id")
@@ -717,6 +796,7 @@ class Command(BaseCommand):
                 report_year = player.game.year
             owner = self._report_owner_name(obj, detail)
             entry = {
+                "name": detail.get("name") or getattr(obj, "name", None),
                 "report_year": report_year,
                 "location": "(%s, %s)" % (detail.get("x"), detail.get("y")),
                 "object_class": self._report_object_class(detail),

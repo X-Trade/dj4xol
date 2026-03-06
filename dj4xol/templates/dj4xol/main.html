@@ -7,7 +7,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/starmap/css/map.css' %}">
-        <link rel="stylesheet" href="{% static 'dj4xol/css/play_terminal.css' %}">
+        {% if play_cli_web_enabled %}<link rel="stylesheet" href="{% static 'dj4xol/css/play_terminal.css' %}">{% endif %}
         {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
         {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
         <script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
@@ -16,8 +16,14 @@
             window.playerTurnedIn = {{ player.turned_in|yesno:'true,false' }};
             window.currentYear = {{ game.year }};
             window.gameStatusUrl = "{% url 'dj4xol:game_status' game.short_id %}";
+            window.playCliEnabled = {{ play_cli_web_enabled|yesno:'true,false' }};
+            {% if play_cli_web_enabled %}
             window.playCliBootstrapUrl = "{% url 'dj4xol:play_cli_bootstrap' game.short_id %}";
             window.playCliCommandUrl = "{% url 'dj4xol:play_cli_command' game.short_id %}";
+            {% else %}
+            window.playCliBootstrapUrl = null;
+            window.playCliCommandUrl = null;
+            {% endif %}
             window.turnIsDue = false;
         </script>
     </head>
@@ -123,6 +129,7 @@
                 </div>
             </div>
         </div>
+        {% if play_cli_web_enabled %}
         <div id="play-terminal-overlay" class="play-terminal-overlay" hidden>
             <div class="play-terminal-backdrop"></div>
             <section class="play-terminal-shell" aria-label="Play terminal">
@@ -133,6 +140,7 @@
                 </form>
             </section>
         </div>
+        {% endif %}
         <script>
         (function() {
             var hamburger = document.getElementById('hamburger-btn');
@@ -471,7 +479,7 @@
             });
         })();
         </script>
-        <script type="text/javascript" src="{% static 'dj4xol/js/play_terminal.js' %}"></script>
+        {% if play_cli_web_enabled %}<script type="text/javascript" src="{% static 'dj4xol/js/play_terminal.js' %}"></script>{% endif %}
         <script type="text/javascript" src="{% static 'dj4xol/js/thumb_pop.js' %}"></script>
         <script type="application/json" id="movement-paths-json">{{ movement_paths_json|safe }}</script>
         <script type="application/json" id="wormhole-links-json">{{ wormhole_links_json|safe }}</script>

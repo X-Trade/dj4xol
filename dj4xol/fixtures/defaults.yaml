@@ -78,6 +78,11 @@
     value: 'False'
 - model: dj4xol.ServerSettings
   fields:
+    key: 'enable_play_api'
+    description: 'Enable web Play CLI API'
+    value: 'True'
+- model: dj4xol.ServerSettings
+  fields:
     key: 'gpt_api_key'
     description: 'GPT API key'
     value: ''

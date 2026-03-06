@@ -3,7 +3,16 @@ import json
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
-from ..models import FleetOrders, GameMessage, ProductionOrder, Report, Fleet, Account
+from ..models import (
+    Account,
+    Fleet,
+    FleetOrders,
+    GameMessage,
+    ProductionOrder,
+    Report,
+    ResearchCategory,
+    ServerSettings,
+)
 from ..turn import GameTurn
 from ..factory import GameFactory
 from ._util import default_game, get_default_user, get_default_race
@@ -269,6 +278,7 @@ class TestPlayCliWebApi(TestCase):
         self.user, self.account = get_default_user()
         self.client = Client()
         self.client.force_login(self.user)
+        self.origin = 'http://testserver'
 
     def test_bootstrap_returns_initial_transcript_for_member(self):
         response = self.client.get(
@@ -286,6 +296,7 @@ class TestPlayCliWebApi(TestCase):
             reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
             data=json.dumps({'command': '/status'}),
             content_type='application/json',
+            HTTP_ORIGIN=self.origin,
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -294,11 +305,23 @@ class TestPlayCliWebApi(TestCase):
         self.assertIn('year: %s' % self.game.year, joined)
         self.assertIn('turn_scheme:', joined)
 
-    def test_command_endpoint_blocks_mutating_commands(self):
+    def test_command_endpoint_allows_fleets_all_filter(self):
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/fleets all'}),
+            content_type='application/json',
+            HTTP_ORIGIN=self.origin,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+
+    def test_command_endpoint_blocks_done_command(self):
         response = self.client.post(
             reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
             data=json.dumps({'command': '/done'}),
             content_type='application/json',
+            HTTP_ORIGIN=self.origin,
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -307,22 +330,77 @@ class TestPlayCliWebApi(TestCase):
         self.player.refresh_from_db()
         self.assertFalse(self.player.turned_in)
 
+    def test_command_endpoint_allows_orders_clear(self):
+        fleet = self.player.fleets.first()
+        FleetOrders.objects.create(
+            game=self.game,
+            fleet=fleet,
+            order_type='SCUTTLE',
+            position=1,
+        )
+
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/orders %s clear' % fleet.short_id}),
+            content_type='application/json',
+            HTTP_ORIGIN=self.origin,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['mutated'])
+        self.assertEqual(fleet.orders.count(), 0)
+
+    def test_command_endpoint_allows_orders_add(self):
+        fleet = self.player.fleets.first()
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/orders %s add SCUTTLE' % fleet.short_id}),
+            content_type='application/json',
+            HTTP_ORIGIN=self.origin,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['mutated'])
+        self.assertEqual(fleet.orders.count(), 1)
+        self.assertIn('type: SCUTTLE', '\n'.join(payload['lines']))
+
+    def test_command_endpoint_allows_research_allocation_update(self):
+        category = ResearchCategory.objects.filter(enabled=True).order_by('id').first()
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/research %s 55' % category.code}),
+            content_type='application/json',
+            HTTP_ORIGIN=self.origin,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['mutated'])
+        row = self.player.research_progress.get(category=category)
+        self.assertEqual(row.allocation_percent, 55.0)
+        self.assertIn('allocation_percent: 55.0', '\n'.join(payload['lines']))
+
     def test_command_endpoint_supports_exit(self):
         response = self.client.post(
             reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
             data=json.dumps({'command': '/exit'}),
             content_type='application/json',
+            HTTP_ORIGIN=self.origin,
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertTrue(payload['ok'])
         self.assertTrue(payload['close_overlay'])
+        self.assertFalse(payload['mutated'])
 
     def test_detail_command_returns_navigation_target(self):
         response = self.client.post(
             reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
             data=json.dumps({'command': '/detail %s' % self.player.homeworld.short_id}),
             content_type='application/json',
+            HTTP_ORIGIN=self.origin,
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -345,9 +423,44 @@ class TestPlayCliWebApi(TestCase):
             reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
             data=json.dumps({'command': '/status'}),
             content_type='application/json',
+            HTTP_ORIGIN='http://testserver',
         )
         self.assertEqual(bootstrap.status_code, 403)
         self.assertEqual(command.status_code, 403)
+
+    def test_play_api_can_be_disabled(self):
+        ServerSettings.objects.update_or_create(
+            key='enable_play_api',
+            defaults={'value': 'False', 'description': 'Enable web Play CLI API'},
+        )
+
+        page = self.client.get(reverse('dj4xol:game', args=[self.game.short_id]))
+        bootstrap = self.client.get(
+            reverse('dj4xol:play_cli_bootstrap', args=[self.game.short_id])
+        )
+        command = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/status'}),
+            content_type='application/json',
+            HTTP_ORIGIN=self.origin,
+        )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertNotContains(page, 'play-terminal-overlay')
+        self.assertNotContains(page, 'play_terminal.js')
+        self.assertContains(page, 'window.playCliEnabled = false;')
+        self.assertEqual(bootstrap.status_code, 404)
+        self.assertEqual(command.status_code, 404)
+
+    def test_command_endpoint_rejects_wrong_origin(self):
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/status'}),
+            content_type='application/json',
+            HTTP_ORIGIN='https://evil.example',
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'Origin mismatch')
 
 
 class TestDetailPanelReportTiers(TestCase):
