@@ -111,11 +111,9 @@
                     <h2><span>Features</span></h2>
                     <div class="panel-content panel-stack">
                         <ul class="landing-list">
-                            <li>Multi-game server with onboarding, invitations, and profile setup.</li>
-                            <li>Colony economy, fleet commissioning, research, combat, and invasions.</li>
-                            <li>Classic starmap planning with detailed turn reports.</li>
-                            <li>Three UI themes: Classic, LCARS, and Win95.</li>
-                            <li>Fully open source with active development roadmap.</li>
+                            {% for item in feature_highlights %}
+                            <li>{{ item }}</li>
+                            {% endfor %}
                         </ul>
                     </div>
                 </article>

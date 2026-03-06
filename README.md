@@ -12,34 +12,41 @@ turn generation.
 The project is actively developed and playable in MVP form.
 
 Implemented systems include:
-- Multi-game server with account registration, profile onboarding, and invites
+- Multi-game server with account registration, profile onboarding, invites, email updates, and spectator mode
 - Race creation with balance-point budgeting and habitability tuning
-- Starmap with fleet movement, intercept, transfer, merge, colonise, and scuttle
-- Colony economy (population, mines, factories, labs, defences, shipyards)
-- Research categories, allocations, unlocks, and technology directory/help
-- Fleet commissioning with tech-derived offence/defence and hull capacities
-- Space combat and invasions resolved during turn generation
-- Message log/history and report-style visibility
+- Starmap planning with fleet movement, intercept, transfer, merge, colonise, scuttle, and turn reports
+- Colony economy with population, mines, factories, labs, defences, shipyards, and terraforming
+- Research categories, allocations, prerequisites, unlocks, and technology directory/help
+- Space combat, invasions, fleet fuel, scanners, and other core turn-resolution systems
+- Recent MVP extensions including anomalies, secret resources, remote mining, bombardment, wormholes, and game-speed setup options
+- Open source web UI with Classic, LCARS, and Win95 themes, plus public landing/gallery pages
 
 ## Current Priorities
 
 Near-term work is tracked in `todo.txt`. Current focus includes:
-- Colony Micromanager (as unlockable automation)
-- Fleet-to-fleet refuelling
+- Gameplay and tech tree progression balancing
+- Diplomacy
 - Ship design (basic, then advanced)
+- Trade contracts/negotiation
+- Colony Micromanager (as unlockable automation)
+- Mine fields
+- Fuel factories and fleet-to-fleet refuelling
 - Instant merge/split fleet interaction screen
 - Custom server help pages (wiki/CMS style)
-- Sensor/radar visibility rules and fog-of-war style information control
-- Preventing unsporting information leaks between players
-- Diplomacy
-- Trade contracts/negotiation
 - Ongoing Brython refactor/expansion for UI logic
 
 ## Future Possibilities
 
-Longer-term design ideas live in `plan.txt` and are intentionally exploratory.
-Examples include stability systems and megaprojects, anomalies, expanded tech
-and ship design tooling, alternate galaxy generation modes, and pluggable AI.
+Longer-term design ideas live in `doc/plan.txt` and are intentionally exploratory.
+Examples include:
+- Stability systems, unrest, and breakaway colonies
+- Megaproject infrastructure such as citadels, stargates, micromanagers, and superweapons
+- Garrisons and other colony structures that trade economy for stability or defence
+- More extreme anomaly and galaxy events, including disappearing worlds and new-star creation
+- Data-driven ship components, hulls, and tech publishing workflows
+- Experimental setup/admin tooling and balance controls
+- Pluggable AI player types and LLM-assisted opponents or tooling
+
 These are ideas, not commitments.
 
 ## Tech Stack
