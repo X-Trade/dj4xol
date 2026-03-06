@@ -1240,6 +1240,7 @@ def create_game(request):
             factory.game.years_per_turn = d['years_per_turn']
             factory.game.random_events = d.get('random_events', False)
             factory.game.anomalies_enabled = d.get('anomalies_enabled', False)
+            factory.game.anomaly_spawn_rate = d.get('anomaly_spawn_rate', 'NORMAL') or 'NORMAL'
             factory.game.no_scanners = d.get('no_scanners', False)
             factory.game.max_starting_tech_level = int(
                 d.get('max_starting_tech_level') or 5

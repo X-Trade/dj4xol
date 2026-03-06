@@ -303,6 +303,11 @@ class Game(UUIDMixin):
         ('DAILY', 'Daily'),
         ('WEEKLY', 'Weekly'),
     ]
+    ANOMALY_SPAWN_RATE_CHOICES = [
+        ('LOW', 'Low'),
+        ('NORMAL', 'Normal'),
+        ('HIGH', 'High'),
+    ]
 
     name = models.CharField(max_length=30)
     owner = models.ForeignKey(Account, related_name="owned_games",
@@ -320,6 +325,11 @@ class Game(UUIDMixin):
     years_per_turn = models.IntegerField(default=1)
     random_events = models.BooleanField(default=False)
     anomalies_enabled = models.BooleanField(default=False)
+    anomaly_spawn_rate = models.CharField(
+        max_length=10,
+        choices=ANOMALY_SPAWN_RATE_CHOICES,
+        default='NORMAL',
+    )
     no_scanners = models.BooleanField(default=False)
     max_starting_tech_level = models.IntegerField(default=5)
     last_generated = models.DateTimeField(null=True, blank=True)
@@ -523,9 +533,11 @@ class Salvage(AbstractMapObject):
     """Recoverable minerals left behind when vessels are destroyed or scuttled."""
     TYPE_SALVAGE = 'SALVAGE'
     TYPE_ASTEROID_FIELD = 'ASTEROID_FIELD'
+    TYPE_ANCIENT_DEBRIS = 'ANCIENT_DEBRIS'
     TYPE_CHOICES = [
         (TYPE_SALVAGE, 'Salvage'),
         (TYPE_ASTEROID_FIELD, 'Asteroid Field'),
+        (TYPE_ANCIENT_DEBRIS, 'Ancient Debris'),
     ]
 
     salvage_type = models.CharField(
@@ -552,6 +564,8 @@ class Salvage(AbstractMapObject):
         """Display name for salvage."""
         if self.salvage_type == self.TYPE_ASTEROID_FIELD:
             return f"Asteroid Field ({self.x}, {self.y})"
+        if self.salvage_type == self.TYPE_ANCIENT_DEBRIS:
+            return f"Ancient Debris ({self.x}, {self.y})"
         return f"Salvage ({self.x}, {self.y})"
 
     @property

@@ -47,6 +47,8 @@ def get_salvage_thumbnail(salvage):
     salvage_type = getattr(salvage, 'salvage_type', None)
     if salvage_type == 'ASTEROID_FIELD':
         category = "asteroids"
+    elif salvage_type == 'ANCIENT_DEBRIS':
+        category = "ancientdebris"
     else:
         category = "debris"
     return choose_salvage_thumbnail(

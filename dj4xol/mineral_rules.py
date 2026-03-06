@@ -155,3 +155,24 @@ def random_asteroid_field_minerals(total_min=1000, total_max=100000):
                 iron = max(0, iron + remainder)
 
     return iron, bor, germ
+
+
+def random_ancient_debris_minerals(total_min=1000, total_max=100000):
+    """Generate mineral totals for ancient debris (50/20/20 + 10% secret)."""
+    total = random.randint(int(total_min), int(total_max))
+    secret_key = random.choice(SECRET_RESOURCE_KEYS)
+    secret_amount = int(round(total * 0.10))
+    base_total = total - secret_amount
+    iron = int(round(base_total * 0.50))
+    bor = int(round(base_total * 0.20))
+    germ = base_total - iron - bor
+
+    res_x = res_y = res_z = 0
+    if secret_key == 'resource_x':
+        res_x = secret_amount
+    elif secret_key == 'resource_y':
+        res_y = secret_amount
+    else:
+        res_z = secret_amount
+
+    return iron, bor, germ, res_x, res_y, res_z
