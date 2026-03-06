@@ -380,7 +380,10 @@ class DetailBuilder():
         """Return list of dicts with name, short_id, and type for all objects at cursor."""
         result = []
         for obj in self.at_cursor:
-            name = obj.name or f"{obj.__class__.__name__} {obj.id}"
+            if isinstance(obj, Salvage):
+                name = self._salvage_display_name(obj)
+            else:
+                name = obj.name or f"{obj.__class__.__name__} {obj.id}"
             if isinstance(obj, Star):
                 obj_type = 'star'
             elif isinstance(obj, Fleet):
@@ -397,6 +400,17 @@ class DetailBuilder():
                 'type': obj_type
             })
         return result
+
+    def _salvage_display_name(self, salvage):
+        if salvage is None:
+            return ""
+        if salvage.salvage_type == Salvage.TYPE_ANCIENT_DEBRIS and self.player:
+            can_view, _ = self.can_view_object(salvage)
+            if not can_view:
+                return "???"
+        if salvage.name is None or len(salvage.name) == 0:
+            return f"{salvage.__class__.__name__} {salvage.id}"
+        return salvage.name
 
     def get_population(self):
         if self.selected_obj and isinstance(self.selected_obj, Star):
@@ -458,6 +472,8 @@ class DetailBuilder():
         return calculate_habitability_factor(self.player, report_star) >= 0
 
     def get_object_name(self):
+        if isinstance(self.selected_obj, Salvage):
+            return self._salvage_display_name(self.selected_obj)
         if self.selected_obj.name is None or len(self.selected_obj.name) == 0:
             return "%s %i" % (self.selected_obj.__class__.__name__, self.selected_obj.id)
         return self.selected_obj.name

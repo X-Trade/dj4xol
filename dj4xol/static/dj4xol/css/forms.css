@@ -5,6 +5,10 @@
     gap: 6px;
 }
 
+.help-text {
+    margin-top: 6px;
+}
+
 .habitability-controls {
     display: flex;
     align-items: center;
