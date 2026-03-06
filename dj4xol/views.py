@@ -293,14 +293,25 @@ def _landing_context(request=None):
         django_user__last_login__gte=weekly_cutoff
     ).count()
 
+    feature_highlights = _readme_bullets('Current State')
     priorities = _readme_bullets('Current Priorities')
     future = _readme_bullets('Future Possibilities')
 
+    if not feature_highlights:
+        feature_highlights = [
+            'Multi-game server with onboarding, invites, email updates, and spectator mode',
+            'Race creation, colony economy, fleet planning, research progression, and turn reports',
+            'Space combat, invasions, scanners, and the core turn-resolution loop',
+            'Recent MVP extensions including anomalies, secret resources, and wormholes',
+            'Open source web UI with Classic, LCARS, and Win95 themes',
+        ]
     if not priorities:
         priorities = [
+            'Gameplay and tech tree progression balancing',
+            'Diplomacy',
+            'Ship design',
+            'Trade contracts and negotiation',
             'Colony automation and quality-of-life tools',
-            'Fleet logistics and interaction improvements',
-            'Diplomacy and trade systems',
         ]
     if not future:
         future = [
@@ -322,6 +333,7 @@ def _landing_context(request=None):
         'active_games_count': active_games_count,
         'weekly_active_players': weekly_active_players,
         'allow_self_signup': _allow_self_signup(),
+        'feature_highlights': feature_highlights[:8],
         'github_url': ServerSettings.get(
             'server_github_url',
             'https://github.com/X-Trade/dj4xol'

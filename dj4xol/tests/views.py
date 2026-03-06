@@ -9,6 +9,18 @@ from ..factory import GameFactory
 from ._util import default_game, get_default_user, get_default_race
 
 
+class TestLandingPage(TestCase):
+    def test_anonymous_index_shows_synced_mvp_features_and_roadmap(self):
+        response = self.client.get(reverse('dj4xol:index'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'spectator mode')
+        self.assertContains(response, 'Recent MVP extensions including anomalies')
+        self.assertContains(response, 'Gameplay and tech tree progression balancing')
+        self.assertContains(response, 'Diplomacy')
+        self.assertContains(response, 'Ship design (basic, then advanced)')
+        self.assertContains(response, 'Stability systems, unrest, and breakaway colonies')
+
+
 class TestMessageFiltering(TestCase):
     def test_messages_filtered_by_messages_seen_year(self):
         """Messages should be filtered to year >= messages_seen_year."""
