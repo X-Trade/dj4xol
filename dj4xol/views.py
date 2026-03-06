@@ -22,7 +22,10 @@ from .models import (
     ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
     Spectator,
 )
-from .email_rollups import send_message_rollup_for_account
+from .email_rollups import (
+    send_message_rollup_for_account,
+    send_generic_test_email_for_account,
+)
 from .decorators import registration_required, player_only_view
 from .turn import GameTurn
 from .research import (
@@ -2289,6 +2292,21 @@ def test_email_rollup(request):
         messages.success(request, 'Test rollup email sent.')
     else:
         messages.warning(request, f'Test rollup not sent: {reason}.')
+    return redirect('dj4xol:index')
+
+
+@staff_member_required
+def test_generic_email(request):
+    """Trigger a one-off generic text email for the current staff account."""
+    account = request.user.dj4xol_account
+    sent, reason = send_generic_test_email_for_account(
+        account,
+        dry_run=False,
+    )
+    if sent:
+        messages.success(request, 'Generic test email sent.')
+    else:
+        messages.warning(request, f'Generic test email not sent: {reason}.')
     return redirect('dj4xol:index')
 
 

@@ -93,6 +93,50 @@ def send_game_invite_email(game, recipient_email, inviter_name=None, dry_run=Fal
     return True
 
 
+def send_generic_test_email_for_account(account, dry_run=False, stdout=None):
+    """Send a plain-text test email to confirm backend delivery works."""
+    if not _email_enabled():
+        if stdout:
+            stdout.write('Email disabled; skipping test email.')
+        return False, 'Email disabled'
+    if not account or not getattr(account, 'email', ''):
+        return False, 'No email address'
+
+    base_url = _get_server_url() or 'not configured'
+    from_email = _get_from_email()
+    subject = 'DJ4XOL: Test email'
+    body = (
+        'This is a generic DJ4XOL test email.\n\n'
+        'It is intended to verify that outbound email delivery works even when '
+        'there are no message-rollup updates to send.\n\n'
+        'Account: {alias}\n'
+        'Email: {email}\n'
+        'Server URL: {server_url}\n'
+        'Sent at: {sent_at}\n'
+    ).format(
+        alias=getattr(account, 'alias', '') or 'unknown',
+        email=account.email,
+        server_url=base_url,
+        sent_at=timezone.now().isoformat(),
+    )
+
+    if dry_run:
+        if stdout:
+            stdout.write(f'[DRY RUN] Would send generic test email to {account.email}')
+        return False, 'Dry run'
+
+    send_mail(
+        subject=subject,
+        message=body,
+        from_email=from_email,
+        recipient_list=[account.email],
+        fail_silently=False,
+    )
+    if stdout:
+        stdout.write(f'Sent generic test email to {account.email}')
+    return True, 'Sent'
+
+
 def _build_rollup_entries(account, base_url):
     entries = []
     total_messages = 0

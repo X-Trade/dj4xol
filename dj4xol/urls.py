@@ -19,6 +19,7 @@ urlpatterns = [
     url(r'^profile/theme/$', views.update_theme, name='update_theme'),
     url(r'^profile/email-preferences/$', views.update_email_preferences, name='update_email_preferences'),
     url(r'^profile/test-email-rollup/$', views.test_email_rollup, name='test_email_rollup'),
+    url(r'^profile/test-generic-email/$', views.test_generic_email, name='test_generic_email'),
     url(r'^unsubscribe/(?P<key>[0-9a-f]{32})/$', views.unsubscribe_email, name='unsubscribe_email'),
     url(r'^create-race/$', views.create_race, name='create_race'),
     url(r'^create-game/$', views.create_game, name='create_game'),
