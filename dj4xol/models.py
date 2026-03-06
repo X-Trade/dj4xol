@@ -1353,6 +1353,21 @@ class GameInvitation(UUIDMixin):
         return f'{self.game.name}: {target}'
 
 
+class Spectator(models.Model):
+    """Spectator record for a game (consent to never join)."""
+    game = models.ForeignKey(Game, related_name='spectators', on_delete=models.CASCADE)
+    account = models.ForeignKey(Account, related_name='spectatorships', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    consented_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [['game', 'account']]
+        ordering = ['-consented_at']
+
+    def __str__(self):
+        return f'{self.game.name}: {self.account.alias}'
+
+
 PRODUCTION_COSTS = {
     'BUILD_MINE': {'bp': 0, 'ironium': 10, 'boranium': 0, 'germanium': 0, 'colonists': 1000},
     'BUILD_FACTORY': {'bp': 0, 'ironium': 20, 'boranium': 0, 'germanium': 0, 'colonists': 1000},

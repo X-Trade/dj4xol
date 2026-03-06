@@ -37,14 +37,18 @@ class StarMap():
                 position: absolute;
              }"""
 
-    def __init__(self, game, player, dest_mode=False):
+    def __init__(self, game, player, dest_mode=False, spectator=False):
         self.game = game
         self.player = player
+        self.spectator = bool(spectator)
         self.dest_mode = dest_mode
         self.stars = game.stars.all()
-        self._scanner_sources = get_scanner_sources_for_player(game, player) if player else []
+        self._scanner_sources = (
+            get_scanner_sources_for_player(game, player)
+            if player and not self.spectator else []
+        )
         fleets = list(game.fleets.all())
-        if player and not getattr(game, 'no_scanners', False):
+        if player and not self.spectator and not getattr(game, 'no_scanners', False):
             fleets = [
                 fleet for fleet in fleets
                 if fleet_visible_to_player(fleet, player, sources=self._scanner_sources)
@@ -55,7 +59,10 @@ class StarMap():
         self.star_report_tiers = {}
         self.explored_star_ids = set()
         self.explored_salvage_ids = set()
-        if self.player:
+        if self.spectator:
+            self.explored_star_ids = set(self.stars.values_list('id', flat=True))
+            self.explored_salvage_ids = set(self.salvages.values_list('id', flat=True))
+        elif self.player:
             reports = list(Report.objects.filter(
                 game=self.game,
                 player=self.player,
@@ -304,6 +311,8 @@ class StarMap():
 
     def _get_exploration_class(self, star):
         """Return star exploration visibility class for current player."""
+        if self.spectator:
+            return "mapstar-explored"
         if star.player == self.player or star.id in self.explored_star_ids:
             return "mapstar-explored"
         return "mapstar-unexplored"
@@ -318,6 +327,8 @@ class StarMap():
 
     def _can_reveal_star_owner(self, star):
         """Return True if current player can see ownership of the star."""
+        if self.spectator:
+            return True
         if not self.player:
             return False
         if getattr(self.game, 'no_scanners', False):

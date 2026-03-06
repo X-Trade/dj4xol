@@ -53,7 +53,7 @@
     {% if detail.is_anomaly %}
     <p class="unexplored-hint">Potential navigational hazard. Send a fleet to collect research.</p>
     {% else %}
-    <p>{% if detail.report_tier == 'basic' %}Unknown{% elif detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: <span class="has-tooltip" data-tooltip="{{ detail.population|exact_pop }}">{{ detail.population|humanize_pop }}</span>{% if detail.population_change != None %} <span class="pop-change has-tooltip {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}" data-tooltip="{{ detail.population_change|exact_pop }}">({{ detail.population_change|humanize_pop_change }})</span>{% endif %}{% endif %}</p>
+    <p>{% if detail.report_tier == 'basic' and not detail.owner_known %}Unknown{% elif detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: <span class="has-tooltip" data-tooltip="{{ detail.population|exact_pop }}">{{ detail.population|humanize_pop }}</span>{% if detail.population_change != None %} <span class="pop-change has-tooltip {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}" data-tooltip="{{ detail.population_change|exact_pop }}">({{ detail.population_change|humanize_pop_change }})</span>{% endif %}{% endif %}</p>
     {% endif %}
     {% if detail.is_anomaly %}
     <div class="collapsible-section" data-section="anomaly">
@@ -136,7 +136,7 @@
         </div>
     </div>
     {% endif %}
-    {% if detail.fleet_cargo %}
+    {% if detail.fleet_cargo and detail.show_composition %}
     <div class="collapsible-section" data-section="composition">
         <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Composition</h4>
         <div class="collapsible-content">

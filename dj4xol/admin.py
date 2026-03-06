@@ -11,7 +11,7 @@ except ImportError:
 from .models import (
     Account, Player, Game, ServerSettings, ServerRaceType,
     DefaultResearchLevelRequirement, ResearchCategory, ResearchLevelRequirement,
-    Technology, PlayerResearch, HullDesign, HullDesignSlot,
+    Technology, PlayerResearch, HullDesign, HullDesignSlot, Spectator,
 )
 from .research import copy_default_requirements_to_category, ensure_default_level_requirements
 from .turn import GameTurn
@@ -77,6 +77,13 @@ class GameAdmin(admin.ModelAdmin):
         url = reverse('admin:dj4xol_game_changelist',
             current_app=self.admin_site.name)
         return HttpResponseRedirect(url)
+
+
+@admin.register(Spectator)
+class SpectatorAdmin(admin.ModelAdmin):
+    list_display = ('pk', 'game', 'account', 'consented_at')
+    list_select_related = ('game', 'account')
+    readonly_fields = ('created_at', 'consented_at')
 
 
 class TechnologyInline(admin.TabularInline):

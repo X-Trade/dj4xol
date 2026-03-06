@@ -5,6 +5,7 @@ from habitability_rules import RaceCreationRules
 STEP = 0.1
 CENTER_STEP = 0.05
 WIDTH_STEP = 0.1
+FIXED_HOMEWORLD_HINT = None
 
 
 def _round_step(value, step):
@@ -193,6 +194,8 @@ def _update_all(ui_rows, summary_value, error_box):
     )
     singular_research = bool(singular_checkbox and singular_checkbox.checked)
     fixed_homeworld = bool(fixed_homeworld_checkbox and fixed_homeworld_checkbox.checked)
+    if FIXED_HOMEWORLD_HINT is not None:
+        FIXED_HOMEWORLD_HINT.style.display = 'block' if fixed_homeworld else 'none'
     for ui in ui_rows:
         env = ui['env']
         widths[env] = _clamp(widths[env], 0.1, 2.0)
@@ -408,9 +411,22 @@ def init_habitability_form():
         if len(cells) < 2:
             return row
         hint_cell = cells[1]
+        hint_text = hint_cell.textContent
         hint_cell.textContent = ''
         points = html.DIV(Class=f'habitability-points {points_class}')
         hint_cell <= points
+        if row_attr == 'fixed-homeworld-row' and hint_text:
+            hint_text = hint_text.strip()
+            if hint_text.lower().startswith('-16 points'):
+                dot = hint_text.find('.')
+                if dot != -1:
+                    hint_text = hint_text[dot + 1:].strip()
+                else:
+                    hint_text = hint_text[len('-16 points'):].strip()
+            global FIXED_HOMEWORLD_HINT
+            FIXED_HOMEWORLD_HINT = html.DIV(hint_text, Class='fixed-homeworld-hint')
+            FIXED_HOMEWORLD_HINT.style.display = 'none'
+            hint_cell <= FIXED_HOMEWORLD_HINT
         row.attrs[f'data-{row_attr}'] = '1'
         return row
 

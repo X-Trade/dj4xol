@@ -91,7 +91,14 @@
                             <li>
                                 <span>{{ game.name }}</span>
                                 <span class="game-meta">Year {{ game.year }} &middot; {% if game.is_generating %}Generating...{% else %}{{ game.get_turn_scheme_short_display }}{% endif %}</span>
+                                {% if game.id in spectating_game_ids %}
+                                <a href="{% url 'dj4xol:spectate_game' game.short_id %}" class="action-link">View</a>
+                                {% else %}
+                                <a href="{% url 'dj4xol:spectate_game_confirm' game.short_id %}" class="action-link">View</a>
+                                {% endif %}
+                                {% if game.joinable %}
                                 <a href="{% url 'dj4xol:join_game' game.short_id %}" class="action-link">Join</a>
+                                {% endif %}
                             </li>
                         {% endfor %}
                         </ul>
