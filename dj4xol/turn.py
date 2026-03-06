@@ -35,6 +35,7 @@ from .messages import (
     FleetBuildBlockedNoShipyardMessageFactory,
     FleetRepairedMessageFactory,
     OrbitalDefenseHitMessageFactory,
+    TransferRaidThwartedMessageFactory,
     FleetBombardmentReportMessageFactory,
     BombardFailedNoStarMessageFactory,
     StarVanishedOminousMessageFactory,
@@ -47,7 +48,7 @@ from .messages import (
 import random
 
 from .mineral_rules import ALL_RESOURCE_KEYS, random_asteroid_field_minerals, random_ancient_debris_minerals
-from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_name
+from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_name, get_secret_resource_label
 from .colony_rules import (
     BILLION,
     MILLION,
@@ -87,6 +88,7 @@ from .chance_rules import (
     roll_chance as chance_roll,
     scaled_luck_roll,
     luck_ratio_chance,
+    transfer_raid_success_chance,
 )
 from .bombardment_rules import (
     bombardment_damage_k,
@@ -166,6 +168,17 @@ REMOTE_MINER_UNITS_BY_TYPE = {
 REMOTE_MINE_HARASS_CHANCE = 0.35
 REMOTE_MINE_HARASS_DAMAGE_FACTOR = 0.25
 REMOTE_MINE_DEFENSE_DAMAGE_MULTIPLIER = 1.25
+THEFT_DEFENSE_DAMAGE_MIN_MULTIPLIER = 1.0
+THEFT_DEFENSE_DAMAGE_MAX_MULTIPLIER = 1.5
+THEFT_LUCK_JITTER = 0.25
+THEFT_SUCCESS_DAMAGE_WEIGHT = 0.5
+THEFT_SUCCESS_SHIP_WEIGHT = 0.4
+THEFT_SUCCESS_MIN_CHANCE = 0.0
+THEFT_SUCCESS_MAX_CHANCE = 1.0
+DERELICT_CLAIM_CHANCE = 0.55
+DEFEATED_FLEET_CAPTURE_CHANCE = 0.45
+DEFEATED_FLEET_SCUTTLE_CHANCE = 0.25
+DEFEATED_FLEET_ABANDON_CHANCE = 0.30
 ANOMALY_DAMAGE_MIN = 8
 ANOMALY_DAMAGE_MAX = 30
 ANOMALY_CARGO_LOSS_MIN = 0.10
@@ -199,6 +212,16 @@ WORMHOLE_INSTANT_DESTRUCTION_MAX_CHANCE = 0.35
 def roll_chance(threshold):
     """Return True if random roll is below threshold."""
     return chance_roll(threshold)
+
+
+def format_readable_list(items):
+    if not items:
+        return ''
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
 
 
 def roll_attack_scale(luck_multiplier):
@@ -378,6 +401,7 @@ class GameTurn():
         self.check_damaged_fleets()
         self.first_contact_checks()
         self.resolve_combat()
+        self.resolve_derelict_encounters()
         self.resolve_orbital_defense_hazards()
         self.mining()
         self.production()
@@ -684,6 +708,8 @@ class GameTurn():
         anomaly_positions = {(a.x, a.y): a for a in anomalies}
         fleets = list(Fleet.objects.filter(game=self.game))
         for fleet in fleets:
+            if fleet.player is None or bool(getattr(fleet.player, 'defeated', False)):
+                continue
             anomaly = anomaly_positions.get((fleet.x, fleet.y))
             if anomaly is None:
                 continue
@@ -718,6 +744,8 @@ class GameTurn():
         salvage_positions = {(s.x, s.y): s for s in salvages}
         fleets = list(Fleet.objects.filter(game=self.game))
         for fleet in fleets:
+            if fleet.player is None or bool(getattr(fleet.player, 'defeated', False)):
+                continue
             salvage = salvage_positions.get((fleet.x, fleet.y))
             if salvage is None:
                 continue
@@ -1276,7 +1304,7 @@ class GameTurn():
 
     def _reset_turn_ins(self):
         """Reset turned_in status and update message visibility for all players."""
-        for player in self.game.players.all():
+        for player in self.game.players.filter(defeated=False):
             player.turned_in = False
             player.messages_seen_year = player.last_seen_year
             player.save(update_fields=['turned_in', 'messages_seen_year'])
@@ -1284,7 +1312,7 @@ class GameTurn():
     def generate_reports(self):
         """Generate exploration reports for all fleets at their current locations."""
         from .models import Fleet
-        for fleet in Fleet.objects.filter(game=self.game):
+        for fleet in Fleet.objects.filter(game=self.game, player__isnull=False, player__defeated=False):
             self._generate_reports_for_fleet(fleet)
 
     def generate_scanner_reports(self):
@@ -1294,7 +1322,7 @@ class GameTurn():
         if getattr(self.game, 'no_scanners', False):
             return
 
-        for player in self.game.players.all():
+        for player in self.game.players.filter(defeated=False):
             sources = get_scanner_sources_for_player(self.game, player)
             if not sources:
                 continue
@@ -1653,8 +1681,8 @@ class GameTurn():
         """Check if all players have turned in. Returns True if quorum met."""
         if self.game.turn_scheme != 'QUORUM':
             return False
-        total = self.game.players.count()
-        turned_in = self.game.players.filter(turned_in=True).count()
+        total = self.game.players.filter(defeated=False).count()
+        turned_in = self.game.players.filter(turned_in=True, defeated=False).count()
         return total > 0 and turned_in == total
 
     def generate_turns(self, turns):
@@ -1677,6 +1705,8 @@ class GameTurn():
                 fleet = self.game.fleets.get(id=fleet_id)
             except self.game.fleets.model.DoesNotExist:
                 continue  # Fleet was deleted (e.g., by colonise order)
+            if fleet.player is None or bool(getattr(fleet.player, 'defeated', False)):
+                continue
             if fleet.id in self._locked_fleet_ids_for_year:
                 self._refuel_fleet_if_in_friendly_shipyard_orbit(fleet)
                 fleet.save()
@@ -1690,6 +1720,8 @@ class GameTurn():
         """Refuel fleets that end the turn in orbit of a friendly shipyard colony."""
         from .models import Star
 
+        if fleet.player is None:
+            return
         can_refuel = Star.objects.filter(
             game=self.game,
             x=fleet.x,
@@ -1706,11 +1738,14 @@ class GameTurn():
         max_y = self.game.map_size_y
         for fleet in self.game.fleets.all():
             if fleet.x < 0 or fleet.x >= max_x or fleet.y < 0 or fleet.y >= max_y:
-                self._create_fleet_lost_message(fleet)
+                if fleet.player is not None:
+                    self._create_fleet_lost_message(fleet)
                 fleet.delete()
 
     def _create_fleet_lost_message(self, fleet):
         """Create a message for a fleet lost beyond map boundaries."""
+        if fleet.player is None:
+            return
         factory = FleetLostMessageFactory(self.game, fleet.player, fleet.name)
         msg = factory.new_message()
         msg.year = self.game.year
@@ -1719,12 +1754,15 @@ class GameTurn():
     def check_damaged_fleets(self):
         """Destroy any fleets with zero integrity."""
         for fleet in self.game.fleets.filter(integrity__lte=0):
+            if fleet.player is None:
+                fleet.delete()
+                continue
             self._handle_warp_destruction(fleet, warp_speed=0, from_damage=True)
 
     def resolve_combat(self):
         """Resolve combat at any location with fleets from 2+ players."""
         from .models import Fleet
-        fleets = list(Fleet.objects.filter(game=self.game))
+        fleets = list(Fleet.objects.filter(game=self.game, player__isnull=False, player__defeated=False))
         locations = {}
         for fleet in fleets:
             locations.setdefault((fleet.x, fleet.y), []).append(fleet)
@@ -1734,6 +1772,46 @@ class GameTurn():
             if len(players) < 2:
                 continue
             self._resolve_battle_at_location(x, y, loc_fleets)
+
+    def _strongest_player_for_fleets(self, fleets):
+        strengths = {}
+        for fleet in fleets:
+            if fleet.player is None or bool(getattr(fleet.player, 'defeated', False)):
+                continue
+            strength = calculate_fleet_strength(fleet, 1.0, attack_roll_scale=1.0)
+            strengths[fleet.player] = strengths.get(fleet.player, 0.0) + strength
+        if not strengths:
+            return None
+        ranked = sorted(strengths.items(), key=lambda item: item[1], reverse=True)
+        if len(ranked) > 1 and abs(ranked[0][1] - ranked[1][1]) < 1e-6:
+            return None
+        return ranked[0][0]
+
+    def resolve_derelict_encounters(self):
+        """Resolve encounters with unowned fleets at shared locations."""
+        from .models import Fleet
+        derelicts = list(Fleet.objects.filter(game=self.game, player__isnull=True))
+        if not derelicts:
+            return
+        owned_fleets = list(Fleet.objects.filter(
+            game=self.game, player__isnull=False, player__defeated=False
+        ))
+        if not owned_fleets:
+            return
+        owned_by_location = {}
+        for fleet in owned_fleets:
+            owned_by_location.setdefault((fleet.x, fleet.y), []).append(fleet)
+        for derelict in derelicts:
+            candidates = owned_by_location.get((derelict.x, derelict.y))
+            if not candidates:
+                continue
+            winner = self._strongest_player_for_fleets(candidates)
+            if winner is None:
+                continue
+            if roll_chance(DERELICT_CLAIM_CHANCE):
+                self._capture_fleet(derelict, winner)
+            else:
+                self._destroy_derelict_fleet(derelict)
 
     def first_contact_checks(self):
         """Send first contact messages before combat resolves."""
@@ -1765,6 +1843,8 @@ class GameTurn():
             ).exists()
 
         for fleet in fleets:
+            if fleet.player is None or bool(getattr(fleet.player, 'defeated', False)):
+                continue
             player = fleet.player
             x, y = fleet.x, fleet.y
             if player.id not in first_any_available:
@@ -1796,7 +1876,7 @@ class GameTurn():
                     first_any_available[player.id] = False
 
             # Fleet contact
-            for other in Fleet.objects.filter(game=self.game, x=x, y=y).exclude(player=player):
+            for other in Fleet.objects.filter(game=self.game, x=x, y=y).exclude(player=player).exclude(player__isnull=True):
                 race_id = other.player_id
                 if race_id in contacted_races_seen[player.id]:
                     continue
@@ -1925,7 +2005,9 @@ class GameTurn():
         """Ensure surviving fleets get encounter reports on opposing fleets."""
         from .models import Fleet
 
-        surviving = list(Fleet.objects.filter(game=self.game, x=x, y=y))
+        surviving = list(Fleet.objects.filter(
+            game=self.game, x=x, y=y, player__isnull=False, player__defeated=False
+        ))
         if len(surviving) < 2:
             return
         for fleet in surviving:
@@ -2159,6 +2241,8 @@ class GameTurn():
                     self._handle_repeating_order(order)
                     order.delete()
                     continue  # PASSTHROUGH: Continue to next order
+                elif transfer_result == 'fleet_destroyed':
+                    return None
                 elif transfer_result == 'waiting':
                     # Transfer blocked - stop processing
                     break
@@ -2328,11 +2412,14 @@ class GameTurn():
             target_obj = None
             target_position = None
 
+        speed_multiplier = self._get_warp_speed_multiplier()
+        effective_warp_speed = warp_speed * speed_multiplier
+
         if is_intercept and target_position is not None:
             live_distance = linalg.norm(
                 target_position - position
             )
-            if self._is_within_intercept_snap_range(live_distance, warp_speed):
+            if self._is_within_intercept_snap_range(live_distance, effective_warp_speed):
                 live_vector = target_position - position
                 if linalg.norm(live_vector) > 0:
                     dx, dy = live_vector[0], live_vector[1]
@@ -2356,7 +2443,7 @@ class GameTurn():
         if damage_result == 'destroyed':
             return 'destroyed'
 
-        if int(distance) <= warp_speed:
+        if int(distance) <= effective_warp_speed:
             # Fleet reaches destination
             fleet.x = x
             fleet.y = y
@@ -2366,7 +2453,7 @@ class GameTurn():
         else:
             # Fleet moves toward destination but doesn't reach it
             normalised_vector = vector / distance
-            new_position = position + (normalised_vector * warp_speed)
+            new_position = position + (normalised_vector * effective_warp_speed)
             new_x = int(new_position[0])
             new_y = int(new_position[1])
             # Ensure progress even with low warp + diagonal movement
@@ -2692,6 +2779,13 @@ class GameTurn():
         rounded_distance = ceil(max(0.0, float(distance) - 0.35))
         return rounded_distance <= int(warp_speed)
 
+    def _get_warp_speed_multiplier(self):
+        try:
+            value = float(getattr(self.game, 'warp_speed_multiplier', 1.0) or 1.0)
+        except (TypeError, ValueError):
+            value = 1.0
+        return max(0.1, value)
+
     def _get_fleet_current_speed(self, fleet):
         """Return fleet's current movement speed based on its orders."""
         order = fleet.orders.order_by('position', 'id').first()
@@ -2706,7 +2800,10 @@ class GameTurn():
                     return 0
             except Exception:
                 return 0
-            return order.warpfactor
+            warp_speed = max(0, int(order.warpfactor or 0))
+            if warp_speed == WORMHOLE_WARPFACTOR and bool(getattr(fleet, 'has_wormhole_drive', False)):
+                return warp_speed
+            return warp_speed * self._get_warp_speed_multiplier()
         return 0
 
     def _check_warp_damage(self, fleet, warp_speed, order):
@@ -2819,13 +2916,14 @@ class GameTurn():
                 salvage_created = True
                 salvage_location = salvage_result
 
-        factory = FleetWarpDestroyedMessageFactory(
-            self.game, fleet.player, fleet.name, warp_speed,
-            fleet.x, fleet.y, from_damage, salvage_created, salvage_location
-        )
-        msg = factory.new_message()
-        msg.year = self.game.year
-        msg.save()
+        if fleet.player is not None:
+            factory = FleetWarpDestroyedMessageFactory(
+                self.game, fleet.player, fleet.name, warp_speed,
+                fleet.x, fleet.y, from_damage, salvage_created, salvage_location
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
         fleet.delete()
 
     def _handle_wormhole_destruction(
@@ -2842,19 +2940,20 @@ class GameTurn():
                 salvage_created = True
                 salvage_location = salvage_result
 
-        factory = FleetWormholeDestroyedMessageFactory(
-            self.game,
-            fleet.player,
-            fleet.name,
-            fleet.x,
-            fleet.y,
-            from_damage,
-            salvage_created,
-            salvage_location,
-        )
-        msg = factory.new_message()
-        msg.year = self.game.year
-        msg.save()
+        if fleet.player is not None:
+            factory = FleetWormholeDestroyedMessageFactory(
+                self.game,
+                fleet.player,
+                fleet.name,
+                fleet.x,
+                fleet.y,
+                from_damage,
+                salvage_created,
+                salvage_location,
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
         self._maybe_spawn_wormhole_drive_anomaly(start_x, start_y, destination_x, destination_y)
         fleet.delete()
 
@@ -3038,9 +3137,28 @@ class GameTurn():
 
         return salvage
 
+    def _abandon_fleet(self, fleet):
+        """Mark a fleet as unowned and clear its orders."""
+        fleet.orders.all().delete()
+        fleet.player = None
+        fleet.save(update_fields=['player'])
+
+    def _capture_fleet(self, fleet, new_owner):
+        """Transfer fleet ownership to a new player and clear orders."""
+        fleet.orders.all().delete()
+        fleet.player = new_owner
+        fleet.save(update_fields=['player'])
+
+    def _destroy_derelict_fleet(self, fleet):
+        """Destroy an unowned fleet and create salvage if possible."""
+        self._create_salvage_from_fleet(fleet)
+        fleet.delete()
+
     def _create_warp_damage_message(self, fleet, warp_speed, integrity_loss,
                                      cargo_losses, colonist_deaths):
         """Create a message for warp damage."""
+        if fleet.player is None:
+            return
         factory = FleetWarpDamageMessageFactory(
             self.game, fleet.player, fleet, warp_speed, integrity_loss,
             cargo_losses, colonist_deaths
@@ -3128,7 +3246,9 @@ class GameTurn():
 
         # Execute transfer based on target type
         if isinstance(target_obj, Star):
-            self._transfer_with_star(fleet, order, target_obj)
+            transfer_result = self._transfer_with_star(fleet, order, target_obj)
+            if transfer_result == 'fleet_destroyed':
+                return 'fleet_destroyed'
             return 'executed'
         elif isinstance(target_obj, Fleet):
             self._transfer_with_fleet(fleet, order, target_obj)
@@ -3205,14 +3325,7 @@ class GameTurn():
         fleet_losses_desc = "no fleet losses"
         effective_defenses = calculate_effective_defenses(star)
         if effective_defenses > 0:
-            defender_defence_mult = 1.0
-            if defender_race:
-                defender_defence_mult = defender_race.defence_multiplier
-            if defender:
-                colony_defense_level = get_player_colony_defense_level(defender)
-                defender_defence_mult *= tech_level_to_multiplier(
-                    colony_defense_level
-                )
+            defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
             attacker_strength = calculate_fleet_strength(
                 fleet,
                 defender_defence_mult
@@ -3271,6 +3384,12 @@ class GameTurn():
             star.colonists = max(0, remaining_invaders)
             star.player = attacker
             star.save(update_fields=['colonists', 'player'])
+            if defender:
+                self._handle_homeworld_loss(
+                    defender,
+                    lost_star=star,
+                    location=(star.x, star.y),
+                )
         else:
             remaining_defenders = int((defender_force - attacker_force) / (defender_race.ground_force_multiplier if defender_race else 1.0))
             defender_losses = defenders - remaining_defenders
@@ -3329,7 +3448,7 @@ class GameTurn():
                 game=self.game,
                 x=star.x,
                 y=star.y,
-            ).exclude(player=defender)
+            ).exclude(player=defender).exclude(player__isnull=True).exclude(player__defeated=True)
 
             for fleet in hostile_fleets:
                 self._resolve_orbital_defense_hazard(star, fleet)
@@ -3359,9 +3478,7 @@ class GameTurn():
         if not roll_chance(chance):
             return
 
-        defender_defence_mult = float(getattr(defender.race_type, 'defence_multiplier', 1.0) or 1.0)
-        colony_defense_level = get_player_colony_defense_level(defender)
-        defender_defence_mult *= tech_level_to_multiplier(colony_defense_level)
+        defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
 
         attacker_strength = calculate_fleet_strength(
             fleet,
@@ -3399,6 +3516,90 @@ class GameTurn():
         defender_msg.year = self.game.year
         defender_msg.save()
 
+    def _build_transfer_raid_resource_desc(self, fleet, order):
+        labels = []
+        for key in ALL_RESOURCE_KEYS:
+            requested = int(getattr(order, f'transfer_{key}', 0) or 0)
+            if requested <= 0:
+                continue
+            if key in SECRET_RESOURCE_KEYS:
+                discovered = bool(getattr(fleet.player, f'discovered_{key}', False))
+                labels.append(get_secret_resource_label(key, discovered))
+            else:
+                labels.append(key.title())
+        if int(getattr(order, 'transfer_colonists', 0) or 0) > 0:
+            labels.append('Colonists')
+        return format_readable_list(labels) or 'supplies'
+
+    def _resolve_transfer_raid_defense_fire(self, star, fleet):
+        """Apply heavier, luck-weighted defense fire for theft attempts."""
+        damage_multiplier = random.uniform(
+            THEFT_DEFENSE_DAMAGE_MIN_MULTIPLIER,
+            THEFT_DEFENSE_DAMAGE_MAX_MULTIPLIER,
+        )
+        luck_multiplier = float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0)
+        jitter = random.uniform(-THEFT_LUCK_JITTER, THEFT_LUCK_JITTER) * luck_multiplier
+        damage_multiplier = max(0.1, damage_multiplier * (1.0 + jitter))
+        return self._resolve_planetary_defense_fire_against_fleet(
+            star, fleet, damage_multiplier=damage_multiplier
+        )
+
+    def _transfer_raid_success_chance(self, star, fleet, defense_fire):
+        defender = star.player
+        defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
+        attacker_strength = calculate_fleet_strength(fleet, defender_defence_mult)
+        defender_strength = normalize_ship_count(calculate_effective_defenses(star))
+        attacker_luck = float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0)
+        defender_luck = float(getattr(defender.race_type, 'luck_multiplier', 1.0) or 1.0)
+        integrity_lost = int(defense_fire.get('integrity_lost', 0) or 0)
+        ships_lost = int(defense_fire.get('ships_lost', 0) or 0)
+        ship_count = int(fleet.ship_count or 0)
+        return transfer_raid_success_chance(
+            attacker_strength=attacker_strength,
+            defender_strength=defender_strength,
+            attacker_luck=attacker_luck,
+            defender_luck=defender_luck,
+            integrity_lost=integrity_lost,
+            ships_lost=ships_lost,
+            ship_count=ship_count,
+            damage_weight=THEFT_SUCCESS_DAMAGE_WEIGHT,
+            ship_weight=THEFT_SUCCESS_SHIP_WEIGHT,
+            min_chance=THEFT_SUCCESS_MIN_CHANCE,
+            max_chance=THEFT_SUCCESS_MAX_CHANCE,
+        )
+
+    def _transfer_raid_successful(self, star, fleet, defense_fire):
+        chance = self._transfer_raid_success_chance(star, fleet, defense_fire)
+        return chance_roll(chance)
+
+    def _create_transfer_raid_messages(self, attacker, defender, fleet, star, resource_desc, damage_pct):
+        if attacker:
+            msg = TransferRaidThwartedMessageFactory(
+                self.game,
+                attacker,
+                fleet_name=fleet.name,
+                star=star,
+                owner_name=getattr(defender, 'plural_name', None) or getattr(defender, 'name', ''),
+                resource_desc=resource_desc,
+                damage=damage_pct,
+                perspective='attacker',
+            ).new_message()
+            msg.year = self.game.year
+            msg.save()
+        if defender:
+            msg = TransferRaidThwartedMessageFactory(
+                self.game,
+                defender,
+                fleet_name=fleet.name,
+                star=star,
+                owner_name=getattr(defender, 'plural_name', None) or getattr(defender, 'name', ''),
+                resource_desc=resource_desc,
+                damage=damage_pct,
+                perspective='defender',
+            ).new_message()
+            msg.year = self.game.year
+            msg.save()
+
     def _transfer_with_star(self, fleet, order, star):
         """Execute transfer between fleet and star."""
         fleet_max_capacity = fleet.cargo_capacity  # Use fleet's actual capacity
@@ -3412,6 +3613,23 @@ class GameTurn():
 
             if total_requested == 0:
                 return
+
+            if star.player and star.player != fleet.player:
+                defense_fire = self._resolve_transfer_raid_defense_fire(star, fleet)
+                if defense_fire.get('destroyed'):
+                    damage_pct = 100
+                    resource_desc = self._build_transfer_raid_resource_desc(fleet, order)
+                    self._create_transfer_raid_messages(
+                        fleet.player, star.player, fleet, star, resource_desc, damage_pct
+                    )
+                    return 'fleet_destroyed'
+                if not self._transfer_raid_successful(star, fleet, defense_fire):
+                    damage_pct = max(0, int(defense_fire.get('integrity_lost', 0) or 0))
+                    resource_desc = self._build_transfer_raid_resource_desc(fleet, order)
+                    self._create_transfer_raid_messages(
+                        fleet.player, star.player, fleet, star, resource_desc, damage_pct
+                    )
+                    return
 
             fleet_available = fleet_max_capacity - fleet.cargo_used
             total_transfer = min(fleet_available, total_requested)
@@ -3732,6 +3950,17 @@ class GameTurn():
             return 'waiting'
         return self._execute_bomb_order(fleet, order)
 
+    def _get_colony_defense_multiplier(self, defender, star):
+        """Return colony defense multiplier including tech and fixed homeworld bonus."""
+        if defender is None:
+            return 1.0
+        defender_defence_mult = float(getattr(defender.race_type, 'defence_multiplier', 1.0) or 1.0)
+        defender_defence_mult *= tech_level_to_multiplier(get_player_colony_defense_level(defender))
+        if star is not None and bool(getattr(defender, 'fixed_homeworld', False)):
+            if int(getattr(defender, 'homeworld_id', 0) or 0) == int(getattr(star, 'id', 0) or 0):
+                defender_defence_mult *= 1.5
+        return defender_defence_mult
+
     def _resolve_planetary_defense_fire_against_fleet(self, star, fleet, damage_multiplier=1.0):
         """Apply colony defense fire to a hostile fleet before bombardment."""
         if not star.player or star.player == fleet.player:
@@ -3742,8 +3971,7 @@ class GameTurn():
             return {'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
 
         defender = star.player
-        defender_defence_mult = float(getattr(defender.race_type, 'defence_multiplier', 1.0) or 1.0)
-        defender_defence_mult *= tech_level_to_multiplier(get_player_colony_defense_level(defender))
+        defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
 
         attacker_strength = calculate_fleet_strength(fleet, defender_defence_mult)
         defender_strength = normalize_ship_count(effective_defenses)
@@ -3870,6 +4098,15 @@ class GameTurn():
             destroyed_star_id = star.id
             destroyed_star_short_id = star.short_id
             star.delete()
+            if destroyed_owner_id:
+                from .models import Player
+                lost_player = Player.objects.filter(id=destroyed_owner_id).first()
+                if lost_player:
+                    self._handle_homeworld_loss(
+                        lost_player,
+                        lost_star_id=destroyed_star_id,
+                        location=(destroyed_x, destroyed_y),
+                    )
             self._retarget_or_remove_orders_for_destroyed_star(
                 destroyed_star_id, destroyed_star_short_id, destroyed_x, destroyed_y,
                 preserve_order_id=order.id
@@ -4668,6 +4905,12 @@ class GameTurn():
         """Remove ownership from planets with zero population."""
         # Find stars that will be abandoned and notify their owners
         for star in self.game.stars.filter(colonists=0, player__isnull=False):
+            for owner in list(star.homeworld_of.all()):
+                self._handle_homeworld_loss(
+                    owner,
+                    lost_star=star,
+                    location=(star.x, star.y),
+                )
             self._create_colony_abandoned_message(star.player, star)
             star.production_orders.all().delete()
             star.player = None
@@ -4679,6 +4922,108 @@ class GameTurn():
         msg = factory.new_message()
         msg.year = self.game.year
         msg.save()
+
+    def _select_replacement_homeworld(self, player, exclude_star_id=None):
+        from .models import Star
+        candidates = []
+        for star in Star.objects.filter(game=self.game, player=player):
+            if exclude_star_id and int(star.id) == int(exclude_star_id):
+                continue
+            if int(star.colonists or 0) <= 0:
+                continue
+            if calculate_habitability_factor(player, star) < 0:
+                continue
+            candidates.append(star)
+        if not candidates:
+            return None
+        return max(candidates, key=lambda s: (int(s.colonists or 0), int(s.id)))
+
+    def _determine_defeat_victor(self, defeated_player, location=None):
+        if not location:
+            return None
+        try:
+            x, y = location
+        except (TypeError, ValueError):
+            return None
+        from .models import Fleet
+        fleets = list(Fleet.objects.filter(
+            game=self.game,
+            x=x,
+            y=y,
+            player__isnull=False,
+            player__defeated=False,
+        ).exclude(player=defeated_player))
+        return self._strongest_player_for_fleets(fleets)
+
+    def _roll_defeated_fleet_fate(self):
+        roll = random.random()
+        if roll < DEFEATED_FLEET_CAPTURE_CHANCE:
+            return 'capture'
+        if roll < (DEFEATED_FLEET_CAPTURE_CHANCE + DEFEATED_FLEET_SCUTTLE_CHANCE):
+            return 'scuttle'
+        return 'abandon'
+
+    def _scuttle_defeated_fleet(self, fleet):
+        self._create_salvage_from_fleet(fleet)
+        fleet.delete()
+
+    def _abandon_player_colonies(self, player, exclude_star_id=None):
+        from .models import Star
+        stars = Star.objects.filter(game=self.game, player=player)
+        if exclude_star_id:
+            stars = stars.exclude(id=exclude_star_id)
+        for star in stars:
+            self._create_colony_abandoned_message(player, star)
+            star.production_orders.all().delete()
+            star.player = None
+            star.colonists = 0
+            star.save(update_fields=['player', 'colonists'])
+
+    def _resolve_defeated_player_fleets(self, player, victor):
+        from .models import Fleet
+        fleets = list(Fleet.objects.filter(game=self.game, player=player))
+        if not fleets:
+            return
+        if victor is None:
+            for fleet in fleets:
+                self._abandon_fleet(fleet)
+            return
+        for fleet in fleets:
+            fate = self._roll_defeated_fleet_fate()
+            if fate == 'capture':
+                self._capture_fleet(fleet, victor)
+            elif fate == 'scuttle':
+                self._scuttle_defeated_fleet(fleet)
+            else:
+                self._abandon_fleet(fleet)
+
+    def _defeat_player(self, player, lost_star_id=None, location=None):
+        if player is None or bool(getattr(player, 'defeated', False)):
+            return
+        player.defeated = True
+        player.turned_in = True
+        player.homeworld = None
+        player.save(update_fields=['defeated', 'turned_in', 'homeworld'])
+        victor = self._determine_defeat_victor(player, location=location)
+        self._abandon_player_colonies(player, exclude_star_id=lost_star_id)
+        self._resolve_defeated_player_fleets(player, victor)
+
+    def _handle_homeworld_loss(self, player, lost_star=None, location=None, lost_star_id=None):
+        if player is None or bool(getattr(player, 'defeated', False)):
+            return
+        star_id = lost_star_id or (lost_star.id if lost_star is not None else None)
+        if star_id is not None:
+            if int(getattr(player, 'homeworld_id', 0) or 0) != int(star_id):
+                return
+        if bool(getattr(player, 'fixed_homeworld', False)):
+            self._defeat_player(player, lost_star_id=star_id, location=location)
+            return
+        replacement = self._select_replacement_homeworld(player, exclude_star_id=star_id)
+        if replacement is not None:
+            player.homeworld = replacement
+            player.save(update_fields=['homeworld'])
+            return
+        self._defeat_player(player, lost_star_id=star_id, location=location)
 
     def check_join_deadline(self):
         """Close joining if past the deadline year."""

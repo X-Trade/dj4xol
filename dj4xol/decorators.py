@@ -34,12 +34,16 @@ def player_only_view():
                 return redirect('dj4xol:register')
             account = request.user.dj4xol_account
             game = Game.objects.get(short_id=game_short_id)
-            if Player.objects.filter(game=game, account=account).exists():
+            player = Player.objects.filter(game=game, account=account).first()
+            if player:
+                if bool(getattr(player, 'defeated', False)):
+                    return render(request, 'dj4xol/forbidden.html', {
+                        'message': 'Game Over: your homeworld has fallen and you are out of this game.'
+                    }, status=403)
                 return func(request, game_short_id, *args, **kwargs)
-            else:
-                return render(request, 'dj4xol/forbidden.html', {
-                    'message': 'You are not a member of this game'
-                }, status=403)
+            return render(request, 'dj4xol/forbidden.html', {
+                'message': 'You are not a member of this game'
+            }, status=403)
 
         return wrapper
     return decorate

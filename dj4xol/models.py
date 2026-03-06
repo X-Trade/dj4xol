@@ -330,6 +330,8 @@ class Game(UUIDMixin):
         choices=ANOMALY_SPAWN_RATE_CHOICES,
         default='NORMAL',
     )
+    research_cost_multiplier = models.FloatField(default=1.0)
+    warp_speed_multiplier = models.FloatField(default=1.0)
     no_scanners = models.BooleanField(default=False)
     max_starting_tech_level = models.IntegerField(default=5)
     last_generated = models.DateTimeField(null=True, blank=True)
@@ -639,7 +641,7 @@ class Fleet(AbstractMapObject):
     """A group of ships traveling together."""
     name = models.CharField(max_length=30)
     player = models.ForeignKey('Player', related_name='fleets',
-            on_delete=models.CASCADE)
+            on_delete=models.SET_NULL, null=True, default=None)
     # Heading in degrees: 0 = north, 90 = east, 180 = south, 270 = west
     heading = models.FloatField(default=0.0)
     ship_count = models.IntegerField(default=1)
@@ -796,6 +798,7 @@ class ServerRace(UUIDMixin, HabitabilityMixin):
     name = models.CharField(max_length=16)
     plural_name = models.CharField(max_length=16)
     homeworld_name = models.CharField(max_length=30, blank=True, default='')
+    fixed_homeworld = models.BooleanField(default=False)
     starting_colonists = models.IntegerField(default=20)
     starting_mines = models.IntegerField(default=4)
     starting_factories = models.IntegerField(default=2)
@@ -832,6 +835,7 @@ class Player(AbstractGameObject, HabitabilityMixin):
     homeworld = models.ForeignKey(Star, null=True, default=None,
                                   related_name="homeworld_of",
                                   on_delete=models.SET_NULL)
+    fixed_homeworld = models.BooleanField(default=False)
     description = models.TextField(blank=True, default='')
     race_type = models.ForeignKey(ServerRaceType)
     starting_colonists = models.IntegerField(default=20)
@@ -846,6 +850,7 @@ class Player(AbstractGameObject, HabitabilityMixin):
     spend_leftover_points_on_research = models.BooleanField(default=False)
     leftover_points = models.FloatField(default=0.0)
     turned_in = models.BooleanField(default=False)
+    defeated = models.BooleanField(default=False)
     last_seen_year = models.IntegerField(null=True, blank=True)
     messages_seen_year = models.IntegerField(null=True, blank=True)
     discovered_resource_x = models.BooleanField(default=False)

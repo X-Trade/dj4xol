@@ -89,6 +89,7 @@ class RaceCreationRules(HabitabilityRules):
         starting_tech_level_cost=None,
         convert_unused_buildpoints_to_research=False,
         singular_research=False,
+        fixed_homeworld=False,
         budget=None,
         envs=None,
     ):
@@ -121,6 +122,7 @@ class RaceCreationRules(HabitabilityRules):
         self.starting_tech_level_cost_value = max(0.0, float(starting_tech_level_cost or 0.0))
         self.convert_unused_buildpoints_to_research = bool(convert_unused_buildpoints_to_research)
         self.singular_research = bool(singular_research)
+        self.fixed_homeworld = bool(fixed_homeworld)
 
     def width_cost(self):
         # Keep width=1.0 unchanged, but increase cost curve as width approaches 2.0.
@@ -189,12 +191,16 @@ class RaceCreationRules(HabitabilityRules):
     def singular_research_savings(self):
         return 16 if self.singular_research else 0
 
+    def fixed_homeworld_savings(self):
+        return 16 if self.fixed_homeworld else 0
+
     def total_cost(self):
         return (self.habitability_cost() + self.colonist_cost() +
                 self.mines_cost() + self.factories_cost() +
                 self.labs_cost() + self.shipyards_cost() + self.fleets_cost() +
                 self.starting_tech_level_cost() +
-                self.convert_unused_buildpoints_cost() - self.singular_research_savings())
+                self.convert_unused_buildpoints_cost() - self.singular_research_savings() -
+                self.fixed_homeworld_savings())
 
     def validate(self):
         errors = []

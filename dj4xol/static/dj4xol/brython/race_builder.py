@@ -187,10 +187,12 @@ def _update_all(ui_rows, summary_value, error_box):
             starting_tech_warning.style.display = 'none'
     convert_checkbox = document.getElementById('id_convert_unused_buildpoints_to_research')
     singular_checkbox = document.getElementById('id_singular_research')
+    fixed_homeworld_checkbox = document.getElementById('id_fixed_homeworld')
     convert_unused_buildpoints_to_research = bool(
         convert_checkbox and convert_checkbox.checked
     )
     singular_research = bool(singular_checkbox and singular_checkbox.checked)
+    fixed_homeworld = bool(fixed_homeworld_checkbox and fixed_homeworld_checkbox.checked)
     for ui in ui_rows:
         env = ui['env']
         widths[env] = _clamp(widths[env], 0.1, 2.0)
@@ -212,6 +214,7 @@ def _update_all(ui_rows, summary_value, error_box):
         starting_tech_level_cost=starting_tech_level_cost,
         convert_unused_buildpoints_to_research=convert_unused_buildpoints_to_research,
         singular_research=singular_research,
+        fixed_homeworld=fixed_homeworld,
     )
 
     for ui in ui_rows:
@@ -256,6 +259,7 @@ def _update_all(ui_rows, summary_value, error_box):
     set_points('starting-tech-row', rules.starting_tech_level_cost())
     set_points('convert-bp-row', rules.convert_unused_buildpoints_cost())
     set_points('singular-row', -rules.singular_research_savings())
+    set_points('fixed-homeworld-row', -rules.fixed_homeworld_savings())
 
 
 
@@ -424,6 +428,7 @@ def init_habitability_form():
         'convert-bp-row-points',
     )
     attach_points('id_singular_research', 'singular-row', 'singular-row-points')
+    attach_points('id_fixed_homeworld', 'fixed-homeworld-row', 'fixed-homeworld-row-points')
     existing_summary = document.select_one('.habitability-summary')
     if existing_summary:
         summary_row = existing_summary
@@ -480,7 +485,7 @@ def init_habitability_form():
         input_el = document.getElementById(field_id)
         if input_el:
             input_el.bind('input', lambda ev: _update_all(ui_rows, summary_value, error_box))
-    for field_id in ['id_convert_unused_buildpoints_to_research', 'id_singular_research']:
+    for field_id in ['id_convert_unused_buildpoints_to_research', 'id_singular_research', 'id_fixed_homeworld']:
         checkbox = document.getElementById(field_id)
         if checkbox:
             checkbox.bind('change', lambda ev: _update_all(ui_rows, summary_value, error_box))
