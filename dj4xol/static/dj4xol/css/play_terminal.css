@@ -1,0 +1,101 @@
+.play-terminal-overlay[hidden] {
+    display: none;
+}
+
+.play-terminal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    pointer-events: none;
+}
+
+.play-terminal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.play-terminal-shell {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    background: rgba(0, 0, 0, 0.82);
+    border-top: 1px solid rgba(120, 255, 160, 0.35);
+    box-shadow: 0 -14px 28px rgba(0, 0, 0, 0.35);
+    color: #bff6ca;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    pointer-events: auto;
+}
+
+.play-terminal-output {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 14px 16px 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.play-terminal-block {
+    margin: 0 0 12px;
+    transition: opacity 120ms ease;
+}
+
+.play-terminal-block:last-child {
+    margin-bottom: 0;
+}
+
+.play-terminal-block-inactive {
+    opacity: 0.52;
+}
+
+.play-terminal-line {
+    min-height: 1.45em;
+}
+
+.play-terminal-line-prompt {
+    color: #8ad9ff;
+}
+
+.play-terminal-line-error {
+    color: #ff9f9f;
+}
+
+.play-terminal-form {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px 14px;
+    border-top: 1px solid rgba(120, 255, 160, 0.2);
+}
+
+.play-terminal-prompt {
+    flex: 0 0 auto;
+    color: #8ad9ff;
+    font-size: 14px;
+}
+
+.play-terminal-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: #e8ffe6;
+    font: inherit;
+}
+
+.play-terminal-input::placeholder {
+    color: rgba(232, 255, 230, 0.45);
+}
+
+@media (max-width: 900px) {
+    .play-terminal-shell {
+        top: 0;
+    }
+}

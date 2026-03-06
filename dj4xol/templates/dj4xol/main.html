@@ -7,6 +7,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/starmap/css/map.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/css/play_terminal.css' %}">
         {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
         {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
         <script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
@@ -15,6 +16,8 @@
             window.playerTurnedIn = {{ player.turned_in|yesno:'true,false' }};
             window.currentYear = {{ game.year }};
             window.gameStatusUrl = "{% url 'dj4xol:game_status' game.short_id %}";
+            window.playCliBootstrapUrl = "{% url 'dj4xol:play_cli_bootstrap' game.short_id %}";
+            window.playCliCommandUrl = "{% url 'dj4xol:play_cli_command' game.short_id %}";
             window.turnIsDue = false;
         </script>
     </head>
@@ -119,6 +122,16 @@
                     {% endif %}
                 </div>
             </div>
+        </div>
+        <div id="play-terminal-overlay" class="play-terminal-overlay" hidden>
+            <div class="play-terminal-backdrop"></div>
+            <section class="play-terminal-shell" aria-label="Play terminal">
+                <div id="play-terminal-output" class="play-terminal-output"></div>
+                <form id="play-terminal-form" class="play-terminal-form" autocomplete="off">
+                    <label class="play-terminal-prompt" for="play-terminal-input">play&gt;</label>
+                    <input id="play-terminal-input" class="play-terminal-input" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">
+                </form>
+            </section>
         </div>
         <script>
         (function() {
@@ -458,6 +471,7 @@
             });
         })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/play_terminal.js' %}"></script>
         <script type="text/javascript" src="{% static 'dj4xol/js/thumb_pop.js' %}"></script>
         <script type="application/json" id="movement-paths-json">{{ movement_paths_json|safe }}</script>
         <script type="application/json" id="wormhole-links-json">{{ wormhole_links_json|safe }}</script>

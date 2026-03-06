@@ -27,6 +27,11 @@ from .email_rollups import (
     send_generic_test_email_for_account,
 )
 from .decorators import registration_required, player_only_view
+from .play_cli_web import (
+    build_bootstrap_transcript,
+    enforce_browser_rate_limit,
+    execute_browser_command,
+)
 from .turn import GameTurn
 from .research import (
     build_research_screen_data, update_player_allocations, set_even_allocations,
@@ -2380,6 +2385,46 @@ def game_status(request, game_short_id):
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
     return JsonResponse({'year': game.year, 'turned_in': player.turned_in})
+
+
+@player_only_view()
+def play_cli_bootstrap(request, game_short_id):
+    """Return the initial Play CLI transcript for the web terminal overlay."""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'GET required'}, status=405)
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    return JsonResponse({
+        'ok': True,
+        'lines': build_bootstrap_transcript(game, player),
+        'close_overlay': False,
+    })
+
+
+@player_only_view()
+def play_cli_command(request, game_short_id):
+    """Execute a browser Play CLI command via authenticated JSON."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+
+    if not enforce_browser_rate_limit(game, account):
+        return JsonResponse({
+            'ok': False,
+            'lines': ['Play CLI rate limit exceeded. Please wait a moment and try again.'],
+            'close_overlay': False,
+        }, status=429)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    result = execute_browser_command(game, player, payload.get('command'))
+    return JsonResponse(result)
 
 
 @player_only_view()
