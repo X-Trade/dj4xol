@@ -854,7 +854,7 @@ class ScannerReportTest(TestCase):
         self.assertNotIn('ship_count', data)
         self.assertNotIn('integrity', data)
 
-    def test_advanced_scanner_reports_fleet_composition_and_cargo_only(self):
+    def test_advanced_scanner_reports_fleet_composition_only(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=6, x=15, y=15)
         enemy_fleet = Fleet.objects.create(
             game=self.game,
@@ -884,7 +884,8 @@ class ScannerReportTest(TestCase):
         self.assertEqual(data.get('report_tier'), 'advanced')
         self.assertEqual(data.get('ship_count'), 6)
         self.assertEqual(data.get('integrity'), 55)
-        self.assertEqual(data.get('ironium_inventory'), 90)
+        self.assertNotIn('ironium_inventory', data)
+        self.assertNotIn('cargo_capacity', data)
         self.assertNotIn('max_safe_warp', data)
         self.assertNotIn('has_bombs', data)
         self.assertNotIn('offense_modifier', data)
@@ -1015,6 +1016,74 @@ class ScannerReportTest(TestCase):
         )
         self.assertEqual(anomaly_report.get_report_data().get('report_tier'), 'encounter')
 
+    def test_encounter_without_advanced_scanners_hides_fleet_cargo(self):
+        x, y = self._find_empty_coord(exclude_star=self.enemy_star)
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='No Advanced',
+            x=x,
+            y=y,
+            advanced_scanner_range=0,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Enemy Cargo',
+            x=x,
+            y=y,
+            ship_count=3,
+            integrity=70,
+            cargo_capacity=200,
+            ironium_inventory=55,
+        )
+
+        GameTurn(self.game).generate_reports()
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'encounter')
+        self.assertNotIn('ironium_inventory', data)
+        self.assertNotIn('cargo_capacity', data)
+
+    def test_encounter_with_advanced_scanners_shows_fleet_cargo(self):
+        x, y = self._find_empty_coord(exclude_star=self.enemy_star)
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Advanced Scout',
+            x=x,
+            y=y,
+            advanced_scanner_range=6,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Enemy Cargo',
+            x=x,
+            y=y,
+            ship_count=4,
+            integrity=90,
+            cargo_capacity=220,
+            ironium_inventory=60,
+        )
+
+        GameTurn(self.game).generate_reports()
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'encounter')
+        self.assertEqual(data.get('ironium_inventory'), 60)
+        self.assertEqual(data.get('cargo_capacity'), 220)
+
 
 class NoScannerReportTierTest(TestCase):
     def setUp(self):
@@ -1125,6 +1194,35 @@ class NoScannerReportTierTest(TestCase):
             target_type='star',
             target_id=self.enemy_star.id,
         ).exists())
+
+    def test_no_scanners_basic_visit_records_anomaly_type(self):
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=10,
+            y=12,
+            name='Basic Anomaly',
+            anomaly_type=Anomaly.TYPE_BLACK_HOLE,
+        )
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Basic Visit',
+            x=anomaly.x,
+            y=anomaly.y,
+            basic_scanner_range=5,
+            advanced_scanner_range=0,
+        )
+        GameTurn(self.game).generate_reports()
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='anomaly',
+            target_id=anomaly.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'basic')
+        self.assertEqual(data.get('anomaly_type'), Anomaly.TYPE_BLACK_HOLE)
+        self.assertNotIn('stability', data)
 
         visiting = Fleet.objects.create(
             game=self.game,

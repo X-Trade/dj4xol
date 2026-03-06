@@ -1351,7 +1351,7 @@ class GameTurn():
                         player, 'star', star, self.game.year, report_tier='basic'
                     )
 
-            # Fleets: basic scans confirm presence, advanced scans reveal details.
+            # Fleets: basic scans confirm presence, advanced scans reveal composition.
             for fleet in Fleet.objects.filter(game=self.game).exclude(player=player):
                 if has_advanced and position_in_scanner_range(
                     fleet.x, fleet.y, sources, range_key='advanced'
@@ -1392,6 +1392,7 @@ class GameTurn():
         player = fleet.player
         year = self.game.year
         report_tier = self._report_tier_for_visit(fleet)
+        include_cargo = self._player_has_advanced_scanner_at(player, x, y)
 
         # Report on all stars at this location
         for star in Star.objects.filter(game=self.game, x=x, y=y):
@@ -1403,7 +1404,14 @@ class GameTurn():
         for other_fleet in Fleet.objects.filter(
             game=self.game, x=x, y=y
         ).exclude(player=player):
-            self._create_or_update_report(player, 'fleet', other_fleet, year, report_tier=report_tier)
+            self._create_or_update_report(
+                player,
+                'fleet',
+                other_fleet,
+                year,
+                report_tier=report_tier,
+                include_cargo=include_cargo,
+            )
 
         # Report on all salvage at this location
         for salvage in Salvage.objects.filter(game=self.game, x=x, y=y):
@@ -1412,7 +1420,15 @@ class GameTurn():
         for anomaly in Anomaly.objects.filter(game=self.game, x=x, y=y):
             self._create_or_update_report(player, 'anomaly', anomaly, year, report_tier=report_tier)
 
-    def _create_or_update_report(self, player, target_type, obj, year, report_tier='advanced'):
+    def _create_or_update_report(
+        self,
+        player,
+        target_type,
+        obj,
+        year,
+        report_tier='advanced',
+        include_cargo=False,
+    ):
         """Create or update a report for an object."""
         from .models import Report, Fleet
         from .messages import HabitableWorldMessageFactory
@@ -1431,14 +1447,22 @@ class GameTurn():
             report.year = year
             report.game = self.game
             report_data = self._build_report_data(
-                player, obj, target_type, report_tier=report_tier
+                player,
+                obj,
+                target_type,
+                report_tier=report_tier,
+                include_cargo=include_cargo,
             )
             report.set_report_data(report_data)
             report.save()
             created = False
         else:
             report_data = self._build_report_data(
-                player, obj, target_type, report_tier=report_tier
+                player,
+                obj,
+                target_type,
+                report_tier=report_tier,
+                include_cargo=include_cargo,
             )
             report = Report.objects.create(
                 player=player,
@@ -1504,7 +1528,7 @@ class GameTurn():
             if int(getattr(fleet, f'{key}_inventory', 0) or 0) > 0:
                 self._mark_secret_resource_discovered(player, key, star=None, fleet=fleet)
 
-    def _build_report_data(self, player, obj, target_type, report_tier='advanced'):
+    def _build_report_data(self, player, obj, target_type, report_tier='advanced', include_cargo=False):
         """Build the data dict to cache in a report."""
         if target_type == 'star':
             base = {
@@ -1575,19 +1599,22 @@ class GameTurn():
                 'player_name': obj.player.name if obj.player else None,
                 'ship_count': obj.ship_count,
                 'integrity': obj.integrity,
-                'cargo_capacity': getattr(obj, 'cargo_capacity', None),
-                'cargo_used': getattr(obj, 'cargo_used', None),
-                'cargo_remaining': getattr(obj, 'cargo_remaining', None),
-                'fuel': getattr(obj, 'fuel', None),
-                'max_fuel': getattr(obj, 'max_fuel', None),
-                'ironium_inventory': getattr(obj, 'ironium_inventory', None),
-                'boranium_inventory': getattr(obj, 'boranium_inventory', None),
-                'germanium_inventory': getattr(obj, 'germanium_inventory', None),
-                'resource_x_inventory': getattr(obj, 'resource_x_inventory', None),
-                'resource_y_inventory': getattr(obj, 'resource_y_inventory', None),
-                'resource_z_inventory': getattr(obj, 'resource_z_inventory', None),
-                'colonists': getattr(obj, 'colonists', None),
             })
+            if include_cargo:
+                data.update({
+                    'cargo_capacity': getattr(obj, 'cargo_capacity', None),
+                    'cargo_used': getattr(obj, 'cargo_used', None),
+                    'cargo_remaining': getattr(obj, 'cargo_remaining', None),
+                    'fuel': getattr(obj, 'fuel', None),
+                    'max_fuel': getattr(obj, 'max_fuel', None),
+                    'ironium_inventory': getattr(obj, 'ironium_inventory', None),
+                    'boranium_inventory': getattr(obj, 'boranium_inventory', None),
+                    'germanium_inventory': getattr(obj, 'germanium_inventory', None),
+                    'resource_x_inventory': getattr(obj, 'resource_x_inventory', None),
+                    'resource_y_inventory': getattr(obj, 'resource_y_inventory', None),
+                    'resource_z_inventory': getattr(obj, 'resource_z_inventory', None),
+                    'colonists': getattr(obj, 'colonists', None),
+                })
             if report_tier == 'encounter':
                 offense_mod = int(round(float(obj.offense_level) * 10.0))
                 defense_mod = int(round(float(obj.defense_level) * 10.0))
@@ -1626,12 +1653,15 @@ class GameTurn():
             }
         elif target_type == 'anomaly':
             if report_tier in ('ownership', 'basic'):
-                return {
+                data = {
                     'name': obj.name,
                     'x': obj.x,
                     'y': obj.y,
                     'report_tier': report_tier,
                 }
+                if report_tier == 'basic':
+                    data['anomaly_type'] = obj.anomaly_type
+                return data
             return {
                 'name': obj.name,
                 'x': obj.x,
@@ -1676,6 +1706,20 @@ class GameTurn():
             'encounter': 3,
         }
         return order.get(str(tier or '').lower(), 2)
+
+    def _player_has_advanced_scanner_at(self, player, x, y):
+        """Return True if player has any advanced scanners at the location."""
+        if not player:
+            return False
+        from .models import Fleet
+
+        return Fleet.objects.filter(
+            game=self.game,
+            player=player,
+            x=x,
+            y=y,
+            advanced_scanner_range__gt=0,
+        ).exists()
 
     def check_quorum(self):
         """Check if all players have turned in. Returns True if quorum met."""
@@ -2011,11 +2055,17 @@ class GameTurn():
         if len(surviving) < 2:
             return
         for fleet in surviving:
+            include_cargo = self._player_has_advanced_scanner_at(fleet.player, x, y)
             for other in surviving:
                 if other.player_id == fleet.player_id:
                     continue
                 self._create_or_update_report(
-                    fleet.player, 'fleet', other, self.game.year, report_tier='encounter'
+                    fleet.player,
+                    'fleet',
+                    other,
+                    self.game.year,
+                    report_tier='encounter',
+                    include_cargo=include_cargo,
                 )
 
     def _choose_combat_winner(self, players, strength_by_player):
@@ -3421,7 +3471,12 @@ class GameTurn():
             )
             if defender:
                 self._create_or_update_report(
-                    defender, 'fleet', fleet, self.game.year, report_tier='encounter'
+                    defender,
+                    'fleet',
+                    fleet,
+                    self.game.year,
+                    report_tier='encounter',
+                    include_cargo=self._player_has_advanced_scanner_at(defender, star.x, star.y),
                 )
 
     def resolve_orbital_defense_hazards(self):
