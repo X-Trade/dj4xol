@@ -728,12 +728,14 @@ class GameTurn():
                 )
             elif salvage_type == Salvage.TYPE_ANCIENT_DEBRIS:
                 templates = [
-                    "Unknown forces within %s inflicted %s%% integrity damage on %s.",
-                    "Automated defences in %s struck %s, causing %s%% integrity damage.",
+                    "Unknown forces within {salvage} inflicted {damage}% integrity damage on {fleet}.",
+                    "Automated defences in {salvage} struck {fleet}, causing {damage}% integrity damage.",
+                    "An unstable energy field in {salvage} reduced {fleet} integrity by {damage}%.",
                 ]
                 destruction_templates = [
-                    "Unknown forces within %s destroyed %s.",
-                    "Automated defences in %s destroyed %s.",
+                    "{fleet} was destroyed by the automated defences at {salvage}.",
+                    "{fleet} was torn apart by unknown forces within {salvage}.",
+                    "{fleet} was lost to an energy surge in {salvage}.",
                 ]
                 self._apply_salvage_damage(
                     fleet, salvage, ANCIENT_DEBRIS_DAMAGE_MIN, ANCIENT_DEBRIS_DAMAGE_MAX,
@@ -780,7 +782,10 @@ class GameTurn():
                     fleet.delete()
                     if destruction_templates:
                         template = random.choice(destruction_templates)
-                        text = template % (format_map_object(salvage), fleet_name)
+                        text = template.format(
+                            salvage=format_map_object(salvage),
+                            fleet=fleet_name,
+                        )
                     else:
                         text = "%s was destroyed while exploring %s." % (
                             fleet_name, format_map_object(salvage)
@@ -795,7 +800,10 @@ class GameTurn():
                 fleet.delete()
                 if destruction_templates:
                     template = random.choice(destruction_templates)
-                    text = template % (format_map_object(salvage), fleet_name)
+                    text = template.format(
+                        salvage=format_map_object(salvage),
+                        fleet=fleet_name,
+                    )
                 else:
                     text = "%s was destroyed while exploring %s." % (
                         fleet_name, format_map_object(salvage)
@@ -809,7 +817,11 @@ class GameTurn():
         fleet.save(update_fields=['integrity'])
         if message_templates:
             template = random.choice(message_templates)
-            text = template % (format_map_object(salvage), damage, fleet.name)
+            text = template.format(
+                salvage=format_map_object(salvage),
+                damage=damage,
+                fleet=fleet.name,
+            )
             self._create_salvage_hazard_message(fleet.player, text, priority=True)
 
     def _create_salvage_hazard_message(self, player, text, priority=False):

@@ -1,5 +1,4 @@
 ============= MAIN TODO =============
-1. More anomolies (ancient debris)
 2. Mine fields
 4. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
 6. fuel factory
