@@ -286,6 +286,54 @@ body.profile-page .columns.two-column .panel.open .panel-scrollable-text {
     background: var(--theme-accent-hover);
 }
 
+.action-link.disabled {
+    background: #666;
+    color: rgba(255, 255, 255, 0.7) !important;
+    cursor: default;
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.detail-subpanel--scrollable {
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.detail-subpanel .detail-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.detail-subpanel .detail-table th,
+.detail-subpanel .detail-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.detail-subpanel .detail-table tr:last-child th,
+.detail-subpanel .detail-table tr:last-child td {
+    border-bottom: none;
+}
+
+.detail-subpanel .detail-table .detail-table-section th {
+    padding-top: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 0.78em;
+    color: inherit;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.detail-subpanel .detail-table .refund-row th {
+    color: rgba(255, 255, 255, 0.75);
+    font-weight: 600;
+}
+
+.detail-subpanel .detail-table .refund-row td {
+    color: var(--theme-accent);
+    font-weight: 600;
+}
+
 /* Action list */
 .action-list li {
     padding: 8px 0;

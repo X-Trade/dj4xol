@@ -21,7 +21,6 @@
                 <div class="panel no-transition open" data-panel="join-game">
                     <h2><span>Join {{ game.name }}</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
-                        <section class="panel-scrollable-text">
                         {% if game.description %}
                             <p>{{ game.description }}</p>
                         {% endif %}
@@ -42,72 +41,77 @@
                                 </tr>
                                 {% endfor %}
                             </table>
+                            <div class="detail-subpanel detail-subpanel--info detail-subpanel--scrollable">
+                                <table class="profile-table detail-table">
+                                    <tr class="detail-table-section">
+                                        <th colspan="2">Balance Refund</th>
+                                    </tr>
+                                    <tr class="refund-row">
+                                        <th>Race Level</th>
+                                        <td id="race-refund-starting">—</td>
+                                    </tr>
+                                    <tr class="refund-row">
+                                        <th>Capped</th>
+                                        <td id="race-refund-effective">—</td>
+                                    </tr>
+                                    <tr class="refund-row">
+                                        <th>Refund</th>
+                                        <td id="race-refund-points">—</td>
+                                    </tr>
+                                    <tr class="refund-row">
+                                        <th>Refund As</th>
+                                        <td id="race-refund-destination">—</td>
+                                    </tr>
+                                    <tr class="detail-table-section">
+                                        <th colspan="2">Game Details</th>
+                                    </tr>
+                                    <tr>
+                                        <th>Starting Year</th>
+                                        <td>{{ game.year }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Map Size</th>
+                                        <td>{{ game.map_size_x }} x {{ game.map_size_y }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Stars</th>
+                                        <td>{{ game.stars.count }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Players</th>
+                                        <td>{% if game.max_players %}{{ player_count }}/{{ game.max_players }}{% else %}{{ player_count }}{% endif %}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Turn Scheme</th>
+                                        <td>{{ game.get_turn_scheme_short_display }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Years/Turn</th>
+                                        <td>{{ game.years_per_turn }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Random Events</th>
+                                        <td>{% if game.random_events %}On{% else %}Off{% endif %}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Anomalies</th>
+                                        <td>{% if game.anomalies_enabled %}On{% else %}Off{% endif %}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Scanners</th>
+                                        <td>{% if game.no_scanners %}Off{% else %}On{% endif %}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Tech Cap</th>
+                                        <td>L{{ game.max_starting_tech_level }}</td>
+                                    </tr>
+                                </table>
+                            </div>
                             <div class="form-nav">
                                 <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:index' %}'">Back to Games</button>
                                 <button type="submit" class="nav-button primary">Join Game</button>
                             </div>
                         </form>
-                        <div class="detail-subpanel detail-subpanel--info detail-subpanel--columns">
-                            <div class="detail-row">
-                                <span class="env-label">Starting Year</span>
-                                <span class="detail-value">{{ game.year }}</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Map Size</span>
-                                <span class="detail-value">{{ game.map_size_x }} x {{ game.map_size_y }}</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Stars</span>
-                                <span class="detail-value">{{ game.stars.count }}</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Players</span>
-                                <span class="detail-value">{% if game.max_players %}{{ player_count }}/{{ game.max_players }}{% else %}{{ player_count }}{% endif %}</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Turn Scheme</span>
-                                <span class="detail-value">{{ game.get_turn_scheme_short_display }}</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Years/Turn</span>
-                                <span class="detail-value">{{ game.years_per_turn }}</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Random Events</span>
-                                <span class="detail-value">{% if game.random_events %}On{% else %}Off{% endif %}</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Anomalies</span>
-                                <span class="detail-value">{% if game.anomalies_enabled %}On{% else %}Off{% endif %}</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Scanners</span>
-                                <span class="detail-value">{% if game.no_scanners %}Off{% else %}On{% endif %}</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Tech Cap</span>
-                                <span class="detail-value">L{{ game.max_starting_tech_level }}</span>
-                            </div>
-                        </div>
-                        <div class="detail-subpanel detail-subpanel--refund detail-subpanel--columns" id="race-refund-panel">
-                            <div class="detail-row">
-                                <span class="env-label">Race Level</span>
-                                <span class="detail-value" id="race-refund-starting">—</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Effective</span>
-                                <span class="detail-value" id="race-refund-effective">—</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Refund</span>
-                                <span class="detail-value" id="race-refund-points">—</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="env-label">Refund To</span>
-                                <span class="detail-value" id="race-refund-destination">—</span>
-                            </div>
-                        </div>
-                        </section>
                     </div>
                 </div>
             </div>

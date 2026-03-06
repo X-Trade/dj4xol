@@ -17,7 +17,7 @@
             <span class="title">{{ game.name }}</span>
             <span class="year"><span class="year-prefix">Year </span><span class="year-value">{{ game.year }}</span></span>
             <span class="turn-status">Spectator Mode{% if is_admin_view %} (Admin){% endif %}</span>
-            {% include 'dj4xol/_nav_menu.html' with current_page='game' %}
+            {% include 'dj4xol/_nav_menu.html' with current_page='spectator' game=None %}
         </div>
         <div class="columns">
             <div class="column-left">
@@ -66,5 +66,28 @@
         <script type="application/json" id="scanner-basic-json">{{ scanner_basic_json|safe }}</script>
         <script type="application/json" id="scanner-advanced-json">{{ scanner_advanced_json|safe }}</script>
         <script type="application/json" id="selected-patrol-circles-json">{{ selected_patrol_circles_json|safe }}</script>
+        <script>
+        (function() {
+            var hamburger = document.getElementById('hamburger-btn');
+            var dropdown = document.getElementById('nav-dropdown');
+
+            if (!hamburger || !dropdown) {
+                return;
+            }
+
+            hamburger.addEventListener('click', function(e) {
+                e.stopPropagation();
+                dropdown.classList.toggle('open');
+                hamburger.classList.toggle('open');
+            });
+
+            document.addEventListener('click', function(e) {
+                if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                    dropdown.classList.remove('open');
+                    hamburger.classList.remove('open');
+                }
+            });
+        })();
+        </script>
     </body>
 </html>
