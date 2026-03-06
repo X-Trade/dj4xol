@@ -489,12 +489,14 @@ class Command(BaseCommand):
             report_year = detail.get("report_year")
             if report_year is None and detail.get("is_current"):
                 report_year = player.game.year
+            owner = self._report_owner_name(obj, detail)
             entry = {
                 "report_year": report_year,
-                "owner": self._report_owner_name(obj, detail),
                 "location": "(%s, %s)" % (detail.get("x"), detail.get("y")),
                 "object_class": self._report_object_class(detail),
             }
+            if owner is not None:
+                entry["owner"] = owner
             subclass = self._report_object_subclass(obj, detail)
             if subclass:
                 entry["subclass"] = subclass
@@ -1283,12 +1285,7 @@ class Command(BaseCommand):
             return
         selected = parts[1].strip().lower()
 
-        obj = (
-            Star.objects.filter(game=player.game, short_id=selected).first() or
-            Fleet.objects.filter(game=player.game, short_id=selected).first() or
-            player.game.salvages.filter(short_id=selected).first() or
-            player.game.anomalys.filter(short_id=selected).first()
-        )
+        obj = self._resolve_detail_object(player, selected)
         if obj is None:
             self.stdout.write("Object not found in this game: %s" % selected)
             return
@@ -1300,6 +1297,15 @@ class Command(BaseCommand):
             return
         detail = self._format_detail_for_cli(detail)
         self._print_yaml({selected: detail})
+
+    def _resolve_detail_object(self, player, selected):
+        selected = (selected or "").strip().lower()
+        return (
+            Star.objects.filter(game=player.game, short_id=selected).first() or
+            Fleet.objects.filter(game=player.game, short_id=selected).first() or
+            player.game.salvages.filter(short_id=selected).first() or
+            player.game.anomalys.filter(short_id=selected).first()
+        )
 
     def _format_detail_for_cli(self, detail):
         """Apply CLI-friendly numeric formatting to detail payload."""

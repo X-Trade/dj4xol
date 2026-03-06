@@ -19,6 +19,7 @@ Implemented systems include:
 - Research categories, allocations, prerequisites, unlocks, and technology directory/help
 - Space combat, invasions, fleet fuel, scanners, and other core turn-resolution systems
 - Recent MVP extensions including anomalies, secret resources, remote mining, bombardment, wormholes, and game-speed setup options
+- Optional advanced player CLI interface in the terminal and web game view
 - Open source web UI with Classic, LCARS, and Win95 themes, plus public landing/gallery pages
 
 ## Current Priorities

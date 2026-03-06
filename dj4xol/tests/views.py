@@ -15,6 +15,7 @@ class TestLandingPage(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'spectator mode')
         self.assertContains(response, 'Recent MVP extensions including anomalies')
+        self.assertContains(response, 'Optional advanced player CLI interface')
         self.assertContains(response, 'Gameplay and tech tree progression balancing')
         self.assertContains(response, 'Diplomacy')
         self.assertContains(response, 'Ship design (basic, then advanced)')
@@ -233,6 +234,8 @@ class TestGameDetailRendering(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'starmap-scanners')
         self.assertNotContains(response, 'scanner-range-overlay')
+        self.assertContains(response, 'play-terminal-overlay')
+        self.assertContains(response, 'playCliBootstrapUrl')
 
     def test_toggle_production_order_repeat_blocked_when_turned_in(self):
         """Repeat toggle should be blocked when player has turned in."""
@@ -257,6 +260,94 @@ class TestGameDetailRendering(TestCase):
         self.assertEqual(response.status_code, 302)
         order.refresh_from_db()
         self.assertFalse(order.repeat)
+
+
+class TestPlayCliWebApi(TestCase):
+    def setUp(self):
+        self.game = default_game(stars=6, fleets=1)
+        self.player = self.game.players.first()
+        self.user, self.account = get_default_user()
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_bootstrap_returns_initial_transcript_for_member(self):
+        response = self.client.get(
+            reverse('dj4xol:play_cli_bootstrap', args=[self.game.short_id])
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        joined = '\n'.join(payload['lines'])
+        self.assertIn('Connected: game=%s year=%s' % (self.game.short_id, self.game.year), joined)
+        self.assertIn('Type /help for available commands.', joined)
+
+    def test_command_endpoint_allows_read_only_command(self):
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/status'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        joined = '\n'.join(payload['lines'])
+        self.assertIn('year: %s' % self.game.year, joined)
+        self.assertIn('turn_scheme:', joined)
+
+    def test_command_endpoint_blocks_mutating_commands(self):
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/done'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload['ok'])
+        self.assertIn('read-only commands only', '\n'.join(payload['lines']))
+        self.player.refresh_from_db()
+        self.assertFalse(self.player.turned_in)
+
+    def test_command_endpoint_supports_exit(self):
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/exit'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['close_overlay'])
+
+    def test_detail_command_returns_navigation_target(self):
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/detail %s' % self.player.homeworld.short_id}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['navigate_to']['sel'], self.player.homeworld.short_id)
+        self.assertEqual(payload['navigate_to']['x'], self.player.homeworld.x)
+        self.assertEqual(payload['navigate_to']['y'], self.player.homeworld.y)
+        self.assertTrue(payload['navigate_to']['locate'])
+
+    def test_non_member_cannot_access_play_cli_endpoints(self):
+        outsider_user = User.objects.create_user('outsider_cli', 'outsider@test.com', 'pass')
+        Account.objects.create(django_user=outsider_user, alias='OUT')
+        client = Client()
+        client.force_login(outsider_user)
+
+        bootstrap = client.get(
+            reverse('dj4xol:play_cli_bootstrap', args=[self.game.short_id])
+        )
+        command = client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/status'}),
+            content_type='application/json',
+        )
+        self.assertEqual(bootstrap.status_code, 403)
+        self.assertEqual(command.status_code, 403)
 
 
 class TestDetailPanelReportTiers(TestCase):
