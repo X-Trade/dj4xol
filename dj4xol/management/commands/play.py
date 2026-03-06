@@ -176,6 +176,12 @@ class Command(BaseCommand):
         if raw == "/stars":
             self._print_yaml(self._stars_summary(game, player))
             return
+        if raw == "/anomalies":
+            self._print_yaml(self._anomalies_summary(player))
+            return
+        if raw in ("/salvage", "/salvages"):
+            self._print_yaml(self._salvage_summary(player))
+            return
         if raw.startswith("/orders"):
             self._handle_orders_command(raw, player)
             return
@@ -310,6 +316,8 @@ class Command(BaseCommand):
                 "/colonies                YAML summary of your colonies.",
                 "/fleets                  YAML summary of your fleets.",
                 "/stars                   YAML summary of stars and known status.",
+                "/anomalies               YAML summary of all visible anomalies.",
+                "/salvage, /salvages      YAML summary of known salvage.",
                 "/orders <id>             List orders for your fleet/star.",
                 "/orders <id> clear       Clear all orders for your fleet/star.",
                 "/orders <id> add         Show add syntax for this fleet/star.",
@@ -417,6 +425,58 @@ class Command(BaseCommand):
                 "max_safe_warp": fleet.max_safe_warp,
             }
         return data
+
+    def _anomalies_summary(self, player):
+        anomalies = Anomaly.objects.filter(game=player.game).order_by("x", "y", "name", "id")
+        data = {}
+        for anomaly in anomalies:
+            detail = DetailBuilder(
+                player.game, selected=anomaly.short_id, player=player
+            ).build_detail()
+            if not detail:
+                continue
+            entry = self._build_map_object_summary_entry(detail)
+            if detail.get("anomaly_type"):
+                entry["anomaly_type"] = detail.get("anomaly_type")
+            if detail.get("stability") is not None:
+                entry["stability_pct"] = detail.get("stability")
+            if detail.get("heading") is not None:
+                entry["heading"] = round(float(detail.get("heading")), 1)
+            data[anomaly.short_id] = entry
+        return data
+
+    def _salvage_summary(self, player):
+        salvages = Salvage.objects.filter(game=player.game).order_by("x", "y", "id")
+        data = {}
+        for salvage in salvages:
+            detail = DetailBuilder(
+                player.game, selected=salvage.short_id, player=player
+            ).build_detail()
+            if not detail or detail.get("unexplored"):
+                continue
+            entry = self._build_map_object_summary_entry(detail)
+            salvage_inventory = detail.get("salvage_inventory") or {}
+            total = salvage_inventory.get("total")
+            if total is not None:
+                entry["total_minerals_kt"] = total
+            data[salvage.short_id] = entry
+        return data
+
+    def _build_map_object_summary_entry(self, detail):
+        if detail.get("unexplored"):
+            visibility = "visible"
+        else:
+            visibility = "current" if detail.get("is_current") else "report"
+        entry = {
+            "name": detail.get("name"),
+            "position": "(%s, %s)" % (detail.get("x"), detail.get("y")),
+            "visibility": visibility,
+        }
+        if detail.get("report_year") is not None:
+            entry["report_year"] = detail.get("report_year")
+        if detail.get("report_tier"):
+            entry["report_tier"] = detail.get("report_tier")
+        return entry
 
     def _handle_orders_command(self, raw, player):
         try:
@@ -1119,7 +1179,8 @@ class Command(BaseCommand):
         obj = (
             Star.objects.filter(game=player.game, short_id=selected).first() or
             Fleet.objects.filter(game=player.game, short_id=selected).first() or
-            player.game.salvages.filter(short_id=selected).first()
+            player.game.salvages.filter(short_id=selected).first() or
+            player.game.anomalys.filter(short_id=selected).first()
         )
         if obj is None:
             self.stdout.write("Object not found in this game: %s" % selected)

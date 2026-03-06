@@ -9,6 +9,7 @@ from django.test import TestCase
 from ..factory import GameFactory
 from ..models import (
     Account,
+    Anomaly,
     Fleet,
     FleetOrders,
     GameMessage,
@@ -18,6 +19,7 @@ from ..models import (
     ResearchLevelPrerequisite,
     ResearchLevelRequirement,
     Report,
+    Salvage,
 )
 from ..research import ensure_player_research_rows
 from ..turn import GameTurn
@@ -674,6 +676,93 @@ class PlayCommandTest(TestCase):
         self.assertIn('selected_id: %s' % self.player2.homeworld.short_id, output)
         self.assertIn('unexplored: true', output)
         self.assertIn('is_star: true', output)
+
+    def test_anomalies_command_lists_known_current_anomalies(self):
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=self.player1.homeworld.x,
+            y=self.player1.homeworld.y,
+            name='Home Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=77,
+            heading=12.34,
+        )
+        hidden = Anomaly.objects.create(
+            game=self.game,
+            x=self.player2.homeworld.x,
+            y=self.player2.homeworld.y,
+            name='Hidden Nebula',
+            anomaly_type=Anomaly.TYPE_NEBULA,
+            stability=44,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/anomalies', '/exit'],
+        )
+        self.assertIn('%s:' % anomaly.short_id, output)
+        self.assertIn('name: Home Rift', output)
+        self.assertIn('visibility: current', output)
+        self.assertIn('anomaly_type: RIFT', output)
+        self.assertIn('stability_pct: 77', output)
+        self.assertIn('%s:' % hidden.short_id, output)
+        self.assertIn('name: Hidden Nebula', output)
+        self.assertIn('visibility: visible', output)
+        self.assertNotIn('stability_pct: 44', output)
+
+    def test_salvage_command_lists_known_current_salvage(self):
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=self.player1.homeworld.x,
+            y=self.player1.homeworld.y,
+            ironium_inventory=11,
+            boranium_inventory=7,
+            germanium_inventory=5,
+        )
+        Salvage.objects.create(
+            game=self.game,
+            x=self.player2.homeworld.x,
+            y=self.player2.homeworld.y,
+            ironium_inventory=100,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/salvage', '/exit'],
+        )
+        self.assertIn('%s:' % salvage.short_id, output)
+        self.assertIn('visibility: current', output)
+        self.assertIn('total_minerals_kt: 23', output)
+        self.assertNotIn('total_minerals_kt: 100', output)
+
+    def test_detail_command_supports_anomalies(self):
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=self.player1.homeworld.x,
+            y=self.player1.homeworld.y,
+            name='Detail Wormhole',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=61,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/detail %s' % anomaly.short_id, '/exit'],
+        )
+        self.assertIn('%s:' % anomaly.short_id, output)
+        self.assertIn('selected_id: %s' % anomaly.short_id, output)
+        self.assertIn('is_anomaly: true', output)
+        self.assertIn('anomaly_type: WORMHOLE', output)
+        self.assertIn('stability: 61', output)
 
     def test_priority_messages_shown_on_login_and_messages_filters_work(self):
         GameMessage.objects.create(
