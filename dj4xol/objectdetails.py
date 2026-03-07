@@ -1,7 +1,12 @@
 from django.db import models
 from dj4xol.models import Fleet, Star, Salvage, Anomaly, Report
 from dj4xol.scanners import get_scanner_sources_for_player, fleet_visible_to_player
-from dj4xol.turn import apply_population_change, KT_PER_MINE
+from dj4xol.turn import (
+    KT_PER_MINE,
+    apply_population_change,
+    format_basic_hidden_salvage_name,
+    format_basic_unknown_fleet_name,
+)
 from dj4xol.fleet_thumbnails import get_blurred_fleet_thumbnail
 from dj4xol.star_thumbnails import get_blurred_star_thumbnail
 from dj4xol.anomaly_thumbnails import get_blurred_anomaly_thumbnail
@@ -346,7 +351,7 @@ class DetailBuilder():
 
         # Base detail fields
         detail = {
-            'name': data.get('name', self.get_object_name()),
+            'name': self._reported_object_name(self.selected_obj, target_type, data),
             'selected_id': self.selected_obj.short_id,
             'objects_here': self.get_objects_here(),
             'x': data.get('x', self.selected_obj.x),
@@ -560,6 +565,22 @@ class DetailBuilder():
         for obj in self.at_cursor:
             if isinstance(obj, Salvage):
                 name = self._salvage_display_name(obj)
+            elif self.player:
+                can_view, report_year = self.can_view_object(obj)
+                if can_view and report_year is not None:
+                    target_type = self._get_target_type(obj)
+                    report = Report.objects.filter(
+                        player=self.player,
+                        target_type=target_type,
+                        target_id=obj.id
+                    ).first()
+                    if report:
+                        data = report.get_report_data()
+                        name = self._reported_object_name(obj, target_type, data)
+                    else:
+                        name = obj.name or f"{obj.__class__.__name__} {obj.id}"
+                else:
+                    name = obj.name or f"{obj.__class__.__name__} {obj.id}"
             else:
                 name = obj.name or f"{obj.__class__.__name__} {obj.id}"
             if isinstance(obj, Star):
@@ -586,9 +607,32 @@ class DetailBuilder():
             can_view, _ = self.can_view_object(salvage)
             if not can_view:
                 return "???"
+            if not getattr(self.game, 'no_scanners', False):
+                report = Report.objects.filter(
+                    player=self.player,
+                    target_type='salvage',
+                    target_id=salvage.id
+                ).first()
+                if report:
+                    data = report.get_report_data()
+                    if data.get('report_tier') == 'basic':
+                        return "???"
         if salvage.name is None or len(salvage.name) == 0:
             return f"{salvage.__class__.__name__} {salvage.id}"
         return salvage.name
+
+    def _reported_object_name(self, obj, target_type, data):
+        """Return the display name to use for a cached report."""
+        report_tier = data.get('report_tier')
+        if report_tier == 'basic':
+            if target_type == 'fleet':
+                return format_basic_unknown_fleet_name(obj)
+            if (
+                target_type == 'salvage' and
+                not getattr(self.game, 'no_scanners', False)
+            ):
+                return format_basic_hidden_salvage_name(obj)
+        return data.get('name') or obj.name or f"{obj.__class__.__name__} {obj.id}"
 
     def get_population(self):
         if self.selected_obj and isinstance(self.selected_obj, Star):

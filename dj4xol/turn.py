@@ -123,6 +123,19 @@ TURN_INTERVALS = {
     'WEEKLY': timedelta(weeks=1),
 }
 
+
+def format_basic_unknown_fleet_name(fleet):
+    """Return the concealed label for basic fleet reports."""
+    return 'Unknown Fleet'
+
+
+def format_basic_hidden_salvage_name(salvage):
+    """Return the concealed label for basic scanner salvage reports."""
+    if getattr(salvage, 'salvage_type', None) == 'ANCIENT_DEBRIS':
+        return '???'
+    return getattr(salvage, 'name', '') or ''
+
+
 # Random event probability per colonized star per turn
 RANDOM_EVENT_CHANCE = 0.01  # 1%
 RESEARCH_BREAKTHROUGH_CHANCE = 0.08  # 8% per player-year with active labs
@@ -1818,7 +1831,10 @@ class GameTurn():
             return base
         elif target_type == 'fleet':
             data = {
-                'name': obj.name,
+                'name': (
+                    format_basic_unknown_fleet_name(obj)
+                    if report_tier == 'basic' else obj.name
+                ),
                 'x': obj.x,
                 'y': obj.y,
                 'report_tier': report_tier,
@@ -1876,7 +1892,7 @@ class GameTurn():
                 return data
             if report_tier == 'basic' and not getattr(self.game, 'no_scanners', False):
                 data = {
-                    'name': obj.name,
+                    'name': format_basic_hidden_salvage_name(obj),
                     'x': obj.x,
                     'y': obj.y,
                     'salvage_type': obj.salvage_type,

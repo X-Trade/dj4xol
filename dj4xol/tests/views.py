@@ -16,7 +16,11 @@ from ..models import (
     Technology,
 )
 from ..research import ensure_player_research_rows
-from ..turn import GameTurn
+from ..turn import (
+    GameTurn,
+    format_basic_hidden_salvage_name,
+    format_basic_unknown_fleet_name,
+)
 from ..factory import GameFactory
 from ._util import default_game, get_default_user, get_default_race
 
@@ -951,6 +955,40 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertNotContains(response, 'Wormhole Drive')
         self.assertNotContains(response, '__blur.png')
 
+    def test_basic_fleet_report_obfuscates_name_in_detail_selector(self):
+        self.game.joinable = True
+        self.game.save(update_fields=['joinable'])
+        other_user = User.objects.create_user('detail_enemy_basic', 'deb@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        factory = GameFactory(game=self.game)
+        enemy_player = factory.join_player(other_account, get_default_race())
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=enemy_player,
+            name='Leakable Fleet Name',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=3,
+            integrity=88,
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report=json.dumps({
+                'name': format_basic_unknown_fleet_name(enemy_fleet),
+                'x': enemy_fleet.x,
+                'y': enemy_fleet.y,
+                'report_tier': 'basic',
+            }),
+        )
+
+        response = self._get_detail_response(enemy_fleet)
+        self.assertContains(response, format_basic_unknown_fleet_name(enemy_fleet))
+        self.assertNotContains(response, 'Leakable Fleet Name')
+
     def test_encounter_fleet_report_shows_capabilities(self):
         self.game.joinable = True
         self.game.save(update_fields=['joinable'])
@@ -1038,6 +1076,8 @@ class TestDetailPanelReportTiers(TestCase):
         )
         response = self._get_detail_response(salvage)
         self.assertContains(response, '__blur.png')
+        self.assertContains(response, format_basic_hidden_salvage_name(salvage))
+        self.assertNotContains(response, salvage.name)
         self.assertContains(response, 'data-section="salvage"')
         self.assertContains(response, 'data-section="salvage-contents"')
         self.assertContains(response, 'Type')

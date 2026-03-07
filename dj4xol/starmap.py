@@ -2,7 +2,12 @@ from math import cos, sin, radians
 from html import escape
 from .models import Game, Player, Fleet, Star, Salvage, Anomaly, Report
 from .anomaly_thumbnails import nebula_palette_from_thumbnail
-from .scanners import get_scanner_sources_for_player, fleet_visible_to_player
+from .scanners import (
+    fleet_visible_to_player,
+    get_scanner_sources_for_player,
+    position_in_scanner_range,
+)
+from .turn import format_basic_hidden_salvage_name, format_basic_unknown_fleet_name
 
 class StarMap():
     MAP_SCALE = 6
@@ -57,6 +62,8 @@ class StarMap():
         self.salvages = game.salvages.all()
         self.anomalies = game.anomalys.all()
         self.star_report_tiers = {}
+        self.fleet_report_tiers = {}
+        self.salvage_report_tiers = {}
         self.explored_star_ids = set()
         self.explored_salvage_ids = set()
         if self.spectator:
@@ -87,6 +94,27 @@ class StarMap():
                 except Exception:
                     tier = 'advanced'
                 self.star_report_tiers[report.target_id] = tier
+            fleet_reports = list(Report.objects.filter(
+                game=self.game,
+                player=self.player,
+                target_type='fleet',
+            ))
+            for report in fleet_reports:
+                tier = 'advanced'
+                try:
+                    data = report.get_report_data()
+                    tier = data.get('report_tier') or 'advanced'
+                except Exception:
+                    tier = 'advanced'
+                self.fleet_report_tiers[report.target_id] = tier
+            for report in salvage_reports:
+                tier = 'advanced'
+                try:
+                    data = report.get_report_data()
+                    tier = data.get('report_tier') or 'advanced'
+                except Exception:
+                    tier = 'advanced'
+                self.salvage_report_tiers[report.target_id] = tier
             if not getattr(self.game, 'no_scanners', False):
                 self.salvages = self.salvages.filter(id__in=self.explored_salvage_ids)
         self.homeworld_star_ids = set(
@@ -361,7 +389,11 @@ class StarMap():
         # Base rotation of -135deg makes heading 0 point north
         rotation = -135 + fleet.heading
         extra_style = f" transform: translate(-20%, -20%) rotate({rotation}deg);"
-        return self.render_object(fleet, extra_style)
+        return self.render_object(
+            fleet,
+            extra_style,
+            name_override=self._fleet_display_name(fleet),
+        )
 
     def render_salvage(self, salvage):
         """Render a salvage pile on map using HTML (hollow yellow square)"""
@@ -372,15 +404,43 @@ class StarMap():
                 extra_classes=self._get_salvage_exploration_class(salvage),
             )
         if getattr(salvage, 'salvage_type', None) == Salvage.TYPE_ANCIENT_DEBRIS:
-            explored = self._get_salvage_exploration_class(salvage) == "mapstar-explored"
-            name = salvage.name if explored or not self.player else "???"
             return self.render_object(
                 salvage,
                 class_override="mapsalvage-ancient",
                 extra_classes=self._get_salvage_exploration_class(salvage),
-                name_override=name,
+                name_override=self._salvage_display_name(salvage),
             )
         return self.render_object(salvage)
+
+    def _fleet_display_name(self, fleet):
+        """Return the map tooltip name for a fleet."""
+        if self.spectator or not self.player:
+            return fleet.name
+        if getattr(self.game, 'no_scanners', False):
+            return fleet.name
+        if fleet.player_id == self.player.id:
+            return fleet.name
+        tier = self.fleet_report_tiers.get(fleet.id)
+        if tier in ('advanced', 'encounter'):
+            return fleet.name
+        if position_in_scanner_range(
+            fleet.x, fleet.y, self._scanner_sources, range_key='advanced'
+        ):
+            return fleet.name
+        return format_basic_unknown_fleet_name(fleet)
+
+    def _salvage_display_name(self, salvage):
+        """Return the map tooltip name for a salvage pile."""
+        if self.spectator or not self.player:
+            return salvage.name
+        if getattr(self.game, 'no_scanners', False):
+            return salvage.name
+        if getattr(salvage, 'salvage_type', None) != Salvage.TYPE_ANCIENT_DEBRIS:
+            return salvage.name
+        tier = self.salvage_report_tiers.get(salvage.id)
+        if tier in ('advanced', 'encounter'):
+            return salvage.name
+        return format_basic_hidden_salvage_name(salvage)
 
     def render_anomaly(self, anomaly):
         """Render an anomaly marker on map."""
