@@ -1221,7 +1221,7 @@ class Command(BaseCommand):
             if not extras["positionals"]:
                 raise CommandError("MOVE/INTERCEPT requires a target.")
             target_token = extras["positionals"][0]
-            target_obj, x, y, kind = self._resolve_target_token(fleet.game, target_token)
+            target_obj, x, y, kind = self._resolve_target_token(fleet.player, fleet.game, target_token)
             warp = extras["kwargs"].get("warp", extras["kwargs"].get("warpfactor"))
             order.warpfactor = self._parse_warp_value(
                 warp, fleet.max_safe_warp, fleet, allow_wormhole=(order_type == "MOVE")
@@ -1243,7 +1243,7 @@ class Command(BaseCommand):
             if transfer_token not in transfer_aliases:
                 raise CommandError("Invalid transfer type: %s" % extras["positionals"][1])
             order.transfer_type = transfer_aliases[transfer_token]
-            target_obj, x, y, kind = self._resolve_target_token(fleet.game, target_token)
+            target_obj, x, y, kind = self._resolve_target_token(fleet.player, fleet.game, target_token)
             self._assign_fleet_order_target(order, target_obj, x, y, kind)
             if kind == "fleet" and target_obj.player_id != fleet.player_id:
                 raise CommandError("TRANSFER to fleet requires one of your own fleets.")
@@ -1266,7 +1266,7 @@ class Command(BaseCommand):
         elif order_type == "COLONISE":
             if not extras["positionals"]:
                 raise CommandError("COLONISE requires a star short_id target.")
-            target_obj, _, _, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
+            target_obj, _, _, kind = self._resolve_target_token(fleet.player, fleet.game, extras["positionals"][0])
             if kind != "star":
                 raise CommandError("COLONISE target must be a star short_id.")
             order.repeat = False
@@ -1277,7 +1277,7 @@ class Command(BaseCommand):
                 raise CommandError("BOMB requires a fleet with bombs.")
             if not extras["positionals"]:
                 raise CommandError("BOMB requires a star short_id target.")
-            target_obj, _, _, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
+            target_obj, _, _, kind = self._resolve_target_token(fleet.player, fleet.game, extras["positionals"][0])
             if kind != "star":
                 raise CommandError("BOMB target must be a star short_id.")
             bomb_until = str(extras["kwargs"].get("bomb_until", "COLONISTS_ZERO")).strip().upper()
@@ -1293,7 +1293,7 @@ class Command(BaseCommand):
                 raise CommandError("REMOTEMINE requires a fleet with remote miners.")
             if not extras["positionals"]:
                 raise CommandError("REMOTEMINE requires a star short_id target.")
-            target_obj, _, _, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
+            target_obj, _, _, kind = self._resolve_target_token(fleet.player, fleet.game, extras["positionals"][0])
             if kind != "star":
                 raise CommandError("REMOTEMINE target must be a star short_id.")
             mine_until_full = str(extras["kwargs"].get("mine_until_full", "1")).strip().lower()
@@ -1311,7 +1311,7 @@ class Command(BaseCommand):
         elif order_type == "MERGE":
             if not extras["positionals"]:
                 raise CommandError("MERGE requires a target fleet short_id.")
-            target_obj, _, _, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
+            target_obj, _, _, kind = self._resolve_target_token(fleet.player, fleet.game, extras["positionals"][0])
             if kind != "fleet":
                 raise CommandError("MERGE target must be a fleet short_id.")
             if target_obj.player_id != fleet.player_id:
@@ -1325,7 +1325,7 @@ class Command(BaseCommand):
         elif order_type == "PATROL":
             if not extras["positionals"]:
                 raise CommandError("PATROL requires a target.")
-            target_obj, x, y, kind = self._resolve_target_token(fleet.game, extras["positionals"][0])
+            target_obj, x, y, kind = self._resolve_target_token(fleet.player, fleet.game, extras["positionals"][0])
             self._assign_fleet_order_target(order, target_obj, x, y, kind)
             radius = extras["kwargs"].get("radius", extras["kwargs"].get("patrol_radius"))
             intercept_speed = extras["kwargs"].get("intercept_speed")
@@ -1365,7 +1365,7 @@ class Command(BaseCommand):
             positionals.append(token.strip())
         return {"positionals": positionals, "kwargs": kwargs, "repeat": repeat}
 
-    def _resolve_target_token(self, game, token):
+    def _resolve_target_token(self, player, game, token):
         coords = self._parse_coords_token(token)
         if coords is not None:
             return None, coords[0], coords[1], "space"
@@ -1374,10 +1374,10 @@ class Command(BaseCommand):
         if star is not None:
             return star, star.x, star.y, "star"
         fleet = Fleet.objects.filter(game=game, short_id=target_id).first()
-        if fleet is not None:
+        if fleet is not None and self._is_cli_object_discoverable(player, fleet):
             return fleet, fleet.x, fleet.y, "fleet"
         salvage = Salvage.objects.filter(game=game, short_id=target_id).first()
-        if salvage is not None:
+        if salvage is not None and self._is_cli_object_discoverable(player, salvage):
             return salvage, salvage.x, salvage.y, "salvage"
         anomaly = Anomaly.objects.filter(game=game, short_id=target_id).first()
         if anomaly is not None:
@@ -1722,12 +1722,15 @@ class Command(BaseCommand):
         short_id = (selected or "").strip().lower()
         if not self.SHORT_ID_RE.match(short_id):
             return None
-        return (
-            Star.objects.filter(game=player.game, short_id=short_id).first() or
-            Fleet.objects.filter(game=player.game, short_id=short_id).first() or
-            player.game.salvages.filter(short_id=short_id).first() or
-            player.game.anomalys.filter(short_id=short_id).first()
-        )
+        for obj in (
+            Star.objects.filter(game=player.game, short_id=short_id).first(),
+            Fleet.objects.filter(game=player.game, short_id=short_id).first(),
+            player.game.salvages.filter(short_id=short_id).first(),
+            player.game.anomalys.filter(short_id=short_id).first(),
+        ):
+            if obj is not None and self._is_cli_object_discoverable(player, obj):
+                return obj
+        return None
 
     def _resolve_named_detail_object(self, player, selected_name):
         selected_name = (selected_name or "").strip()
@@ -1770,7 +1773,14 @@ class Command(BaseCommand):
                 yield obj
 
     def _object_is_name_visible_to_player(self, player, obj):
+        if isinstance(obj, Star):
+            return True
         if isinstance(obj, Anomaly):
+            return True
+        return self._is_cli_object_discoverable(player, obj)
+
+    def _is_cli_object_discoverable(self, player, obj):
+        if isinstance(obj, (Star, Anomaly)):
             return True
         detail = DetailBuilder(player.game, selected=obj.short_id, player=player).build_detail()
         return bool(detail) and not bool(detail.get("unexplored"))

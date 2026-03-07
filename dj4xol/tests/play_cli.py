@@ -733,6 +733,31 @@ class PlayCommandTest(TestCase):
         self.assertEqual(order.quantity, 4)
         self.assertTrue(order.repeat)
 
+    def test_orders_add_rejects_hidden_enemy_fleet_target(self):
+        source_fleet = self.player1.fleets.first()
+        hidden_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Shadow Talon',
+            x=self.player2.homeworld.x + 11,
+            y=self.player2.homeworld.y + 2,
+            ship_count=3,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add INTERCEPT %s' % (source_fleet.short_id, hidden_fleet.short_id),
+                '/exit',
+            ],
+        )
+        source_fleet.refresh_from_db()
+        self.assertIn('Unknown target token: %s' % hidden_fleet.short_id, output)
+        self.assertEqual(source_fleet.orders.count(), 0)
+
     def test_detail_command_shows_current_detail_for_owned_object(self):
         home = self.player1.homeworld
         home.gravity = 1.2345
@@ -870,6 +895,46 @@ class PlayCommandTest(TestCase):
         )
         self.assertIn('%s:' % home.short_id, output)
         self.assertIn('name: Null Haven', output)
+
+    def test_detail_command_does_not_reveal_hidden_enemy_fleet_by_short_id(self):
+        hidden_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Hidden Fang',
+            x=self.player2.homeworld.x + 7,
+            y=self.player2.homeworld.y + 6,
+            ship_count=5,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/detail %s' % hidden_fleet.short_id, '/exit'],
+        )
+        self.assertIn('Object not found in this game: %s' % hidden_fleet.short_id, output)
+        self.assertNotIn('Hidden Fang', output)
+        self.assertNotIn('selected_id: %s' % hidden_fleet.short_id, output)
+
+    def test_detail_command_does_not_reveal_hidden_salvage_by_short_id(self):
+        hidden_salvage = Salvage.objects.create(
+            game=self.game,
+            x=self.player2.homeworld.x + 9,
+            y=self.player2.homeworld.y + 4,
+            ironium_inventory=12,
+            boranium_inventory=8,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/detail %s' % hidden_salvage.short_id, '/exit'],
+        )
+        self.assertIn('Object not found in this game: %s' % hidden_salvage.short_id, output)
+        self.assertNotIn('selected_id: %s' % hidden_salvage.short_id, output)
 
     def test_salvages_alias_is_removed(self):
         output = self._run_play(
