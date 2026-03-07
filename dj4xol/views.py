@@ -1,7 +1,7 @@
 from django.db import models
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
-from django.urls import resolve
+from django.urls import resolve, reverse
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
@@ -12,7 +12,7 @@ from datetime import timedelta
 import os
 import json
 import random
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from dj4xol.objectdetails import DetailBuilder
 from dj4xol.secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
@@ -1075,10 +1075,12 @@ def admin_generate_report(request, game_short_id, object_short_id):
 def _redirect_preserving_selection(request, game):
     """Redirect to game view (or explicit target), preserving game selection when relevant."""
     from django.urls import reverse
-    from urllib.parse import urlencode
     return_to = request.POST.get('return_to') or request.GET.get('return_to')
     if return_to == 'research':
         url = reverse('dj4xol:research', kwargs={'game_short_id': game.short_id})
+        category = request.POST.get('category') or request.GET.get('category')
+        if category:
+            url = '%s?%s' % (url, urlencode({'category': category}))
         return redirect(url)
 
     url = reverse('dj4xol:game', kwargs={'game_short_id': game.short_id})
@@ -2222,6 +2224,10 @@ def research(request, game_short_id):
                 if key.startswith('alloc_'):
                     requested[key[6:]] = request.POST.get(key)
             update_player_allocations(player, requested)
+        url = reverse('dj4xol:research', kwargs={'game_short_id': game.short_id})
+        if selected_category:
+            url = '%s?%s' % (url, urlencode({'category': selected_category}))
+        return redirect(url)
 
     data = build_research_screen_data(player, selected_category)
     return render(request, 'dj4xol/research.html', {
