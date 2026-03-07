@@ -1411,17 +1411,25 @@ class Command(BaseCommand):
             order.target_star = target_obj
             order.target_short_id = target_obj.short_id
             order.target_kind = "OBJECT"
+            order.x = target_obj.x
+            order.y = target_obj.y
         elif kind == "fleet":
             order.target_fleet = target_obj
             order.target_short_id = target_obj.short_id
             order.target_kind = "OBJECT"
+            order.x = target_obj.x
+            order.y = target_obj.y
         elif kind == "salvage":
             order.target_salvage = target_obj
             order.target_short_id = target_obj.short_id
             order.target_kind = "OBJECT"
+            order.x = target_obj.x
+            order.y = target_obj.y
         elif kind == "anomaly":
             order.target_short_id = target_obj.short_id
             order.target_kind = "OBJECT"
+            order.x = target_obj.x
+            order.y = target_obj.y
         elif kind == "space":
             order.x = x
             order.y = y
