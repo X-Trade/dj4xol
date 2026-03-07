@@ -3241,6 +3241,28 @@ class TestFirstContactMessages(TestCase):
         player2 = factory.join_player(account2, get_default_race())
         return game, player1, player2
 
+    def _create_scanner_fleet(
+        self,
+        game,
+        player,
+        x,
+        y,
+        basic_range,
+        advanced_range,
+        name='Watcher',
+    ):
+        return Fleet.objects.create(
+            game=game,
+            player=player,
+            name=name,
+            x=x,
+            y=y,
+            ship_count=1,
+            integrity=100,
+            basic_scanner_range=basic_range,
+            advanced_scanner_range=advanced_range,
+        )
+
     def test_first_contact_star_message(self):
         """First contact with an enemy star sends a diplomatic priority message."""
         game, player1, player2 = self._create_two_player_game()
@@ -3276,6 +3298,142 @@ class TestFirstContactMessages(TestCase):
         GameTurn(game).generate_turn()
         msg = player1.messages.filter(category='DIPLOMATIC', priority=True).order_by('-id').first()
         self.assertIsNotNone(msg)
+
+    def test_advanced_scanner_range_triggers_first_contact_message(self):
+        """Advanced scanner intel should trigger first contact once ownership is known."""
+        game, player1, player2 = self._create_two_player_game()
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name="Stranger",
+            x=20,
+            y=20,
+            ship_count=1,
+            integrity=100,
+        )
+        self._create_scanner_fleet(
+            game,
+            player1,
+            x=14,
+            y=20,
+            basic_range=6,
+            advanced_range=6,
+        )
+
+        GameTurn(game).generate_scanner_reports()
+
+        messages = player1.messages.filter(category='DIPLOMATIC', priority=True)
+        self.assertEqual(messages.count(), 1)
+        self.assertIn(player2.name, messages.first().message)
+        self.assertEqual(
+            player2.messages.filter(category='DIPLOMATIC', priority=True).count(),
+            0,
+        )
+        report = Report.objects.get(
+            player=player1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        )
+        self.assertEqual(report.get_report_data().get('player_name'), player2.name)
+
+    def test_basic_scanner_range_does_not_trigger_first_contact_message(self):
+        """Basic scanner intel should not trigger first contact without ownership."""
+        game, player1, player2 = self._create_two_player_game()
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name="Stranger",
+            x=20,
+            y=20,
+            ship_count=1,
+            integrity=100,
+        )
+        self._create_scanner_fleet(
+            game,
+            player1,
+            x=14,
+            y=20,
+            basic_range=6,
+            advanced_range=0,
+        )
+
+        GameTurn(game).generate_scanner_reports()
+
+        self.assertFalse(
+            player1.messages.filter(category='DIPLOMATIC', priority=True).exists()
+        )
+        report = Report.objects.get(
+            player=player1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        )
+        self.assertEqual(report.get_report_data().get('report_tier'), 'basic')
+        self.assertIsNone(report.get_report_data().get('player_name'))
+
+    def test_scanner_first_contact_only_fires_once_per_race(self):
+        """Star and fleet reports in the same scan should still only message once."""
+        game, player1, player2 = self._create_two_player_game()
+        enemy_star = player2.homeworld
+        enemy_star.x = 20
+        enemy_star.y = 20
+        enemy_star.save(update_fields=['x', 'y'])
+        Fleet.objects.create(
+            game=game,
+            player=player2,
+            name="Stranger",
+            x=20,
+            y=20,
+            ship_count=1,
+            integrity=100,
+        )
+        self._create_scanner_fleet(
+            game,
+            player1,
+            x=14,
+            y=20,
+            basic_range=6,
+            advanced_range=6,
+        )
+
+        GameTurn(game).generate_scanner_reports()
+
+        self.assertEqual(
+            player1.messages.filter(category='DIPLOMATIC', priority=True).count(),
+            1,
+        )
+
+    def test_scanner_first_contact_is_not_repeated_by_later_encounter(self):
+        """Once ownership is known, later encounters should not resend first contact."""
+        game, player1, player2 = self._create_two_player_game()
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name="Stranger",
+            x=20,
+            y=20,
+            ship_count=1,
+            integrity=100,
+        )
+        scout = self._create_scanner_fleet(
+            game,
+            player1,
+            x=14,
+            y=20,
+            basic_range=6,
+            advanced_range=6,
+        )
+
+        GameTurn(game).generate_scanner_reports()
+        scout.x = enemy_fleet.x
+        scout.y = enemy_fleet.y
+        scout.save(update_fields=['x', 'y'])
+
+        GameTurn(game).first_contact_checks()
+
+        self.assertEqual(
+            player1.messages.filter(category='DIPLOMATIC', priority=True).count(),
+            1,
+        )
 
 
 class TestHabitableWorldMessages(TestCase):

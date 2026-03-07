@@ -1,6 +1,5 @@
 ============= MAIN TODO =============
 2. Mine fields
-4. Colony Micromanager (basic colony management AI as a tech item/infrastructure)
 6. fuel factory
 7. fleet-to-fleet Refuelling
 8. Ship Design (Basic)
