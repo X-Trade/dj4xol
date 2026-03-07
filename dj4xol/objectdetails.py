@@ -593,12 +593,21 @@ class DetailBuilder():
                 obj_type = 'anomaly'
             else:
                 obj_type = 'unknown'
-            result.append({
+            result.append(self._decorate_target({
                 'name': name,
                 'short_id': obj.short_id,
-                'type': obj_type
-            })
-        return result
+                'type': obj_type,
+                'is_homeworld': bool(
+                    self.player and isinstance(obj, Star) and
+                    obj.id == self.player.homeworld_id
+                ),
+                'is_owned': bool(
+                    self.player and hasattr(obj, 'player_id') and
+                    obj.player_id == self.player.id
+                ),
+                'is_future': False,
+            }))
+        return self._sort_targets(result)
 
     def _salvage_display_name(self, salvage):
         if salvage is None:
@@ -633,6 +642,43 @@ class DetailBuilder():
             ):
                 return format_basic_hidden_salvage_name(obj)
         return data.get('name') or obj.name or f"{obj.__class__.__name__} {obj.id}"
+
+    def _decorate_target(self, target):
+        """Attach shared display and sort metadata to a target dict."""
+        data = dict(target)
+        data['display_label'] = self._format_target_display(data)
+        return data
+
+    def _target_sort_key(self, target):
+        """Return canonical ordering for detail selectors and target dropdowns."""
+        target_type = target.get('type')
+        if target_type == 'star':
+            return (
+                0,
+                0 if target.get('is_homeworld') else 1,
+                str(target.get('short_id') or ''),
+                str(target.get('name') or ''),
+            )
+        if target_type == 'fleet':
+            return (
+                1 if target.get('is_owned') and not target.get('is_future') else
+                2 if not target.get('is_owned') and not target.get('is_future') else
+                3,
+                0,
+                str(target.get('short_id') or ''),
+                str(target.get('name') or ''),
+            )
+        if target_type == 'salvage':
+            return (4, 0, str(target.get('short_id') or ''), str(target.get('name') or ''))
+        if target_type == 'anomaly':
+            return (5, 0, str(target.get('short_id') or ''), str(target.get('name') or ''))
+        if target_type == 'space':
+            return (6, 0, '', str(target.get('name') or ''))
+        return (7, 0, str(target.get('short_id') or ''), str(target.get('name') or ''))
+
+    def _sort_targets(self, targets):
+        """Return targets in stable UI order."""
+        return sorted(targets, key=self._target_sort_key)
 
     def get_population(self):
         if self.selected_obj and isinstance(self.selected_obj, Star):
@@ -1475,14 +1521,13 @@ class DetailBuilder():
         targets = []
         homeworld_id = self.player.homeworld_id if self.player else None
         seen = set()
-        homeworld_id = self.player.homeworld_id if self.player else None
 
         def add_target(target):
             key = (target.get('type'), target.get('short_id'))
             if key in seen:
                 return
             seen.add(key)
-            targets.append(target)
+            targets.append(self._decorate_target(target))
 
         stars_at_location = []
         anomalies_at_location = []
@@ -1494,6 +1539,8 @@ class DetailBuilder():
                     'short_id': star.short_id,
                     'type': 'star',
                     'is_homeworld': bool(homeworld_id and star.id == homeworld_id),
+                    'is_owned': bool(self.player and star.player_id == self.player.id),
+                    'is_future': False,
                 })
 
         if include_anomalies:
@@ -1503,6 +1550,7 @@ class DetailBuilder():
                     'name': anomaly.name,
                     'short_id': anomaly.short_id,
                     'type': 'anomaly',
+                    'is_future': False,
                 })
 
         if include_fleets:
@@ -1516,6 +1564,8 @@ class DetailBuilder():
                     'name': fleet.name,
                     'short_id': fleet.short_id,
                     'type': 'fleet',
+                    'is_owned': bool(self.player and fleet.player_id == self.player.id),
+                    'is_future': False,
                 })
 
         if include_future_fleets:
@@ -1567,6 +1617,8 @@ class DetailBuilder():
                         'name': fleet.name,
                         'short_id': fleet.short_id,
                         'type': 'fleet',
+                        'is_owned': bool(self.player and fleet.player_id == self.player.id),
+                        'is_future': True,
                     })
 
         if include_salvage:
@@ -1576,6 +1628,7 @@ class DetailBuilder():
                     'short_id': salvage.short_id,
                     'type': 'salvage',
                     'total_minerals': salvage.total_minerals,
+                    'is_future': False,
                 })
 
         if include_empty and not targets:
@@ -1584,14 +1637,20 @@ class DetailBuilder():
                 'name': empty_space_name,
                 'short_id': '',
                 'type': 'space',
+                'is_future': False,
+                'display_label': self.format_empty_space(x, y),
             })
 
-        return targets
+        return self._sort_targets(targets)
 
     def _format_target_display(self, target):
         """Return display name for a target, marking homeworlds."""
         if target.get('type') == 'star' and target.get('is_homeworld'):
-            return f"{target['name']} (Home)"
+            return f"{target['name']} (home)"
+        if target.get('type') == 'star' and target.get('is_owned'):
+            return f"{target['name']} (colony)"
+        if target.get('type') == 'space':
+            return target['name']
         return f"{target['name']} ({target['type'].title()})"
     
     def get_transfer_targets(self):
@@ -1714,18 +1773,17 @@ class DetailBuilder():
         # Get the location where the fleet will be when the colonise executes
         effective_x, effective_y = self.get_fleet_effective_location()
 
-        targets = []
-        homeworld_id = self.player.homeworld_id if self.player else None
-
-        # Add stars at the effective location (only stars, no fleets)
-        stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
-        for star in stars_at_location:
-            targets.append({
-                'name': star.name,
-                'short_id': star.short_id,
-                'type': 'star',
-                'is_homeworld': bool(homeworld_id and star.id == homeworld_id),
-            })
+        targets = self._build_location_targets(
+            effective_x,
+            effective_y,
+            include_stars=True,
+            include_fleets=False,
+            include_salvage=False,
+            include_anomalies=False,
+            include_empty=False,
+            include_future_fleets=False,
+        )
+        targets = [target for target in targets if target.get('type') == 'star']
 
         # Determine display mode and default target
         if not targets:
@@ -1762,16 +1820,17 @@ class DetailBuilder():
             return {'targets': [], 'location': (0, 0), 'display_mode': 'empty', 'default_target': None}
 
         effective_x, effective_y = self.get_fleet_effective_location()
-        targets = []
-        homeworld_id = self.player.homeworld_id if self.player else None
-        stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
-        for star in stars_at_location:
-            targets.append({
-                'name': star.name,
-                'short_id': star.short_id,
-                'type': 'star',
-                'is_homeworld': bool(homeworld_id and star.id == homeworld_id),
-            })
+        targets = self._build_location_targets(
+            effective_x,
+            effective_y,
+            include_stars=True,
+            include_fleets=False,
+            include_salvage=False,
+            include_anomalies=False,
+            include_empty=False,
+            include_future_fleets=False,
+        )
+        targets = [target for target in targets if target.get('type') == 'star']
 
         if not targets:
             return {
@@ -1802,17 +1861,24 @@ class DetailBuilder():
             return {'targets': [], 'location': (0, 0), 'display_mode': 'empty', 'default_target': None}
 
         effective_x, effective_y = self.get_fleet_effective_location()
-        targets = []
-        homeworld_id = self.player.homeworld_id if self.player else None
-        stars_at_location = self.game.stars.filter(x=effective_x, y=effective_y).all()
-        for star in stars_at_location:
-            targets.append({
-                'name': star.name,
-                'short_id': star.short_id,
-                'type': 'star',
-                'is_homeworld': bool(homeworld_id and star.id == homeworld_id),
-                'resource_keys': known_resource_keys(self.player, star),
-            })
+        targets = self._build_location_targets(
+            effective_x,
+            effective_y,
+            include_stars=True,
+            include_fleets=False,
+            include_salvage=False,
+            include_anomalies=False,
+            include_empty=False,
+            include_future_fleets=False,
+        )
+        stars_by_short_id = {
+            star.short_id: star
+            for star in self.game.stars.filter(x=effective_x, y=effective_y)
+        }
+        targets = [target for target in targets if target.get('type') == 'star']
+        for target in targets:
+            star = stars_by_short_id.get(target.get('short_id'))
+            target['resource_keys'] = known_resource_keys(self.player, star)
 
         if not targets:
             return {

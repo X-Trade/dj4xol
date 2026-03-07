@@ -26,16 +26,16 @@ from ._util import default_game, get_default_user, get_default_race
 
 
 class TestLandingPage(TestCase):
-    def test_anonymous_index_shows_synced_mvp_features_and_roadmap(self):
+    def test_anonymous_index_renders_dynamic_landing_lists(self):
         response = self.client.get(reverse('dj4xol:index'))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'spectator mode')
-        self.assertContains(response, 'Recent MVP extensions including anomalies')
-        self.assertContains(response, 'Optional advanced player CLI interface')
-        self.assertContains(response, 'Gameplay and tech tree progression balancing')
-        self.assertContains(response, 'Diplomacy')
-        self.assertContains(response, 'Ship design (basic, then advanced)')
-        self.assertContains(response, 'Stability systems, unrest, and breakaway colonies')
+        self.assertContains(response, 'data-panel="roadmap"')
+        self.assertTrue(response.context['feature_highlights'])
+        self.assertTrue(response.context['roadmap_priorities'])
+        self.assertTrue(response.context['roadmap_future'])
+        self.assertContains(response, response.context['feature_highlights'][0])
+        self.assertContains(response, response.context['roadmap_priorities'][0])
+        self.assertContains(response, response.context['roadmap_future'][0])
 
     def test_staff_home_shows_server_settings_action(self):
         user, _ = get_default_user()
