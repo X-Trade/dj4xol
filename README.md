@@ -13,14 +13,14 @@ The project is actively developed and playable in MVP form.
 
 Implemented systems include:
 - Multi-game server with account registration, profile onboarding, invites, email updates, and spectator mode
+- Responsive web UI with Classic, LCARS, and Win95 themes, plus public landing/gallery pages
+- Optional advanced player CLI interface in the terminal and web game view
 - Race creation with balance-point budgeting and habitability tuning
 - Starmap planning with fleet movement, intercept, transfer, merge, colonise, scuttle, and turn reports
 - Colony economy with population, mines, factories, labs, defences, shipyards, and terraforming
 - Research categories, allocations, prerequisites, unlocks, and technology directory/help
 - Space combat, invasions, fleet fuel, scanners, and other core turn-resolution systems
 - Recent MVP extensions including anomalies, secret resources, remote mining, bombardment, wormholes, and game-speed setup options
-- Optional advanced player CLI interface in the terminal and web game view
-- Open source web UI with Classic, LCARS, and Win95 themes, plus public landing/gallery pages
 
 ## Current Priorities
 
@@ -29,7 +29,6 @@ Near-term work is tracked in `todo.txt`. Current focus includes:
 - Diplomacy
 - Ship design (basic, then advanced)
 - Trade contracts/negotiation
-- Colony Micromanager (as unlockable automation)
 - Mine fields
 - Fuel factories and fleet-to-fleet refuelling
 - Instant merge/split fleet interaction screen

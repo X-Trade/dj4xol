@@ -404,6 +404,8 @@ class GameTurn():
     def __init__(self, game):
         self.game = game
         self._scanner_sources_by_player_id = {}
+        self._first_contact_sent = set()
+        self._first_contact_any_sent = set()
 
     def generate_turn(self):
         """Generate a turn for the game. Requires at least one player."""
@@ -1643,9 +1645,11 @@ class GameTurn():
             target_type=target_type,
             target_id=obj.id,
         ).first()
+        existing_owner_known = False
 
         if report:
             existing_data = report.get_report_data()
+            existing_owner_known = bool(existing_data.get('player_name'))
             existing_tier = existing_data.get('report_tier') or 'advanced'
             if self._report_tier_rank(existing_tier) > self._report_tier_rank(report_tier):
                 return False
@@ -1686,6 +1690,19 @@ class GameTurn():
             report.set_report_data(report_data)
             report.save()
             created = True
+
+        owner_now_known = bool(report_data.get('player_name'))
+        if (
+            target_type in ('star', 'fleet') and
+            owner_now_known and
+            not existing_owner_known
+        ):
+            self._send_first_contact_message(
+                player,
+                target_type,
+                obj,
+                exclude_target=(target_type, obj.id),
+            )
 
         if created and target_type == 'star' and calculate_habitability_factor(player, obj) >= 0 and obj.player != player:
             fleet = Fleet.objects.filter(game=self.game, player=player, x=obj.x, y=obj.y).first()
@@ -2121,109 +2138,143 @@ class GameTurn():
                 self._destroy_derelict_fleet(derelict)
 
     def first_contact_checks(self):
-        """Send first contact messages before combat resolves."""
-        from .models import Fleet, Star, Report
-        from .messages import FirstContactFleetMessageFactory, FirstContactStarMessageFactory
+        """Send first-contact messages for unresolved encounters before combat."""
+        from .models import Fleet, Star
 
-        handled = set()
         fleets = list(Fleet.objects.filter(game=self.game))
-        first_any_available = {}
-        contacted_races_seen = {}
-
-        def has_contact_with_race(player, other_player):
-            """Return True if player has previously reported an object owned by other_player."""
-            fleet_ids = list(
-                Fleet.objects.filter(game=self.game, player=other_player)
-                .values_list('id', flat=True)
-            )
-            star_ids = list(
-                Star.objects.filter(game=self.game, player=other_player)
-                .values_list('id', flat=True)
-            )
-            target_ids = fleet_ids + star_ids
-            if not target_ids:
-                return False
-            return Report.objects.filter(
-                player=player,
-                target_type__in=['fleet', 'star'],
-                target_id__in=target_ids
-            ).exists()
 
         for fleet in fleets:
             if fleet.player is None or bool(getattr(fleet.player, 'defeated', False)):
                 continue
             player = fleet.player
             x, y = fleet.x, fleet.y
-            if player.id not in first_any_available:
-                first_any_available[player.id] = (not self._player_has_other_contacts(player))
-            if player.id not in contacted_races_seen:
-                contacted_races_seen[player.id] = set()
 
             # Star contact
             for star in Star.objects.filter(game=self.game, x=x, y=y).exclude(player=player).exclude(player__isnull=True):
-                race_id = star.player_id
-                if race_id in contacted_races_seen[player.id]:
-                    continue
-                if has_contact_with_race(player, star.player):
-                    contacted_races_seen[player.id].add(race_id)
-                    continue
-                key = (player.id, 'star', star.id)
-                if key in handled:
-                    continue
-                if Report.objects.filter(player=player, target_type='star', target_id=star.id).exists():
-                    continue
-                first_any = first_any_available[player.id]
-                factory = FirstContactStarMessageFactory(self.game, player, fleet, star, first_any=first_any)
-                msg = factory.new_message()
-                msg.year = self.game.year
-                msg.save()
-                handled.add(key)
-                contacted_races_seen[player.id].add(race_id)
-                if first_any_available[player.id]:
-                    first_any_available[player.id] = False
+                self._send_first_contact_message(
+                    player,
+                    'star',
+                    star,
+                    source_fleet=fleet,
+                )
 
             # Fleet contact
             for other in Fleet.objects.filter(game=self.game, x=x, y=y).exclude(player=player).exclude(player__isnull=True):
-                race_id = other.player_id
-                if race_id in contacted_races_seen[player.id]:
-                    continue
-                if has_contact_with_race(player, other.player):
-                    contacted_races_seen[player.id].add(race_id)
-                    continue
-                key = (player.id, 'fleet', other.id)
-                if key in handled:
-                    continue
-                if Report.objects.filter(player=player, target_type='fleet', target_id=other.id).exists():
-                    continue
-                first_any = first_any_available[player.id]
-                factory = FirstContactFleetMessageFactory(self.game, player, fleet, other, first_any=first_any)
-                msg = factory.new_message()
-                msg.year = self.game.year
-                msg.save()
-                handled.add(key)
-                contacted_races_seen[player.id].add(race_id)
-                if first_any_available[player.id]:
-                    first_any_available[player.id] = False
+                self._send_first_contact_message(
+                    player,
+                    'fleet',
+                    other,
+                    source_fleet=fleet,
+                )
 
     def _player_has_other_contacts(self, player):
-        """Return True if player has seen any other player's star/fleet before."""
-        from .models import Report, Fleet, Star
-        other_fleet_ids = list(
-            Fleet.objects.filter(game=self.game)
-            .exclude(player=player)
-            .values_list('id', flat=True)
-        )
-        other_star_ids = list(
-            Star.objects.filter(game=self.game)
-            .exclude(player=player)
-            .exclude(player__isnull=True)
-            .values_list('id', flat=True)
-        )
-        return Report.objects.filter(
+        """Return True if player has resolved any other player's ownership before."""
+        from .models import Player
+
+        for other_player in Player.objects.filter(game=self.game).exclude(id=player.id):
+            if self._player_has_contact_with_race(player, other_player):
+                return True
+        return False
+
+    def _report_reveals_owner(self, report):
+        """Return True when a cached report resolves object ownership."""
+        if not report:
+            return False
+        try:
+            data = report.get_report_data()
+        except Exception:
+            return False
+        return bool(data.get('player_name'))
+
+    def _player_has_contact_with_race(
+        self,
+        player,
+        other_player,
+        exclude_target=None,
+    ):
+        """Return True if player has already resolved ownership for other_player."""
+        from .models import Fleet, Report, Star
+
+        if not player or not other_player or player.id == other_player.id:
+            return False
+
+        exclude_target = exclude_target or (None, None)
+        reports = Report.objects.filter(
             player=player,
             target_type__in=['fleet', 'star'],
-            target_id__in=(other_fleet_ids + other_star_ids)
-        ).exists()
+        ).order_by('id')
+
+        star_ids = set(
+            Star.objects.filter(game=self.game, player=other_player)
+            .values_list('id', flat=True)
+        )
+        fleet_ids = set(
+            Fleet.objects.filter(game=self.game, player=other_player)
+            .values_list('id', flat=True)
+        )
+
+        for report in reports:
+            if (report.target_type, report.target_id) == exclude_target:
+                continue
+            if report.target_type == 'star' and report.target_id not in star_ids:
+                continue
+            if report.target_type == 'fleet' and report.target_id not in fleet_ids:
+                continue
+            if self._report_reveals_owner(report):
+                return True
+        return False
+
+    def _send_first_contact_message(
+        self,
+        player,
+        target_type,
+        obj,
+        source_fleet=None,
+        exclude_target=None,
+    ):
+        """Send a first-contact message once when another player's identity resolves."""
+        from .messages import FirstContactFleetMessageFactory, FirstContactStarMessageFactory
+
+        if not player or not obj:
+            return False
+        other_player = getattr(obj, 'player', None)
+        if other_player is None or other_player == player:
+            return False
+        if bool(getattr(other_player, 'defeated', False)):
+            return False
+
+        pair_key = (player.id, other_player.id)
+        if pair_key in self._first_contact_sent:
+            return False
+        if self._player_has_contact_with_race(
+            player,
+            other_player,
+            exclude_target=exclude_target,
+        ):
+            self._first_contact_sent.add(pair_key)
+            return False
+
+        first_any = (
+            player.id not in self._first_contact_any_sent and
+            not self._player_has_other_contacts(player)
+        )
+        if target_type == 'star':
+            factory = FirstContactStarMessageFactory(
+                self.game, player, source_fleet, obj, first_any=first_any
+            )
+        elif target_type == 'fleet':
+            factory = FirstContactFleetMessageFactory(
+                self.game, player, source_fleet, obj, first_any=first_any
+            )
+        else:
+            return False
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+        self._first_contact_sent.add(pair_key)
+        if first_any:
+            self._first_contact_any_sent.add(player.id)
+        return True
 
     def _resolve_battle_at_location(self, x, y, fleets):
         """Resolve a single battle at a location."""

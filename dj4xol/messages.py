@@ -1572,13 +1572,13 @@ class SalvageCollectedMessageFactory(MessageFactory):
 
 
 class FirstContactFleetMessageFactory(MessageFactory):
-    """Messages for first contact with an enemy fleet."""
+    """Messages for first confirmed identification of an enemy fleet."""
     category = 'DIPLOMATIC'
     priority = True
     templates = [
-        "{fleet} encountered another fleet at {location} claiming to be from {race}.",
-        "{fleet} made first contact at {location} with a fleet from {race}.",
-        "First contact: {fleet} met a fleet from {race} at {location}.",
+        "A fleet from {race} has been identified at {location}.",
+        "Contact report: vessels from {race} have been identified at {location}.",
+        "First contact: a fleet from {race} has been identified at {location}.",
     ]
     first_contact_suffix = " We are no longer alone in the universe."
 
@@ -1590,7 +1590,6 @@ class FirstContactFleetMessageFactory(MessageFactory):
 
     def format_message(self):
         msg = random.choice(self.templates).format(
-            fleet=format_map_object(self.fleet),
             location=format_location(
                 x=self.other_fleet.x,
                 y=self.other_fleet.y,
@@ -1605,13 +1604,13 @@ class FirstContactFleetMessageFactory(MessageFactory):
 
 
 class FirstContactStarMessageFactory(MessageFactory):
-    """Messages for first contact with an enemy star."""
+    """Messages for first confirmed identification of an enemy colony."""
     category = 'DIPLOMATIC'
     priority = True
     templates = [
-        "{fleet} has surveyed {star} and found another civilization already flourishes there.",
-        "{fleet} discovered {star} is inhabited by {race}.",
-        "Survey complete: {star} is claimed by {race}.",
+        "{star} has been identified as a colony of {race}.",
+        "Contact report: {star} is inhabited by {race}.",
+        "First contact: {star} belongs to {race}.",
     ]
     first_contact_suffix = " We are no longer alone in the universe."
 
