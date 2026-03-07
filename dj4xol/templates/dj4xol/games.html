@@ -125,6 +125,7 @@
                             <li><a href="{% url 'dj4xol:create_game' %}">Create New Game</a></li>
                             <li><a href="{% url 'dj4xol:create_race' %}">Create New Race</a></li>
                             {% if user.is_staff %}
+                            <li><a href="{% url 'dj4xol:server_settings' %}" class="admin-only-link">Server Settings</a></li>
                             <li><a href="{% url 'dj4xol:hull_design_list' %}" class="admin-only-link">Hull Layout Editor</a></li>
                             <li><a href="{% url 'dj4xol:test_generic_email' %}" class="admin-only-link">Send Test Email</a></li>
                             <li><a href="{% url 'dj4xol:test_email_rollup' %}" class="admin-only-link">Send Test Rollup Email</a></li>

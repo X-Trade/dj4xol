@@ -48,7 +48,13 @@ from .technology_thumbnails import (
 from .ship_thumbnail_catalog import SHIP_THUMBNAILS_BY_CLASS
 from .starmap import StarMap
 from .factory import GameFactory
-from .forms import ServerRaceForm, NewGameForm, RegistrationForm, JoinGameForm
+from .forms import (
+    ServerRaceForm,
+    NewGameForm,
+    RegistrationForm,
+    JoinGameForm,
+    ServerSettingsForm,
+)
 from .scanners import get_scanner_sources_for_player
 
 
@@ -2257,6 +2263,31 @@ def profile(request):
         'games_owned': games_owned,
         'races': races,
         'theme_choices': Account.THEME_CHOICES,
+    })
+
+
+@registration_required()
+def server_settings(request):
+    """Staff-only themed editor for key server settings."""
+    if not request.user.is_staff:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Staff access is required.',
+        }, status=403)
+
+    if request.method == 'POST':
+        form = ServerSettingsForm(request.POST)
+        if form.is_valid():
+            form.save(user=request.user)
+            messages.success(request, 'Server settings updated.')
+            return redirect('dj4xol:server_settings')
+    else:
+        form = ServerSettingsForm(initial=ServerSettingsForm.initial_from_settings())
+
+    return render(request, 'dj4xol/server_settings.html', {
+        'form': form,
+        'selected_theme': request.user.dj4xol_account.theme,
+        'server_name': ServerSettings.get('server_name', 'dj4xol'),
+        'server_tagline': ServerSettings.get('server_tagline', ''),
     })
 
 

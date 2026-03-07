@@ -31,6 +31,17 @@ class TestLandingPage(TestCase):
         self.assertContains(response, 'Ship design (basic, then advanced)')
         self.assertContains(response, 'Stability systems, unrest, and breakaway colonies')
 
+    def test_staff_home_shows_server_settings_action(self):
+        user, _ = get_default_user()
+        user.is_staff = True
+        user.save(update_fields=['is_staff'])
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:index'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Server Settings')
+
 
 class TestMessageFiltering(TestCase):
     def test_messages_filtered_by_messages_seen_year(self):
@@ -208,6 +219,63 @@ class TestProductionOrders(TestCase):
         self.assertEqual(response.status_code, 302)
         order.refresh_from_db()
         self.assertFalse(order.repeat)
+
+
+class TestServerSettingsView(TestCase):
+    def setUp(self):
+        self.user, _ = get_default_user()
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_non_staff_cannot_access_server_settings(self):
+        response = self.client.get(reverse('dj4xol:server_settings'))
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, 'Staff access is required.', status_code=403)
+
+    def test_staff_can_view_and_save_server_settings(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=['is_staff'])
+
+        response = self.client.get(reverse('dj4xol:server_settings'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Public Server URL')
+
+        response = self.client.post(
+            reverse('dj4xol:server_settings'),
+            {
+                'server_name': 'DJ4XOL Production',
+                'server_tagline': 'Live server',
+                'server_admin': 'Admin User',
+                'server_contact': 'admin@example.test',
+                'server_url': 'https://example.test/this/path/is/longer/than/thirty/chars',
+                'server_welcome': 'Welcome to the production cluster.',
+                'allow_self_signup': 'on',
+                'enable_email': 'on',
+                'enable_gpt': '',
+                'enable_debug_actions': '',
+                'enable_play_api': 'on',
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Server settings updated.')
+
+        self.assertEqual(ServerSettings.get('server_name'), 'DJ4XOL Production')
+        self.assertEqual(ServerSettings.get('server_contact'), 'admin@example.test')
+        self.assertEqual(
+            ServerSettings.get('server_url'),
+            'https://example.test/this/path/is/longer/than/thirty/chars',
+        )
+        self.assertEqual(
+            ServerSettings.objects.get(key='server_url').long_value,
+            'https://example.test/this/path/is/longer/than/thirty/chars',
+        )
+        self.assertEqual(
+            ServerSettings.get('server_welcome'),
+            'Welcome to the production cluster.',
+        )
+        self.assertEqual(ServerSettings.get('enable_email'), 'True')
+        self.assertEqual(ServerSettings.get('enable_gpt'), 'False')
 
 
 class TestGameDetailRendering(TestCase):
