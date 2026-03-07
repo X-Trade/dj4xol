@@ -14,7 +14,7 @@
         <div class="title-bar">
             <span class="title">Join Game</span>
             <span class="tagline">Pick your race</span>
-            {% include 'dj4xol/_nav_menu.html' with current_page='join_game' %}
+            {% include 'dj4xol/_nav_menu.html' with current_page='join_game' game=None %}
         </div>
         <div class="columns single-column">
             <div class="column">
@@ -24,6 +24,7 @@
                         {% if game.description %}
                             <p>{{ game.description }}</p>
                         {% endif %}
+                        {% include 'dj4xol/_form_message_banner.html' with errors=form.non_field_errors %}
                         <form method="post" class="game-form">
                             {% csrf_token %}
                             <table class="profile-table">

@@ -176,6 +176,8 @@ class StarNamer():
                 return self._random_name()
             return "%s %s" % (prefix, name)
         elif chance <= 7:
+            if random.randint(0, 3) == 0:
+                return name
             prefix = self._data[random.randint(0, len(self._data)-1)]
             if prefix.endswith('-n'):
                 return self._random_name()

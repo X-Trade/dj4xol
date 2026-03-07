@@ -915,6 +915,16 @@ input[type="range"]::-webkit-slider-thumb {
     color: #000;
 }
 
+.form-message-banner {
+    background: linear-gradient(to right, #9999cc, #cc99cc);
+    color: #000;
+}
+
+.form-message-banner.form-message-banner-error {
+    background: linear-gradient(to right, #cc6666, #cc9966);
+    color: #000;
+}
+
 .dest-cancel {
     background: #cc6633;
     color: #000;

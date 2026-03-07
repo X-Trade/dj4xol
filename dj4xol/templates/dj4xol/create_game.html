@@ -22,6 +22,7 @@
                     <h2><span>Create New Game</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
                         <section class="panel-scrollable-text">
+                        {% include 'dj4xol/_form_message_banner.html' with errors=form.non_field_errors %}
                         <form method="post" class="game-form">
                             {% csrf_token %}
                             <table class="profile-table">
