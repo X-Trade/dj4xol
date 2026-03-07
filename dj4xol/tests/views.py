@@ -13,7 +13,9 @@ from ..models import (
     ResearchCategory,
     Salvage,
     ServerSettings,
+    Technology,
 )
+from ..research import ensure_player_research_rows
 from ..turn import GameTurn
 from ..factory import GameFactory
 from ._util import default_game, get_default_user, get_default_race
@@ -143,6 +145,26 @@ class TestMessageFiltering(TestCase):
 
 
 class TestProductionOrders(TestCase):
+    def _unlock_administration(self, player, tech_level=1, administration_level=1):
+        category = ResearchCategory.objects.create(
+            code='VIEWAUTO%s' % tech_level,
+            name='View Auto %s' % tech_level,
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=category,
+            level=tech_level,
+            name='Administration %s' % administration_level,
+            tech_type='INFRASTRUCTURE',
+            params_json='{"administration_level": %s}' % administration_level,
+        )
+        rows = ensure_player_research_rows(player)
+        for row in rows:
+            if row.category_id == category.id:
+                row.current_level = float(tech_level)
+                row.save(update_fields=['current_level'])
+                break
+
     def test_blank_production_order_not_created(self):
         """Submitting blank order_type should not create a production order."""
         game = default_game(stars=5)
@@ -218,6 +240,62 @@ class TestProductionOrders(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         order.refresh_from_db()
+        self.assertFalse(order.repeat)
+
+    def test_toggle_production_order_repeat_ignored_for_administration(self):
+        """Administration construction should not allow repeat toggling."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        order = ProductionOrder.objects.create(
+            game=game,
+            star=homeworld,
+            order_type='BUILD_ADMINISTRATION',
+            repeat=False,
+        )
+
+        user, account = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse(
+                'dj4xol:toggle_production_order_repeat',
+                args=[game.short_id, order.short_id]
+            ),
+            {'x': homeworld.x, 'y': homeworld.y, 'sel': homeworld.short_id}
+        )
+        self.assertEqual(response.status_code, 302)
+        order.refresh_from_db()
+        self.assertFalse(order.repeat)
+
+    def test_add_administration_order_forces_repeat_off(self):
+        """Administration orders should ignore repeat when added."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        self._unlock_administration(player)
+
+        user, account = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_production', args=[game.short_id]),
+            {
+                'star': homeworld.short_id,
+                'order_type': 'BUILD_ADMINISTRATION',
+                'quantity': 9,
+                'repeat': 'on',
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+
+        order = ProductionOrder.objects.get(
+            star=homeworld,
+            order_type='BUILD_ADMINISTRATION',
+        )
+        self.assertEqual(order.quantity, 1)
         self.assertFalse(order.repeat)
 
 

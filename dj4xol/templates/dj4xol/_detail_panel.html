@@ -260,6 +260,12 @@
                 <span class="env-label">Shipyards</span>
                 <span class="detail-value">{{ detail.infrastructure.Shipyards }}</span>
             </div>
+            {% if detail.infrastructure.Administration %}
+            <div class="detail-row">
+                <span class="env-label">Administration</span>
+                <span class="detail-value">{{ detail.infrastructure.Administration }}</span>
+            </div>
+            {% endif %}
             {% if detail.is_owned %}
             <div class="detail-row">
                 <span class="env-label">Jobs</span>

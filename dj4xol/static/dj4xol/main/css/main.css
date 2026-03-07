@@ -1106,6 +1106,22 @@ body.floating-tooltips-enabled .has-tooltip::after {
     border-bottom: none;
 }
 
+.order-item--automated {
+    opacity: 0.58;
+}
+
+.order-item--automated .order-info,
+.order-item--automated .order-actions {
+    opacity: 0.85;
+}
+
+.order-automation-tag {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+}
+
 /* Production progress bars */
 .order-progress-bar {
     position: absolute;

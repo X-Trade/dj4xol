@@ -4,7 +4,7 @@
         <section id="production" class="orders-list panel-scrollable-list">
             {% if detail.production_orders %}
                 {% for order in detail.production_orders %}
-                <div class="order-item"
+                <div class="order-item{% if order.added_by_micromanager %} order-item--automated{% endif %}"
                      onmousemove="positionTooltip(event, this)"
                      onmouseleave="hideTooltip(this)">
                     <div class="order-progress-bar">
@@ -12,6 +12,7 @@
                         <div class="progress-single" style="width: {{ order.progress_percent }}%;"></div>
                     </div>
                     <span class="order-info">
+                        {% if order.added_by_micromanager %}<span class="order-automation-tag">Auto</span> {% endif %}
                         {{ order.display }}{% if order.quantity > 1 %} <span class="order-quantity">({{ order.completed }}/{{ order.quantity }})</span>{% endif %}
                     </span>
                     <div class="order-tooltip">
@@ -34,7 +35,7 @@
                             <input type="hidden" name="x" value="{{ selection.x }}">
                             <input type="hidden" name="y" value="{{ selection.y }}">
                             <input type="hidden" name="sel" value="{{ selection.sel }}">
-                            <button type="submit" class="repeat-toggle-btn{% if order.repeat %} active{% else %} ghost{% endif %}" title="{% if order.repeat %}Disable repeat{% else %}Enable repeat{% endif %}">&#x21bb;</button>
+                            <button type="submit" class="repeat-toggle-btn{% if order.repeat %} active{% else %} ghost{% endif %}" title="{% if order.repeat_allowed %}{% if order.repeat %}Disable repeat{% else %}Enable repeat{% endif %}{% else %}Repeat not available{% endif %}" {% if not order.repeat_allowed %}disabled{% endif %}>&#x21bb;</button>
                         </form>
                         <form method="post" action="{% url 'dj4xol:remove_production' game.short_id order.short_id %}" style="display:inline">
                             {% csrf_token %}
@@ -61,6 +62,7 @@
                     <option value="">Select production...</option>
                     {% for option in detail.production_order_choices %}
                     <option value="{{ option.value }}"
+                            data-repeat-allowed="{% if option.repeat_allowed %}true{% else %}false{% endif %}"
                             data-cost-bp="{{ option.cost.bp }}"
                             data-cost-ironium="{{ option.cost.ironium }}"
                             data-cost-boranium="{{ option.cost.boranium }}"
@@ -169,14 +171,35 @@ function hideTooltip() {
 }
 
 (function() {
+    var select = document.getElementById('production-order-select');
     var repeatCheckbox = document.getElementById('production-repeat');
-    if (repeatCheckbox) {
+
+    function updateRepeatAvailability() {
+        if (!repeatCheckbox || !select) {
+            return;
+        }
+        var option = select.options[select.selectedIndex];
+        var repeatAllowed = !option || !option.value ||
+            option.dataset.repeatAllowed !== 'false';
+        repeatCheckbox.disabled = !repeatAllowed;
+        if (!repeatAllowed) {
+            repeatCheckbox.checked = false;
+            return;
+        }
+        if (localStorage.getItem('productionRepeat') === 'true') {
+            repeatCheckbox.checked = true;
+        }
+    }
+
+    if (repeatCheckbox && select) {
         if (localStorage.getItem('productionRepeat') === 'true') {
             repeatCheckbox.checked = true;
         }
         repeatCheckbox.addEventListener('change', function() {
             localStorage.setItem('productionRepeat', this.checked);
         });
+        select.addEventListener('change', updateRepeatAvailability);
+        updateRepeatAvailability();
     }
 })();
 

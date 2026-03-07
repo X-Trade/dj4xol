@@ -1047,6 +1047,7 @@ def _redirect_preserving_selection(request, game):
 def add_production_order(request, game_short_id):
     """Add a production order to a star."""
     from .models import Star, ProductionOrder
+    from .micromanager_rules import ADMINISTRATION_ORDER_TYPE
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
@@ -1065,16 +1066,37 @@ def add_production_order(request, game_short_id):
         }
         if order_type not in allowed:
             return _redirect_preserving_selection(request, game)
-        # Calculate next position
-        max_pos = star.production_orders.aggregate(
-            max_pos=models.Max('position'))['max_pos'] or 0
+        if order_type == ADMINISTRATION_ORDER_TYPE:
+            if star.has_administration:
+                return _redirect_preserving_selection(request, game)
+            if star.production_orders.filter(
+                order_type=ADMINISTRATION_ORDER_TYPE
+            ).exists():
+                return _redirect_preserving_selection(request, game)
+            quantity = 1
+            repeat = False
+
+        micromanager_orders = list(star.production_orders.filter(
+            added_by_micromanager=True
+        ).order_by('-position', '-id'))
+        if micromanager_orders:
+            insert_pos = micromanager_orders[-1].position
+            for existing in micromanager_orders:
+                existing.position = int(existing.position or 0) + 1
+                existing.save(update_fields=['position'])
+        else:
+            insert_pos = star.production_orders.aggregate(
+                max_pos=models.Max('position')
+            )['max_pos'] or 0
+            insert_pos += 1
         ProductionOrder.objects.create(
             game=game,
             star=star,
             order_type=order_type,
-            position=max_pos + 1,
+            position=insert_pos,
             quantity=max(1, quantity),
             repeat=repeat,
+            added_by_micromanager=False,
         )
 
     return _redirect_preserving_selection(request, game)
@@ -1100,6 +1122,7 @@ def remove_production_order(request, game_short_id, order_short_id):
 def toggle_production_order_repeat(request, game_short_id, order_short_id):
     """Toggle repeat flag for a production order."""
     from .models import ProductionOrder
+    from .micromanager_rules import ADMINISTRATION_ORDER_TYPE
 
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
@@ -1110,6 +1133,8 @@ def toggle_production_order_repeat(request, game_short_id, order_short_id):
     order = ProductionOrder.objects.get(
         short_id=order_short_id, game=game, star__player=player
     )
+    if order.order_type == ADMINISTRATION_ORDER_TYPE:
+        return _redirect_preserving_selection(request, game)
     order.repeat = not bool(order.repeat)
     order.save(update_fields=['repeat'])
     return _redirect_preserving_selection(request, game)

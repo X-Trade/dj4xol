@@ -1479,6 +1479,113 @@ class TestAnomalyInteractions(TestCase):
 
         self.assertEqual(player.messages.count(), first_message_count)
 
+    def test_wormhole_first_traversal_message_still_fires_if_reports_exist(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Known Hole Probe',
+            x=10,
+            y=10,
+            integrity=100,
+        )
+        a = Anomaly.objects.create(
+            game=game,
+            x=10,
+            y=10,
+            name='Known Wormhole A',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=95,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=40,
+            y=40,
+            name='Known Wormhole B',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=95,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+
+        turn = GameTurn(game)
+        turn._create_or_update_report(player, 'anomaly', a, game.year)
+        turn._create_or_update_report(player, 'anomaly', b, game.year)
+
+        self.assertEqual(player.messages.count(), 0)
+
+        with patch('dj4xol.turn.random.random', return_value=1.0):
+            turn._apply_wormhole_interaction(fleet, a)
+
+        msg = player.messages.latest('id')
+        self.assertFalse(msg.priority)
+        self.assertIn('traversed wormhole', msg.message)
+        self.assertIn('emerged from', msg.message)
+
+        a_report = Report.objects.get(
+            game=game, player=player, target_type='anomaly', target_id=a.id
+        )
+        b_report = Report.objects.get(
+            game=game, player=player, target_type='anomaly', target_id=b.id
+        )
+        self.assertTrue(a_report.get_report_data().get('wormhole_traversed'))
+        self.assertTrue(b_report.get_report_data().get('wormhole_traversed'))
+
+    def test_wormhole_reverse_traversal_does_not_repeat_clean_message(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Round Trip Probe',
+            x=10,
+            y=10,
+            integrity=100,
+        )
+        a = Anomaly.objects.create(
+            game=game,
+            x=10,
+            y=10,
+            name='Round Trip A',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=95,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=40,
+            y=40,
+            name='Round Trip B',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=95,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.random', return_value=1.0):
+            turn._apply_wormhole_interaction(fleet, a)
+
+        first_message_count = player.messages.count()
+        fleet.x = b.x
+        fleet.y = b.y
+        fleet.save(update_fields=['x', 'y'])
+
+        with patch('dj4xol.turn.random.random', return_value=1.0):
+            turn._apply_wormhole_interaction(fleet, b)
+
+        self.assertEqual(player.messages.count(), first_message_count)
+
     def test_wormhole_high_instability_can_apply_damage(self):
         game = default_game()
         game.anomalies_enabled = True
