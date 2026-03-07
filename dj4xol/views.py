@@ -492,6 +492,16 @@ def join_game(request, game_short_id):
                 game.invitations.filter(
                     models.Q(account=account) | models.Q(email=account.email)
                 ).delete()
+                if player.homeworld_id:
+                    game_url = reverse('dj4xol:game', kwargs={'game_short_id': game.short_id})
+                    return redirect('%s?%s' % (
+                        game_url,
+                        urlencode({
+                            'x': int(player.homeworld.x),
+                            'y': int(player.homeworld.y),
+                            'sel': player.homeworld.short_id,
+                        }),
+                    ))
                 return redirect('dj4xol:game', game_short_id=game.short_id)
             return render(request, 'dj4xol/forbidden.html', {
                 'message': 'Unable to join game.'

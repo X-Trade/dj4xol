@@ -641,6 +641,38 @@ class TestPreJoinNavigation(TestCase):
         self.assertNotContains(response, 'class="nav-link-game"')
         self.assertNotContains(response, '>Research<', html=True)
 
+    def test_join_game_redirects_to_new_player_homeworld(self):
+        game = default_game(stars=8)
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+
+        joiner_user = User.objects.create_user('joiner_user', 'joiner@example.com', 'pass')
+        joiner_account = Account.objects.create(django_user=joiner_user)
+        race = ServerRace.objects.create(
+            name='JoinerRace',
+            plural_name='JoinerRaces',
+            race_type=get_default_race_type(),
+            owner=joiner_account,
+        )
+
+        client = Client()
+        client.force_login(joiner_user)
+        response = client.post(
+            reverse('dj4xol:join_game', args=[game.short_id]),
+            {'race': str(race.id)},
+        )
+        self.assertEqual(response.status_code, 302)
+
+        player = game.players.filter(account=joiner_account).first()
+        self.assertIsNotNone(player)
+        self.assertIsNotNone(player.homeworld)
+
+        game_url = reverse('dj4xol:game', args=[game.short_id])
+        self.assertTrue(response.url.startswith(game_url + '?'))
+        self.assertIn('x=%s' % int(player.homeworld.x), response.url)
+        self.assertIn('y=%s' % int(player.homeworld.y), response.url)
+        self.assertIn('sel=%s' % player.homeworld.short_id, response.url)
+
 
 class TestRaceCreationView(TestCase):
     def setUp(self):
