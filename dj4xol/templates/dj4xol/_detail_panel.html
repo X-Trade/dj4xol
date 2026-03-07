@@ -107,10 +107,11 @@
         </div>
     </div>
     {% endif %}
-    {% if detail.resources %}
+    {% if detail.resources or detail.resources_unknown %}
     <div class="collapsible-section" data-section="resources">
         <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Resources</h4>
         <div class="collapsible-content">
+            {% if detail.resources %}
             {% for key, data in detail.resources.items %}
             <div class="detail-row">
                 <span class="env-label">{{ data.label|default:key }}</span>
@@ -122,6 +123,10 @@
                 </span>
             </div>
             {% endfor %}
+            {% endif %}
+            {% if detail.resources_unknown %}
+            <p class="env-support">Mineral composition unknown.</p>
+            {% endif %}
         </div>
     </div>
     {% endif %}
@@ -214,6 +219,9 @@
                 <span class="detail-value">{{ entry.amount|floatformat:0 }}kt</span>
             </div>
             {% endfor %}
+            {% if detail.salvage_inventory.composition_unknown %}
+            <p class="env-support">Mineral composition unknown.</p>
+            {% endif %}
         </div>
     </div>
     {% endif %}

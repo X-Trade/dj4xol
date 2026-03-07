@@ -544,6 +544,7 @@ class ReportGenerationTest(TestCase):
         self.assertEqual(items['Boranium'], 70)
         self.assertEqual(items['Germanium'], 20)
         self.assertEqual(detail['salvage_inventory']['total'], 220)
+        self.assertFalse(detail['salvage_inventory']['composition_unknown'])
 
     def test_report_on_other_player_fleet(self):
         """Reports generated for enemy fleets at the same location."""

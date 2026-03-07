@@ -790,7 +790,7 @@ class TestDetailPanelReportTiers(TestCase):
             {'x': obj.x, 'y': obj.y, 'sel': obj.short_id},
         )
 
-    def test_basic_star_report_shows_environment_only(self):
+    def test_basic_star_report_shows_unknown_resources_note(self):
         Report.objects.create(
             game=self.game,
             player=self.player,
@@ -809,7 +809,8 @@ class TestDetailPanelReportTiers(TestCase):
         )
         response = self._get_detail_response(self.star)
         self.assertContains(response, 'data-section="environmentals"')
-        self.assertNotContains(response, 'data-section="resources"')
+        self.assertContains(response, 'data-section="resources"')
+        self.assertContains(response, 'Mineral composition unknown.')
         self.assertNotContains(response, 'data-section="infrastructure"')
 
     def test_advanced_star_report_shows_resources_no_infrastructure(self):
@@ -1040,6 +1041,7 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'Type')
         self.assertContains(response, 'Ancient Debris')
         self.assertContains(response, 'total: 20kt')
+        self.assertContains(response, 'Mineral composition unknown.')
         self.assertNotContains(response, 'Ironium')
 
 
