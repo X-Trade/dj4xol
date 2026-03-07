@@ -87,7 +87,8 @@ class StarMap():
                 except Exception:
                     tier = 'advanced'
                 self.star_report_tiers[report.target_id] = tier
-            self.salvages = self.salvages.filter(id__in=self.explored_salvage_ids)
+            if not getattr(self.game, 'no_scanners', False):
+                self.salvages = self.salvages.filter(id__in=self.explored_salvage_ids)
         self.homeworld_star_ids = set(
             game.players.exclude(homeworld=None).values_list('homeworld_id', flat=True)
         )

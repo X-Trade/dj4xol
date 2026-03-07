@@ -819,7 +819,9 @@ class Command(BaseCommand):
             detail = DetailBuilder(
                 player.game, selected=salvage.short_id, player=player
             ).build_detail()
-            if not detail or detail.get("unexplored"):
+            if not detail:
+                continue
+            if detail.get("unexplored") and not getattr(player.game, "no_scanners", False):
                 continue
             entry = self._build_map_object_summary_entry(detail)
             salvage_inventory = detail.get("salvage_inventory") or {}
@@ -1377,7 +1379,9 @@ class Command(BaseCommand):
         if fleet is not None and self._is_cli_object_discoverable(player, fleet):
             return fleet, fleet.x, fleet.y, "fleet"
         salvage = Salvage.objects.filter(game=game, short_id=target_id).first()
-        if salvage is not None and self._is_cli_object_discoverable(player, salvage):
+        if salvage is not None and (
+            getattr(game, "no_scanners", False) or self._is_cli_object_discoverable(player, salvage)
+        ):
             return salvage, salvage.x, salvage.y, "salvage"
         anomaly = Anomaly.objects.filter(game=game, short_id=target_id).first()
         if anomaly is not None:
@@ -1736,6 +1740,8 @@ class Command(BaseCommand):
             player.game.salvages.filter(short_id=short_id).first(),
             player.game.anomalys.filter(short_id=short_id).first(),
         ):
+            if isinstance(obj, Salvage) and getattr(player.game, "no_scanners", False):
+                return obj
             if obj is not None and self._is_cli_object_discoverable(player, obj):
                 return obj
         return None

@@ -244,6 +244,35 @@ class UnexploredDetailTest(TestCase):
         ).build_detail()
         self.assertIsNone(hidden)
 
+    def test_no_scanners_shows_salvage_as_unexplored_without_report(self):
+        self.game.no_scanners = True
+        self.game.save(update_fields=['no_scanners'])
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=self.distant_star.x,
+            y=self.distant_star.y,
+            ironium_inventory=25,
+            boranium_inventory=10,
+            germanium_inventory=5,
+        )
+
+        detail = DetailBuilder(
+            self.game,
+            x=self.distant_star.x,
+            y=self.distant_star.y,
+            player=self.player,
+        ).build_detail()
+        objects_here = detail.get('objects_here') or []
+        self.assertTrue(any(obj.get('short_id') == salvage.short_id for obj in objects_here))
+
+        hidden = DetailBuilder(
+            self.game,
+            selected=salvage.short_id.lower(),
+            player=self.player,
+        ).build_detail()
+        self.assertTrue(hidden['unexplored'])
+        self.assertEqual(hidden['selected_id'], salvage.short_id)
+
 
 class ReportGenerationTest(TestCase):
     """Tests for report generation during turn processing."""
