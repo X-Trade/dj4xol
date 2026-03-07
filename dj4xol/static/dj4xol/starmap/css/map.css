@@ -118,6 +118,15 @@ body.lcars .maparea a.mapstar-name {
     stroke: #79b8ff;
 }
 
+.fleet-movement-line-proposed {
+    fill: none;
+    stroke-linecap: round;
+    stroke-width: 1;
+    stroke-dasharray: 2 4;
+    stroke: #9cc8ff;
+    opacity: 0.45;
+}
+
 .wormhole-link-line {
     fill: none;
     stroke: rgba(186, 112, 255, 0.95);

@@ -1086,8 +1086,8 @@ def admin_generate_report(request, game_short_id, object_short_id):
     return _redirect_preserving_selection(request, game)
 
 
-def _redirect_preserving_selection(request, game):
-    """Redirect to game view (or explicit target), preserving game selection when relevant."""
+def _redirect_preserving_selection(request, game, suppress_autolocate=False):
+    """Redirect to game view (or explicit target), preserving selection when relevant."""
     from django.urls import reverse
     return_to = request.POST.get('return_to') or request.GET.get('return_to')
     if return_to == 'research':
@@ -1100,6 +1100,8 @@ def _redirect_preserving_selection(request, game):
     url = reverse('dj4xol:game', kwargs={'game_short_id': game.short_id})
     params = {k: request.POST.get(k) or request.GET.get(k)
               for k in ['x', 'y', 'sel'] if request.POST.get(k) or request.GET.get(k)}
+    if suppress_autolocate:
+        params['no_locate'] = '1'
     if params:
         url = f"{url}?{urlencode(params)}"
     return redirect(url)
@@ -1222,7 +1224,11 @@ def add_fleet_order(request, game_short_id):
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
     if player.turned_in:
-        return _redirect_preserving_selection(request, game)
+        return _redirect_preserving_selection(
+            request,
+            game,
+            suppress_autolocate=True,
+        )
 
     fleet_short_id = request.POST.get('fleet')
     order_type = request.POST.get('order_type', 'MOVE')
@@ -1348,7 +1354,11 @@ def add_fleet_order(request, game_short_id):
                 defeated=False,
             )
             if order.transfer_player_id == player.id:
-                return _redirect_preserving_selection(request, game)
+                return _redirect_preserving_selection(
+                    request,
+                    game,
+                    suppress_autolocate=True,
+                )
 
     elif order_type == 'COLONISE':
         # Colonise orders always have repeat=False (fleet is destroyed)
@@ -1362,7 +1372,11 @@ def add_fleet_order(request, game_short_id):
     elif order_type == 'BOMB':
         # Bombardment persists and executes each year while queued.
         if not fleet.has_bombs:
-            return _redirect_preserving_selection(request, game)
+            return _redirect_preserving_selection(
+                request,
+                game,
+                suppress_autolocate=True,
+            )
         bomb_until = (request.POST.get('bomb_until', 'COLONISTS_ZERO') or '').strip().upper()
         if bomb_until == 'CONTINUOUS':
             bomb_until = 'ONCE'
@@ -1375,7 +1389,11 @@ def add_fleet_order(request, game_short_id):
 
     elif order_type == 'REMOTEMINE':
         if not fleet.has_miners:
-            return _redirect_preserving_selection(request, game)
+            return _redirect_preserving_selection(
+                request,
+                game,
+                suppress_autolocate=True,
+            )
         mine_until_full_raw = (request.POST.get('mine_until_full', '1') or '').strip().lower()
         order.mine_until_full = mine_until_full_raw not in {'0', 'false', 'off', 'no'}
         remotemine_target = request.POST.get('remotemine_target', '')
@@ -1430,7 +1448,11 @@ def add_fleet_order(request, game_short_id):
 
     order.save()
 
-    return _redirect_preserving_selection(request, game)
+    return _redirect_preserving_selection(
+        request,
+        game,
+        suppress_autolocate=True,
+    )
 
 
 @player_only_view()
