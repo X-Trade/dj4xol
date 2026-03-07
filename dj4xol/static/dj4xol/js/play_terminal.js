@@ -277,12 +277,18 @@
         params.set('sel', target.sel);
         if (target.x !== undefined && target.x !== null) {
             params.set('x', target.x);
+        } else {
+            params.delete('x');
         }
         if (target.y !== undefined && target.y !== null) {
             params.set('y', target.y);
+        } else {
+            params.delete('y');
         }
         if (target.locate) {
             params.set('locate', '1');
+        } else {
+            params.delete('locate');
         }
         window.location.search = params.toString();
     }

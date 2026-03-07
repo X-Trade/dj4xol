@@ -480,7 +480,7 @@ class AdministrationAutomationTest(TestCase):
         self.assertFalse(remove_administration['repeat_allowed'])
         self.assertEqual(remove_administration['cost']['ironium'], -225)
 
-    def test_administration_level_one_builds_mines_and_factories(self):
+    def test_administration_level_one_queues_then_builds_mines_and_factories(self):
         self._create_administration_tech(1, 1)
         self.player.race_type.population_growth_multiplier = 0
         self.player.race_type.save(update_fields=['population_growth_multiplier'])
@@ -499,7 +499,19 @@ class AdministrationAutomationTest(TestCase):
         self.star.germanium_yield = 100
         self.star.save()
 
-        GameTurn(self.game).production()
+        turn = GameTurn(self.game)
+        turn.production()
+        self.star.refresh_from_db()
+        queued = list(
+            self.star.production_orders.filter(
+                added_by_micromanager=True
+            ).order_by('position')
+        )
+        self.assertGreaterEqual(len(queued), 1)
+        self.assertEqual(queued[0].order_type, 'BUILD_MINE')
+        self.assertGreaterEqual(queued[0].quantity, 1)
+
+        turn.production()
         self.star.refresh_from_db()
 
         self.assertGreater(self.star.mines, self.star.factories)
@@ -509,7 +521,7 @@ class AdministrationAutomationTest(TestCase):
         self.assertEqual(self.star.labs, 0)
         self.assertEqual(self.star.shipyards, 0)
 
-    def test_administration_level_two_adds_shipyards_for_orbital_fleets(self):
+    def test_administration_level_two_queues_then_adds_shipyards(self):
         self._create_administration_tech(2, 2)
         self.player.race_type.population_growth_multiplier = 0
         self.player.race_type.save(update_fields=['population_growth_multiplier'])
@@ -544,14 +556,25 @@ class AdministrationAutomationTest(TestCase):
             y=self.star.y,
         )
 
-        GameTurn(self.game).production()
+        turn = GameTurn(self.game)
+        turn.production()
+        self.star.refresh_from_db()
+        queued = list(
+            self.star.production_orders.filter(
+                added_by_micromanager=True
+            ).order_by('position')
+        )
+        self.assertGreaterEqual(len(queued), 1)
+        self.assertEqual(queued[0].order_type, 'BUILD_SHIPYARD')
+
+        turn.production()
         self.star.refresh_from_db()
 
         self.assertEqual(self.star.shipyards, 2)
         self.assertEqual(self.star.factories, 20)
         self.assertEqual(self.star.labs, 0)
 
-    def test_administration_level_three_can_terraform(self):
+    def test_administration_level_three_queues_then_terraforms(self):
         self._create_administration_tech(3, 3)
         self._create_terraforming_tech(3, 0.1)
         self.player.race_type.population_growth_multiplier = 0
@@ -560,6 +583,7 @@ class AdministrationAutomationTest(TestCase):
         self.star.colonists = 100_000
         self.star.mines = 20
         self.star.factories = 30
+        self.star.shipyards = 10
         self.star.ironium_inventory = 10_000
         self.star.boranium_inventory = 10_000
         self.star.germanium_inventory = 10_000
@@ -570,8 +594,20 @@ class AdministrationAutomationTest(TestCase):
         self.star.temperature = self.player.temperature_center
         self.star.radiation = self.player.radiation_center
         self.star.save()
+        self.player.fleets.all().delete()
 
-        GameTurn(self.game).production()
+        turn = GameTurn(self.game)
+        turn.production()
+        self.star.refresh_from_db()
+        queued = list(
+            self.star.production_orders.filter(
+                added_by_micromanager=True
+            ).order_by('position')
+        )
+        self.assertGreaterEqual(len(queued), 1)
+        self.assertEqual(queued[0].order_type, 'TERRAFORM_GRAVITY')
+
+        turn.production()
         self.star.refresh_from_db()
 
         self.assertAlmostEqual(self.star.gravity, 0.1, places=4)

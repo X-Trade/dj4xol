@@ -990,6 +990,60 @@ class PlayCommandTest(TestCase):
         self.assertNotIn('Hidden Fang', output)
         self.assertNotIn('selected_id: %s' % hidden_fleet.short_id, output)
 
+    def test_detail_command_marks_last_known_position_for_stale_fleet_report(self):
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Wraith Wing',
+            x=self.player1.homeworld.x + 2,
+            y=self.player1.homeworld.y + 1,
+            ship_count=5,
+            integrity=88,
+        )
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year - 1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report='{}',
+        )
+        report.set_report_data({
+            'name': 'Unknown Fleet',
+            'x': self.player1.homeworld.x + 9,
+            'y': self.player1.homeworld.y + 4,
+            'report_tier': 'advanced',
+            'player_name': self.player2.name,
+            'ship_count': 5,
+            'integrity': 88,
+            'travel_warp': 7,
+            'heading': 222.2,
+        })
+        report.save(update_fields=['cached_report'])
+
+        enemy_fleet.x = self.player2.homeworld.x + 15
+        enemy_fleet.y = self.player2.homeworld.y + 11
+        enemy_fleet.save(update_fields=['x', 'y'])
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/detail %s' % enemy_fleet.short_id, '/exit'],
+        )
+        self.assertIn('position_status: last_known', output)
+        self.assertIn(
+            'last_known_position: Empty Space (%s, %s)' % (
+                self.player1.homeworld.x + 9,
+                self.player1.homeworld.y + 4,
+            ),
+            output,
+        )
+        self.assertIn('last_known_report_year: %s' % (self.game.year - 1), output)
+        self.assertIn('travel_warp: 7', output)
+        self.assertIn('heading: 222.2', output)
+
     def test_detail_command_does_not_reveal_hidden_salvage_by_short_id(self):
         hidden_salvage = Salvage.objects.create(
             game=self.game,

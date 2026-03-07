@@ -937,6 +937,8 @@ class Command(BaseCommand):
     def _build_map_object_summary_entry(self, detail):
         if detail.get("unexplored"):
             visibility = "visible"
+        elif detail.get("is_fleet") and detail.get("position_status") == "last_known":
+            visibility = "last_known"
         else:
             visibility = "current" if detail.get("is_current") else "report"
         entry = {
@@ -1860,6 +1862,21 @@ class Command(BaseCommand):
 
     def _format_detail_for_cli(self, detail):
         """Apply CLI-friendly numeric formatting to detail payload."""
+        if detail.get("travel_warp") is not None:
+            try:
+                detail["travel_warp"] = int(detail.get("travel_warp"))
+            except (TypeError, ValueError):
+                pass
+        if detail.get("heading") is not None:
+            try:
+                detail["heading"] = round(float(detail.get("heading")), 1)
+            except (TypeError, ValueError):
+                pass
+        if detail.get("is_fleet") and detail.get("position_status") == "last_known":
+            detail["location_status"] = "last_known"
+            if detail.get("report_year") is not None:
+                detail["last_known_report_year"] = detail.get("report_year")
+
         environmentals = detail.get("environmentals")
         if not isinstance(environmentals, dict):
             return detail

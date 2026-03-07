@@ -939,6 +939,36 @@
             destLink.setAttribute('href', href);
         }
     }
+
+    function isMapSelectionOrderType(type) {
+        return type === 'MOVE' || type === 'INTERCEPT' || type === 'PATROL';
+    }
+
+    function syncDestinationModeState(selectedType) {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('mode') !== 'select_destination') {
+            return false;
+        }
+        params.set('order_type', selectedType);
+        if (isMapSelectionOrderType(selectedType)) {
+            window.history.replaceState({}, '', '?' + params.toString());
+            return false;
+        }
+        params.delete('mode');
+        params.delete('fleet');
+        params.delete('warp');
+        params.delete('dest_star');
+        params.delete('dest_fleet');
+        params.delete('dest_salvage');
+        params.delete('dest_anomaly');
+        params.delete('dest_x');
+        params.delete('dest_y');
+        if (typeof persistStarmapScrollPosition === 'function') {
+            persistStarmapScrollPosition();
+        }
+        window.location.search = params.toString();
+        return true;
+    }
     
     // Initialize form state based on URL parameter or current selection
     function initializeOrderType() {
@@ -1202,6 +1232,9 @@
     // Order type switching
     if (orderType) {
         orderType.addEventListener('change', function() {
+            if (syncDestinationModeState(this.value)) {
+                return;
+            }
             orderTypeInput.value = this.value;
             initializeOrderType();
             if (warpSlider) {

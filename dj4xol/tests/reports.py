@@ -4,7 +4,7 @@ import json
 from django.test import TestCase
 from django.contrib.auth.models import User
 from ..models import (
-    Account, Star, Fleet, Salvage, Report, Anomaly, GameMessage
+    Account, Star, Fleet, FleetOrders, Salvage, Report, Anomaly, GameMessage
 )
 from ..factory import GameFactory
 from ..objectdetails import DetailBuilder
@@ -968,6 +968,15 @@ class ScannerReportTest(TestCase):
             y=fleet.y,
             ship_count=4,
             integrity=77,
+            heading=123.4,
+        )
+        FleetOrders.objects.create(
+            game=self.game,
+            fleet=enemy_fleet,
+            order_type='MOVE',
+            x=enemy_fleet.x + 6,
+            y=enemy_fleet.y,
+            warpfactor=6,
         )
 
         GameTurn(self.game).generate_scanner_reports()
@@ -981,6 +990,8 @@ class ScannerReportTest(TestCase):
         self.assertEqual(data.get('report_tier'), 'basic')
         self.assertEqual(data.get('name'), format_basic_unknown_fleet_name(enemy_fleet))
         self.assertNotEqual(data.get('name'), enemy_fleet.name)
+        self.assertEqual(data.get('travel_warp'), 6)
+        self.assertAlmostEqual(float(data.get('heading')), 123.4, places=1)
         self.assertNotIn('ship_count', data)
         self.assertNotIn('integrity', data)
 
@@ -1321,6 +1332,49 @@ class NoScannerReportTierTest(TestCase):
         self.assertEqual(data.get('report_tier'), 'ownership')
         self.assertNotIn('gravity', data)
         self.assertIn('player_name', data)
+
+    def test_no_scanners_ownership_fleet_report_includes_heading_and_travel_warp(self):
+        x = self.enemy_star.x
+        y = self.enemy_star.y
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Blind Watcher',
+            x=x,
+            y=y,
+            basic_scanner_range=0,
+            advanced_scanner_range=0,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Vector Ghost',
+            x=x,
+            y=y,
+            ship_count=2,
+            heading=278.3,
+        )
+        FleetOrders.objects.create(
+            game=self.game,
+            fleet=enemy_fleet,
+            order_type='MOVE',
+            x=x + 6,
+            y=y,
+            warpfactor=6,
+        )
+
+        GameTurn(self.game).generate_reports()
+        data = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        ).get_report_data()
+
+        self.assertEqual(data.get('report_tier'), 'ownership')
+        self.assertIn('player_name', data)
+        self.assertEqual(data.get('travel_warp'), 6)
+        self.assertAlmostEqual(float(data.get('heading')), 278.3, places=1)
 
     def test_visit_with_basic_scanners_reports_environment_only(self):
         data = self._visit_enemy_star(basic=5, advanced=0)

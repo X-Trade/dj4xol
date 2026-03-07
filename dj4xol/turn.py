@@ -1787,6 +1787,45 @@ class GameTurn():
             if int(getattr(fleet, f'{key}_inventory', 0) or 0) > 0:
                 self._mark_secret_resource_discovered(player, key, star=None, fleet=fleet)
 
+    def _fleet_motion_snapshot(self, fleet):
+        """Return (travel_warp, heading_degrees) for fleet report snapshots."""
+        if not hasattr(self, '_fleet_motion_cache'):
+            self._fleet_motion_cache = {}
+        cached = self._fleet_motion_cache.get(fleet.id)
+        if cached is not None:
+            return cached
+
+        heading = 0.0
+        try:
+            heading = float(getattr(fleet, 'heading', 0.0) or 0.0) % 360.0
+        except (TypeError, ValueError):
+            heading = 0.0
+
+        travel_warp = 0
+        order = fleet.orders.order_by('position', 'id').first()
+        if order is not None:
+            if order.order_type == 'PATROL':
+                speed = int(getattr(order, 'intercept_speed', 0) or order.warpfactor or 0)
+            elif order.order_type in ('MOVE', 'INTERCEPT'):
+                speed = int(order.warpfactor or 0)
+            else:
+                speed = 0
+            _target, target_x, target_y, _kind = order.get_actual_target()
+            if (
+                speed > 0 and
+                target_x is not None and
+                target_y is not None and
+                (
+                    int(target_x) != int(fleet.x) or
+                    int(target_y) != int(fleet.y)
+                )
+            ):
+                travel_warp = max(0, speed)
+
+        snapshot = (travel_warp, heading)
+        self._fleet_motion_cache[fleet.id] = snapshot
+        return snapshot
+
     def _build_report_data(self, player, obj, target_type, report_tier='advanced', include_cargo=False):
         """Build the data dict to cache in a report."""
         if target_type == 'star':
@@ -1847,6 +1886,7 @@ class GameTurn():
                 })
             return base
         elif target_type == 'fleet':
+            travel_warp, heading = self._fleet_motion_snapshot(obj)
             data = {
                 'name': (
                     format_basic_unknown_fleet_name(obj)
@@ -1855,6 +1895,8 @@ class GameTurn():
                 'x': obj.x,
                 'y': obj.y,
                 'report_tier': report_tier,
+                'travel_warp': travel_warp,
+                'heading': heading,
             }
             if report_tier == 'ownership':
                 data['player_name'] = obj.owner_display_name
@@ -5729,11 +5771,11 @@ class GameTurn():
         5. Colonists are required for mines/factories (not consumed, just busy)
         6. Continue until blocked on resources, BP, or colonists
         7. Send aggregate messages for mines/factories/defenses (4+ items)
-        8. Repair damaged fleets using available shipyards
+        8. Refresh Administration automation for next turn
+        9. Repair damaged fleets using available shipyards
         """
         from .models import Star, ProductionOrder
         for star in Star.objects.filter(game=self.game, player__isnull=False):
-            self._refresh_administration_production_queue(star)
             had_production_orders = star.production_orders.exists()
             star.buildpoints_consumed = 0
             colonists_busy = 0  # Track colonists busy with construction this turn
@@ -5888,6 +5930,7 @@ class GameTurn():
 
             # Send aggregate production messages (only for 4+ items)
             self._send_production_summary_messages(star, production_counts)
+            self._refresh_administration_production_queue(star)
             self._send_production_orders_completed_message(star, had_production_orders)
 
             star.save()

@@ -104,9 +104,17 @@ $(document).ready(function() {
         $locateBtn.addClass('active');
     }
 
+    var suppressLocate = (
+        $maparea.data('suppress-locate') === true ||
+        $maparea.data('suppress-locate') === 'true'
+    );
+
     // Toggle locate on click
     $locateBtn.on('click', function(e) {
         e.preventDefault();
+        if (suppressLocate) {
+            return;
+        }
         locateEnabled = !locateEnabled;
         localStorage.setItem(storageKey + ':locate', locateEnabled);
         $locateBtn.toggleClass('active', locateEnabled);
@@ -538,7 +546,11 @@ $(document).ready(function() {
     var posY = localStorage.getItem(storageKey + ':posY');
     var hasSavedPos = posX !== null && posY !== null;
 
-    if ((locateEnabled && urlX !== null && urlY !== null && !destMode) || (urlLocate === '1' && urlX !== null && urlY !== null)) {
+    if (
+        !suppressLocate &&
+        ((locateEnabled && urlX !== null && urlY !== null && !destMode) ||
+         (urlLocate === '1' && urlX !== null && urlY !== null))
+    ) {
         // Center on selected coordinates (multiply by MAP_SCALE=6, add border offset)
         var targetX = (parseInt(urlX) * mapScale + borderOffset) * zoomLevel;
         var targetY = (parseInt(urlY) * mapScale + borderOffset) * zoomLevel;

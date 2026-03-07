@@ -3120,6 +3120,68 @@ class TestFleetTransferOrderExecution(TestCase):
         self.assertEqual(orders[0]['target'], 'Unknown Fleet')
         self.assertNotIn('Leaky Queue Name', orders[0]['target'])
 
+    def test_get_fleet_orders_uses_last_known_report_position_for_hidden_enemy_target(self):
+        game = default_game(stars=5, fleets=0)
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        player = game.players.first()
+        home = player.homeworld
+        own_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Tracker',
+            x=home.x,
+            y=home.y,
+            basic_scanner_range=6,
+            advanced_scanner_range=0,
+        )
+        other_user = User.objects.create_user('order_report_enemy', 'ore@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        enemy_player = GameFactory(game=game).join_player(other_account, get_default_race())
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=enemy_player,
+            name='Ghost Fleet',
+            x=home.x + 2,
+            y=home.y,
+        )
+        report = Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year - 1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report='{}',
+        )
+        report.set_report_data({
+            'name': 'Unknown Fleet',
+            'x': home.x + 5,
+            'y': home.y + 4,
+            'report_tier': 'basic',
+        })
+        report.save(update_fields=['cached_report'])
+
+        enemy_fleet.x = home.x + 20
+        enemy_fleet.y = home.y + 20
+        enemy_fleet.save(update_fields=['x', 'y'])
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=own_fleet,
+            order_type='INTERCEPT',
+            target_fleet=enemy_fleet,
+            warpfactor=5,
+        )
+
+        builder = DetailBuilder(game, own_fleet.x, own_fleet.y, own_fleet.short_id, player)
+        orders = builder.get_fleet_orders()
+
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(
+            orders[0]['target_link'],
+            '?x=%s&y=%s&sel=%s&locate=1' % (home.x + 5, home.y + 4, enemy_fleet.short_id),
+        )
+
     def test_coordinate_selection_prefers_player_homeworld_star(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()

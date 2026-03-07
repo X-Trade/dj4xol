@@ -618,6 +618,7 @@ def spectate_starmap(request, game_short_id):
 
     selected_object_type = ''
     selected_object_short_id = ''
+    suppress_locate = bool(detail.get('suppress_locate')) if detail else False
     if detail and detail.get('selected_id'):
         selected_object_short_id = detail.get('selected_id') or ''
         if detail.get('is_star'):
@@ -637,6 +638,7 @@ def spectate_starmap(request, game_short_id):
         'selection': {'x': x, 'y': y, 'sel': selected},
         'selected_object_type': selected_object_type,
         'selected_object_short_id': selected_object_short_id,
+        'suppress_locate': suppress_locate,
         'user_theme': selected_theme,
         'movement_paths_json': json.dumps([]),
         'wormhole_links_json': json.dumps([]),
@@ -756,6 +758,7 @@ def starmap(request, game_short_id):
     selected_fleet_short_id = None
     selected_object_type = ''
     selected_object_short_id = ''
+    suppress_locate = bool(detail.get('suppress_locate')) if detail else False
     selected_patrol_circles = []
     if detail and detail.get('selected_id'):
         selected_object_short_id = detail.get('selected_id') or ''
@@ -800,6 +803,7 @@ def starmap(request, game_short_id):
         'selected_fleet_short_id': selected_fleet_short_id or '',
         'selected_object_type': selected_object_type,
         'selected_object_short_id': selected_object_short_id,
+        'suppress_locate': suppress_locate,
         'selected_patrol_circles_json': json.dumps(selected_patrol_circles),
         'enable_debug_actions': _debug_actions_enabled(),
         'play_cli_web_enabled': _play_cli_web_enabled(),
