@@ -1041,6 +1041,14 @@ class PlayCommandTest(TestCase):
             output,
         )
         self.assertIn('last_known_report_year: %s' % (self.game.year - 1), output)
+        self.assertIn(
+            "fleet_motion_summary: 'Last known position: Empty Space (%s, %s)'"
+            % (
+                self.player1.homeworld.x + 9,
+                self.player1.homeworld.y + 4,
+            ),
+            output,
+        )
         self.assertIn('travel_warp: 7', output)
         self.assertIn('heading: 222.2', output)
 

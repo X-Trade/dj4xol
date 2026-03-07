@@ -508,6 +508,12 @@ class DetailBuilder():
                 detail['heading'] = data.get('heading')
             if data.get('travel_warp') is not None:
                 detail['travel_warp'] = data.get('travel_warp')
+            if not stale_fleet_report:
+                # Fleet is currently visible: always show live positional/motion state.
+                detail['x'] = self.selected_obj.x
+                detail['y'] = self.selected_obj.y
+                detail['heading'] = self.selected_obj.heading
+                detail['travel_warp'] = self._fleet_travel_warp(self.selected_obj)
             if 'ship_count' in data:
                 detail['fleet_cargo'] = {
                     'ship_count': data.get('ship_count'),
@@ -568,6 +574,14 @@ class DetailBuilder():
     def _apply_fleet_motion_summary(self, detail):
         """Attach a user-facing fleet movement summary line to detail payload."""
         if not detail or not detail.get('is_fleet'):
+            return
+        if (
+            detail.get('position_status') == 'last_known' and
+            detail.get('last_known_position')
+        ):
+            detail['fleet_motion_summary'] = (
+                'Last known position: %s' % detail.get('last_known_position')
+            )
             return
         detail['fleet_motion_summary'] = self._build_fleet_motion_summary(
             detail.get('travel_warp'),
