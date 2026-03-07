@@ -591,17 +591,9 @@ class TestGameDetailRendering(TestCase):
         user, _ = get_default_user()
         client = Client()
         client.force_login(user)
-
-        FleetOrders.objects.create(
-            game=game,
-            fleet=fleet,
-            order_type='MOVE',
-            warpfactor=6,
-            x=max(0, int(fleet.x) - 1),
-            y=int(fleet.y),
-            target_kind='SPACE',
-            position=1,
-        )
+        fleet.travel_warp = 6
+        fleet.heading = 247.5
+        fleet.save(update_fields=['travel_warp', 'heading'])
 
         response = client.get(
             reverse('dj4xol:game', args=[game.short_id]),
