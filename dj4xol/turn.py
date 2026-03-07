@@ -90,6 +90,7 @@ from .research import (
 )
 from .micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
+    REMOVE_ADMINISTRATION_ORDER_TYPE,
     plan_micromanager_orders,
 )
 from .fleet_thumbnails import choose_fleet_thumbnail
@@ -5628,6 +5629,20 @@ class GameTurn():
                 if blocked:
                     break
 
+                if (
+                    order.added_by_micromanager and
+                    not bool(getattr(star, 'has_administration', False))
+                ):
+                    order.delete()
+                    continue
+
+                if (
+                    order.order_type == REMOVE_ADMINISTRATION_ORDER_TYPE and
+                    not bool(getattr(star, 'has_administration', False))
+                ):
+                    order.delete()
+                    continue
+
                 cost = cost_map.get(order.order_type, {})
 
                 if order.order_type.startswith('TERRAFORM_') and terraform_rate <= 0:
@@ -5708,6 +5723,7 @@ class GameTurn():
                     if colonist_cost > 0:
                         colonists_busy += colonist_cost
 
+                    self._apply_negative_production_refunds(star, cost)
                     fleet_built = self._apply_production_effect(
                         star,
                         order.order_type,
@@ -5782,6 +5798,8 @@ class GameTurn():
         elif order_type == ADMINISTRATION_ORDER_TYPE:
             self._build_administration(star)
             production_counts['administration'] += 1
+        elif order_type == REMOVE_ADMINISTRATION_ORDER_TYPE:
+            self._remove_administration(star)
         elif str(order_type).startswith('TERRAFORM_'):
             self._apply_terraform_effect(
                 star, order_type, terraform_rate=terraform_rate
@@ -5856,6 +5874,20 @@ class GameTurn():
     def _build_administration(self, star):
         """Build Administration at the given star."""
         star.has_administration = True
+
+    def _remove_administration(self, star):
+        """Remove Administration from the given star."""
+        star.has_administration = False
+
+    def _apply_negative_production_refunds(self, star, cost):
+        """Apply any negative production costs as inventory refunds."""
+        for resource in ALL_RESOURCE_KEYS:
+            refund = int(cost.get(resource, 0) or 0)
+            if refund >= 0:
+                continue
+            inventory_field = '%s_inventory' % resource
+            current = int(getattr(star, inventory_field, 0) or 0)
+            setattr(star, inventory_field, current + abs(refund))
 
     def _send_production_summary_messages(self, star, production_counts):
         """Send one construction rollup message per star per year."""

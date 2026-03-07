@@ -1552,8 +1552,10 @@ PRODUCTION_COSTS = {
     'BUILD_DEFENSE': {'bp': 50, 'ironium': 100, 'boranium': 50, 'germanium': 50, 'colonists': 0},
     'BUILD_SHIPYARD': {'bp': 100, 'ironium': 250, 'boranium': 50, 'germanium': 100,
                        'colonists': 0},
-    'BUILD_ADMINISTRATION': {'bp': 25, 'ironium': 25, 'boranium': 10,
-                             'germanium': 40, 'colonists': 0},
+    'BUILD_ADMINISTRATION': {'bp': 120, 'ironium': 300, 'boranium': 0,
+                             'germanium': 450, 'colonists': 0},
+    'REMOVE_ADMINISTRATION': {'bp': 40, 'ironium': 0, 'boranium': 0,
+                              'germanium': 0, 'colonists': 0},
     'BUILD_FLEET': {'bp': 50, 'ironium': 100, 'boranium': 200, 'germanium': 200, 'colonists': 0},
     'TERRAFORM_GRAVITY': {'bp': 100, 'ironium': 750, 'boranium': 150, 'germanium': 100, 'colonists': 0},
     'TERRAFORM_TEMPERATURE': {'bp': 100, 'ironium': 200, 'boranium': 660, 'germanium': 140, 'colonists': 0},
@@ -1574,6 +1576,7 @@ class ProductionOrder(AbstractGameObject):
         ('BUILD_DEFENSE', 'Build Defense'),
         ('BUILD_SHIPYARD', 'Build Shipyard'),
         ('BUILD_ADMINISTRATION', 'Build Administration'),
+        ('REMOVE_ADMINISTRATION', 'Remove Administration'),
     ]
 
     star = models.ForeignKey(Star, related_name='production_orders',

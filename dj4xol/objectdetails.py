@@ -24,7 +24,7 @@ from dj4xol.research import (
     format_terraform_order_label,
     get_player_available_production_orders,
 )
-from dj4xol.micromanager_rules import ADMINISTRATION_ORDER_TYPE
+from dj4xol.micromanager_rules import ADMINISTRATION_ONE_OFF_ORDER_TYPES
 from dj4xol.colony_rules import (
     calculate_growth_factor,
     calculate_habitability_factor,
@@ -970,7 +970,7 @@ class DetailBuilder():
                 'quantity': o.quantity,
                 'completed': o.completed,
                 'repeat': o.repeat,
-                'repeat_allowed': o.order_type != ADMINISTRATION_ORDER_TYPE,
+                'repeat_allowed': o.order_type not in ADMINISTRATION_ONE_OFF_ORDER_TYPES,
                 'added_by_micromanager': bool(o.added_by_micromanager),
                 'progress_percent': min(int(total_progress), 100),
                 'resource_progress': min(int(resource_progress), 50 if labor_cost > 0 and resource_cost > 0 else 100),

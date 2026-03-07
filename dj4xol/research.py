@@ -11,6 +11,7 @@ from .colony_rules import (
 from .bombardment_rules import normalize_bomb_type, normalize_miner_type
 from .micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
+    REMOVE_ADMINISTRATION_ORDER_TYPE,
     administration_level_from_params,
 )
 from .models import (
@@ -177,6 +178,20 @@ def _parse_terraforming_rate(value):
     return max(0.0, rate)
 
 
+def _production_cost_overrides_from_tech(tech):
+    """Extract normalised production cost overrides from one technology."""
+    if tech is None:
+        return {}
+    params = _safe_params(tech)
+    overrides = params.get('production_cost_overrides')
+    if not isinstance(overrides, dict):
+        return {}
+    costs = {}
+    for order_type, override in overrides.items():
+        costs[order_type] = _normalise_cost_dict(override)
+    return costs
+
+
 def _select_terraforming_tech(unlocked):
     selected = None
     selected_sort_key = None
@@ -229,14 +244,12 @@ def get_player_terraforming_profile(player):
         return {'rate': 0.0, 'costs': {}, 'tech': None}
     params = _safe_params(selected)
     rate = _parse_terraforming_rate(params.get('terraforming_rate', 0.0))
-    overrides = params.get('production_cost_overrides') if isinstance(params, dict) else None
-    if not isinstance(overrides, dict):
-        overrides = {}
+    overrides = _production_cost_overrides_from_tech(selected)
     costs = {}
     for order_type, cost in overrides.items():
         if order_type not in TERRAFORM_ORDER_LABELS:
             continue
-        costs[order_type] = _normalise_cost_dict(cost)
+        costs[order_type] = cost
     return {'rate': rate, 'costs': costs, 'tech': selected}
 
 
@@ -263,13 +276,23 @@ def get_player_production_costs(player):
     costs = {}
     for key, value in PRODUCTION_COSTS.items():
         costs[key] = _normalise_cost_dict(value)
-    profile = get_player_terraforming_profile(player)
-    for order_type, override in profile.get('costs', {}).items():
-        if order_type not in costs:
-            continue
-        merged = costs[order_type].copy()
-        merged.update(override)
-        costs[order_type] = _normalise_cost_dict(merged)
+    terraform_profile = get_player_terraforming_profile(player)
+    administration_profile = get_player_administration_profile(player)
+    override_sets = [
+        terraform_profile.get('costs', {}),
+        _production_cost_overrides_from_tech(administration_profile.get('tech')),
+    ]
+    for override_set in override_sets:
+        for order_type, override in override_set.items():
+            if order_type not in costs:
+                continue
+            merged = costs[order_type].copy()
+            merged.update(override)
+            costs[order_type] = _normalise_cost_dict(merged)
+    administration_cost = costs.get(ADMINISTRATION_ORDER_TYPE, {})
+    remove_cost = costs.get(REMOVE_ADMINISTRATION_ORDER_TYPE, {}).copy()
+    remove_cost['ironium'] = -int(administration_cost.get('ironium', 0) or 0)
+    costs[REMOVE_ADMINISTRATION_ORDER_TYPE] = _normalise_cost_dict(remove_cost)
     return costs
 
 
@@ -325,6 +348,9 @@ def get_player_available_production_orders(player, star):
     has_admin_order = star.production_orders.filter(
         order_type=ADMINISTRATION_ORDER_TYPE
     ).exists()
+    has_remove_order = star.production_orders.filter(
+        order_type=REMOVE_ADMINISTRATION_ORDER_TYPE
+    ).exists()
     if (
         int(administration_profile.get('level', 0) or 0) > 0 and
         not bool(getattr(star, 'has_administration', False)) and
@@ -335,11 +361,22 @@ def get_player_available_production_orders(player, star):
             'label': 'Build Administration',
             'repeat_allowed': False,
         })
+    if (
+        bool(getattr(star, 'has_administration', False)) and
+        not has_remove_order
+    ):
+        orders.append({
+            'value': REMOVE_ADMINISTRATION_ORDER_TYPE,
+            'label': 'Remove Administration',
+            'repeat_allowed': False,
+        })
     return orders
 
 
 def build_production_cost_entries(params, resource_labels=None):
     """Return display entries for production cost overrides."""
+    from .models import ProductionOrder
+
     overrides = params.get('production_cost_overrides') if isinstance(params, dict) else None
     if not isinstance(overrides, dict):
         return []
@@ -350,18 +387,23 @@ def build_production_cost_entries(params, resource_labels=None):
     else:
         for key in SECRET_RESOURCE_KEYS:
             label_map[key] = get_secret_resource_label(key, True)
+    order_label_map = dict(ProductionOrder.ORDER_TYPES)
     for order_type, cost in overrides.items():
-        if order_type not in TERRAFORM_ORDER_LABELS:
+        if order_type not in order_label_map:
             continue
         normalised = _normalise_cost_dict(cost)
-        label = '%s Cost' % format_terraform_order_label(order_type, None)
+        if order_type in TERRAFORM_ORDER_LABELS:
+            label_text = format_terraform_order_label(order_type, None)
+        else:
+            label_text = order_label_map.get(order_type, order_type)
+        label = '%s Cost' % label_text
         parts = []
         bp_val = normalised.get('bp', 0)
         if bp_val:
             parts.append('BP %s' % bp_val)
         for key in RESEARCH_RESOURCE_KEYS:
             amount = int(normalised.get(key, 0) or 0)
-            if amount > 0:
+            if amount != 0:
                 parts.append('%s %skt' % (label_map.get(key, str(key).title()), amount))
         colonists = int(normalised.get('colonists', 0) or 0)
         if colonists:
