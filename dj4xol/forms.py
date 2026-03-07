@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.password_validation import password_validators_help_text_html
-from .models import ServerRace, ServerRaceType, Game, Account
+from .models import ServerRace, ServerRaceType, Game, Account, ServerSettings
 from .name_rules import validate_non_reserved_identity_name
 from .research import get_global_research_max_level, get_starting_tech_balance_cost
 
@@ -366,6 +366,90 @@ class NewGameForm(forms.Form):
                 continue
             result.append(('email' if '@' in item else 'username', item))
         return result
+
+
+class ServerSettingsForm(forms.Form):
+    server_name = forms.CharField(label="Server Name", max_length=120)
+    server_tagline = forms.CharField(label="Server Tagline", max_length=255, required=False)
+    server_admin = forms.CharField(label="Server Admin", max_length=120, required=False)
+    server_contact = forms.EmailField(label="Server Contact Email", required=False)
+    server_url = forms.URLField(label="Public Server URL", required=False)
+    server_welcome = forms.CharField(
+        label="Homepage Welcome",
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 8}),
+    )
+    allow_self_signup = forms.BooleanField(
+        label="Allow Self Sign-up",
+        required=False,
+    )
+    enable_email = forms.BooleanField(
+        label="Enable Email",
+        required=False,
+    )
+    enable_gpt = forms.BooleanField(
+        label="Enable GPT",
+        required=False,
+    )
+    enable_debug_actions = forms.BooleanField(
+        label="Enable Debug Actions",
+        required=False,
+    )
+    enable_play_api = forms.BooleanField(
+        label="Enable Web Play CLI",
+        required=False,
+    )
+
+    SETTINGS_META = {
+        'server_name': {'description': 'Server name'},
+        'server_tagline': {'description': 'Server tagline'},
+        'server_admin': {'description': "Server admin's name"},
+        'server_contact': {'description': "Server admin's email"},
+        'server_url': {'description': 'Server URL', 'use_long_value': True},
+        'server_welcome': {'description': 'Welcome message on homepage', 'use_long_value': True},
+        'allow_self_signup': {'description': 'Allow self-sign-up', 'boolean': True},
+        'enable_email': {'description': 'Enable email', 'boolean': True},
+        'enable_gpt': {'description': 'Enable GPT API usage', 'boolean': True},
+        'enable_debug_actions': {'description': 'Enable debug actions in game panels', 'boolean': True},
+        'enable_play_api': {'description': 'Enable web Play CLI API', 'boolean': True},
+    }
+
+    @classmethod
+    def initial_from_settings(cls):
+        initial = {}
+        for key, meta in cls.SETTINGS_META.items():
+            value = ServerSettings.get(key, '')
+            if meta.get('boolean'):
+                initial[key] = str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+            else:
+                initial[key] = value
+        return initial
+
+    def save(self, user=None):
+        for key, meta in self.SETTINGS_META.items():
+            raw_value = self.cleaned_data.get(key)
+            if meta.get('boolean'):
+                stored = 'True' if raw_value else 'False'
+            else:
+                stored = str(raw_value or '')
+            use_long_value = bool(meta.get('use_long_value'))
+            value = ''
+            long_value = ''
+            if use_long_value:
+                long_value = stored
+                value = stored if len(stored) <= 30 else ''
+            else:
+                if len(stored) <= 30:
+                    value = stored
+                else:
+                    long_value = stored
+            defaults = {
+                'value': value,
+                'long_value': long_value,
+                'description': meta.get('description', key.replace('_', ' ').title()),
+                'modified_by': user,
+            }
+            ServerSettings.objects.update_or_create(key=key, defaults=defaults)
 
 
 # Import models.Q for the query

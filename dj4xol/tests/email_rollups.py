@@ -62,6 +62,13 @@ class TestGenericEmailAction(TestCase):
                 'description': 'Enable outbound email',
             }
         )
+        ServerSettings.objects.update_or_create(
+            key='server_url',
+            defaults={
+                'value': 'https://example.test',
+                'description': 'Server URL',
+            }
+        )
         self.user = User.objects.create_user(
             'staffer', 'staffer@example.com', 'pw'
         )
@@ -89,3 +96,6 @@ class TestGenericEmailAction(TestCase):
         self.assertEqual(message.to, ['staffer@example.com'])
         self.assertIn('generic DJ4XOL test email', message.body)
         self.assertIn('there are no message-rollup updates to send', message.body)
+        self.assertIn('Profile URL: https://example.test', message.body)
+        self.assertIn('/4x/profile/', message.body)
+        self.assertIn('Unsubscribe URL: https://example.test', message.body)

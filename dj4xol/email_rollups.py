@@ -103,6 +103,8 @@ def send_generic_test_email_for_account(account, dry_run=False, stdout=None):
         return False, 'No email address'
 
     base_url = _get_server_url() or 'not configured'
+    profile_url = _profile_url(_get_server_url())
+    unsubscribe_url = _unsubscribe_url(account, _get_server_url())
     from_email = _get_from_email()
     subject = 'DJ4XOL: Test email'
     body = (
@@ -112,11 +114,15 @@ def send_generic_test_email_for_account(account, dry_run=False, stdout=None):
         'Account: {alias}\n'
         'Email: {email}\n'
         'Server URL: {server_url}\n'
+        'Profile URL: {profile_url}\n'
+        'Unsubscribe URL: {unsubscribe_url}\n'
         'Sent at: {sent_at}\n'
     ).format(
         alias=getattr(account, 'alias', '') or 'unknown',
         email=account.email,
         server_url=base_url,
+        profile_url=profile_url,
+        unsubscribe_url=unsubscribe_url,
         sent_at=timezone.now().isoformat(),
     )
 

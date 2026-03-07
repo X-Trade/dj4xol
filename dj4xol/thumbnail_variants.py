@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageEnhance, ImageFilter
-
 
 BLUR_SUFFIX = "__blur.png"
 
@@ -40,16 +38,20 @@ def get_blur_variant_path(path):
 
 
 def _blur_rgba_image(image):
+    from PIL import Image, ImageEnhance, ImageFilter
+
     rgba = image.convert("RGBA")
     red, green, blue, alpha = rgba.split()
     rgb = Image.merge("RGB", (red, green, blue))
-    rgb = rgb.filter(ImageFilter.GaussianBlur(radius=1.8))
-    rgb = ImageEnhance.Color(rgb).enhance(0.82)
-    rgb = ImageEnhance.Brightness(rgb).enhance(0.95)
+    rgb = rgb.filter(ImageFilter.GaussianBlur(radius=3.0))
+    rgb = ImageEnhance.Color(rgb).enhance(0.72)
+    rgb = ImageEnhance.Brightness(rgb).enhance(0.90)
     return Image.merge("RGBA", (*rgb.split(), alpha))
 
 
 def build_blur_variant(source_path, target_path):
+    from PIL import Image
+
     target_path.parent.mkdir(parents=True, exist_ok=True)
     with Image.open(str(source_path)) as image:
         blurred = _blur_rgba_image(image)
