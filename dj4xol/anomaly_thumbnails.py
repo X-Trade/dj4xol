@@ -8,6 +8,7 @@ from .anomaly_thumbnail_catalog import (
     ALL_ANOMALY_THUMBNAILS,
     ANOMALY_THUMBNAILS_BY_TYPE,
 )
+from .thumbnail_variants import get_blur_variant_path
 
 
 ANOMALY_TYPE_TO_FOLDER = {
@@ -96,3 +97,7 @@ def nebula_palette_from_thumbnail(path):
         if name.startswith(palette + "_"):
             return palette
     return None
+
+
+def get_blurred_anomaly_thumbnail(path):
+    return get_blur_variant_path(path)

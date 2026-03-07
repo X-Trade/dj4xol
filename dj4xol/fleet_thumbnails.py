@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .ship_thumbnail_catalog import ALL_SHIP_THUMBNAILS
 from .ship_thumbnail_catalog import SHIP_THUMBNAILS_BY_CLASS
+from .thumbnail_variants import get_blur_variant_path
 
 
 DEFAULT_FLEET_THUMBNAIL = "dj4xol/images/thumbs/ship/scout/1__r01_c01.png"
@@ -72,3 +73,7 @@ def choose_fleet_thumbnail(seed, ship_class=None):
         return DEFAULT_FLEET_THUMBNAIL
     idx = _seed_to_index(seed, len(pool))
     return pool[idx]
+
+
+def get_blurred_fleet_thumbnail(path):
+    return get_blur_variant_path(path)

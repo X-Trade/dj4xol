@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .thumbnail_variants import ensure_blur_variants, is_blur_variant_path
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 THUMBS_ROOT = PROJECT_ROOT / "dj4xol" / "static" / "dj4xol" / "images" / "thumbs" / "star"
@@ -17,6 +19,8 @@ OUTPUT_MODULE = PROJECT_ROOT / "dj4xol" / "star_thumbnail_catalog.py"
 def build_catalog():
     paths = []
     for png in sorted(THUMBS_ROOT.rglob("*.png")):
+        if is_blur_variant_path(png.name):
+            continue
         rel = png.relative_to(PROJECT_ROOT / "dj4xol" / "static").as_posix()
         paths.append(rel)
     return paths
@@ -38,6 +42,7 @@ def render_module(paths):
 
 
 def main():
+    ensure_blur_variants(THUMBS_ROOT)
     paths = build_catalog()
     if not paths:
         raise SystemExit(f"No thumbnails found under {THUMBS_ROOT}")

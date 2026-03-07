@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.password_validation import password_validators_help_text_html
 from .models import ServerRace, ServerRaceType, Game, Account
+from .name_rules import validate_non_reserved_identity_name
 from .research import get_global_research_max_level, get_starting_tech_balance_cost
 
 
@@ -390,6 +391,11 @@ class SignupForm(UserCreationForm):
             'autocapitalize': 'none',
         })
 
+    def clean_username(self):
+        username = super(SignupForm, self).clean_username()
+        validate_non_reserved_identity_name(username, 'Username')
+        return username
+
     def save(self, commit=True):
         user = super().save(commit=False)
         user.email = self.cleaned_data['email']
@@ -476,7 +482,13 @@ class RegistrationForm(forms.ModelForm):
             raise forms.ValidationError('This field is required.')
         if User.objects.filter(username=username).exists():
             raise forms.ValidationError('A user with that username already exists.')
+        validate_non_reserved_identity_name(username, 'Username')
         return username
+
+    def clean_alias(self):
+        alias = (self.cleaned_data.get('alias') or '').strip()
+        validate_non_reserved_identity_name(alias, 'Account name')
+        return alias
 
     def clean(self):
         cleaned = super().clean()

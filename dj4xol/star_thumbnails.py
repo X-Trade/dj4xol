@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from .star_thumbnail_catalog import ALL_STAR_THUMBNAILS
+from .thumbnail_variants import get_blur_variant_path
 
 
 DEFAULT_STAR_THUMBNAIL = "dj4xol/images/thumbs/star/all/1__r01_c01.png"
@@ -55,3 +56,7 @@ def choose_star_thumbnail(seed):
         return DEFAULT_STAR_THUMBNAIL
     idx = _seed_to_index(seed, len(pool))
     return pool[idx]
+
+
+def get_blurred_star_thumbnail(path):
+    return get_blur_variant_path(path)

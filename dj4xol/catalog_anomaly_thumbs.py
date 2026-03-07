@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+from .thumbnail_variants import ensure_blur_variants, is_blur_variant_path
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 THUMBS_ROOT = PROJECT_ROOT / "dj4xol" / "static" / "dj4xol" / "images" / "thumbs" / "anomaly"
@@ -18,6 +20,8 @@ OUTPUT_MODULE = PROJECT_ROOT / "dj4xol" / "anomaly_thumbnail_catalog.py"
 def build_catalog():
     by_type = defaultdict(list)
     for png in sorted(THUMBS_ROOT.rglob("*.png")):
+        if is_blur_variant_path(png.name):
+            continue
         rel = png.relative_to(PROJECT_ROOT / "dj4xol" / "static").as_posix()
         by_type[png.parent.name].append(rel)
     return dict(sorted(by_type.items(), key=lambda item: item[0]))
@@ -49,6 +53,7 @@ def render_module(catalog):
 
 
 def main():
+    ensure_blur_variants(THUMBS_ROOT)
     catalog = build_catalog()
     if not catalog:
         raise SystemExit(f"No thumbnails found under {THUMBS_ROOT}")

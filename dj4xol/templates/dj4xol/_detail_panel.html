@@ -4,13 +4,21 @@
 <div class="panel-content panel-stack detail-panel-stack">
     <div class="detail-header{% if detail.unexplored or detail.is_anomaly and not detail.anomaly_type %} detail-header-unexplored{% endif %}">
         {% if detail.is_fleet and detail.fleet_thumbnail %}
-        <img class="object-thumbnail thumb-pop-target{% if detail.thumbnail_blurred %} object-thumbnail-blurred{% endif %}" src="{% static detail.fleet_thumbnail %}" alt="Fleet thumbnail">
+        <div class="object-thumbnail-frame">
+            <img class="object-thumbnail thumb-pop-target" src="{% static detail.fleet_thumbnail %}" alt="Fleet thumbnail">
+        </div>
         {% elif detail.is_star and detail.star_thumbnail %}
-        <img class="object-thumbnail thumb-pop-target{% if detail.thumbnail_blurred %} object-thumbnail-blurred{% endif %}" src="{% static detail.star_thumbnail %}" alt="Star thumbnail">
+        <div class="object-thumbnail-frame">
+            <img class="object-thumbnail thumb-pop-target" src="{% static detail.star_thumbnail %}" alt="Star thumbnail">
+        </div>
         {% elif detail.is_salvage and detail.salvage_thumbnail %}
-        <img class="object-thumbnail thumb-pop-target{% if detail.thumbnail_blurred %} object-thumbnail-blurred{% endif %}" src="{% static detail.salvage_thumbnail %}" alt="Salvage thumbnail">
+        <div class="object-thumbnail-frame">
+            <img class="object-thumbnail thumb-pop-target" src="{% static detail.salvage_thumbnail %}" alt="Salvage thumbnail">
+        </div>
         {% elif detail.is_anomaly and detail.anomaly_thumbnail %}
-        <img class="object-thumbnail thumb-pop-target{% if detail.thumbnail_blurred %} object-thumbnail-blurred{% endif %}" src="{% static detail.anomaly_thumbnail %}" alt="Anomaly thumbnail">
+        <div class="object-thumbnail-frame">
+            <img class="object-thumbnail thumb-pop-target" src="{% static detail.anomaly_thumbnail %}" alt="Anomaly thumbnail">
+        </div>
         {% endif %}
         {% if detail.objects_here|length > 1 %}
         <select class="detail-selector" onchange="window.location.href='?x={{ selection.x }}&y={{ selection.y }}&sel=' + this.value">

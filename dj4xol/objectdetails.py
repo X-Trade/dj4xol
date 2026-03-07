@@ -2,6 +2,9 @@ from django.db import models
 from dj4xol.models import Fleet, Star, Salvage, Anomaly, Report
 from dj4xol.scanners import get_scanner_sources_for_player, fleet_visible_to_player
 from dj4xol.turn import apply_population_change, KT_PER_MINE
+from dj4xol.fleet_thumbnails import get_blurred_fleet_thumbnail
+from dj4xol.star_thumbnails import get_blurred_star_thumbnail
+from dj4xol.anomaly_thumbnails import get_blurred_anomaly_thumbnail
 from dj4xol.mineral_rules import (
     ALL_RESOURCE_KEYS,
     BASE_MINERAL_KEYS,
@@ -9,7 +12,10 @@ from dj4xol.mineral_rules import (
     known_resource_keys,
 )
 from dj4xol.secret_resources import get_secret_resource_label
-from dj4xol.salvage_thumbnails import get_salvage_thumbnail
+from dj4xol.salvage_thumbnails import (
+    get_blurred_salvage_thumbnail,
+    get_salvage_thumbnail,
+)
 from dj4xol.research import (
     get_player_colony_defense_level,
     get_player_production_costs,
@@ -206,6 +212,7 @@ class DetailBuilder():
                      'fleet_capabilities': self.get_fleet_capabilities(),
                      'fleet_inventory': self.build_fleet_inventory(),
                      'transfer_targets': self.get_transfer_targets(),
+                     'transfer_recipients': self.get_transfer_recipients(),
                      'colonise_targets': self.get_colonise_targets(),
                      'bomb_targets': self.get_bomb_targets(),
                      'remotemine_targets': self.get_remotemine_targets(),
@@ -330,6 +337,10 @@ class DetailBuilder():
             target_id=self.selected_obj.id
         )
         data = report.get_report_data()
+        report_tier = data.get('report_tier')
+        report_owner_name = data.get('player_name')
+        if target_type == 'fleet' and report_tier in ('ownership', 'advanced', 'encounter'):
+            report_owner_name = report_owner_name or 'Abandoned'
 
         # Base detail fields
         detail = {
@@ -358,15 +369,16 @@ class DetailBuilder():
             'report_age': self.game.year - report_year,
             'is_current': False,
             'is_owned': False,
-            'report_tier': data.get('report_tier'),
-            'owner_known': bool(data.get('player_name')),
+            'report_tier': report_tier,
+            'owner_known': bool(report_owner_name),
             'show_composition': True,
-            'thumbnail_blurred': data.get('report_tier') == 'basic',
+            'thumbnail_blurred': report_tier == 'basic',
         }
+        self._apply_report_thumbnail_paths(detail, report_tier)
 
         # Add player name from cached data
-        if data.get('player_name'):
-            detail['player'] = data['player_name']
+        if report_owner_name:
+            detail['player'] = report_owner_name
 
         # Type-specific fields from cached report
         if target_type == 'star':
@@ -466,6 +478,27 @@ class DetailBuilder():
             detail['stability'] = data.get('stability')
             detail['heading'] = data.get('heading')
 
+        return detail
+
+    def _apply_report_thumbnail_paths(self, detail, report_tier):
+        if report_tier != 'basic':
+            return detail
+        if detail.get('fleet_thumbnail'):
+            detail['fleet_thumbnail'] = get_blurred_fleet_thumbnail(
+                detail['fleet_thumbnail']
+            )
+        if detail.get('star_thumbnail'):
+            detail['star_thumbnail'] = get_blurred_star_thumbnail(
+                detail['star_thumbnail']
+            )
+        if detail.get('anomaly_thumbnail'):
+            detail['anomaly_thumbnail'] = get_blurred_anomaly_thumbnail(
+                detail['anomaly_thumbnail']
+            )
+        if detail.get('salvage_thumbnail'):
+            detail['salvage_thumbnail'] = get_blurred_salvage_thumbnail(
+                self.selected_obj
+            )
         return detail
 
     def _build_env_from_report(self, data):
@@ -618,6 +651,8 @@ class DetailBuilder():
         if player:
             username = player.account.alias if player.account else 'Unknown'
             return '%s (%s)' % (player.name, username)
+        if isinstance(self.selected_obj, Fleet):
+            return 'Abandoned'
         return None
 
     def find_all_at_coordinates(self, x, y):
@@ -995,7 +1030,7 @@ class DetailBuilder():
             if o.order_type in ['MOVE', 'INTERCEPT', 'PATROL'] and x is not None and y is not None:
                 current_x = int(x)
                 current_y = int(y)
-            repeat_allowed = o.order_type not in ['COLONISE', 'MERGE', 'SCUTTLE']
+            repeat_allowed = o.order_type not in ['COLONISE', 'MERGE', 'SCUTTLE', 'GIVE']
             order_data = {
                 'short_id': o.short_id,
                 'target': target,
@@ -1005,6 +1040,9 @@ class DetailBuilder():
                 'repeat': o.repeat,
                 'repeat_allowed': repeat_allowed,
                 'order_type': o.order_type,
+                'transfer_player_name': (
+                    o.transfer_player.name if getattr(o, 'transfer_player_id', None) else None
+                ),
                 'patrol_radius': o.patrol_radius,
                 'mine_until_full': bool(o.mine_until_full),
                 'transfer_type': o.transfer_type,
@@ -1049,6 +1087,25 @@ class DetailBuilder():
 
             orders.append(order_data)
         return orders
+
+    def get_transfer_recipients(self):
+        """Return possible fleet transfer recipients for the selected fleet."""
+        if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
+            return []
+        if not self.player or self.selected_obj.player != self.player:
+            return []
+        recipients = [{
+            'value': '',
+            'label': 'Abandoned',
+        }]
+        others = self.game.players.exclude(id=self.player.id).exclude(defeated=True).order_by('name', 'id')
+        for other in others:
+            alias = other.account.alias if getattr(other, 'account', None) else 'Unknown'
+            recipients.append({
+                'value': other.short_id,
+                'label': '%s (%s)' % (other.name, alias),
+            })
+        return recipients
 
     def get_fleet_cargo(self, include_cargo=False):
         """Get cargo details for selected fleet."""

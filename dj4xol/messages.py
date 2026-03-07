@@ -1264,6 +1264,59 @@ class FleetMergedMessageFactory(MessageFactory):
         )
 
 
+class FleetTransferredMessageFactory(MessageFactory):
+    """Messages for fleet ownership transfers initiated by the current owner."""
+    category = 'GENERAL'
+    priority = False
+    templates_to_player = [
+        "{fleet} was transferred to {recipient}.",
+        "Transfer complete: {fleet} now belongs to {recipient}.",
+        "{fleet} was handed over to {recipient}.",
+    ]
+    templates_abandoned = [
+        "{fleet} was abandoned and left adrift.",
+        "{fleet} was set adrift and is now abandoned.",
+        "Abandonment complete: {fleet} is now an unowned derelict.",
+    ]
+
+    def __init__(self, game, player, fleet_name, recipient_name=None, message=None):
+        super().__init__(game, player, message, intensity=0.0)
+        self.fleet_name = fleet_name
+        self.recipient_name = recipient_name
+
+    def format_message(self):
+        if self.recipient_name:
+            return random.choice(self.templates_to_player).format(
+                fleet=self.fleet_name,
+                recipient=self.recipient_name,
+            )
+        return random.choice(self.templates_abandoned).format(
+            fleet=self.fleet_name,
+        )
+
+
+class FleetReceivedMessageFactory(MessageFactory):
+    """Messages for players receiving a transferred fleet."""
+    category = 'GENERAL'
+    priority = False
+    templates = [
+        "{fleet} was transferred to us by {sender}.",
+        "We received {fleet} from {sender}.",
+        "{sender} transferred control of {fleet} to us.",
+    ]
+
+    def __init__(self, game, player, fleet_name, sender_name, message=None):
+        super().__init__(game, player, message, intensity=0.0)
+        self.fleet_name = fleet_name
+        self.sender_name = sender_name
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=self.fleet_name,
+            sender=self.sender_name,
+        )
+
+
 class FleetOrdersCompletedMessageFactory(MessageFactory):
     """Message when a fleet has no remaining assigned orders."""
     category = 'GENERAL'

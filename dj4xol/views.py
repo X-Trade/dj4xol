@@ -1230,6 +1230,18 @@ def add_fleet_order(request, game_short_id):
                 order.x = int(target_x)
                 order.y = int(target_y)
 
+    elif order_type == 'GIVE':
+        order.repeat = False
+        transfer_player_short_id = (request.POST.get('transfer_player', '') or '').strip().lower()
+        if transfer_player_short_id:
+            order.transfer_player = Player.objects.get(
+                short_id=transfer_player_short_id,
+                game=game,
+                defeated=False,
+            )
+            if order.transfer_player_id == player.id:
+                return _redirect_preserving_selection(request, game)
+
     elif order_type == 'COLONISE':
         # Colonise orders always have repeat=False (fleet is destroyed)
         order.repeat = False
@@ -1339,7 +1351,7 @@ def toggle_fleet_order_repeat(request, game_short_id, order_short_id):
         return _redirect_preserving_selection(request, game)
 
     order = FleetOrders.objects.get(short_id=order_short_id, game=game, fleet__player=player)
-    if order.order_type in ['COLONISE', 'MERGE', 'SCUTTLE']:
+    if order.order_type in ['COLONISE', 'MERGE', 'SCUTTLE', 'GIVE']:
         return _redirect_preserving_selection(request, game)
 
     order.repeat = not bool(order.repeat)

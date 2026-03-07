@@ -364,7 +364,7 @@
     name: 'Prototype Warp Coils'
     description: 'First-generation warp drive with poor fuel economy and conservative safety margins.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 2, "fuel_efficiency": 0.49, "overmax_fuel_penalty": 1.40}'
+    params_json: '{"max_warp_speed": 2, "fuel_efficiency": 0.49, "overmax_fuel_penalty": 1.85}'
     display_order: 5
     enabled: True
 
@@ -377,7 +377,7 @@
     name: 'Improved Warp Coils'
     description: 'Refined coil harmonics permit safer high-speed transit.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 3, "fuel_efficiency": 0.60, "overmax_fuel_penalty": 1.25}'
+    params_json: '{"max_warp_speed": 3, "fuel_efficiency": 0.60, "overmax_fuel_penalty": 1.78}'
     display_order: 10
     enabled: True
 
@@ -390,7 +390,7 @@
     name: 'Adaptive Navigation Computers'
     description: 'Advanced guidance packages support tighter warp tolerances.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 4, "fuel_efficiency": 0.66, "overmax_fuel_penalty": 1.20}'
+    params_json: '{"max_warp_speed": 4, "fuel_efficiency": 0.66, "overmax_fuel_penalty": 1.72}'
     display_order: 20
     enabled: True
 
@@ -403,7 +403,7 @@
     name: 'Reinforced Field Lattices'
     description: 'Improved stress management allows sustained higher warp.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 5, "fuel_efficiency": 0.73, "overmax_fuel_penalty": 1.12}'
+    params_json: '{"max_warp_speed": 5, "fuel_efficiency": 0.73, "overmax_fuel_penalty": 1.65}'
     display_order: 30
     enabled: True
 
@@ -416,7 +416,7 @@
     name: 'Phase-Coupled Warp Frames'
     description: 'Experimental frame coupling pushes safe warp limits further.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 6, "fuel_efficiency": 0.80, "overmax_fuel_penalty": 1.05}'
+    params_json: '{"max_warp_speed": 6, "fuel_efficiency": 0.80, "overmax_fuel_penalty": 1.58}'
     display_order: 40
     enabled: True
 
@@ -429,7 +429,7 @@
     name: 'Quantum Slipstream Baffles'
     description: 'Slipstream damping baffles reduce transit turbulence at higher warp.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 7, "fuel_efficiency": 0.88, "overmax_fuel_penalty": 1.00}'
+    params_json: '{"max_warp_speed": 7, "fuel_efficiency": 0.88, "overmax_fuel_penalty": 1.50}'
     display_order: 42
     enabled: True
 
@@ -442,7 +442,7 @@
     name: 'Interstellar Ram Scoops'
     description: 'Fuel-scoop geometry stabilizes long-range high-warp transits.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 8, "fuel_efficiency": 0.96, "overmax_fuel_penalty": 0.92}'
+    params_json: '{"max_warp_speed": 8, "fuel_efficiency": 0.96, "overmax_fuel_penalty": 1.20}'
     display_order: 44
     enabled: True
 
@@ -455,7 +455,7 @@
     name: 'Inertial Shear Dampers'
     description: 'Reinforced dampers keep hull stress within tolerances at extreme cruise warp.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 9, "fuel_efficiency": 1.00, "overmax_fuel_penalty": 0.86}'
+    params_json: '{"max_warp_speed": 9, "fuel_efficiency": 1.00, "overmax_fuel_penalty": 1.00}'
     display_order: 46
     enabled: True
 
@@ -632,7 +632,7 @@
   pk: "00000000-0000-0000-0000-000000000206"
   fields:
     short_id: "tech00000206"
-    category: 2
+    category: 1
     level: 6
     name: 'Phased Disruptor'
     description: 'Phase modulation improves disruptor coupling against defenses.'
@@ -711,7 +711,7 @@
   fields:
     short_id: "tech00000212"
     category: 2
-    level: 6
+    level: 5
     name: 'Targeting Computer'
     description: 'Advanced fire-control logic optimizes fleet-wide target assignment.'
     tech_type: 'ELECTRICAL'
@@ -1048,7 +1048,7 @@
   pk: "00000000-0000-0000-0000-000000000403"
   fields:
     short_id: "tech00000403"
-    category: 2
+    category: 5
     level: 6
     name: 'Planetary Disruptor Banks'
     description: 'Heavy fixed disruptors increase anti-invasion lethality.'
@@ -1056,6 +1056,13 @@
     params_json: '{"colony_defense_level": 0.70}'
     display_order: 190
     enabled: True
+
+- model: dj4xol.ResearchLevelPrerequisite
+  fields:
+    category: 5
+    level: 6
+    requires_category: 1
+    min_level: 5
 
 - model: dj4xol.Technology
   pk: "00000000-0000-0000-0000-000000000404"
