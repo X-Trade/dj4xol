@@ -89,6 +89,19 @@ class DetailBuilder():
             get_scanner_sources_for_player(game, player)
             if player and not self.spectator_mode else []
         )
+        self._reported_salvage_ids = set()
+        if self.spectator_mode or self.admin_view:
+            self._reported_salvage_ids = set(
+                self.game.salvages.values_list('id', flat=True)
+            )
+        elif self.player:
+            self._reported_salvage_ids = set(
+                Report.objects.filter(
+                    game=self.game,
+                    player=self.player,
+                    target_type='salvage',
+                ).values_list('target_id', flat=True)
+            )
         self.set_coordinates(x, y)
         self.find(x, y, selected)
 
@@ -131,6 +144,7 @@ class DetailBuilder():
                     'is_fleet': isinstance(self.selected_obj, Fleet),
                     'is_salvage': isinstance(self.selected_obj, Salvage),
                     'is_anomaly': isinstance(self.selected_obj, Anomaly),
+                    'thumbnail_blurred': False,
                 }
 
             if report_year is not None:
@@ -175,6 +189,11 @@ class DetailBuilder():
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
                      'salvage_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Salvage) else None,
+                     'salvage_type': self.selected_obj.salvage_type if isinstance(self.selected_obj, Salvage) else None,
+                     'salvage_type_display': (
+                         self.selected_obj.get_salvage_type_display()
+                         if isinstance(self.selected_obj, Salvage) else None
+                     ),
                      'anomaly_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Anomaly) else None,
                      'anomaly_type': self.selected_obj.anomaly_type if isinstance(self.selected_obj, Anomaly) else None,
                      'stability': self.selected_obj.stability if isinstance(self.selected_obj, Anomaly) else None,
@@ -199,6 +218,7 @@ class DetailBuilder():
                      'y': self.selected_obj.y,
                      'report_year': None,
                      'is_current': True,
+                     'thumbnail_blurred': False,
                      }
             if detail['effective_location']:
                 effective_x, effective_y = detail['effective_location']
@@ -232,6 +252,8 @@ class DetailBuilder():
             'star_short_id': obj.short_id if isinstance(obj, Star) else None,
             'fleet_short_id': obj.short_id if isinstance(obj, Fleet) else None,
             'salvage_short_id': obj.short_id if isinstance(obj, Salvage) else None,
+            'salvage_type': obj.salvage_type if isinstance(obj, Salvage) else None,
+            'salvage_type_display': obj.get_salvage_type_display() if isinstance(obj, Salvage) else None,
             'anomaly_short_id': obj.short_id if isinstance(obj, Anomaly) else None,
             'anomaly_type': obj.anomaly_type if isinstance(obj, Anomaly) else None,
             'stability': obj.stability if isinstance(obj, Anomaly) else None,
@@ -239,6 +261,7 @@ class DetailBuilder():
             'secret_resource_labels': {key: self._resource_label(key) for key in SECRET_RESOURCE_KEYS},
             'x': obj.x,
             'y': obj.y,
+            'thumbnail_blurred': False,
         }
 
     def _build_spectator_detail(self):
@@ -338,6 +361,7 @@ class DetailBuilder():
             'report_tier': data.get('report_tier'),
             'owner_known': bool(data.get('player_name')),
             'show_composition': True,
+            'thumbnail_blurred': data.get('report_tier') == 'basic',
         }
 
         # Add player name from cached data
@@ -419,6 +443,8 @@ class DetailBuilder():
                 detail['fleet_inventory'] = self._build_fleet_inventory_from_report(data)
         elif target_type == 'salvage':
             detail['salvage_short_id'] = self.selected_obj.short_id
+            detail['salvage_type'] = data.get('salvage_type')
+            detail['salvage_type_display'] = self.selected_obj.get_salvage_type_display()
             if 'total_minerals' in data:
                 items = []
                 for key in ALL_RESOURCE_KEYS:
@@ -599,7 +625,7 @@ class DetailBuilder():
         y = int(y)
         stars = self.game.stars.filter(x=x, y=y).all()
         fleets = self.game.fleets.filter(x=x, y=y).all()
-        salvages = self.game.salvages.filter(x=x, y=y).all()
+        salvages = self._visible_salvages_qs().filter(x=x, y=y).all()
         anomalies = self.game.anomalys.filter(x=x, y=y).all()
         visible_fleets = []
         if self.spectator_mode or self.admin_view:
@@ -627,9 +653,27 @@ class DetailBuilder():
                 Salvage.objects.filter(game=self.game, short_id=short_id).first() or
                 Anomaly.objects.filter(game=self.game, short_id=short_id).first()
             )
+            if isinstance(self.selected_obj, Salvage) and not self._is_salvage_visible(self.selected_obj):
+                self.selected_obj = None
             if self.selected_obj:
                 self.check_selected()
         return self.selected_obj
+
+    def _visible_salvages_qs(self):
+        if self.spectator_mode or self.admin_view:
+            return self.game.salvages.all()
+        if not self.player:
+            return self.game.salvages.none()
+        return self.game.salvages.filter(id__in=self._reported_salvage_ids)
+
+    def _is_salvage_visible(self, salvage):
+        if salvage is None:
+            return False
+        if self.spectator_mode or self.admin_view:
+            return True
+        if not self.player:
+            return False
+        return salvage.id in self._reported_salvage_ids
 
     def check_selected(self):
         if self.selected_obj and self.selected_obj.game != self.game:
@@ -1379,7 +1423,7 @@ class DetailBuilder():
                     })
 
         if include_salvage:
-            for salvage in self.game.salvages.filter(x=x, y=y):
+            for salvage in self._visible_salvages_qs().filter(x=x, y=y):
                 add_target({
                     'name': salvage.name,
                     'short_id': salvage.short_id,
@@ -1442,7 +1486,7 @@ class DetailBuilder():
             include_order_types=['MOVE', 'INTERCEPT', 'PATROL'],
         )
         has_star = self.game.stars.filter(x=effective_x, y=effective_y).exists()
-        has_salvage = self.game.salvages.filter(x=effective_x, y=effective_y).exists()
+        has_salvage = self._visible_salvages_qs().filter(x=effective_x, y=effective_y).exists()
         if not has_star and not has_salvage:
             if not any(target.get('type') == 'space' for target in targets):
                 empty_space_name = DetailBuilder.format_empty_space(effective_x, effective_y)
@@ -1465,7 +1509,7 @@ class DetailBuilder():
                 for key in SECRET_RESOURCE_KEYS:
                     if int(getattr(fleet, f'{key}_inventory', 0) or 0) > 0:
                         resource_flags[key] = True
-            for salvage in self.game.salvages.filter(x=effective_x, y=effective_y):
+            for salvage in self._visible_salvages_qs().filter(x=effective_x, y=effective_y):
                 for key in SECRET_RESOURCE_KEYS:
                     if int(getattr(salvage, f'{key}_inventory', 0) or 0) > 0:
                         resource_flags[key] = True

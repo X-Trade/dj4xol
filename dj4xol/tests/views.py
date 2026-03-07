@@ -11,6 +11,7 @@ from ..models import (
     ProductionOrder,
     Report,
     ResearchCategory,
+    Salvage,
     ServerSettings,
 )
 from ..turn import GameTurn
@@ -636,6 +637,7 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'data-section="composition"')
         self.assertNotContains(response, 'Bombs')
         self.assertNotContains(response, 'Wormhole Drive')
+        self.assertNotContains(response, 'object-thumbnail-blurred')
 
     def test_encounter_fleet_report_shows_capabilities(self):
         self.game.joinable = True
@@ -677,6 +679,57 @@ class TestDetailPanelReportTiers(TestCase):
         response = self._get_detail_response(enemy_fleet)
         self.assertContains(response, 'Bombs')
         self.assertContains(response, 'Wormhole Drive')
+
+    def test_basic_star_report_blurs_thumbnail(self):
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='star',
+            target_id=self.star.id,
+            cached_report=json.dumps({
+                'name': self.star.name,
+                'x': self.star.x,
+                'y': self.star.y,
+                'gravity': self.star.gravity,
+                'temperature': self.star.temperature,
+                'radiation': self.star.radiation,
+                'report_tier': 'basic',
+            }),
+        )
+        response = self._get_detail_response(self.star)
+        self.assertContains(response, 'object-thumbnail-blurred')
+
+    def test_basic_salvage_report_shows_total_and_type_with_blurred_thumbnail(self):
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=self.star.x + 1,
+            y=self.star.y + 1,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            ironium_inventory=13,
+            boranium_inventory=7,
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='salvage',
+            target_id=salvage.id,
+            cached_report=json.dumps({
+                'name': salvage.name,
+                'x': salvage.x,
+                'y': salvage.y,
+                'salvage_type': salvage.salvage_type,
+                'total_minerals': salvage.total_minerals,
+                'report_tier': 'basic',
+            }),
+        )
+        response = self._get_detail_response(salvage)
+        self.assertContains(response, 'object-thumbnail-blurred')
+        self.assertContains(response, 'Type')
+        self.assertContains(response, 'Ancient Debris')
+        self.assertContains(response, 'total: 20kt')
+        self.assertNotContains(response, 'Ironium')
 
 
 class TestFleetOrderViews(TestCase):

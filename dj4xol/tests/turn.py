@@ -2716,6 +2716,44 @@ class TestFleetTransferOrderExecution(TestCase):
         self.assertEqual(obj.id, anomaly.id)
         self.assertEqual((x, y), (anomaly.x, anomaly.y))
 
+    def test_get_actual_target_converts_deleted_salvage_target_to_space_coordinates(self):
+        game = default_game(stars=2)
+        player = game.players.first()
+        salvage = Salvage.objects.create(
+            game=game,
+            x=12,
+            y=12,
+            ironium_inventory=90,
+            boranium_inventory=10,
+            germanium_inventory=0,
+        )
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Recovery Ship",
+            x=12,
+            y=12,
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_salvage=salvage,
+            target_kind='OBJECT',
+            target_short_id=salvage.short_id,
+            x=salvage.x,
+            y=salvage.y,
+        )
+
+        salvage.delete()
+        order.refresh_from_db()
+
+        obj, x, y, kind = order.get_actual_target()
+        self.assertIsNone(obj)
+        self.assertEqual(kind, 'space')
+        self.assertEqual((x, y), (12, 12))
+
     def test_repeat_transfer_with_salvage_target_does_not_error(self):
         """Repeat transfer to salvage should not error when creating repeat order."""
         from ..models import FleetOrders, Salvage

@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from ..factory import GameFactory
-from ..models import Account, Report, Anomaly, Fleet
+from ..models import Account, Report, Anomaly, Fleet, Salvage
 from ..starmap import StarMap
 from ._util import default_game, get_default_race
 
@@ -66,6 +66,42 @@ class TestStarMap(TestCase):
         starmap = StarMap(game, player)
         html = starmap.render_map()
         self.assertIn('mapanomaly-wormhole', html)
+
+    def test_salvage_requires_report_to_render_on_player_map(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        salvage = Salvage.objects.create(
+            game=game,
+            x=24,
+            y=24,
+            ironium_inventory=40,
+            boranium_inventory=10,
+            germanium_inventory=5,
+        )
+
+        starmap = StarMap(game, player)
+        html = starmap.render_map()
+        self.assertNotIn(f'data-object-id="{salvage.short_id}"', html)
+
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='salvage',
+            target_id=salvage.id,
+            cached_report=json.dumps({
+                'name': salvage.name,
+                'x': salvage.x,
+                'y': salvage.y,
+                'salvage_type': salvage.salvage_type,
+                'total_minerals': salvage.total_minerals,
+                'report_tier': 'basic',
+            }),
+        )
+
+        starmap = StarMap(game, player)
+        html = starmap.render_map()
+        self.assertIn(f'data-object-id="{salvage.short_id}"', html)
 
     def test_rift_anomaly_has_deterministic_variable_height_style(self):
         game = default_game(stars=5, fleets=0)
