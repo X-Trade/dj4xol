@@ -1881,7 +1881,7 @@ class GameTurn():
                     'resource_z_inventory': getattr(obj, 'resource_z_inventory', None),
                     'colonists': getattr(obj, 'colonists', None),
                 })
-            if report_tier == 'encounter':
+            if report_tier == 'encounter' and include_cargo:
                 offense_mod = int(round(float(obj.offense_level) * 10.0))
                 defense_mod = int(round(float(obj.defense_level) * 10.0))
                 data.update({

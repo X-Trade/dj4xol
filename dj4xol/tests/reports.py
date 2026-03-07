@@ -1128,6 +1128,7 @@ class ScannerReportTest(TestCase):
             name='Encounter Fleet',
             x=x,
             y=y,
+            advanced_scanner_range=6,
         )
         enemy_fleet = Fleet.objects.create(
             game=self.game,
@@ -1236,6 +1237,10 @@ class ScannerReportTest(TestCase):
         self.assertEqual(data.get('report_tier'), 'encounter')
         self.assertNotIn('ironium_inventory', data)
         self.assertNotIn('cargo_capacity', data)
+        self.assertNotIn('max_safe_warp', data)
+        self.assertNotIn('offense_modifier', data)
+        self.assertNotIn('has_bombs', data)
+        self.assertNotIn('basic_scanner_range', data)
 
     def test_encounter_with_advanced_scanners_shows_fleet_cargo(self):
         x, y = self._find_empty_coord(exclude_star=self.enemy_star)
@@ -1383,6 +1388,43 @@ class NoScannerReportTierTest(TestCase):
             target_type='star',
             target_id=self.enemy_star.id,
         ).exists())
+
+    def test_no_scanners_basic_visit_hides_fleet_capabilities_without_advanced(self):
+        x = self.enemy_star.x
+        y = self.enemy_star.y
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Visitor',
+            x=x,
+            y=y,
+            basic_scanner_range=5,
+            advanced_scanner_range=0,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Enemy Fleet',
+            x=x,
+            y=y,
+            ship_count=4,
+            integrity=90,
+            max_safe_warp=9,
+            has_bombs='CONVENTIONAL',
+        )
+
+        GameTurn(self.game).generate_reports()
+
+        data = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        ).get_report_data()
+        self.assertEqual(data.get('report_tier'), 'basic')
+        self.assertNotIn('max_safe_warp', data)
+        self.assertNotIn('offense_modifier', data)
+        self.assertNotIn('has_bombs', data)
 
     def test_no_scanners_basic_visit_records_anomaly_type(self):
         anomaly = Anomaly.objects.create(

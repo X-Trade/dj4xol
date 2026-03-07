@@ -2871,6 +2871,44 @@ class TestFleetTransferOrderExecution(TestCase):
             ['star', 'star', 'fleet', 'fleet'],
         )
 
+    def test_destination_targets_obfuscate_unresolved_enemy_fleet_names(self):
+        game = default_game(stars=5, fleets=0)
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        player = game.players.first()
+        home = player.homeworld
+
+        own_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Alpha Fleet',
+            x=home.x,
+            y=home.y,
+            basic_scanner_range=6,
+            advanced_scanner_range=0,
+        )
+        other_user = User.objects.create_user('order_obf_enemy', 'oob@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        enemy_player = GameFactory(game=game).join_player(other_account, get_default_race())
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=enemy_player,
+            name='Leaky Enemy Name',
+            x=home.x,
+            y=home.y,
+        )
+
+        builder = DetailBuilder(game, home.x, home.y, own_fleet.short_id, player)
+        targets = builder.get_destination_targets(home.x, home.y)['targets']
+        enemy_target = next(
+            target for target in targets
+            if target['type'] == 'fleet' and target['short_id'] == enemy_fleet.short_id
+        )
+
+        self.assertEqual(enemy_target['name'], 'Unknown Fleet')
+        self.assertIn('Unknown Fleet', enemy_target['display_label'])
+        self.assertNotIn('Leaky Enemy Name', enemy_target['display_label'])
+
     def test_transfer_targets_order_future_fleets_after_current_fleets(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
@@ -3041,6 +3079,66 @@ class TestFleetTransferOrderExecution(TestCase):
 
         self.assertEqual(len(orders), 1)
         self.assertEqual(orders[0]['order_type'], 'BOMB')
+
+    def test_get_fleet_orders_obfuscates_unresolved_enemy_fleet_targets(self):
+        game = default_game(stars=5, fleets=0)
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        player = game.players.first()
+        home = player.homeworld
+        own_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Interceptor',
+            x=home.x,
+            y=home.y,
+            basic_scanner_range=6,
+            advanced_scanner_range=0,
+        )
+        other_user = User.objects.create_user('order_queue_enemy', 'oqe@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        enemy_player = GameFactory(game=game).join_player(other_account, get_default_race())
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=enemy_player,
+            name='Leaky Queue Name',
+            x=home.x,
+            y=home.y,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=own_fleet,
+            order_type='INTERCEPT',
+            target_fleet=enemy_fleet,
+            warpfactor=5,
+        )
+
+        builder = DetailBuilder(game, own_fleet.x, own_fleet.y, own_fleet.short_id, player)
+        orders = builder.get_fleet_orders()
+
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders[0]['target'], 'Unknown Fleet')
+        self.assertNotIn('Leaky Queue Name', orders[0]['target'])
+
+    def test_coordinate_selection_prefers_player_homeworld_star(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        home = player.homeworld
+        other_star = game.stars.exclude(pk=home.pk).first()
+        other_star.x = home.x
+        other_star.y = home.y
+        other_star.save(update_fields=['x', 'y'])
+
+        detail = DetailBuilder(
+            game,
+            x=home.x,
+            y=home.y,
+            selected=None,
+            player=player,
+        ).build_detail()
+
+        self.assertEqual(detail['selected_id'], home.short_id)
+        self.assertEqual(detail['name'], home.name)
 
     def test_get_actual_target_handles_cached_none_target_star(self):
         """Order target resolution should handle cached missing star relation."""

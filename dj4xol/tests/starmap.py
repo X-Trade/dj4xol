@@ -53,6 +53,23 @@ class TestStarMap(TestCase):
         self.assertIn('data-object-type="star"', html)
         self.assertIn('data-object-type="fleet"', html)
 
+    def test_multi_star_stack_uses_homeworld_as_primary_selection_target(self):
+        game = default_game(stars=2, fleets=0)
+        player = game.players.first()
+        home = player.homeworld
+        other_star = game.stars.exclude(pk=home.pk).first()
+        other_star.x = home.x
+        other_star.y = home.y
+        other_star.save(update_fields=['x', 'y'])
+
+        starmap = StarMap(game, player)
+        html = starmap.render_map()
+
+        self.assertIn(f'title="{home.name}"', html)
+        self.assertIn(f'sel={home.short_id}', html)
+        self.assertIn(f'data-object-id="{home.short_id}"', html)
+        self.assertNotIn(f'data-object-id="{other_star.short_id}"', html)
+
     def test_wormhole_anomaly_uses_wormhole_css_class(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
