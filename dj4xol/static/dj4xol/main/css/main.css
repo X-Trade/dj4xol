@@ -142,6 +142,17 @@ body.map-dragging * {
     display: none;
 }
 
+.column-orders.is-empty,
+.column-right.no-orders-panel .column-orders {
+    display: none;
+    min-height: 0;
+    flex: 0 0 auto;
+}
+
+.column-right.no-orders-panel .column-detail {
+    flex: 1 1 100%;
+}
+
 /* Panel minimum heights */
 .panel {
     min-height: 145px;
