@@ -38,24 +38,6 @@
                                 <th>Email</th>
                                 <td>{{ account.email }}</td>
                             </tr>
-                            <tr>
-                                <th>Game Updates</th>
-                                <td>{% if account.email_game_updates %}Enabled{% else %}Disabled{% endif %}</td>
-                            </tr>
-                            <tr>
-                                <th>Message Rollups</th>
-                                <td>
-                                    {% if account.email_game_updates %}
-                                        {{ account.email_game_rollups_per_day }} per day
-                                    {% else %}
-                                        0 per day
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>Newsletter</th>
-                                <td>{% if account.email_newsletter %}Enabled{% else %}Disabled{% endif %}</td>
-                            </tr>
                             {% if account.website_url %}
                             <tr>
                                 <th>Website</th>
