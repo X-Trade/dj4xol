@@ -726,6 +726,52 @@ class TestPlayCliWebApi(TestCase):
         self.assertEqual(payload['navigate_to']['y'], self.player.homeworld.y)
         self.assertTrue(payload['navigate_to']['locate'])
 
+    def test_detail_command_navigation_uses_last_known_report_coordinates_for_hidden_fleet(self):
+        report_x = self.player.homeworld.x + 7
+        report_y = self.player.homeworld.y + 3
+        hidden_fleet = Fleet.objects.create(
+            game=self.game,
+            player=None,
+            name='Derelict Echo',
+            x=self.player.homeworld.x + 20,
+            y=self.player.homeworld.y + 20,
+            ship_count=3,
+        )
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year - 1,
+            target_type='fleet',
+            target_id=hidden_fleet.id,
+            cached_report='{}',
+        )
+        report.set_report_data({
+            'name': hidden_fleet.name,
+            'x': report_x,
+            'y': report_y,
+            'report_tier': 'advanced',
+            'player_name': 'Abandoned',
+            'ship_count': 3,
+            'integrity': 100,
+            'travel_warp': 0,
+            'heading': 0.0,
+        })
+        report.save(update_fields=['cached_report'])
+
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/detail %s' % hidden_fleet.short_id}),
+            content_type='application/json',
+            HTTP_ORIGIN=self.origin,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['navigate_to']['sel'], hidden_fleet.short_id)
+        self.assertEqual(payload['navigate_to']['x'], report_x)
+        self.assertEqual(payload['navigate_to']['y'], report_y)
+        self.assertTrue(payload['navigate_to']['locate'])
+
     def test_non_member_cannot_access_play_cli_endpoints(self):
         outsider_user = User.objects.create_user('outsider_cli', 'outsider@test.com', 'pass')
         Account.objects.create(django_user=outsider_user, alias='OUT')

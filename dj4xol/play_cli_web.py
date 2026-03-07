@@ -4,6 +4,7 @@ from django.core.cache import cache
 from django.core.management.base import CommandError
 
 from dj4xol.management.commands.play import Command as PlayCommand
+from dj4xol.objectdetails import DetailBuilder
 
 MAX_COMMAND_LENGTH = 256
 RATE_LIMIT_WINDOW_SECONDS = 10
@@ -207,9 +208,19 @@ def _detail_navigation_payload(runner, player, command_parts):
         return None
     if obj is None:
         return None
-    return {
+    detail = DetailBuilder(player.game, selected=obj.short_id, player=player).build_detail() or {}
+    payload = {
         "sel": obj.short_id,
-        "x": int(obj.x),
-        "y": int(obj.y),
-        "locate": True,
     }
+    if detail.get("suppress_locate"):
+        payload["locate"] = False
+        return payload
+    x = detail.get("x")
+    y = detail.get("y")
+    if x is None or y is None:
+        payload["locate"] = False
+        return payload
+    payload["x"] = int(x)
+    payload["y"] = int(y)
+    payload["locate"] = True
+    return payload

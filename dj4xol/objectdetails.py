@@ -161,6 +161,8 @@ class DetailBuilder():
                     'is_fleet': isinstance(self.selected_obj, Fleet),
                     'is_salvage': isinstance(self.selected_obj, Salvage),
                     'is_anomaly': isinstance(self.selected_obj, Anomaly),
+                    'position_status': 'unknown' if isinstance(self.selected_obj, Fleet) else 'current',
+                    'suppress_locate': isinstance(self.selected_obj, Fleet),
                     'thumbnail_blurred': False,
                 }
 
@@ -219,7 +221,18 @@ class DetailBuilder():
                      'anomaly_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Anomaly) else None,
                      'anomaly_type': self.selected_obj.anomaly_type if isinstance(self.selected_obj, Anomaly) else None,
                      'stability': self.selected_obj.stability if isinstance(self.selected_obj, Anomaly) else None,
-                     'heading': self.selected_obj.heading if isinstance(self.selected_obj, Anomaly) else None,
+                     'heading': (
+                         self.selected_obj.heading
+                         if isinstance(self.selected_obj, (Anomaly, Fleet)) else None
+                     ),
+                     'travel_warp': (
+                         self._fleet_travel_warp(self.selected_obj)
+                         if isinstance(self.selected_obj, Fleet) else None
+                     ),
+                     'position_status': 'current',
+                     'last_known_position': None,
+                     'last_known_report_year': None,
+                     'suppress_locate': False,
                      'salvage_inventory': self.build_salvage_inventory(),
                      'production_orders': self.get_production_orders(),
                      'production_order_choices': self.get_available_production_orders(),
@@ -247,6 +260,7 @@ class DetailBuilder():
                          else 'basic'
                      ),
                      'report_year': None,
+                     'is_last_known': False,
                      'is_current': True,
                      'thumbnail_blurred': False,
                      }
@@ -287,7 +301,17 @@ class DetailBuilder():
             'anomaly_short_id': obj.short_id if isinstance(obj, Anomaly) else None,
             'anomaly_type': obj.anomaly_type if isinstance(obj, Anomaly) else None,
             'stability': obj.stability if isinstance(obj, Anomaly) else None,
-            'heading': obj.heading if isinstance(obj, Anomaly) else None,
+            'heading': (
+                obj.heading if isinstance(obj, (Anomaly, Fleet)) else None
+            ),
+            'travel_warp': (
+                self._fleet_travel_warp(obj) if isinstance(obj, Fleet) else None
+            ),
+            'position_status': 'current',
+            'last_known_position': None,
+            'last_known_report_year': None,
+            'is_last_known': False,
+            'suppress_locate': False,
             'secret_resource_labels': {key: self._resource_label(key) for key in SECRET_RESOURCE_KEYS},
             'x': obj.x,
             'y': obj.y,
@@ -399,6 +423,13 @@ class DetailBuilder():
             'owner_known': bool(report_owner_name),
             'show_composition': True,
             'thumbnail_blurred': report_tier == 'basic',
+            'heading': None,
+            'travel_warp': None,
+            'position_status': 'report',
+            'last_known_position': None,
+            'last_known_report_year': None,
+            'is_last_known': False,
+            'suppress_locate': False,
         }
         self._apply_report_thumbnail_paths(detail, report_tier)
 
@@ -459,6 +490,19 @@ class DetailBuilder():
                 }
         elif target_type == 'fleet':
             detail['fleet_short_id'] = self.selected_obj.short_id
+            stale_fleet_report = not self._is_fleet_currently_visible(self.selected_obj)
+            detail['position_status'] = 'last_known' if stale_fleet_report else 'report'
+            if stale_fleet_report and detail.get('x') is not None and detail.get('y') is not None:
+                detail['last_known_position'] = self.format_empty_space(
+                    detail.get('x'),
+                    detail.get('y'),
+                )
+                detail['last_known_report_year'] = report_year
+                detail['is_last_known'] = True
+            if data.get('heading') is not None:
+                detail['heading'] = data.get('heading')
+            if data.get('travel_warp') is not None:
+                detail['travel_warp'] = data.get('travel_warp')
             if 'ship_count' in data:
                 detail['fleet_cargo'] = {
                     'ship_count': data.get('ship_count'),
@@ -677,6 +721,59 @@ class DetailBuilder():
             return report.get_report_data()
         except Exception:
             return None
+
+    def _fleet_report_coordinates(self, fleet):
+        """Return cached report (x, y) for a fleet when available."""
+        if not fleet or not isinstance(fleet, Fleet):
+            return (None, None)
+        data = self._get_cached_report_data(fleet, 'fleet') or {}
+        x = data.get('x')
+        y = data.get('y')
+        if x is None or y is None:
+            return (None, None)
+        try:
+            return (int(x), int(y))
+        except (TypeError, ValueError):
+            return (None, None)
+
+    def _is_fleet_currently_visible(self, fleet):
+        """Return True when fleet is currently visible to this viewer."""
+        if not fleet or not isinstance(fleet, Fleet):
+            return False
+        if self.spectator_mode or self.admin_view:
+            return True
+        if not self.player:
+            return False
+        if fleet.player_id == self.player.id:
+            return True
+        return fleet_visible_to_player(
+            fleet,
+            self.player,
+            sources=self._scanner_sources,
+        )
+
+    def _fleet_travel_warp(self, fleet):
+        """Return current travel warp inferred from the lead movement order."""
+        if not fleet or not isinstance(fleet, Fleet):
+            return None
+        order = fleet.orders.order_by('position', 'id').first()
+        if not order:
+            return 0
+        if order.order_type == 'PATROL':
+            speed = int(getattr(order, 'intercept_speed', 0) or order.warpfactor or 0)
+        elif order.order_type in ('MOVE', 'INTERCEPT'):
+            speed = int(order.warpfactor or 0)
+        else:
+            return 0
+        _obj, target_x, target_y, _kind = order.get_actual_target()
+        if target_x is None or target_y is None:
+            return 0
+        try:
+            if int(target_x) == int(fleet.x) and int(target_y) == int(fleet.y):
+                return 0
+        except (TypeError, ValueError):
+            return 0
+        return max(0, speed)
 
     def _has_advanced_scanner_coverage(self, x, y):
         """Return True when player has advanced scanner visibility at location."""
@@ -1234,7 +1331,20 @@ class DetailBuilder():
             eta_years = None
             if kind in ['star', 'fleet', 'salvage', 'anomaly'] and obj:
                 target = self._display_name_for_target(obj, kind)
-                target_link = f'?x={obj.x}&y={obj.y}&sel={obj.short_id}&locate=1'
+                if kind == 'fleet':
+                    link_x = None
+                    link_y = None
+                    if self._is_fleet_currently_visible(obj):
+                        link_x = obj.x
+                        link_y = obj.y
+                    else:
+                        link_x, link_y = self._fleet_report_coordinates(obj)
+                    if link_x is not None and link_y is not None:
+                        target_link = f'?x={link_x}&y={link_y}&sel={obj.short_id}&locate=1'
+                    else:
+                        target_link = f'?sel={obj.short_id}'
+                else:
+                    target_link = f'?x={obj.x}&y={obj.y}&sel={obj.short_id}&locate=1'
             elif kind == 'space':
                 target = DetailBuilder.format_empty_space(x, y)
                 if x is not None and y is not None:
