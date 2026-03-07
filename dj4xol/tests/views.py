@@ -238,7 +238,15 @@ class TestServerSettingsView(TestCase):
 
         response = self.client.get(reverse('dj4xol:server_settings'))
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'General (web)')
+        self.assertContains(response, 'Email')
+        self.assertContains(response, 'AI Integration')
+        self.assertContains(response, 'Profanity Filter')
         self.assertContains(response, 'Public Server URL')
+        self.assertContains(response, 'Used for links in emails')
+        self.assertContains(response, 'Enable Profanity Filter')
+        self.assertContains(response, 'Profanity Whitelist')
+        self.assertContains(response, 'Profanity Blacklist')
 
         response = self.client.post(
             reverse('dj4xol:server_settings'),
@@ -254,6 +262,9 @@ class TestServerSettingsView(TestCase):
                 'enable_gpt': '',
                 'enable_debug_actions': '',
                 'enable_play_api': 'on',
+                'enable_profanity_filter': '',
+                'profanity_filter_whitelist': 'scunthorpe',
+                'profanity_filter_blacklist': 'void',
             },
             follow=True,
         )
@@ -276,6 +287,36 @@ class TestServerSettingsView(TestCase):
         )
         self.assertEqual(ServerSettings.get('enable_email'), 'True')
         self.assertEqual(ServerSettings.get('enable_gpt'), 'False')
+        self.assertEqual(ServerSettings.get('enable_profanity_filter'), 'False')
+        self.assertEqual(ServerSettings.get('profanity_filter_whitelist'), 'scunthorpe')
+        self.assertEqual(ServerSettings.get('profanity_filter_blacklist'), 'void')
+
+    def test_staff_server_settings_normalises_public_server_url(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=['is_staff'])
+
+        response = self.client.post(
+            reverse('dj4xol:server_settings'),
+            {
+                'server_name': 'DJ4XOL Production',
+                'server_tagline': '',
+                'server_admin': '',
+                'server_contact': '',
+                'server_url': 'https://example.test/4x/',
+                'server_welcome': '',
+                'allow_self_signup': 'on',
+                'enable_email': '',
+                'enable_gpt': '',
+                'enable_debug_actions': '',
+                'enable_play_api': 'on',
+                'enable_profanity_filter': 'on',
+                'profanity_filter_whitelist': '',
+                'profanity_filter_blacklist': '',
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ServerSettings.get('server_url'), 'https://example.test')
 
 
 class TestGameDetailRendering(TestCase):
@@ -338,6 +379,35 @@ class TestGameDetailRendering(TestCase):
         self.assertEqual(response.status_code, 302)
         order.refresh_from_db()
         self.assertFalse(order.repeat)
+
+
+class TestRenameObjectView(TestCase):
+    def setUp(self):
+        self.game = default_game(stars=5, fleets=1)
+        self.player = self.game.players.first()
+        self.fleet = self.player.fleets.first()
+        self.user, _ = get_default_user()
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_rename_rejects_markup_characters(self):
+        response = self.client.post(
+            reverse('dj4xol:rename_object', args=[self.game.short_id, self.fleet.short_id]),
+            {'name': 'Bad <Fleet>'},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()['error'],
+            'Name contains unsupported characters. Use plain ASCII letters, numbers, spaces, and simple punctuation only.',
+        )
+
+    def test_rename_rejects_blocked_profanity(self):
+        response = self.client.post(
+            reverse('dj4xol:rename_object', args=[self.game.short_id, self.fleet.short_id]),
+            {'name': 'fuckfleet'},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['error'], 'Name contains blocked profanity.')
 
 
 class TestPlayCliWebApi(TestCase):

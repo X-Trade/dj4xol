@@ -43,7 +43,7 @@ def _blur_rgba_image(image):
     rgba = image.convert("RGBA")
     red, green, blue, alpha = rgba.split()
     rgb = Image.merge("RGB", (red, green, blue))
-    rgb = rgb.filter(ImageFilter.GaussianBlur(radius=3.0))
+    rgb = rgb.filter(ImageFilter.GaussianBlur(radius=6.0))
     rgb = ImageEnhance.Color(rgb).enhance(0.72)
     rgb = ImageEnhance.Brightness(rgb).enhance(0.90)
     return Image.merge("RGBA", (*rgb.split(), alpha))

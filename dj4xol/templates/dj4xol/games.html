@@ -48,8 +48,10 @@
                         <ul class="game-list">
                         {% for game in my_games %}
                             <li>
-                                <a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
-                                <span class="game-meta">Year {{ game.year }} &middot; {% if game.is_generating %}Generating...{% else %}{{ game.get_turn_scheme_short_display }}{% endif %}</span>
+                                <div class="game-entry-main">
+                                    <a href="{% url 'dj4xol:game' game.short_id %}" class="game-entry-title">{{ game.name }}</a>
+                                    <span class="game-meta">Year {{ game.year }} &middot; {% if game.is_generating %}Generating...{% else %}{{ game.get_turn_scheme_short_display }}{% endif %}</span>
+                                </div>
                             </li>
                         {% endfor %}
                         </ul>
@@ -68,13 +70,17 @@
                         <ul class="game-list">
                         {% for game in invited_games %}
                             <li>
-                                <span>{{ game.name }}</span>
-                                <span class="game-meta">Year {{ game.year }} &middot; {% if game.is_generating %}Generating...{% else %}{{ game.get_turn_scheme_short_display }}{% endif %}</span>
-                                {% if game.id in spectating_game_ids %}
-                                <span class="action-link disabled" aria-disabled="true">Join</span>
-                                {% else %}
-                                <a href="{% url 'dj4xol:join_game' game.short_id %}" class="action-link">Join</a>
-                                {% endif %}
+                                <div class="game-entry-main">
+                                    <span class="game-entry-title">{{ game.name }}</span>
+                                    <span class="game-meta">Year {{ game.year }} &middot; {% if game.is_generating %}Generating...{% else %}{{ game.get_turn_scheme_short_display }}{% endif %}</span>
+                                </div>
+                                <div class="game-entry-actions">
+                                    {% if game.id in spectating_game_ids %}
+                                    <span class="action-link disabled" aria-disabled="true">Join</span>
+                                    {% else %}
+                                    <a href="{% url 'dj4xol:join_game' game.short_id %}" class="action-link">Join</a>
+                                    {% endif %}
+                                </div>
                             </li>
                         {% endfor %}
                         </ul>
@@ -93,20 +99,24 @@
                         <ul class="game-list">
                         {% for game in open_games %}
                             <li>
-                                <span>{{ game.name }}</span>
-                                <span class="game-meta">Year {{ game.year }} &middot; {% if game.is_generating %}Generating...{% else %}{{ game.get_turn_scheme_short_display }}{% endif %}</span>
-                                {% if game.id in spectating_game_ids %}
-                                <a href="{% url 'dj4xol:spectate_game' game.short_id %}" class="action-link">View</a>
-                                {% else %}
-                                <a href="{% url 'dj4xol:spectate_game_confirm' game.short_id %}" class="action-link">View</a>
-                                {% endif %}
-                                {% if game.joinable %}
+                                <div class="game-entry-main">
+                                    <span class="game-entry-title">{{ game.name }}</span>
+                                    <span class="game-meta">Year {{ game.year }} &middot; {% if game.is_generating %}Generating...{% else %}{{ game.get_turn_scheme_short_display }}{% endif %}</span>
+                                </div>
+                                <div class="game-entry-actions">
                                     {% if game.id in spectating_game_ids %}
-                                    <span class="action-link disabled" aria-disabled="true">Join</span>
+                                    <a href="{% url 'dj4xol:spectate_game' game.short_id %}" class="action-link">View</a>
                                     {% else %}
-                                    <a href="{% url 'dj4xol:join_game' game.short_id %}" class="action-link">Join</a>
+                                    <a href="{% url 'dj4xol:spectate_game_confirm' game.short_id %}" class="action-link">View</a>
                                     {% endif %}
-                                {% endif %}
+                                    {% if game.joinable %}
+                                        {% if game.id in spectating_game_ids %}
+                                        <span class="action-link disabled" aria-disabled="true">Join</span>
+                                        {% else %}
+                                        <a href="{% url 'dj4xol:join_game' game.short_id %}" class="action-link">Join</a>
+                                        {% endif %}
+                                    {% endif %}
+                                </div>
                             </li>
                         {% endfor %}
                         </ul>

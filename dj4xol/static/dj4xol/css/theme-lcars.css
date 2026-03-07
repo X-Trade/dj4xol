@@ -263,7 +263,7 @@ body {
     transform: translate(-50%, -50%) scaleY(0);
 }
 
-.panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text),
+.panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text):not(.rename-popover),
 .panel-content.panel-stack {
     background: #000;
     border: 3px solid #cc6633;
@@ -312,7 +312,7 @@ body {
         #cc99cc calc(100% - 40px), #cc99cc 100%);
 }
 
-.panel.lcars-variant-2 .panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text),
+.panel.lcars-variant-2 .panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text):not(.rename-popover),
 .panel.lcars-variant-2 .panel-content.panel-stack {
     background: #0a0a14;
     border: 3px solid #9999cc;
@@ -326,7 +326,7 @@ body {
         #66cccc calc(100% - 40px), #66cccc 100%);
 }
 
-.panel.lcars-variant-3 .panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text),
+.panel.lcars-variant-3 .panel-content > div:not(.panel-footer):not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text):not(.rename-popover),
 .panel.lcars-variant-3 .panel-content.panel-stack {
     background: #0a0a14;
     border: 3px solid #cc99cc;
@@ -716,6 +716,8 @@ input:focus {
     background: #000;
     border: none;
     color: #ff9966;
+    width: 100%;
+    min-width: 0;
 }
 
 /* order details input form */
