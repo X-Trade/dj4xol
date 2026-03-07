@@ -34,6 +34,12 @@
                             </table>
                         </div>
                         {% endif %}
+                    {% elif order.order_type == 'GIVE' %}
+                        {% if order.transfer_player_name %}
+                        <span>Transfer Fleet to {{ order.transfer_player_name }}</span>
+                        {% else %}
+                        <span>Abandon Fleet</span>
+                        {% endif %}
                     {% elif order.order_type == 'COLONISE' %}
                         <span>Colonise {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
                     {% elif order.order_type == 'BOMB' %}
@@ -98,6 +104,7 @@
             <input type="hidden" name="warpfactor" id="warpfactor-input" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
             <input type="hidden" name="transfer_type" id="transfer-type-input" value="LOAD">
             <input type="hidden" name="transfer_target" id="transfer-target-input" value="">
+            <input type="hidden" name="transfer_player" id="transfer-player-input" value="">
             <input type="hidden" name="patrol_target" id="patrol-target-input" value="">
             <input type="hidden" name="transfer_ironium" id="transfer-ironium-input" value="0">
             <input type="hidden" name="transfer_boranium" id="transfer-boranium-input" value="0">
@@ -121,6 +128,7 @@
                     <option value="MOVE"{% if not request.GET.order_type or request.GET.order_type == 'MOVE' %} selected{% endif %}>Move to</option>
                     <option value="INTERCEPT"{% if request.GET.order_type == 'INTERCEPT' %} selected{% endif %}>Intercept</option>
                     <option value="TRANSFER"{% if request.GET.order_type == 'TRANSFER' %} selected{% endif %}>Transfer</option>
+                    <option value="GIVE"{% if request.GET.order_type == 'GIVE' %} selected{% endif %}>Give Fleet</option>
                     <option value="COLONISE"{% if request.GET.order_type == 'COLONISE' %} selected{% endif %}>Colonise</option>
                     {% if detail.fleet_cargo.has_bombs %}
                     <option value="BOMB"{% if request.GET.order_type == 'BOMB' %} selected{% endif %}>Bomb</option>
@@ -396,6 +404,22 @@
                     </div>
                 </div>
 
+                <div id="give-params" class="order-type-params" style="display: none;">
+                    <div class="colonise-warning" style="color: #c44; font-style: italic; padding: 8px 0;">
+                        Transfer ownership of this fleet. Selecting <strong>Abandoned</strong> will set it adrift as an unowned derelict.
+                    </div>
+                    <div class="order-param-row">
+                        <label for="transfer-player-select">Transfer To</label>
+                        <div class="dest-display-row" style="flex:1;">
+                            <select id="transfer-player-select" class="transfer-target-select">
+                                {% for recipient in detail.transfer_recipients %}
+                                <option value="{{ recipient.value }}"{% if forloop.first %} selected{% endif %}>{{ recipient.label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Colonise warning message -->
                 <div id="colonise-params" class="order-type-params" style="display: none;">
                     <div class="colonise-warning" style="color: #c44; font-style: italic; padding: 8px 0;">
@@ -469,6 +493,7 @@
     var orderTypeInput = document.getElementById('order-type-input');
     var moveParams = document.getElementById('move-params');
     var transferParams = document.getElementById('transfer-params');
+    var giveParams = document.getElementById('give-params');
     var coloniseParams = document.getElementById('colonise-params');
     var bombParams = document.getElementById('bomb-params');
     var remotemineParams = document.getElementById('remotemine-params');
@@ -500,6 +525,7 @@
     var targetYInput = document.querySelector('input[name="target_y"]');
     var patrolTargetInput = document.getElementById('patrol-target-input');
     var patrolDestinationContainer = document.getElementById('patrol-destination');
+    var transferPlayerInput = document.getElementById('transfer-player-input');
     
     // Transfer sliders - define at top level
     var transferSliders = ['ironium', 'boranium', 'germanium', 'resource_x', 'resource_y', 'resource_z', 'colonists'];
@@ -581,6 +607,10 @@
         // Empty space has transferTargetValue = '' which is still valid
         var hasValidTarget = transferTargetValue !== undefined;
         addBtn.disabled = !hasValidTarget || !hasResources;
+    }
+
+    function updateAddButtonStateGive() {
+        addBtn.disabled = false;
     }
     
     // Initialize transfer target input based on display mode
@@ -925,7 +955,17 @@
         var patrolDestination = document.getElementById('patrol-destination');
         var destRow = document.getElementById('destination-row');
 
-        if (destRow && currentType !== 'SCUTTLE') {
+        moveParams.style.display = 'none';
+        transferParams.style.display = 'none';
+        if (giveParams) giveParams.style.display = 'none';
+        if (coloniseParams) coloniseParams.style.display = 'none';
+        if (bombParams) bombParams.style.display = 'none';
+        if (remotemineParams) remotemineParams.style.display = 'none';
+        if (mergeParams) mergeParams.style.display = 'none';
+        if (scuttleParams) scuttleParams.style.display = 'none';
+        if (patrolParams) patrolParams.style.display = 'none';
+
+        if (destRow && currentType !== 'SCUTTLE' && currentType !== 'GIVE') {
             destRow.style.display = '';
         }
 
@@ -952,6 +992,21 @@
             // Initialize transfer target input with appropriate value
             initializeTransferTarget();
             updateAddButtonStateTransfer();
+        } else if (currentType === 'GIVE') {
+            if (giveParams) giveParams.style.display = 'block';
+
+            if (destRow) destRow.style.display = 'none';
+
+            if (destTargetLabel) destTargetLabel.textContent = 'Destination';
+            if (moveDestination) moveDestination.style.display = 'none';
+            if (transferDestination) transferDestination.style.display = 'none';
+            if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (bombDestination) bombDestination.style.display = 'none';
+            if (remotemineDestination) remotemineDestination.style.display = 'none';
+            if (mergeDestination) mergeDestination.style.display = 'none';
+            if (patrolDestination) patrolDestination.style.display = 'none';
+
+            updateAddButtonStateGive();
         } else if (currentType === 'COLONISE') {
             moveParams.style.display = 'none';
             transferParams.style.display = 'none';
@@ -1278,6 +1333,15 @@
         mergeTargetSelect.addEventListener('change', function() {
             mergeTargetInput.value = this.value;
             updateAddButtonStateMerge();
+        });
+    }
+
+    var transferPlayerSelect = document.getElementById('transfer-player-select');
+    if (transferPlayerSelect && transferPlayerInput) {
+        transferPlayerInput.value = transferPlayerSelect.value;
+        transferPlayerSelect.addEventListener('change', function() {
+            transferPlayerInput.value = this.value;
+            updateAddButtonStateGive();
         });
     }
     

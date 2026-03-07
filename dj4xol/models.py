@@ -18,6 +18,7 @@ from .anomaly_thumbnails import (
     choose_random_anomaly_thumbnail,
     is_valid_anomaly_thumbnail,
 )
+from .name_rules import validate_non_reserved_identity_name
 from . import mineral_rules
 import random
 import uuid
@@ -263,6 +264,7 @@ class Account(models.Model):
     def save(self, *args, **kwargs):
         if not self.alias:
             self.alias = self.django_user.username
+        validate_non_reserved_identity_name(self.alias, 'Account name')
         if not self.email_unsubscribe_key:
             self.email_unsubscribe_key = uuid.uuid4().hex
         super(Account, self).save(*args, **kwargs)
@@ -719,6 +721,12 @@ class Fleet(AbstractMapObject):
         return choose_fleet_thumbnail(self.id or self.short_id or self.name, ship_class)
 
     @property
+    def owner_display_name(self):
+        if self.player_id:
+            return self.player.name
+        return "Abandoned"
+
+    @property
     def cargo_used(self):
         """Total cargo currently loaded (in kt equivalent)."""
         return (self.ironium_inventory + self.boranium_inventory +
@@ -820,6 +828,11 @@ class ServerRace(UUIDMixin, HabitabilityMixin):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        validate_non_reserved_identity_name(self.name, 'Race name')
+        validate_non_reserved_identity_name(self.plural_name, 'Race name')
+        super(ServerRace, self).save(*args, **kwargs)
+
     class Meta:
         unique_together = [['short_id']]
 
@@ -860,6 +873,8 @@ class Player(AbstractGameObject, HabitabilityMixin):
     def save(self, *args, **kwargs):
         if self.plural_name is None:
             self.plural_name = self.name + 's'
+        validate_non_reserved_identity_name(self.name, 'Player name')
+        validate_non_reserved_identity_name(self.plural_name, 'Player name')
         super(Player, self).save(*args, **kwargs)
 
     class Meta:
@@ -887,6 +902,7 @@ class FleetOrders(AbstractGameObject):
         ('MOVE', 'Move'),
         ('INTERCEPT', 'Intercept'),
         ('TRANSFER', 'Transfer'),
+        ('GIVE', 'Transfer Fleet'),
         ('COLONISE', 'Colonise'),
         ('BOMB', 'Bomb'),
         ('REMOTEMINE', 'Remote Mine'),
@@ -904,6 +920,12 @@ class FleetOrders(AbstractGameObject):
     # Movement parameters
     warpfactor = models.IntegerField(default=0,
                                      validators=[MinValueValidator(0), MaxValueValidator(14)])
+    original_warpfactor = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0), MaxValueValidator(14)],
+    )
+    overmax_risk_checked = models.BooleanField(default=False)
     x = models.IntegerField(null=True)
     y = models.IntegerField(null=True)
     TARGET_KIND_CHOICES = [
@@ -936,6 +958,13 @@ class FleetOrders(AbstractGameObject):
     transfer_resource_y = models.IntegerField(default=0)
     transfer_resource_z = models.IntegerField(default=0)
     transfer_colonists = models.IntegerField(default=0)
+    transfer_player = models.ForeignKey(
+        Player,
+        null=True,
+        blank=True,
+        related_name='+',
+        on_delete=models.SET_NULL,
+    )
 
     # Patrol parameters
     patrol_radius = models.IntegerField(default=0)
@@ -966,6 +995,10 @@ class FleetOrders(AbstractGameObject):
             return f"Fleet {obj.name}"
         elif kind == 'salvage' and obj:
             return f"Salvage ({obj.x}, {obj.y})"
+        elif self.order_type == 'GIVE':
+            if self.transfer_player_id:
+                return self.transfer_player.name
+            return "Abandoned"
         elif kind == 'space' and x is not None and y is not None:
             return f"({self.x}, {self.y})"
         else:
@@ -982,6 +1015,11 @@ class FleetOrders(AbstractGameObject):
     def target_is_salvage(self):
         _obj, _x, _y, kind = self.get_actual_target()
         return kind == 'salvage'
+
+    def save(self, *args, **kwargs):
+        if self.original_warpfactor is None:
+            self.original_warpfactor = self.warpfactor
+        super(FleetOrders, self).save(*args, **kwargs)
 
     def has_target_coordinates(self):
         return self.x is not None and self.y is not None

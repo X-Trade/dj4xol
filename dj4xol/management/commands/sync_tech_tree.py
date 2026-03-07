@@ -59,10 +59,18 @@ class Command(BaseCommand):
                 continue
             if 'category' in fields and 'category_id' not in fields:
                 fields['category_id'] = fields.pop('category')
-            Technology.objects.update_or_create(
-                id=uuid.UUID(str(pk)),
-                defaults=fields,
-            )
+            tech_id = uuid.UUID(str(pk))
+            technology = Technology.objects.filter(id=tech_id).first()
+            if technology is None:
+                short_id = fields.get('short_id')
+                if short_id:
+                    technology = Technology.objects.filter(short_id=short_id).first()
+            if technology is None:
+                Technology.objects.create(id=tech_id, **fields)
+            else:
+                for key, value in fields.items():
+                    setattr(technology, key, value)
+                technology.save()
             tech_count += 1
 
         self.stdout.write(

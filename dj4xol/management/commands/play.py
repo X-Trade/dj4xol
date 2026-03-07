@@ -1107,6 +1107,9 @@ class Command(BaseCommand):
                             "[colonists=N] [repeat]"
                         ),
                     },
+                    "GIVE": {
+                        "syntax": "/orders <fleet_id> add GIVE [abandoned|player_id|\"Exact Player Name\"]",
+                    },
                     "COLONISE": {
                         "syntax": "/orders <fleet_id> add COLONISE <star_id>",
                     },
@@ -1205,6 +1208,8 @@ class Command(BaseCommand):
                 "Usage: /orders <fleet_id> add <type> <params...> [repeat]"
             )
         order_type = args[0].strip().upper()
+        if order_type == "ABANDON":
+            order_type = "GIVE"
         valid_types = set(v for v, _ in FleetOrders.ORDER_TYPE_CHOICES)
         if order_type not in valid_types:
             raise CommandError("Unknown fleet order type: %s" % order_type)
@@ -1264,6 +1269,13 @@ class Command(BaseCommand):
             )
             order.transfer_colonists = self._parse_nonnegative_int(extras["kwargs"].get("colonists", 0), "colonists")
             self._apply_transfer_defaults_if_empty(order, target_obj, kind)
+
+        elif order_type == "GIVE":
+            order.repeat = False
+            recipient_token = extras["positionals"][0] if extras["positionals"] else ""
+            order.transfer_player = self._resolve_transfer_player_token(
+                fleet.player, fleet.game, recipient_token
+            )
 
         elif order_type == "COLONISE":
             if not extras["positionals"]:
@@ -1387,6 +1399,36 @@ class Command(BaseCommand):
         if anomaly is not None:
             return anomaly, anomaly.x, anomaly.y, "anomaly"
         raise CommandError("Unknown target token: %s" % token)
+
+    def _resolve_transfer_player_token(self, player, game, token):
+        token = (token or "").strip()
+        if not token:
+            return None
+        lowered = token.lower()
+        if lowered in ("abandoned", "abandon", "none", "derelict"):
+            return None
+        if self.SHORT_ID_RE.match(lowered):
+            target = Player.objects.filter(
+                game=game,
+                short_id=lowered,
+                defeated=False,
+            ).first()
+            if target is None:
+                raise CommandError("Unknown player target: %s" % token)
+            if player and target.id == player.id:
+                raise CommandError("Cannot transfer a fleet to your own player.")
+            return target
+        target = Player.objects.filter(
+            game=game,
+            name__iexact=token,
+            defeated=False,
+        )
+        target = self._resolve_single_named_match(list(target.order_by("name", "id")), token)
+        if target is None:
+            raise CommandError("Unknown player target: %s" % token)
+        if player and target.id == player.id:
+            raise CommandError("Cannot transfer a fleet to your own player.")
+        return target
 
     def _parse_coords_token(self, token):
         stripped = token.strip().replace(" ", "")
@@ -1566,6 +1608,10 @@ class Command(BaseCommand):
                 order_data["mine_until_full"] = bool(order.mine_until_full)
             if order.order_type == "BOMB":
                 order_data["bomb_until"] = order.bomb_until
+            if order.order_type == "GIVE":
+                order_data["transfer_player"] = (
+                    order.transfer_player.name if order.transfer_player_id else "Abandoned"
+                )
             payload[order.short_id] = order_data
         return payload
 

@@ -1324,7 +1324,47 @@ class NoScannerReportTierTest(TestCase):
         self.assertEqual(data.get('anomaly_type'), Anomaly.TYPE_BLACK_HOLE)
         self.assertNotIn('stability', data)
 
-        visiting = Fleet.objects.create(
+    def test_no_scanners_basic_visit_reveals_salvage_inventory(self):
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=14,
+            y=16,
+            ironium_inventory=40,
+            boranium_inventory=30,
+            germanium_inventory=20,
+            resource_x_inventory=10,
+            salvage_type=Salvage.TYPE_SALVAGE,
+        )
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Basic Salvage Visit',
+            x=salvage.x,
+            y=salvage.y,
+            basic_scanner_range=5,
+            advanced_scanner_range=0,
+        )
+
+        GameTurn(self.game).generate_reports()
+
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='salvage',
+            target_id=salvage.id,
+        )
+        data = report.get_report_data()
+
+        self.assertEqual(data.get('report_tier'), 'basic')
+        self.assertEqual(data.get('salvage_type'), Salvage.TYPE_SALVAGE)
+        self.assertEqual(data.get('total_minerals'), salvage.total_minerals)
+        self.assertEqual(data.get('ironium_inventory'), 40)
+        self.assertEqual(data.get('boranium_inventory'), 30)
+        self.assertEqual(data.get('germanium_inventory'), 20)
+        self.assertEqual(data.get('resource_x_inventory'), 10)
+
+    def test_no_scanners_high_advanced_visit_reports_star_encounter(self):
+        Fleet.objects.create(
             game=self.game,
             player=self.player1,
             name='Visitor',

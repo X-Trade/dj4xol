@@ -1165,13 +1165,20 @@ input[type="range"]::-webkit-slider-thumb {
     background: #c0c0c0;
 }
 
-.win95 .detail-header .object-thumbnail.thumb-pop-target {
+.win95 .detail-header .object-thumbnail-frame {
     padding: 2px;
     box-sizing: border-box;
     background: #c0c0c0;
     border: none;
     box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
                 inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+.win95 .detail-header .object-thumbnail.thumb-pop-target {
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
 }
 
 .win95 .tech-thumb-corner {

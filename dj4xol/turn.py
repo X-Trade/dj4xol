@@ -31,6 +31,8 @@ from .messages import (
     FleetWarpDestroyedMessageFactory,
     FleetWormholeDestroyedMessageFactory,
     FleetMergedMessageFactory,
+    FleetTransferredMessageFactory,
+    FleetReceivedMessageFactory,
     FleetOrdersCompletedMessageFactory,
     FleetBuildBlockedNoShipyardMessageFactory,
     FleetRepairedMessageFactory,
@@ -45,6 +47,7 @@ from .messages import (
     AnomalyTargetLostMessageFactory,
     format_map_object,
     format_location,
+    map_coordinate_link,
 )
 import random
 
@@ -795,8 +798,18 @@ class GameTurn():
                 continue
             salvage_type = getattr(salvage, 'salvage_type', None)
             if salvage_type == Salvage.TYPE_ASTEROID_FIELD:
+                templates = [
+                    "{fleet} took {damage}% integrity damage from rock strikes in {salvage}.",
+                    "{fleet} took {damage}% integrity damage while sheltering in {salvage}.",
+                    "{fleet} took {damage}% integrity damage from shifting debris in {salvage}.",
+                ]
                 self._apply_salvage_damage(
-                    fleet, salvage, ASTEROID_FIELD_DAMAGE_MIN, ASTEROID_FIELD_DAMAGE_MAX
+                    fleet,
+                    salvage,
+                    ASTEROID_FIELD_DAMAGE_MIN,
+                    ASTEROID_FIELD_DAMAGE_MAX,
+                    message_templates=templates,
+                    message_priority=False,
                 )
             elif salvage_type == Salvage.TYPE_ANCIENT_DEBRIS:
                 templates = [
@@ -815,6 +828,8 @@ class GameTurn():
                     destruction_templates=destruction_templates,
                     allow_destroy=True,
                     min_defense_for_survival=10,
+                    message_priority=True,
+                    destruction_priority=True,
                 )
 
     def _apply_salvage_damage(
@@ -827,6 +842,8 @@ class GameTurn():
         destruction_templates=None,
         allow_destroy=False,
         min_defense_for_survival=None,
+        message_priority=True,
+        destruction_priority=True,
     ):
         """Apply minor hazard damage when entering salvage fields."""
         try:
@@ -862,7 +879,9 @@ class GameTurn():
                         text = "%s was destroyed while exploring %s." % (
                             fleet_name, format_map_object(salvage)
                         )
-                    self._create_salvage_hazard_message(player, text, priority=True)
+                    self._create_salvage_hazard_message(
+                        player, text, priority=destruction_priority
+                    )
                     return
 
         if int(fleet.integrity or 0) <= damage:
@@ -880,7 +899,9 @@ class GameTurn():
                     text = "%s was destroyed while exploring %s." % (
                         fleet_name, format_map_object(salvage)
                     )
-                self._create_salvage_hazard_message(player, text, priority=True)
+                self._create_salvage_hazard_message(
+                    player, text, priority=destruction_priority
+                )
                 return
             damage = max(0, int(fleet.integrity or 0) - 1)
         if damage <= 0:
@@ -894,7 +915,9 @@ class GameTurn():
                 damage=damage,
                 fleet=fleet.name,
             )
-            self._create_salvage_hazard_message(fleet.player, text, priority=True)
+            self._create_salvage_hazard_message(
+                fleet.player, text, priority=message_priority
+            )
 
     def _create_salvage_hazard_message(self, player, text, priority=False):
         from .models import GameMessage
@@ -1310,7 +1333,7 @@ class GameTurn():
 
     def _apply_wormhole_interaction(self, fleet, anomaly):
         """Resolve wormhole transit: possible damage, then relocation near the paired endpoint."""
-        from .models import Anomaly
+        from .models import Anomaly, Report
 
         endpoint = anomaly
         pair = getattr(endpoint, 'wormhole_pair', None)
@@ -1319,6 +1342,11 @@ class GameTurn():
         if pair.id == endpoint.id:
             return
         pair = Anomaly.objects.get(id=pair.id)
+        first_traversal = not Report.objects.filter(
+            player=fleet.player,
+            target_type='anomaly',
+            target_id=endpoint.id,
+        ).exists()
 
         stability = self._anomaly_stability(endpoint)
         if stability < 30:
@@ -1360,17 +1388,25 @@ class GameTurn():
         self._create_or_update_report(fleet.player, 'anomaly', endpoint, self.game.year)
         self._create_or_update_report(fleet.player, 'anomaly', pair, self.game.year)
 
-        if took_damage:
-            text = (
-                "%s traversed wormhole %s, suffered %s%% integrity damage, and emerged near %s."
-                % (fleet.name, format_map_object(endpoint), damage, format_map_object(pair))
+        if took_damage or first_traversal:
+            fleet_label = format_map_object(fleet)
+            endpoint_label = format_map_object(endpoint)
+            pair_label = format_map_object(pair)
+            exit_label = map_coordinate_link(
+                self.game, exit_x, exit_y, label='(%s, %s)' % (int(exit_x), int(exit_y))
             )
-        else:
-            text = (
-                "%s traversed wormhole %s and emerged near %s."
-                % (fleet.name, format_map_object(endpoint), format_map_object(pair))
-            )
-        self._create_anomaly_message(fleet.player, text, priority=True)
+            if took_damage:
+                text = (
+                    "%s traversed wormhole %s, suffered %s%% integrity damage, "
+                    "and emerged from %s at %s."
+                    % (fleet_label, endpoint_label, damage, pair_label, exit_label)
+                )
+            else:
+                text = (
+                    "%s traversed wormhole %s and emerged from %s at %s."
+                    % (fleet_label, endpoint_label, pair_label, exit_label)
+                )
+            self._create_anomaly_message(fleet.player, text, priority=False)
 
     def _calculate_next_generation(self):
         """Calculate next generation time based on turn scheme."""
@@ -1679,12 +1715,12 @@ class GameTurn():
                 'report_tier': report_tier,
             }
             if report_tier == 'ownership':
-                data['player_name'] = obj.player.name if obj.player else None
+                data['player_name'] = obj.owner_display_name
                 return data
             if report_tier == 'basic':
                 return data
             data.update({
-                'player_name': obj.player.name if obj.player else None,
+                'player_name': obj.owner_display_name,
                 'ship_count': obj.ship_count,
                 'integrity': obj.integrity,
             })
@@ -1719,7 +1755,17 @@ class GameTurn():
                 })
             return data
         elif target_type == 'salvage':
-            if report_tier in ('ownership', 'basic'):
+            if report_tier == 'ownership':
+                data = {
+                    'name': obj.name,
+                    'x': obj.x,
+                    'y': obj.y,
+                    'salvage_type': obj.salvage_type,
+                    'total_minerals': obj.total_minerals,
+                    'report_tier': report_tier,
+                }
+                return data
+            if report_tier == 'basic' and not getattr(self.game, 'no_scanners', False):
                 data = {
                     'name': obj.name,
                     'x': obj.x,
@@ -2455,6 +2501,11 @@ class GameTurn():
                     # Fleet deleted, return None so caller doesn't save
                     return None
 
+            elif order.order_type == 'GIVE':
+                give_result = self._execute_give_order(fleet, order)
+                if give_result == 'executed':
+                    return None
+
             elif order.order_type == 'PATROL':
                 patrol_result = self._execute_patrol_order(fleet, order)
                 if patrol_result == 'executed':
@@ -2956,8 +3007,13 @@ class GameTurn():
 
         Returns: 'destroyed', 'damaged', or 'safe'
         """
+        if bool(getattr(order, 'overmax_risk_checked', False)):
+            return 'safe'
         if warp_speed <= fleet.max_safe_warp:
             return 'safe'
+
+        order.overmax_risk_checked = True
+        order.save(update_fields=['overmax_risk_checked'])
 
         excess_warp = warp_speed - fleet.max_safe_warp
 
@@ -2973,6 +3029,12 @@ class GameTurn():
             return self._apply_warp_damage(fleet, warp_speed, excess_warp, order)
 
         return 'safe'
+
+    def _get_requested_order_warpfactor(self, order):
+        warp = getattr(order, 'original_warpfactor', None)
+        if warp is None:
+            warp = order.warpfactor
+        return max(0, int(warp or 0))
 
     def _apply_warp_damage(self, fleet, warp_speed, excess_warp, order):
         """Apply damage effects from exceeding safe warp speed.
@@ -3320,12 +3382,15 @@ class GameTurn():
             _, _, _, kind = order.get_actual_target()
             if kind in ['invalid', 'none']:
                 return
+            repeat_warpfactor = self._get_requested_order_warpfactor(order)
             FleetOrders.objects.create(
                 game=self.game,
                 fleet=order.fleet,
                 order_type=order.order_type,
                 repeat=True,
-                warpfactor=order.warpfactor,
+                warpfactor=repeat_warpfactor,
+                original_warpfactor=repeat_warpfactor,
+                overmax_risk_checked=False,
                 x=order.x,
                 y=order.y,
                 target_kind=order.target_kind,
@@ -3341,6 +3406,7 @@ class GameTurn():
                 transfer_resource_y=order.transfer_resource_y,
                 transfer_resource_z=order.transfer_resource_z,
                 transfer_colonists=order.transfer_colonists,
+                transfer_player_id=order.transfer_player_id,
                 patrol_radius=order.patrol_radius,
                 intercept_speed=order.intercept_speed,
                 patrol_generated=order.patrol_generated,
@@ -4869,6 +4935,59 @@ class GameTurn():
 
         return 'executed'
 
+    def _execute_give_order(self, fleet, order):
+        """Transfer fleet ownership to another player or abandon it."""
+        previous_owner = fleet.player
+        if previous_owner is None:
+            order.delete()
+            return 'executed'
+
+        fleet_name = fleet.name
+        recipient = order.transfer_player
+        if recipient is not None and (
+            recipient.game_id != self.game.id or bool(getattr(recipient, 'defeated', False))
+        ):
+            recipient = None
+
+        if recipient is not None and recipient.id == previous_owner.id:
+            order.delete()
+            return 'executed'
+
+        if recipient is None:
+            self._abandon_fleet(fleet)
+        else:
+            self._capture_fleet(fleet, recipient)
+
+        self._create_or_update_report(
+            previous_owner,
+            'fleet',
+            fleet,
+            self.game.year,
+            report_tier='encounter',
+            include_cargo=True,
+        )
+
+        sender_msg = FleetTransferredMessageFactory(
+            self.game,
+            previous_owner,
+            fleet_name,
+            recipient_name=(recipient.name if recipient is not None else None),
+        ).new_message()
+        sender_msg.year = self.game.year
+        sender_msg.save()
+
+        if recipient is not None:
+            recipient_msg = FleetReceivedMessageFactory(
+                self.game,
+                recipient,
+                fleet_name,
+                previous_owner.name,
+            ).new_message()
+            recipient_msg.year = self.game.year
+            recipient_msg.save()
+
+        return 'executed'
+
     def _execute_scuttle_order(self, fleet, order):
         """Execute a scuttle order, destroying the fleet with salvage chance.
 
@@ -4928,6 +5047,8 @@ class GameTurn():
             order.order_type = 'INTERCEPT'
             order.target_fleet = enemy_fleet
             order.warpfactor = order.intercept_speed
+            order.original_warpfactor = order.intercept_speed
+            order.overmax_risk_checked = False
             order.target_kind = 'OBJECT'
             order.target_short_id = enemy_fleet.short_id
             order.x = target_x
@@ -4935,11 +5056,14 @@ class GameTurn():
             order.patrol_generated = True
             order.save(update_fields=[
                 'order_type', 'target_fleet', 'target_kind', 'target_short_id',
-                'warpfactor', 'x', 'y', 'repeat', 'patrol_generated'
+                'warpfactor', 'original_warpfactor', 'overmax_risk_checked',
+                'x', 'y', 'repeat', 'patrol_generated'
             ])
         else:
             order.order_type = 'MOVE'
             order.warpfactor = fleet.max_safe_warp
+            order.original_warpfactor = fleet.max_safe_warp
+            order.overmax_risk_checked = False
             order.target_fleet = None
             order.target_salvage = None
             order.target_star = None
@@ -4949,7 +5073,8 @@ class GameTurn():
             order.target_short_id = None
             order.patrol_generated = False
             order.save(update_fields=[
-                'order_type', 'warpfactor', 'target_fleet', 'target_salvage',
+                'order_type', 'warpfactor', 'original_warpfactor', 'overmax_risk_checked',
+                'target_fleet', 'target_salvage',
                 'target_star', 'target_kind', 'target_short_id', 'x', 'y',
                 'repeat', 'patrol_generated'
             ])
@@ -5049,10 +5174,13 @@ class GameTurn():
         order.target_short_id = None
         order.target_kind = 'SPACE'
         order.warpfactor = fleet.max_safe_warp
+        order.original_warpfactor = fleet.max_safe_warp
+        order.overmax_risk_checked = False
         order.patrol_generated = False
         order.save(update_fields=[
             'order_type', 'target_fleet', 'target_star', 'target_salvage',
-            'target_short_id', 'target_kind', 'warpfactor', 'patrol_generated',
+            'target_short_id', 'target_kind', 'warpfactor',
+            'original_warpfactor', 'overmax_risk_checked', 'patrol_generated',
         ])
 
     def _convert_hidden_fleet_target_to_empty_space(self, order, target_fleet):

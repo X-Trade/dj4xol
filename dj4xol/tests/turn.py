@@ -1413,6 +1413,62 @@ class TestAnomalyInteractions(TestCase):
             message__icontains='bonus RP',
         ).exists())
 
+    def test_wormhole_first_traversal_message_is_non_priority_and_not_repeated(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Transit Probe',
+            x=10,
+            y=10,
+            integrity=100,
+        )
+        a = Anomaly.objects.create(
+            game=game,
+            x=10,
+            y=10,
+            name='Wormhole 1',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=100,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=40,
+            y=40,
+            name='Wormhole 2',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=100,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.random', return_value=1.0):
+            turn._apply_wormhole_interaction(fleet, a)
+
+        msg = player.messages.latest('id')
+        self.assertFalse(msg.priority)
+        self.assertIn('emerged from', msg.message)
+        self.assertIn(fleet.short_id, msg.message)
+        self.assertIn(b.short_id, msg.message)
+        self.assertIn('locate=1', msg.message)
+
+        first_message_count = player.messages.count()
+        fleet.x = a.x
+        fleet.y = a.y
+        fleet.save(update_fields=['x', 'y'])
+
+        with patch('dj4xol.turn.random.random', return_value=1.0):
+            turn._apply_wormhole_interaction(fleet, a)
+
+        self.assertEqual(player.messages.count(), first_message_count)
+
     def test_wormhole_high_instability_can_apply_damage(self):
         game = default_game()
         game.anomalies_enabled = True
@@ -1454,6 +1510,33 @@ class TestAnomalyInteractions(TestCase):
             GameTurn(game).anomaly_interactions()
         fleet.refresh_from_db()
         self.assertEqual(fleet.integrity, 75)
+        msg = player.messages.latest('id')
+        self.assertFalse(msg.priority)
+        self.assertIn('25% integrity damage', msg.message)
+        self.assertIn('emerged from', msg.message)
+
+    def test_asteroid_field_damage_sends_non_priority_message(self):
+        game = default_game()
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.integrity = 100
+        fleet.save(update_fields=['integrity'])
+        salvage = Salvage.objects.create(
+            game=game,
+            x=fleet.x,
+            y=fleet.y,
+            salvage_type=Salvage.TYPE_ASTEROID_FIELD,
+        )
+
+        with patch('dj4xol.turn.random.randint', return_value=6):
+            GameTurn(game).salvage_interactions()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 94)
+        msg = player.messages.latest('id')
+        self.assertFalse(msg.priority)
+        self.assertIn('Asteroid Field', msg.message)
+        self.assertIn('6% integrity damage', msg.message)
 
     def test_wormhole_below_30_stability_can_instantly_destroy(self):
         game = default_game()
@@ -2695,7 +2778,7 @@ class TestFleetTransferOrderExecution(TestCase):
         self.assertEqual((x, y), (target.x, target.y))
 
     def test_get_actual_target_resolves_anomaly_short_id(self):
-        game = default_game(stars=2)
+        game = default_game(stars=2, fleets=0)
         player = game.players.first()
         home = player.homeworld
         anomaly = Anomaly.objects.create(
@@ -2717,7 +2800,7 @@ class TestFleetTransferOrderExecution(TestCase):
         self.assertEqual((x, y), (anomaly.x, anomaly.y))
 
     def test_get_actual_target_converts_deleted_salvage_target_to_space_coordinates(self):
-        game = default_game(stars=2)
+        game = default_game(stars=2, fleets=0)
         player = game.players.first()
         salvage = Salvage.objects.create(
             game=game,
@@ -4846,6 +4929,99 @@ class TestFleetTransferOrders(TestCase):
 
         self.assertTrue(other_player.messages.filter(message__icontains="mineral").exists())
 
+    def test_give_order_transfers_fleet_and_creates_messages_and_report(self):
+        from ..models import FleetOrders, Report
+        from ..factory import GameFactory
+
+        game = default_game(stars=2, fleets=0)
+        player1 = game.players.first()
+        other_user = User.objects.create_user('gift_receiver', 'gift_receiver@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        factory = GameFactory(game=game)
+        player2 = factory.join_player(other_account, get_default_race())
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name="Gift Ship",
+            x=player1.homeworld.x,
+            y=player1.homeworld.y,
+            ironium_inventory=12,
+            colonists=4,
+            ship_count=1,
+            integrity=100,
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='GIVE',
+            transfer_player=player2,
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.player_id, player2.id)
+        self.assertEqual(fleet.orders.count(), 0)
+
+        sender_messages = list(player1.messages.filter(message__icontains="Gift Ship"))
+        receiver_messages = list(player2.messages.filter(message__icontains="Gift Ship"))
+        self.assertTrue(any(player2.name in msg.message for msg in sender_messages))
+        self.assertTrue(any(player1.name in msg.message for msg in receiver_messages))
+
+        report = Report.objects.get(
+            game=game,
+            player=player1,
+            target_type='fleet',
+            target_id=fleet.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'encounter')
+        self.assertEqual(data.get('player_name'), player2.name)
+
+    def test_give_order_without_recipient_abandons_fleet_and_creates_report(self):
+        from ..models import FleetOrders, Report
+
+        game = default_game(stars=2, fleets=0)
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Drifter",
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+            boranium_inventory=9,
+            ship_count=1,
+            integrity=100,
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='GIVE',
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertIsNone(fleet.player)
+        self.assertEqual(fleet.orders.count(), 0)
+        self.assertTrue(player.messages.filter(message__icontains="Drifter").exists())
+
+        report = Report.objects.get(
+            game=game,
+            player=player,
+            target_type='fleet',
+            target_id=fleet.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'encounter')
+        self.assertEqual(data.get('player_name'), 'Abandoned')
+
     def test_load_transfer_from_star(self):
         """Test loading resources from star to fleet."""
         game = default_game(stars=5, fleets=1)
@@ -6273,6 +6449,66 @@ class TestWarpDamage(TestCase):
 
         fleet.refresh_from_db()
         self.assertEqual(fleet.integrity, 100)
+
+    def test_overmax_damage_risk_only_checked_when_order_starts(self):
+        """Overmax movement should not re-roll damage on later turns of the same order."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Persistent Runner",
+            x=1, y=1, max_safe_warp=5, integrity=100
+        )
+
+        order = FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE',
+            x=90, y=90, warpfactor=9
+        )
+
+        with patch('dj4xol.turn.roll_chance', side_effect=[False, True]), \
+             patch('dj4xol.turn.calculate_integrity_loss', return_value=25), \
+             patch('dj4xol.turn.calculate_cargo_loss_percent', return_value=0.10):
+            GameTurn(game).generate_turn()
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(fleet.integrity, 100)
+        self.assertTrue(order.overmax_risk_checked)
+        self.assertEqual(order.warpfactor, 9)
+
+    def test_repeat_order_restores_original_warpfactor_after_overmax_damage(self):
+        """Repeated moves should queue with the originally ordered warp, not the reduced one."""
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game, player=player, name="Repeat Runner",
+            x=10, y=10, max_safe_warp=6, integrity=100
+        )
+
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            repeat=True,
+            x=60,
+            y=10,
+            warpfactor=3,
+            original_warpfactor=9,
+            overmax_risk_checked=True,
+        )
+
+        GameTurn(game)._handle_repeating_order(order)
+
+        repeat_order = FleetOrders.objects.exclude(id=order.id).get()
+        self.assertEqual(repeat_order.warpfactor, 9)
+        self.assertEqual(repeat_order.original_warpfactor, 9)
+        self.assertFalse(repeat_order.overmax_risk_checked)
 
     def test_warp_10_destruction_when_first_roll_true(self):
         """Fleet at warp 10+ is destroyed when first roll_chance returns True."""

@@ -165,6 +165,25 @@ class PlayCommandTest(TestCase):
         )
         self.assertIn('resource_y_kt', output)
 
+    def test_fleets_all_shows_abandoned_owner_name_for_derelict_fleet(self):
+        derelict = Fleet.objects.create(
+            game=self.game,
+            player=None,
+            name='Drifter',
+            x=self.player1.homeworld.x,
+            y=self.player1.homeworld.y,
+            ship_count=3,
+        )
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/fleets all', '/detail %s' % derelict.short_id, '/exit'],
+        )
+        self.assertIn('%s:' % derelict.short_id, output)
+        self.assertIn('owner: Abandoned', output)
+
     def test_fleets_all_shows_known_other_fleet_with_owner(self):
         enemy_fleet = Fleet.objects.create(
             game=self.game,
@@ -364,6 +383,30 @@ class PlayCommandTest(TestCase):
         self.assertEqual(orders[1].transfer_type, 'LOAD')
         self.assertTrue(orders[1].repeat)
         self.assertEqual(orders[1].transfer_ironium, 123)
+
+    def test_orders_add_give_and_abandon(self):
+        fleet = self.player1.fleets.order_by('id').first()
+
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add GIVE %s' % (fleet.short_id, self.player2.short_id),
+                '/orders %s add ABANDON' % fleet.short_id,
+                '/exit',
+            ],
+        )
+
+        orders = list(fleet.orders.order_by('position', 'id'))
+        self.assertEqual(len(orders), 2)
+        self.assertEqual(orders[0].order_type, 'GIVE')
+        self.assertEqual(orders[0].transfer_player_id, self.player2.id)
+        self.assertFalse(orders[0].repeat)
+        self.assertEqual(orders[1].order_type, 'GIVE')
+        self.assertIsNone(orders[1].transfer_player_id)
+        self.assertFalse(orders[1].repeat)
 
     def test_orders_add_transfer_executes_secret_resources(self):
         fleets = list(self.player1.fleets.order_by('id'))

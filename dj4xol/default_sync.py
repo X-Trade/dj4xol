@@ -1,6 +1,7 @@
 """Sync factory default race/research/technology rows from fixtures."""
 
 import os
+import uuid
 
 from django.db import transaction
 
@@ -39,6 +40,22 @@ def _normalize_fk_fields(model, fields):
     return normalized
 
 
+def _upsert_technology(Technology, pk, fields):
+    """Update fixture-backed technology rows, reconciling by short_id if needed."""
+    tech_id = uuid.UUID(str(pk))
+    technology = Technology.objects.filter(id=tech_id).first()
+    if technology is None:
+        short_id = fields.get('short_id')
+        if short_id:
+            technology = Technology.objects.filter(short_id=short_id).first()
+    if technology is None:
+        Technology.objects.create(id=tech_id, **fields)
+        return
+    for key, value in fields.items():
+        setattr(technology, key, value)
+    technology.save()
+
+
 @transaction.atomic
 def sync_factory_defaults(force=False):
     """Upsert fixture-backed defaults and update drifted values.
@@ -51,7 +68,13 @@ def sync_factory_defaults(force=False):
     if _SYNC_DONE and not force:
         return
 
-    from .models import ResearchCategory, ServerRace, ServerRaceType, Technology
+    from .models import (
+        ResearchCategory,
+        ResearchLevelPrerequisite,
+        ServerRace,
+        ServerRaceType,
+        Technology,
+    )
 
     for row in _entries_for('dj4xol.ServerRaceType'):
         fields = dict(row.get('fields') or {})
@@ -83,6 +106,21 @@ def sync_factory_defaults(force=False):
         if not pk:
             continue
         fields = _normalize_fk_fields(Technology, fields)
-        Technology.objects.update_or_create(id=pk, defaults=fields)
+        _upsert_technology(Technology, pk, fields)
+
+    for row in _entries_for('dj4xol.ResearchLevelPrerequisite'):
+        fields = dict(row.get('fields') or {})
+        fields = _normalize_fk_fields(ResearchLevelPrerequisite, fields)
+        category_id = fields.pop('category_id', None)
+        level = fields.pop('level', None)
+        requires_category_id = fields.pop('requires_category_id', None)
+        if category_id is None or level is None or requires_category_id is None:
+            continue
+        ResearchLevelPrerequisite.objects.update_or_create(
+            category_id=category_id,
+            level=level,
+            requires_category_id=requires_category_id,
+            defaults=fields,
+        )
 
     _SYNC_DONE = True

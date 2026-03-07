@@ -1,8 +1,14 @@
 from django.test import TestCase
 import json
+import uuid
 
 from ..default_sync import sync_factory_defaults
-from ..models import ResearchCategory, ServerRaceType, Technology
+from ..models import (
+    ResearchCategory,
+    ResearchLevelPrerequisite,
+    ServerRaceType,
+    Technology,
+)
 
 
 class DefaultSyncTest(TestCase):
@@ -47,6 +53,27 @@ class DefaultSyncTest(TestCase):
         self.assertEqual(
             json.loads(wormhole_mk3.params_json).get('wormhole_fuel_per_ly'), 2.0
         )
+        phased_disruptor = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000206'
+        )
+        self.assertEqual(phased_disruptor.category.code, 'ENERGY')
+        self.assertEqual(phased_disruptor.level, 6)
+        targeting_computer = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000212'
+        )
+        self.assertEqual(targeting_computer.category.code, 'ELECTRONICS')
+        self.assertEqual(targeting_computer.level, 5)
+        planetary_disruptors = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000403'
+        )
+        self.assertEqual(planetary_disruptors.category.code, 'CONSTRUCTION')
+        self.assertEqual(planetary_disruptors.level, 6)
+        planetary_disruptor_gate = ResearchLevelPrerequisite.objects.get(
+            category__code='CONSTRUCTION',
+            level=6,
+            requires_category__code='ENERGY',
+        )
+        self.assertEqual(planetary_disruptor_gate.min_level, 5)
 
         # Drift values away from fixture defaults.
         race.name = 'Drifted Race'
@@ -64,3 +91,66 @@ class DefaultSyncTest(TestCase):
         self.assertEqual(race.name, 'Jack of All Trades')
         self.assertEqual(category.name, 'Energy')
         self.assertEqual(tech.name, 'Improved Warp Coils')
+
+    def test_sync_restores_fixture_backed_research_prerequisites(self):
+        sync_factory_defaults(force=True)
+
+        prerequisite = ResearchLevelPrerequisite.objects.get(
+            category__code='CONSTRUCTION',
+            level=6,
+            requires_category__code='ENERGY',
+        )
+        prerequisite.min_level = 2
+        prerequisite.save(update_fields=['min_level'])
+
+        sync_factory_defaults(force=True)
+
+        prerequisite.refresh_from_db()
+        self.assertEqual(prerequisite.min_level, 5)
+
+    def test_sync_reconciles_technology_by_short_id_when_uuid_differs(self):
+        sync_factory_defaults(force=True)
+
+        original = Technology.objects.get(short_id='tech00000206')
+        original.delete()
+        drifted_id = uuid.uuid4()
+        Technology.objects.create(
+            id=drifted_id,
+            short_id='tech00000206',
+            category_id=2,
+            level=99,
+            name='Old Phased Disruptor',
+            description='Drifted',
+            tech_type='ENERGY_WEAPON',
+            params_json='{"offense_level": 0.01}',
+            display_order=1,
+            enabled=True,
+        )
+
+        sync_factory_defaults(force=True)
+
+        technologies = list(Technology.objects.filter(short_id='tech00000206'))
+        self.assertEqual(len(technologies), 1)
+        technology = technologies[0]
+        self.assertEqual(technology.id, drifted_id)
+        self.assertEqual(technology.name, 'Phased Disruptor')
+        self.assertEqual(technology.category.code, 'ENERGY')
+        self.assertEqual(technology.level, 6)
+
+    def test_propulsion_defaults_keep_early_overmax_penalties_high_until_warp_8(self):
+        sync_factory_defaults(force=True)
+
+        warp2 = Technology.objects.get(id='00000000-0000-0000-0000-000000000100')
+        warp7 = Technology.objects.get(id='00000000-0000-0000-0000-000000000105')
+        warp8 = Technology.objects.get(id='00000000-0000-0000-0000-000000000106')
+        warp9 = Technology.objects.get(id='00000000-0000-0000-0000-000000000107')
+
+        warp2_penalty = json.loads(warp2.params_json).get('overmax_fuel_penalty')
+        warp7_penalty = json.loads(warp7.params_json).get('overmax_fuel_penalty')
+        warp8_penalty = json.loads(warp8.params_json).get('overmax_fuel_penalty')
+        warp9_penalty = json.loads(warp9.params_json).get('overmax_fuel_penalty')
+
+        self.assertGreater(warp2_penalty, warp7_penalty)
+        self.assertGreater(warp7_penalty, 1.0)
+        self.assertLess(warp8_penalty, warp7_penalty)
+        self.assertLessEqual(warp9_penalty, warp8_penalty)

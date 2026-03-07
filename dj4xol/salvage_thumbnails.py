@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from .thumbnail_variants import get_blur_variant_path, is_blur_variant_path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATIC_ROOT = PROJECT_ROOT / "dj4xol" / "static"
@@ -14,7 +15,7 @@ def _list_pngs(relative_dir):
     items = sorted(
         str(path.relative_to(STATIC_ROOT))
         for path in target.glob("*.png")
-        if path.is_file()
+        if path.is_file() and not is_blur_variant_path(path.name)
     )
     return items
 
@@ -55,3 +56,7 @@ def get_salvage_thumbnail(salvage):
         salvage.id or salvage.short_id or salvage.name,
         category,
     )
+
+
+def get_blurred_salvage_thumbnail(salvage):
+    return get_blur_variant_path(get_salvage_thumbnail(salvage))

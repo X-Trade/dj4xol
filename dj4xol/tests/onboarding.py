@@ -1,8 +1,10 @@
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from ..models import Account, ServerSettings
+from ..models import Account, Player, ServerRace, ServerSettings
+from ._util import default_game, get_default_race_type
 
 
 class OnboardingRegistrationTest(TestCase):
@@ -97,3 +99,47 @@ class OnboardingRegistrationTest(TestCase):
         self.assertFalse(account.email_newsletter)
         self.assertEqual(account.email_game_rollups_per_day, 1)
         self.assertTrue(bool(account.email_unsubscribe_key))
+
+    def test_register_rejects_reserved_abandoned_name(self):
+        ServerSettings.objects.update_or_create(
+            key='allow_self_signup',
+            defaults={
+                'value': 'True',
+                'description': 'Allow self-sign-up',
+            }
+        )
+        response = self.client.post(reverse('dj4xol:register'), {
+            'username': 'Abandoned',
+            'password1': 'pw-test-12345',
+            'password2': 'pw-test-12345',
+            'alias': 'Abandoned',
+            'email': 'pilot@example.com',
+            'full_name': 'New Pilot',
+            'website_url': '',
+            'email_game_updates': 'on',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Username is reserved.')
+        self.assertContains(response, 'Account name is reserved.')
+        self.assertFalse(User.objects.filter(username='Abandoned').exists())
+
+
+class IdentityNameRulesTest(TestCase):
+    def test_server_race_name_cannot_be_abandoned(self):
+        with self.assertRaises(ValidationError):
+            ServerRace.objects.create(
+                name='Abandoned',
+                plural_name='Abandoned',
+                race_type=get_default_race_type(),
+            )
+
+    def test_player_name_cannot_be_abandoned(self):
+        game = default_game()
+        with self.assertRaises(ValidationError):
+            Player.objects.create(
+                game=game,
+                account=game.owner,
+                name='Abandoned',
+                plural_name='Abandoned',
+                race_type=get_default_race_type(),
+            )
