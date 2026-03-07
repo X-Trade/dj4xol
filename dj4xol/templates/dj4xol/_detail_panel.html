@@ -23,7 +23,7 @@
         {% if detail.objects_here|length > 1 %}
         <select class="detail-selector" onchange="window.location.href='?x={{ selection.x }}&y={{ selection.y }}&sel=' + this.value">
             {% for obj in detail.objects_here %}
-            <option value="{{ obj.short_id }}" {% if obj.short_id == detail.selected_id %}selected{% endif %}>{{ obj.name }}</option>
+            <option value="{{ obj.short_id }}" {% if obj.short_id == detail.selected_id %}selected{% endif %}>{{ obj.display_label|default:obj.name }}</option>
             {% endfor %}
         </select>
         {% else %}

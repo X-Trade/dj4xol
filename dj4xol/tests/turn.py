@@ -2813,6 +2813,205 @@ class TestFleetTransferOrderExecution(TestCase):
         # Should not include fleet1 itself
         self.assertNotIn(fleet1.name, target_names)
 
+    def test_destination_targets_order_homeworld_stars_then_fleets(self):
+        game = default_game(stars=5, fleets=0)
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        player = game.players.first()
+        home = player.homeworld
+        other_star = game.stars.exclude(pk=home.pk).first()
+        other_star.x = home.x
+        other_star.y = home.y
+        other_star.save(update_fields=['x', 'y'])
+
+        own_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Alpha Fleet',
+            x=home.x,
+            y=home.y,
+            basic_scanner_range=6,
+        )
+
+        other_user = User.objects.create_user('ordering_enemy', 'oe@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        enemy_player = GameFactory(game=game).join_player(other_account, get_default_race())
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=enemy_player,
+            name='Beta Fleet',
+            x=home.x,
+            y=home.y,
+        )
+
+        builder = DetailBuilder(game, home.x, home.y, own_fleet.short_id, player)
+        targets = builder.get_destination_targets(home.x, home.y)['targets']
+
+        star_targets = [t for t in targets if t['type'] == 'star']
+        fleet_targets = [t for t in targets if t['type'] == 'fleet']
+
+        self.assertEqual(star_targets[0]['short_id'], home.short_id)
+        self.assertEqual(star_targets[0]['display_label'], '%s (home)' % home.name)
+        self.assertEqual(
+            [t['short_id'] for t in star_targets[1:]],
+            sorted([other_star.short_id]),
+        )
+        own_fleet_index = next(
+            i for i, target in enumerate(fleet_targets)
+            if target['short_id'] == own_fleet.short_id
+        )
+        enemy_fleet_index = next(
+            i for i, target in enumerate(fleet_targets)
+            if target['short_id'] == enemy_fleet.short_id
+        )
+        self.assertLess(own_fleet_index, enemy_fleet_index)
+        self.assertFalse(fleet_targets[enemy_fleet_index].get('is_owned'))
+        self.assertEqual(
+            [t['type'] for t in targets[:4]],
+            ['star', 'star', 'fleet', 'fleet'],
+        )
+
+    def test_transfer_targets_order_future_fleets_after_current_fleets(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        home = player.homeworld
+        other_star = game.stars.exclude(pk=home.pk).first()
+        other_star.x = home.x
+        other_star.y = home.y
+        other_star.save(update_fields=['x', 'y'])
+
+        fleet1 = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Selected Fleet',
+            x=home.x + 4,
+            y=home.y + 4,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet1,
+            order_type='MOVE',
+            target_star=home,
+            warpfactor=5,
+        )
+
+        current_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Current Fleet',
+            x=home.x,
+            y=home.y,
+        )
+        future_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Future Fleet',
+            x=home.x + 8,
+            y=home.y + 8,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=future_fleet,
+            order_type='MOVE',
+            target_star=home,
+            warpfactor=5,
+        )
+
+        builder = DetailBuilder(game, fleet1.x, fleet1.y, fleet1.short_id, player)
+        targets = builder.get_transfer_targets()['targets']
+
+        self.assertEqual(
+            [target['type'] for target in targets[:4]],
+            ['star', 'star', 'fleet', 'fleet'],
+        )
+        self.assertEqual(targets[0]['short_id'], home.short_id)
+        self.assertEqual(targets[0]['display_label'], '%s (home)' % home.name)
+        current_fleet_index = next(
+            i for i, target in enumerate(targets)
+            if target['short_id'] == current_fleet.short_id
+        )
+        future_fleet_index = next(
+            i for i, target in enumerate(targets)
+            if target['short_id'] == future_fleet.short_id
+        )
+        self.assertLess(current_fleet_index, future_fleet_index)
+        self.assertFalse(targets[current_fleet_index]['is_future'])
+        self.assertTrue(targets[future_fleet_index]['is_future'])
+
+    def test_objects_here_order_homeworld_stars_then_fleets(self):
+        game = default_game(stars=5, fleets=0)
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        player = game.players.first()
+        home = player.homeworld
+        other_star = game.stars.exclude(pk=home.pk).first()
+        other_star.x = home.x
+        other_star.y = home.y
+        other_star.save(update_fields=['x', 'y'])
+
+        own_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Visible Own Fleet',
+            x=home.x,
+            y=home.y,
+            basic_scanner_range=6,
+        )
+
+        other_user = User.objects.create_user('objects_enemy', 'obj@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        enemy_player = GameFactory(game=game).join_player(other_account, get_default_race())
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=enemy_player,
+            name='Visible Enemy Fleet',
+            x=home.x,
+            y=home.y,
+        )
+
+        detail = DetailBuilder(
+            game, x=home.x, y=home.y, selected=home.short_id, player=player
+        ).build_detail()
+        objects_here = detail['objects_here']
+
+        self.assertEqual(
+            [obj['type'] for obj in objects_here[:4]],
+            ['star', 'star', 'fleet', 'fleet'],
+        )
+        self.assertEqual(objects_here[0]['short_id'], home.short_id)
+        self.assertEqual(objects_here[0]['display_label'], '%s (home)' % home.name)
+        own_fleet_index = next(
+            i for i, obj in enumerate(objects_here)
+            if obj['short_id'] == own_fleet.short_id
+        )
+        enemy_fleet_index = next(
+            i for i, obj in enumerate(objects_here)
+            if obj['short_id'] == enemy_fleet.short_id
+        )
+        self.assertLess(own_fleet_index, enemy_fleet_index)
+
+    def test_owned_non_homeworld_star_uses_colony_label(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        home = player.homeworld
+        colony = game.stars.exclude(pk=home.pk).first()
+        colony.player = player
+        colony.x = home.x
+        colony.y = home.y
+        colony.save(update_fields=['player', 'x', 'y'])
+
+        detail = DetailBuilder(
+            game, x=home.x, y=home.y, selected=home.short_id, player=player
+        ).build_detail()
+        stars_here = [obj for obj in detail['objects_here'] if obj['type'] == 'star']
+
+        colony_entry = next(
+            obj for obj in stars_here if obj['short_id'] == colony.short_id
+        )
+        self.assertEqual(stars_here[0]['short_id'], home.short_id)
+        self.assertEqual(stars_here[0]['display_label'], '%s (home)' % home.name)
+        self.assertEqual(colony_entry['display_label'], '%s (colony)' % colony.name)
+
     def test_get_fleet_orders_handles_missing_target_star_relation(self):
         """Detail builder should not crash if target_star relation becomes stale."""
         game = default_game(stars=3)

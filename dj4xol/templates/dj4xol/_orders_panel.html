@@ -155,13 +155,13 @@
                                     {% if obj.type == 'space' %}
                                         <option value="space" data-x="{{ destination_targets.location.0 }}" data-y="{{ destination_targets.location.1 }}"{% if destination_targets.selected_target == 'space' %} selected{% endif %}>{{ obj.name }} (Space)</option>
                                     {% elif obj.type == 'star' %}
-                                        <option value="star:{{ obj.short_id }}"{% if destination_targets.selected_target == "star:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% else %} (Star){% endif %}</option>
+                                        <option value="star:{{ obj.short_id }}"{% if destination_targets.selected_target == "star:"|add:obj.short_id %} selected{% endif %}>{{ obj.display_label }}</option>
                                     {% elif obj.type == 'fleet' %}
-                                        <option value="fleet:{{ obj.short_id }}"{% if destination_targets.selected_target == "fleet:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
+                                        <option value="fleet:{{ obj.short_id }}"{% if destination_targets.selected_target == "fleet:"|add:obj.short_id %} selected{% endif %}>{{ obj.display_label }}</option>
                                     {% elif obj.type == 'salvage' %}
-                                        <option value="salvage:{{ obj.short_id }}"{% if destination_targets.selected_target == "salvage:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }} (Salvage)</option>
+                                        <option value="salvage:{{ obj.short_id }}"{% if destination_targets.selected_target == "salvage:"|add:obj.short_id %} selected{% endif %}>{{ obj.display_label }}</option>
                                     {% elif obj.type == 'anomaly' %}
-                                        <option value="anomaly:{{ obj.short_id }}"{% if destination_targets.selected_target == "anomaly:"|add:obj.short_id %} selected{% endif %}>{{ obj.name }} (Anomaly)</option>
+                                        <option value="anomaly:{{ obj.short_id }}"{% if destination_targets.selected_target == "anomaly:"|add:obj.short_id %} selected{% endif %}>{{ obj.display_label }}</option>
                                     {% endif %}
                                 {% endfor %}
                             </select>
@@ -196,11 +196,11 @@
                                     {% if obj.type == 'space' %}
                                         <option value="space" data-x="{{ detail.transfer_targets.location.0 }}" data-y="{{ detail.transfer_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Space)</option>
                                     {% elif obj.type == 'star' %}
-                                        <option value="star:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% else %} (Star){% endif %}</option>
+                                        <option value="star:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.display_label }}</option>
                                     {% elif obj.type == 'fleet' %}
-                                        <option value="fleet:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
+                                        <option value="fleet:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.display_label }}</option>
                                     {% elif obj.type == 'salvage' %}
-                                        <option value="salvage:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Salvage)</option>
+                                        <option value="salvage:{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.display_label }}</option>
                                     {% endif %}
                                 {% endfor %}
                             </select>
@@ -219,9 +219,9 @@
                                     {% if obj.type == 'space' %}
                                         <option value="space" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Space)</option>
                                     {% elif obj.type == 'star' %}
-                                        <option value="star:{{ obj.short_id }}" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% else %} (Star){% endif %}</option>
+                                        <option value="star:{{ obj.short_id }}" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.display_label }}</option>
                                     {% elif obj.type == 'fleet' %}
-                                        <option value="fleet:{{ obj.short_id }}" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }} (Fleet)</option>
+                                        <option value="fleet:{{ obj.short_id }}" data-x="{{ detail.patrol_targets.location.0 }}" data-y="{{ detail.patrol_targets.location.1 }}"{% if forloop.first %} selected{% endif %}>{{ obj.display_label }}</option>
                                     {% endif %}
                                 {% endfor %}
                             </select>
@@ -230,7 +230,7 @@
                     <div class="dest-display-row" id="colonise-destination" style="display: none;">
                         {% if detail.colonise_targets.display_mode == 'single' %}
                             <!-- Single star target -->
-                            <span class="dest-display">{{ detail.colonise_targets.default_target.name }}{% if detail.colonise_targets.default_target.is_homeworld %} (Home){% endif %}</span>
+                            <span class="dest-display">{{ detail.colonise_targets.default_target.display_label }}</span>
                             <input type="hidden" id="colonise-single-target-value" data-target="{{ detail.colonise_targets.default_target.short_id }}">
                         {% elif detail.colonise_targets.display_mode == 'empty' %}
                             <!-- No star at location -->
@@ -240,14 +240,14 @@
                             <!-- Multiple stars (rare) -->
                             <select id="colonise-target" class="transfer-target-select">
                                 {% for obj in detail.colonise_targets.targets %}
-                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% endif %}</option>
+                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.display_label }}</option>
                                 {% endfor %}
                             </select>
                         {% endif %}
                     </div>
                     <div class="dest-display-row" id="bomb-destination" style="display: none;">
                         {% if detail.bomb_targets.display_mode == 'single' %}
-                            <span class="dest-display">{{ detail.bomb_targets.default_target.name }}{% if detail.bomb_targets.default_target.is_homeworld %} (Home){% endif %}</span>
+                            <span class="dest-display">{{ detail.bomb_targets.default_target.display_label }}</span>
                             <input type="hidden" id="bomb-single-target-value" data-target="{{ detail.bomb_targets.default_target.short_id }}">
                         {% elif detail.bomb_targets.display_mode == 'empty' %}
                             <span class="dest-display"><em>No star at location</em></span>
@@ -255,14 +255,14 @@
                         {% else %}
                             <select id="bomb-target" class="transfer-target-select">
                                 {% for obj in detail.bomb_targets.targets %}
-                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% endif %}</option>
+                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.display_label }}</option>
                                 {% endfor %}
                             </select>
                         {% endif %}
                     </div>
                     <div class="dest-display-row" id="remotemine-destination" style="display: none;">
                         {% if detail.remotemine_targets.display_mode == 'single' %}
-                            <span class="dest-display">{{ detail.remotemine_targets.default_target.name }}{% if detail.remotemine_targets.default_target.is_homeworld %} (Home){% endif %}</span>
+                            <span class="dest-display">{{ detail.remotemine_targets.default_target.display_label }}</span>
                             <input type="hidden" id="remotemine-single-target-value" data-target="{{ detail.remotemine_targets.default_target.short_id }}" data-minerals="{{ detail.remotemine_targets.default_target.resource_keys|join:',' }}">
                         {% elif detail.remotemine_targets.display_mode == 'empty' %}
                             <span class="dest-display"><em>No star at location</em></span>
@@ -270,7 +270,7 @@
                         {% else %}
                             <select id="remotemine-target" class="transfer-target-select">
                                 {% for obj in detail.remotemine_targets.targets %}
-                                    <option value="{{ obj.short_id }}" data-minerals="{{ obj.resource_keys|join:',' }}"{% if forloop.first %} selected{% endif %}>{{ obj.name }}{% if obj.is_homeworld %} (Home){% endif %}</option>
+                                    <option value="{{ obj.short_id }}" data-minerals="{{ obj.resource_keys|join:',' }}"{% if forloop.first %} selected{% endif %}>{{ obj.display_label }}</option>
                                 {% endfor %}
                             </select>
                         {% endif %}
