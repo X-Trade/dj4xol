@@ -1038,6 +1038,8 @@ class TestDetailPanelReportTiers(TestCase):
         )
         response = self._get_detail_response(salvage)
         self.assertContains(response, '__blur.png')
+        self.assertContains(response, 'data-section="salvage"')
+        self.assertContains(response, 'data-section="salvage-contents"')
         self.assertContains(response, 'Type')
         self.assertContains(response, 'Ancient Debris')
         self.assertContains(response, 'total: 20kt')

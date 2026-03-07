@@ -200,6 +200,17 @@
         </div>
     </div>
     {% endif %}
+    {% if detail.is_salvage %}
+    <div class="collapsible-section" data-section="salvage">
+        <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Salvage</h4>
+        <div class="collapsible-content">
+            <div class="detail-row">
+                <span class="env-label">Type</span>
+                <span class="detail-value">{{ detail.salvage_type_display|default:'Unknown' }}</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
     {% if detail.salvage_inventory %}
     <div class="collapsible-section" data-section="salvage-contents">
         <div class="collapsible-header" style="display: flex; justify-content: space-between; align-items: center;">
@@ -207,12 +218,6 @@
             <span class="capacity-display">total: {{ detail.salvage_inventory.total|floatformat:0 }}kt</span>
         </div>
         <div class="collapsible-content">
-            {% if detail.salvage_type_display %}
-            <div class="detail-row">
-                <span class="env-label">Type</span>
-                <span class="detail-value">{{ detail.salvage_type_display }}</span>
-            </div>
-            {% endif %}
             {% for entry in detail.salvage_inventory.items %}
             <div class="detail-row">
                 <span class="env-label">{{ entry.label }}</span>
