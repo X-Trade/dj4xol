@@ -148,7 +148,7 @@
                 <!-- Destination for MOVE orders, Target for TRANSFER orders - same visual location -->
                 <div class="order-param-row" id="destination-row">
                     <label id="dest-target-label">Destination</label>
-                    <div class="dest-display-row" id="move-destination">
+                    <div class="dest-display-row" id="move-destination"{% if destination_targets %} data-location-x="{{ destination_targets.location.0 }}" data-location-y="{{ destination_targets.location.1 }}"{% endif %}>
                         {% if destination_targets and destination_targets.display_mode == 'multiple' %}
                             <select id="move-target" class="transfer-target-select">
                                 {% for obj in destination_targets.targets %}

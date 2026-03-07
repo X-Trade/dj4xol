@@ -137,6 +137,21 @@ $(document).ready(function() {
     var urlX = (selX !== undefined && selX !== null && selX !== '') ? selX : urlParams.get('x');
     var urlY = (selY !== undefined && selY !== null && selY !== '') ? selY : urlParams.get('y');
     var urlLocate = urlParams.get('locate');
+    var noLocate = urlParams.get('no_locate');
+    var suppressAutoLocate = (
+        noLocate === '1' ||
+        noLocate === 'true' ||
+        noLocate === 'yes' ||
+        noLocate === 'on'
+    );
+    var hasDestinationSelection = (
+        !!urlParams.get('dest_star') ||
+        !!urlParams.get('dest_fleet') ||
+        !!urlParams.get('dest_salvage') ||
+        !!urlParams.get('dest_anomaly') ||
+        (urlParams.get('dest_x') !== null && urlParams.get('dest_x') !== '') ||
+        (urlParams.get('dest_y') !== null && urlParams.get('dest_y') !== '')
+    );
 
     // Get border offset from maparea data attribute (in pixels, unscaled)
     var mapScale = 6;
@@ -356,6 +371,147 @@ $(document).ready(function() {
         overlay.appendChild(circle);
     }
 
+    function parseMapCoordPair(xRaw, yRaw) {
+        var x = parseInt(xRaw, 10);
+        var y = parseInt(yRaw, 10);
+        if (!isFinite(x) || !isFinite(y)) {
+            return null;
+        }
+        return { x: x, y: y };
+    }
+
+    function getSelectedFleetRouteEnd() {
+        if (!selectedFleetId) {
+            return null;
+        }
+
+        var routeEnd = null;
+        for (var i = 0; i < movementPaths.length; i++) {
+            var seg = movementPaths[i] || {};
+            var fleetId = (seg.fleet_short_id || '').toString();
+            if (fleetId !== selectedFleetId) {
+                continue;
+            }
+            routeEnd = parseMapCoordPair(seg.to_x, seg.to_y);
+        }
+        if (routeEnd) {
+            return routeEnd;
+        }
+
+        if (selectedObjectType === 'fleet') {
+            var selectedFleetCoords = parseMapCoordPair(urlX, urlY);
+            if (selectedFleetCoords) {
+                return selectedFleetCoords;
+            }
+        }
+
+        var fallback = null;
+        $maparea.find('[data-map-object="1"][data-object-type="fleet"]').each(function() {
+            if (fallback) {
+                return;
+            }
+            if ((this.getAttribute('data-object-id') || '') !== selectedFleetId) {
+                return;
+            }
+            fallback = parseMapCoordPair(
+                this.getAttribute('data-x'),
+                this.getAttribute('data-y')
+            );
+        });
+        return fallback;
+    }
+
+    function getMovePreviewTarget() {
+        var moveDestination = document.getElementById('move-destination');
+        if (moveDestination) {
+            var destinationCoords = parseMapCoordPair(
+                moveDestination.getAttribute('data-location-x'),
+                moveDestination.getAttribute('data-location-y')
+            );
+            if (destinationCoords) {
+                return destinationCoords;
+            }
+        }
+
+        var moveTargetSelect = document.getElementById('move-target');
+        if (moveTargetSelect && moveTargetSelect.options.length) {
+            var selectedOption = moveTargetSelect.options[moveTargetSelect.selectedIndex];
+            if (selectedOption && selectedOption.value === 'space') {
+                var spaceCoords = parseMapCoordPair(
+                    selectedOption.getAttribute('data-x'),
+                    selectedOption.getAttribute('data-y')
+                );
+                if (spaceCoords) {
+                    return spaceCoords;
+                }
+            }
+        }
+
+        return parseMapCoordPair(
+            (document.querySelector('input[name="target_x"]') || {}).value,
+            (document.querySelector('input[name="target_y"]') || {}).value
+        );
+    }
+
+    function getPatrolPreviewTarget() {
+        var patrolTargetSelect = document.getElementById('patrol-target');
+        if (patrolTargetSelect && patrolTargetSelect.options.length) {
+            var selectedOption = patrolTargetSelect.options[patrolTargetSelect.selectedIndex];
+            if (selectedOption) {
+                var patrolOptionCoords = parseMapCoordPair(
+                    selectedOption.getAttribute('data-x'),
+                    selectedOption.getAttribute('data-y')
+                );
+                if (patrolOptionCoords) {
+                    return patrolOptionCoords;
+                }
+            }
+        }
+
+        var patrolDestination = document.getElementById('patrol-destination');
+        if (patrolDestination) {
+            var patrolDestinationCoords = parseMapCoordPair(
+                patrolDestination.getAttribute('data-location-x'),
+                patrolDestination.getAttribute('data-location-y')
+            );
+            if (patrolDestinationCoords) {
+                return patrolDestinationCoords;
+            }
+        }
+
+        return parseMapCoordPair(
+            (document.querySelector('input[name="target_x"]') || {}).value,
+            (document.querySelector('input[name="target_y"]') || {}).value
+        );
+    }
+
+    function getProposedMovementLeg() {
+        var orderType = ((document.getElementById('order-type') || {}).value || '').toUpperCase();
+        if (orderType !== 'MOVE' && orderType !== 'INTERCEPT' && orderType !== 'PATROL') {
+            return null;
+        }
+
+        var fromCoords = getSelectedFleetRouteEnd();
+        if (!fromCoords) {
+            return null;
+        }
+
+        var toCoords = (orderType === 'PATROL') ? getPatrolPreviewTarget() : getMovePreviewTarget();
+        if (!toCoords) {
+            return null;
+        }
+        if (fromCoords.x === toCoords.x && fromCoords.y === toCoords.y) {
+            return null;
+        }
+
+        return {
+            from_x: fromCoords.x,
+            from_y: fromCoords.y,
+            to_x: toCoords.x,
+            to_y: toCoords.y
+        };
+    }
+
     function drawMovementPaths() {
         if (!$movementOverlay.length) {
             return;
@@ -399,6 +555,26 @@ $(document).ready(function() {
                     'fleet-movement-line ' + (isSelected ? 'fleet-movement-line-selected' : 'fleet-movement-line-other')
                 ));
                 overlay.appendChild(line);
+            }
+        }
+
+        var proposedLeg = getProposedMovementLeg();
+        if (proposedLeg) {
+            var px1 = (parseInt(proposedLeg.from_x, 10) * mapScale) + borderOffset + cxOffset;
+            var py1 = (parseInt(proposedLeg.from_y, 10) * mapScale) + borderOffset + cxOffset;
+            var px2 = (parseInt(proposedLeg.to_x, 10) * mapScale) + borderOffset + cxOffset;
+            var py2 = (parseInt(proposedLeg.to_y, 10) * mapScale) + borderOffset + cxOffset;
+            if (isFinite(px1) && isFinite(py1) && isFinite(px2) && isFinite(py2)) {
+                var proposedLine = document.createElementNS(ns, 'line');
+                proposedLine.setAttribute('x1', px1);
+                proposedLine.setAttribute('y1', py1);
+                proposedLine.setAttribute('x2', px2);
+                proposedLine.setAttribute('y2', py2);
+                proposedLine.setAttribute(
+                    'class',
+                    'fleet-movement-line-proposed'
+                );
+                overlay.appendChild(proposedLine);
             }
         }
 
@@ -455,6 +631,13 @@ $(document).ready(function() {
     updateScannerButton();
     drawMovementPaths();
     drawScannerRanges();
+
+    document.addEventListener('change', function(e) {
+        var id = (e.target && e.target.id) || '';
+        if (id === 'order-type' || id === 'move-target' || id === 'patrol-target') {
+            drawMovementPaths();
+        }
+    });
 
     $movementBtn.on('click', function(e) {
         e.preventDefault();
@@ -548,7 +731,8 @@ $(document).ready(function() {
 
     if (
         !suppressLocate &&
-        ((locateEnabled && urlX !== null && urlY !== null && !destMode) ||
+        !suppressAutoLocate &&
+        ((locateEnabled && urlX !== null && urlY !== null && !destMode && !hasDestinationSelection) ||
          (urlLocate === '1' && urlX !== null && urlY !== null))
     ) {
         // Center on selected coordinates (multiply by MAP_SCALE=6, add border offset)

@@ -1445,6 +1445,53 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, '>Give Fleet<')
         self.assertNotContains(response, '>Transfer Fleet<')
 
+    def test_add_fleet_order_redirect_suppresses_auto_locate(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        target_star = game.stars.exclude(id=player.homeworld_id).first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'MOVE',
+                'target_star': target_star.short_id,
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('no_locate=1', response.url)
+
+    def test_add_fleet_order_redirect_suppresses_auto_locate_when_player_turned_in(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        player.turned_in = True
+        player.save(update_fields=['turned_in'])
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'MOVE',
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('no_locate=1', response.url)
+        self.assertEqual(fleet.orders.count(), 0)
+
     def test_bomb_order_creation_requires_bomb_capability(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
