@@ -66,9 +66,6 @@
     <p>
         {{ detail.fleet_motion_summary|default:'Travel status unknown' }}
     </p>
-    {% if detail.position_status == 'last_known' and detail.last_known_position %}
-    <p>Last known position (Year {{ detail.last_known_report_year|default:detail.report_year }}): {{ detail.last_known_position }}</p>
-    {% endif %}
     {% endif %}
     {% endif %}
     {% if detail.is_anomaly %}

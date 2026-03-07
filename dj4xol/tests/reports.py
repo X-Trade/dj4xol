@@ -1028,6 +1028,54 @@ class ScannerReportTest(TestCase):
             format_basic_unknown_fleet_name(enemy_fleet)
         )
 
+    def test_visible_fleet_uses_live_motion_over_stale_report_motion(self):
+        scanner = self._create_scanner_fleet(basic=8, advanced=0, x=10, y=10)
+        star = self._place_enemy_star_near(scanner.x, scanner.y, distance=4)
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Archive Raider',
+            x=star.x,
+            y=star.y,
+            ship_count=3,
+            integrity=88,
+            heading=151.3,
+            travel_warp=0,
+        )
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year - 5,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report='{}',
+        )
+        report.set_report_data({
+            'name': enemy_fleet.name,
+            'x': star.x + 7,
+            'y': star.y + 7,
+            'report_tier': 'encounter',
+            'player_name': self.player2.name,
+            'ship_count': 3,
+            'integrity': 88,
+            'travel_warp': 9,
+            'heading': 44.0,
+        })
+        report.save(update_fields=['cached_report'])
+
+        detail = DetailBuilder(
+            self.game,
+            selected=enemy_fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+
+        self.assertEqual(detail.get('report_tier'), 'encounter')
+        self.assertEqual(detail.get('travel_warp'), 0)
+        self.assertAlmostEqual(float(detail.get('heading')), 151.3, places=1)
+        self.assertEqual(detail.get('x'), enemy_fleet.x)
+        self.assertEqual(detail.get('y'), enemy_fleet.y)
+        self.assertEqual(detail.get('fleet_motion_summary'), 'In orbit')
+
     def test_advanced_scanner_reports_fleet_composition_only(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=6, x=15, y=15)
         enemy_fleet = Fleet.objects.create(
