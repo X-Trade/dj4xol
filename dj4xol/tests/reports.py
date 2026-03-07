@@ -856,14 +856,45 @@ class ScannerReportTest(TestCase):
         return None, None
 
     def _place_enemy_star_near(self, x, y, distance=4):
-        target = (x + distance, y)
         occupied = set(
             self.game.stars.exclude(id=self.enemy_star.id).values_list('x', 'y')
         )
-        if target in occupied:
+        max_x = int(self.game.map_size_x)
+        max_y = int(self.game.map_size_y)
+
+        def in_bounds(cx, cy):
+            return 1 <= int(cx) < max_x and 1 <= int(cy) < max_y
+
+        def first_open(candidates):
+            for cx, cy in candidates:
+                if not in_bounds(cx, cy):
+                    continue
+                if (int(cx), int(cy)) in occupied:
+                    continue
+                return int(cx), int(cy)
+            return None, None
+
+        cardinal = [
+            (x + distance, y),
+            (x - distance, y),
+            (x, y + distance),
+            (x, y - distance),
+        ]
+        tx, ty = first_open(cardinal)
+
+        if tx is None or ty is None:
+            nearby = []
+            for dx in range(-distance, distance + 1):
+                for dy in range(-distance, distance + 1):
+                    if dx == 0 and dy == 0:
+                        continue
+                    if (dx * dx) + (dy * dy) > (distance * distance):
+                        continue
+                    nearby.append((x + dx, y + dy))
+            tx, ty = first_open(nearby)
+
+        if tx is None or ty is None:
             tx, ty = self._find_empty_coord(exclude_star=self.enemy_star)
-        else:
-            tx, ty = target
         self.enemy_star.x = tx
         self.enemy_star.y = ty
         self.enemy_star.save(update_fields=['x', 'y'])
