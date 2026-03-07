@@ -64,8 +64,7 @@
     <p>{% if detail.report_tier == 'basic' and not detail.owner_known %}Unknown{% elif detail.player %}{{ detail.player }}{% else %}Unowned{% endif %}{% if detail.population %} | Population: <span class="has-tooltip" data-tooltip="{{ detail.population|exact_pop }}">{{ detail.population|humanize_pop }}</span>{% if detail.population_change != None %} <span class="pop-change has-tooltip {% if detail.population_change >= 0 %}positive{% else %}negative{% endif %}" data-tooltip="{{ detail.population_change|exact_pop }}">({{ detail.population_change|humanize_pop_change }})</span>{% endif %}{% endif %}</p>
     {% if detail.is_fleet %}
     <p>
-        Travelling at: {% if detail.travel_warp != None %}Warp {{ detail.travel_warp }}{% else %}Unknown{% endif %}
-        {% if detail.heading != None %}| Heading: {{ detail.heading|floatformat:1 }}&deg;{% endif %}
+        {{ detail.fleet_motion_summary|default:'Travel status unknown' }}
     </p>
     {% if detail.position_status == 'last_known' and detail.last_known_position %}
     <p>Last known position (Year {{ detail.last_known_report_year|default:detail.report_year }}): {{ detail.last_known_position }}</p>

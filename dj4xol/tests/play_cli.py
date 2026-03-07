@@ -1176,6 +1176,18 @@ class PlayCommandTest(TestCase):
         self.assertIn('7: Claim the rift', output)
         self.assertIn('Removed note 1.', output)
 
+    def test_notes_command_rejects_profanity(self):
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/notes add "fuck the east flank"', '/notes', '/exit'],
+        )
+        self.assertIn('Note text contains blocked profanity.', output)
+        self.assertNotIn('Saved note', output)
+        self.assertEqual(PlayerNote.objects.filter(player=self.player1).count(), 0)
+
     def test_messages_command_formats_locate_links_for_cli(self):
         fleet = self.player1.fleets.first()
         GameMessage.objects.create(

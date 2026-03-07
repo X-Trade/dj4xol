@@ -12,9 +12,11 @@ from ..models import (
     Report,
     ResearchCategory,
     Salvage,
+    ServerRace,
     ServerSettings,
     Technology,
 )
+from ..forms import JoinGameForm, NewGameForm
 from ..research import ensure_player_research_rows
 from ..turn import (
     GameTurn,
@@ -22,7 +24,7 @@ from ..turn import (
     format_basic_unknown_fleet_name,
 )
 from ..factory import GameFactory
-from ._util import default_game, get_default_user, get_default_race
+from ._util import default_game, get_default_user, get_default_race, get_default_race_type
 
 
 class TestLandingPage(TestCase):
@@ -386,6 +388,7 @@ class TestServerSettingsView(TestCase):
         self.assertContains(response, 'Profanity Filter')
         self.assertContains(response, 'Public Server URL')
         self.assertContains(response, 'Used for links in emails')
+        self.assertContains(response, 'Allow Player Public Races')
         self.assertContains(response, 'Enable Spectator Mode')
         self.assertContains(response, 'Enable Profanity Filter')
         self.assertContains(response, 'Profanity Whitelist')
@@ -402,6 +405,7 @@ class TestServerSettingsView(TestCase):
                 'server_welcome': 'Welcome to the production cluster.',
                 'allow_self_signup': 'on',
                 'enable_email': 'on',
+                'allow_player_public_races': 'on',
                 'enable_spectator_mode': 'on',
                 'enable_gpt': '',
                 'enable_debug_actions': '',
@@ -432,6 +436,7 @@ class TestServerSettingsView(TestCase):
             'Welcome to the production cluster.',
         )
         self.assertEqual(ServerSettings.get('enable_email'), 'True')
+        self.assertEqual(ServerSettings.get('allow_player_public_races'), 'True')
         self.assertEqual(ServerSettings.get('enable_spectator_mode'), 'True')
         self.assertEqual(ServerSettings.get('enable_gpt'), 'False')
         self.assertEqual(ServerSettings.get('enable_profanity_filter'), 'False')
@@ -453,6 +458,7 @@ class TestServerSettingsView(TestCase):
                 'server_welcome': '',
                 'allow_self_signup': 'on',
                 'enable_email': '',
+                'allow_player_public_races': '',
                 'enable_spectator_mode': '',
                 'enable_gpt': '',
                 'enable_debug_actions': '',
@@ -556,6 +562,149 @@ class TestPreJoinNavigation(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'class="nav-link-game"')
         self.assertNotContains(response, '>Research<', html=True)
+
+
+class TestRaceCreationView(TestCase):
+    def setUp(self):
+        self.user, self.account = get_default_user()
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.race_type = get_default_race_type()
+
+    def _race_payload(self, name):
+        return {
+            'name': name,
+            'plural_name': '%sP' % name[:15],
+            'homeworld_name': '',
+            'race_type': self.race_type.code,
+            'description': 'Test race notes',
+            'gravity_center': '1.0',
+            'gravity_width': '1.0',
+            'temperature_center': '1.0',
+            'temperature_width': '1.0',
+            'radiation_center': '1.0',
+            'radiation_width': '1.0',
+            'starting_tech_level': '0',
+            'starting_colonists': '20',
+            'starting_mines': '4',
+            'starting_factories': '2',
+            'starting_labs': '1',
+            'starting_shipyards': '1',
+            'starting_fleets': '2',
+        }
+
+    def test_create_race_hides_public_checkbox_for_non_staff_by_default(self):
+        response = self.client.get(reverse('dj4xol:create_race'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'id="id_public"')
+
+    def test_create_race_staff_public_detaches_owner(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=['is_staff'])
+
+        response = self.client.get(reverse('dj4xol:create_race'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="id_public"')
+
+        payload = self._race_payload('AdminPublicRace')
+        payload['public'] = 'on'
+        response = self.client.post(reverse('dj4xol:create_race'), payload)
+        self.assertEqual(response.status_code, 302)
+
+        race = ServerRace.objects.get(name='AdminPublicRace')
+        self.assertTrue(race.public)
+        self.assertIsNone(race.owner)
+
+    def test_create_race_player_public_enabled_keeps_owner(self):
+        ServerSettings.objects.update_or_create(
+            key='allow_player_public_races',
+            defaults={
+                'value': 'True',
+                'description': 'Allow players to publish public races',
+            },
+        )
+        response = self.client.get(reverse('dj4xol:create_race'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="id_public"')
+
+        payload = self._race_payload('PlayerPublicRace')
+        payload['public'] = 'on'
+        response = self.client.post(reverse('dj4xol:create_race'), payload)
+        self.assertEqual(response.status_code, 302)
+
+        race = ServerRace.objects.get(name='PlayerPublicRace')
+        self.assertTrue(race.public)
+        self.assertEqual(race.owner, self.account)
+
+
+class TestOnboardingRaceView(TestCase):
+    def setUp(self):
+        self.user, self.account = get_default_user()
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.race_type = get_default_race_type()
+
+    def test_onboarding_race_hides_skip_without_public_server_races(self):
+        response = self.client.get(reverse('dj4xol:onboarding_race'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Skip for now')
+
+    def test_onboarding_race_shows_skip_with_public_server_races(self):
+        ServerRace.objects.create(
+            name='ServerStarter',
+            plural_name='ServerStarters',
+            race_type=self.race_type,
+            public=True,
+            owner=None,
+        )
+        response = self.client.get(reverse('dj4xol:onboarding_race'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Skip for now')
+
+
+class TestRaceChoiceOrdering(TestCase):
+    def setUp(self):
+        self.user, self.account = get_default_user()
+        other_user = User.objects.create_user('other_user', 'other@example.com', 'pass')
+        self.other_account = Account.objects.create(django_user=other_user)
+        self.race_type = get_default_race_type()
+
+    def test_race_choices_show_suffixes_and_order(self):
+        mine = ServerRace.objects.create(
+            name='ZuluMine',
+            plural_name='ZuluMines',
+            race_type=self.race_type,
+            owner=self.account,
+            public=False,
+        )
+        server = ServerRace.objects.create(
+            name='AlphaServer',
+            plural_name='AlphaServers',
+            race_type=self.race_type,
+            owner=None,
+            public=True,
+        )
+        other = ServerRace.objects.create(
+            name='BetaOther',
+            plural_name='BetaOthers',
+            race_type=self.race_type,
+            owner=self.other_account,
+            public=True,
+        )
+
+        join_form = JoinGameForm(self.account)
+        join_choices = list(join_form.fields['race'].queryset)
+        self.assertEqual(join_choices, [mine, server, other])
+        self.assertEqual(join_form.fields['race'].label_from_instance(mine), 'ZuluMine (yours)')
+        self.assertEqual(join_form.fields['race'].label_from_instance(server), 'AlphaServer (server)')
+        self.assertEqual(join_form.fields['race'].label_from_instance(other), 'BetaOther')
+
+        new_game_form = NewGameForm(self.account)
+        new_game_choices = list(new_game_form.fields['race'].queryset)
+        self.assertEqual(new_game_choices, [mine, server, other])
+        self.assertEqual(new_game_form.fields['race'].label_from_instance(mine), 'ZuluMine (yours)')
+        self.assertEqual(new_game_form.fields['race'].label_from_instance(server), 'AlphaServer (server)')
+        self.assertEqual(new_game_form.fields['race'].label_from_instance(other), 'BetaOther')
 
 
 class TestRenameObjectView(TestCase):
