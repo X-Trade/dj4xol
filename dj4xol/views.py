@@ -1297,6 +1297,8 @@ def add_fleet_order(request, game_short_id):
     if target_kind in ('star', 'fleet', 'salvage', 'anomaly') and target_obj is not None:
         order.target_kind = 'OBJECT'
         order.target_short_id = target_obj.short_id
+        order.x = target_x
+        order.y = target_y
     elif target_kind == 'space':
         order.target_kind = 'SPACE'
         order.target_short_id = None

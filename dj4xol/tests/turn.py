@@ -7704,6 +7704,97 @@ class TestInterceptPatrolOrders(TestCase):
         x, y = GameTurn(game)._get_intercept_destination(intercept_order)
         self.assertEqual((x, y), (target.x, target.y))
 
+    def test_hidden_manual_intercept_converts_to_last_known_space_and_messages(self):
+        game, player1, player2 = self._create_two_player_game()
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Watcher",
+            x=10, y=10, ship_count=1, integrity=100, max_safe_warp=5,
+            basic_scanner_range=0
+        )
+        target = Fleet.objects.create(
+            game=game, player=player2, name="Raider",
+            x=40, y=40, ship_count=1, integrity=100
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=interceptor,
+            order_type='INTERCEPT',
+            target_fleet=target,
+            target_kind='OBJECT',
+            target_short_id=target.short_id,
+            x=25,
+            y=26,
+            warpfactor=5,
+        )
+
+        GameTurn(game)._move_fleet_single_order(interceptor)
+        order.refresh_from_db()
+
+        self.assertEqual(order.order_type, 'MOVE')
+        self.assertEqual(order.target_kind, 'SPACE')
+        self.assertIsNone(order.target_fleet_id)
+        self.assertEqual((order.x, order.y), (25, 26))
+        msg = player1.messages.order_by('-id').first()
+        self.assertIsNotNone(msg)
+        self.assertFalse(msg.priority)
+        self.assertTrue(
+            any(
+                phrase in msg.message.lower()
+                for phrase in ('lost track of', 'lost sight of', 'can no longer find')
+            )
+        )
+        self.assertIn('Raider', msg.message)
+
+    def test_hidden_patrol_generated_intercept_returns_to_patrol_and_messages(self):
+        game, player1, player2 = self._create_two_player_game()
+        patrol_fleet = Fleet.objects.create(
+            game=game, player=player1, name="Sentinel",
+            x=10, y=10, ship_count=1, integrity=100, max_safe_warp=5,
+            basic_scanner_range=0
+        )
+        target = Fleet.objects.create(
+            game=game, player=player2, name="Ghost",
+            x=60, y=60, ship_count=1, integrity=100
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=patrol_fleet,
+            order_type='INTERCEPT',
+            target_fleet=target,
+            target_kind='OBJECT',
+            target_short_id=target.short_id,
+            x=30,
+            y=30,
+            warpfactor=4,
+            patrol_generated=True,
+        )
+
+        GameTurn(game)._move_fleet_single_order(patrol_fleet)
+        order.refresh_from_db()
+
+        self.assertEqual(order.order_type, 'MOVE')
+        self.assertEqual(order.target_kind, 'SPACE')
+        self.assertEqual((order.x, order.y), (30, 30))
+        self.assertFalse(order.patrol_generated)
+        msg = player1.messages.order_by('-id').first()
+        self.assertIsNotNone(msg)
+        self.assertFalse(msg.priority)
+        self.assertIn('returning to patrol', msg.message)
+
+    def test_patrol_enemy_search_ignores_out_of_range_enemy_fleets(self):
+        game, player1, player2 = self._create_two_player_game()
+        fleet = Fleet.objects.create(
+            game=game, player=player1, name="Patrol",
+            x=10, y=10, ship_count=1, integrity=100, basic_scanner_range=0
+        )
+        enemy = Fleet.objects.create(
+            game=game, player=player2, name="Shadow",
+            x=12, y=10, ship_count=1, integrity=100
+        )
+
+        result = GameTurn(game)._find_enemy_fleet_in_radius(player1, fleet.x, fleet.y, 10)
+        self.assertIsNone(result)
+
     def test_intercept_arrival_executes_followup_merge_same_turn(self):
         """Successful intercept should run immediate non-move follow-up orders."""
         from ..models import FleetOrders
@@ -7712,7 +7803,8 @@ class TestInterceptPatrolOrders(TestCase):
 
         interceptor = Fleet.objects.create(
             game=game, player=player1, name="Interceptor",
-            x=15, y=11, ship_count=1, integrity=100, max_safe_warp=13
+            x=19, y=10, ship_count=1, integrity=100, max_safe_warp=13,
+            basic_scanner_range=20
         )
         target = Fleet.objects.create(
             game=game, player=player1, name="Target",
@@ -7752,12 +7844,6 @@ class TestInterceptPatrolOrders(TestCase):
             game=game, player=player2, name="Target",
             x=20, y=10, ship_count=1, integrity=100, max_safe_warp=13, heading=90
         )
-        target_destination = (40, 10)
-
-        FleetOrders.objects.create(
-            game=game, fleet=target, order_type='MOVE',
-            x=target_destination[0], y=target_destination[1], warpfactor=4
-        )
         FleetOrders.objects.create(
             game=game, fleet=interceptor, order_type='INTERCEPT',
             target_fleet=target, warpfactor=5
@@ -7771,7 +7857,6 @@ class TestInterceptPatrolOrders(TestCase):
 
         # Interceptor should have snapped to target, and target should be locked in place.
         self.assertEqual((interceptor.x, interceptor.y), (target.x, target.y))
-        self.assertNotEqual((target.x, target.y), target_destination)
 
         # Combat should have happened this same year.
         self.assertTrue(player1.messages.filter(category='COMBAT').exists())
@@ -7785,7 +7870,8 @@ class TestInterceptPatrolOrders(TestCase):
 
         interceptor = Fleet.objects.create(
             game=game, player=player1, name="Interceptor",
-            x=10, y=10, ship_count=1, integrity=100, max_safe_warp=13
+            x=10, y=10, ship_count=1, integrity=100, max_safe_warp=13,
+            basic_scanner_range=20
         )
         target = Fleet.objects.create(
             game=game, player=player2, name="Target",

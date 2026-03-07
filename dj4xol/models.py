@@ -940,6 +940,7 @@ class FleetOrders(AbstractGameObject):
     # Patrol parameters
     patrol_radius = models.IntegerField(default=0)
     intercept_speed = models.IntegerField(default=5)
+    patrol_generated = models.BooleanField(default=False)
 
     # Bombing/remotemining completion parameters
     BOMB_UNTIL_CHOICES = [

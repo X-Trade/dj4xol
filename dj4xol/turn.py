@@ -101,7 +101,7 @@ from .bombardment_rules import (
     normalize_miner_type,
     smart_bombs_only_target_defenses_and_population,
 )
-from .scanners import get_scanner_sources_for_player, position_in_scanner_range
+from .scanners import get_scanner_sources_for_player, position_in_scanner_range, fleet_visible_to_player
 
 # Population carrying capacity constants now live in colony_rules.py
 
@@ -376,6 +376,7 @@ class GameTurn():
     """Generate a turn for a game."""
     def __init__(self, game):
         self.game = game
+        self._scanner_sources_by_player_id = {}
 
     def generate_turn(self):
         """Generate a turn for the game. Requires at least one player."""
@@ -2372,6 +2373,7 @@ class GameTurn():
                     break
 
             elif order.order_type in ['MOVE', 'INTERCEPT']:
+                self._handle_hidden_fleet_target(fleet, order)
                 # Try to execute move order
                 move_result = self._move_toward_destination(fleet, order)
                 if move_result == 'destroyed':
@@ -2798,6 +2800,8 @@ class GameTurn():
             return x, y
 
         target_fleet = order.target_fleet
+        if not self._fleet_target_visible_to_player(order.fleet.player, target_fleet):
+            return order.fleet.x, order.fleet.y
         target_speed = self._get_fleet_current_speed(target_fleet)
         if target_speed <= 0:
             return target_fleet.x, target_fleet.y
@@ -3322,6 +3326,7 @@ class GameTurn():
                 transfer_colonists=order.transfer_colonists,
                 patrol_radius=order.patrol_radius,
                 intercept_speed=order.intercept_speed,
+                patrol_generated=order.patrol_generated,
                 bomb_until=order.bomb_until,
                 mine_until_full=order.mine_until_full,
             )
@@ -4906,7 +4911,15 @@ class GameTurn():
             order.order_type = 'INTERCEPT'
             order.target_fleet = enemy_fleet
             order.warpfactor = order.intercept_speed
-            order.save(update_fields=['order_type', 'target_fleet', 'warpfactor', 'repeat'])
+            order.target_kind = 'OBJECT'
+            order.target_short_id = enemy_fleet.short_id
+            order.x = target_x
+            order.y = target_y
+            order.patrol_generated = True
+            order.save(update_fields=[
+                'order_type', 'target_fleet', 'target_kind', 'target_short_id',
+                'warpfactor', 'x', 'y', 'repeat', 'patrol_generated'
+            ])
         else:
             order.order_type = 'MOVE'
             order.warpfactor = fleet.max_safe_warp
@@ -4915,9 +4928,13 @@ class GameTurn():
             order.target_star = None
             order.x = target_x
             order.y = target_y
+            order.target_kind = 'SPACE'
+            order.target_short_id = None
+            order.patrol_generated = False
             order.save(update_fields=[
                 'order_type', 'warpfactor', 'target_fleet', 'target_salvage',
-                'target_star', 'x', 'y', 'repeat'
+                'target_star', 'target_kind', 'target_short_id', 'x', 'y',
+                'repeat', 'patrol_generated'
             ])
 
         move_result = self._move_toward_destination(fleet, order)
@@ -4945,6 +4962,7 @@ class GameTurn():
             target_star_id=order.target_star_id,
             target_fleet_id=order.target_fleet_id,
             target_salvage_id=order.target_salvage_id,
+            patrol_generated=False,
         )
 
     def _get_patrol_target_coordinates(self, order):
@@ -4967,6 +4985,8 @@ class GameTurn():
         nearest = None
         nearest_dist = None
         for enemy in candidates:
+            if not self._fleet_target_visible_to_player(player, enemy):
+                continue
             dx = enemy.x - x
             dy = enemy.y - y
             dist = (dx * dx + dy * dy) ** 0.5
@@ -4974,6 +4994,97 @@ class GameTurn():
                 nearest = enemy
                 nearest_dist = dist
         return nearest
+
+    def _get_player_scanner_sources(self, player):
+        if not player:
+            return []
+        sources = self._scanner_sources_by_player_id.get(player.id)
+        if sources is None:
+            sources = get_scanner_sources_for_player(self.game, player)
+            self._scanner_sources_by_player_id[player.id] = sources
+        return sources
+
+    def _fleet_target_visible_to_player(self, player, target_fleet):
+        if not player or not target_fleet:
+            return False
+        sources = self._get_player_scanner_sources(player)
+        return fleet_visible_to_player(target_fleet, player, sources=sources)
+
+    def _handle_hidden_fleet_target(self, fleet, order):
+        target_fleet = order.target_fleet
+        if not target_fleet:
+            return False
+        if self._fleet_target_visible_to_player(fleet.player, target_fleet):
+            return False
+
+        self._create_hidden_fleet_target_message(fleet.player, fleet, order, target_fleet)
+        if bool(getattr(order, 'patrol_generated', False)):
+            self._restore_patrol_generated_intercept(order, fleet)
+        else:
+            self._convert_hidden_fleet_target_to_empty_space(order, target_fleet)
+        return False
+
+    def _restore_patrol_generated_intercept(self, order, fleet):
+        order.order_type = 'MOVE'
+        order.target_fleet = None
+        order.target_star = None
+        order.target_salvage = None
+        order.target_short_id = None
+        order.target_kind = 'SPACE'
+        order.warpfactor = fleet.max_safe_warp
+        order.patrol_generated = False
+        order.save(update_fields=[
+            'order_type', 'target_fleet', 'target_star', 'target_salvage',
+            'target_short_id', 'target_kind', 'warpfactor', 'patrol_generated',
+        ])
+
+    def _convert_hidden_fleet_target_to_empty_space(self, order, target_fleet):
+        last_known_x = order.x if order.x is not None else target_fleet.x
+        last_known_y = order.y if order.y is not None else target_fleet.y
+        order.order_type = 'MOVE'
+        order.target_fleet = None
+        order.target_star = None
+        order.target_salvage = None
+        order.target_short_id = None
+        order.target_kind = 'SPACE'
+        order.x = int(last_known_x)
+        order.y = int(last_known_y)
+        order.patrol_generated = False
+        order.save(update_fields=[
+            'order_type', 'target_fleet', 'target_star', 'target_salvage',
+            'target_short_id', 'target_kind', 'x', 'y', 'patrol_generated',
+        ])
+
+    def _create_hidden_fleet_target_message(self, player, source_fleet, order, target_fleet):
+        from .models import GameMessage
+
+        verbs = [
+            "lost track of",
+            "lost sight of",
+            "can no longer find",
+        ]
+        if bool(getattr(order, 'patrol_generated', False)):
+            text = "%s %s its target %s and is returning to patrol." % (
+                format_map_object(source_fleet),
+                random.choice(verbs),
+                target_fleet.name,
+            )
+        else:
+            text = "%s %s target fleet %s and is continuing to last known coordinates at %s." % (
+                format_map_object(source_fleet),
+                random.choice(verbs),
+                target_fleet.name,
+                format_location(order.x if order.x is not None else target_fleet.x,
+                                order.y if order.y is not None else target_fleet.y),
+            )
+        GameMessage.objects.create(
+            game=self.game,
+            player=player,
+            year=self.game.year,
+            category='GENERAL',
+            message=text,
+            priority=False,
+        )
 
     def _find_patrol_enemy(self, player, x, y, radius, patrol_target_fleet):
         """Prefer enemy fleets other than the patrol target, if possible."""
