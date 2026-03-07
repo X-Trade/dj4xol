@@ -406,6 +406,8 @@ class DetailBuilder():
                     }
                 if resources:
                     detail['resources'] = resources
+            elif report_tier == 'basic':
+                detail['resources_unknown'] = True
             # Build environmental detail from cached data
             if all(k in data for k in ['gravity', 'temperature', 'radiation']):
                 detail['environmentals'] = self._build_env_from_report(data)
@@ -463,8 +465,12 @@ class DetailBuilder():
             detail['salvage_type_display'] = self.selected_obj.get_salvage_type_display()
             if 'total_minerals' in data:
                 items = []
+                has_inventory_breakdown = False
                 for key in ALL_RESOURCE_KEYS:
-                    amount = int(data.get(f'{key}_inventory', 0) or 0)
+                    amount_key = f'{key}_inventory'
+                    if amount_key in data:
+                        has_inventory_breakdown = True
+                    amount = int(data.get(amount_key, 0) or 0)
                     if amount <= 0:
                         continue
                     items.append({
@@ -474,6 +480,7 @@ class DetailBuilder():
                 detail['salvage_inventory'] = {
                     'items': items,
                     'total': data['total_minerals'],
+                    'composition_unknown': not has_inventory_breakdown,
                 }
         elif target_type == 'anomaly':
             detail['anomaly_short_id'] = self.selected_obj.short_id
@@ -1307,6 +1314,7 @@ class DetailBuilder():
         return {
             'items': items,
             'total': self.selected_obj.total_minerals,
+            'composition_unknown': False,
         }
 
     def get_fleet_effective_location(self):
