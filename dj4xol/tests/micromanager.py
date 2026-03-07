@@ -10,6 +10,10 @@ from ..research import (
 )
 from ..objectdetails import DetailBuilder
 from ..turn import GameTurn
+from ..micromanager_rules import (
+    get_micromanager_candidate_orders,
+    plan_micromanager_orders,
+)
 from ._util import default_game
 from unittest.mock import patch
 
@@ -218,6 +222,180 @@ class AdministrationAutomationTest(TestCase):
         self.assertGreaterEqual(len(orders), 2)
         self.assertFalse(orders[0].added_by_micromanager)
         self.assertTrue(orders[1].added_by_micromanager)
+
+    def test_candidate_orders_put_first_mine_first(self):
+        self._create_administration_tech(1, 1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 20_000
+        self.star.mines = 0
+        self.star.factories = 3
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player, self.star, 1
+        )
+
+        self.assertGreaterEqual(len(candidates), 1)
+        self.assertEqual(candidates[0], 'BUILD_MINE')
+
+    def test_candidate_orders_put_first_factory_before_other_support(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 20
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player, self.star, 2, fleets_in_orbit=2
+        )
+
+        self.assertGreaterEqual(len(candidates), 1)
+        self.assertEqual(candidates[0], 'BUILD_FACTORY')
+        self.assertNotEqual(candidates[0], 'BUILD_SHIPYARD')
+
+    def test_level_two_prioritises_factory_when_queue_bp_exceeds_one_year(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 20_000
+        self.star.mines = 10
+        self.star.factories = 1
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 10_000
+        self.star.boranium_inventory = 10_000
+        self.star.germanium_inventory = 10_000
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_SHIPYARD',
+            position=1,
+            quantity=2,
+        )
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+            queue_requirements={'bp': 200, 'ironium': 500, 'boranium': 100,
+                                'germanium': 200, 'resource_x': 0,
+                                'resource_y': 0, 'resource_z': 0},
+        )
+
+        self.assertGreaterEqual(len(planned), 1)
+        self.assertEqual(planned[0], 'BUILD_FACTORY')
+
+    def test_level_two_prioritises_mine_when_queue_resources_exceed_one_year(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 20_000
+        self.star.mines = 1
+        self.star.factories = 10
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 100
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+            queue_requirements={'bp': 40, 'ironium': 400, 'boranium': 0,
+                                'germanium': 200, 'resource_x': 0,
+                                'resource_y': 0, 'resource_z': 0},
+        )
+
+        self.assertGreaterEqual(len(planned), 1)
+        self.assertEqual(planned[0], 'BUILD_MINE')
+
+    def test_micromanager_coalesces_adjacent_orders_into_quantities(self):
+        self._create_administration_tech(1, 1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 20_000
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        GameTurn(self.game)._refresh_administration_production_queue(self.star)
+
+        orders = list(
+            self.star.production_orders.filter(
+                added_by_micromanager=True
+            ).order_by('position')
+        )
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders[0].order_type, 'BUILD_FACTORY')
+        self.assertGreater(orders[0].quantity, 1)
+
+    def test_micromanager_reuses_zero_progress_orders_when_refreshing(self):
+        self._create_administration_tech(1, 1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 20_000
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        game_turn = GameTurn(self.game)
+        game_turn._refresh_administration_production_queue(self.star)
+        first = self.star.production_orders.get(added_by_micromanager=True)
+
+        game_turn._refresh_administration_production_queue(self.star)
+        second = self.star.production_orders.get(added_by_micromanager=True)
+
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(second.order_type, 'BUILD_FACTORY')
+        self.assertGreater(second.quantity, 1)
 
     def test_detail_builder_marks_micromanager_orders_and_disables_admin_repeat(self):
         self._create_administration_tech(1, 1)

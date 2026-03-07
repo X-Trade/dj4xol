@@ -91,6 +91,8 @@ from .research import (
 from .micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
     REMOVE_ADMINISTRATION_ORDER_TYPE,
+    compress_micromanager_order_runs,
+    remaining_queue_requirements,
     plan_micromanager_orders,
 )
 from .fleet_thumbnails import choose_fleet_thumbnail
@@ -6016,17 +6018,30 @@ class GameTurn():
             return
 
         preserved = []
+        editable = []
         for order in micromanager_orders:
             if self._order_has_progress(order):
                 preserved.append(order)
                 continue
-            order.delete()
+            editable.append(order)
 
         self._resequence_production_orders(star)
 
-        existing_types = [order.order_type for order in preserved]
+        existing_types = []
+        for order in preserved:
+            remaining = max(
+                0,
+                int(getattr(order, 'quantity', 0) or 0) -
+                int(getattr(order, 'completed', 0) or 0),
+            )
+            for _ in range(remaining):
+                existing_types.append(order.order_type)
         terraform_profile = get_player_terraforming_profile(star.player)
         terraform_rate = float(terraform_profile.get('rate', 0.0) or 0.0)
+        queue_orders = list(star.production_orders.exclude(
+            id__in=[order.id for order in editable]
+        ))
+        cost_map = get_player_production_costs(star.player)
         planned = plan_micromanager_orders(
             star.player,
             star,
@@ -6035,23 +6050,49 @@ class GameTurn():
             terraform_available=(terraform_rate > 0),
             terraform_rate=terraform_rate,
             preplanned_orders=existing_types,
+            cost_map=cost_map,
+            queue_requirements=remaining_queue_requirements(
+                queue_orders, cost_map
+            ),
         )
-        if not planned:
-            return
+        planned_runs = compress_micromanager_order_runs(planned)
 
-        max_pos = star.production_orders.aggregate(
+        tail_base = star.production_orders.exclude(
+            id__in=[order.id for order in editable]
+        ).aggregate(
             max_pos=models.Max('position')
         )['max_pos'] or 0
-        for offset, order_type in enumerate(planned, start=1):
+        for idx, run in enumerate(planned_runs):
+            order_type, quantity = run
+            position = tail_base + idx + 1
+            if idx < len(editable):
+                order = editable[idx]
+                changed = []
+                if order.order_type != order_type:
+                    order.order_type = order_type
+                    changed.append('order_type')
+                if int(order.quantity or 0) != int(quantity):
+                    order.quantity = quantity
+                    changed.append('quantity')
+                if int(order.position or 0) != int(position):
+                    order.position = position
+                    changed.append('position')
+                if not changed:
+                    continue
+                order.save(update_fields=changed)
+                continue
             ProductionOrder.objects.create(
                 game=self.game,
                 star=star,
                 order_type=order_type,
-                position=max_pos + offset,
-                quantity=1,
+                position=position,
+                quantity=quantity,
                 repeat=False,
                 added_by_micromanager=True,
             )
+
+        for order in editable[len(planned_runs):]:
+            order.delete()
 
     def _repair_fleets_at_star(self, star, available_shipyards):
         """Repair damaged fleets orbiting a star using available shipyards.

@@ -1175,7 +1175,7 @@
   fields:
     short_id: "tech00000411"
     category: 2
-    level: 8
+    level: 7
     name: 'Administration Level 1'
     description: 'Colony administrations can coordinate basic local industry.'
     tech_type: 'INFRASTRUCTURE'

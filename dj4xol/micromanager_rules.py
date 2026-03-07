@@ -6,6 +6,7 @@ from .colony_rules import (
     COLONISTS_PER_JOB,
     COLONISTS_PER_SHIPYARD,
     KT_PER_MINE,
+    calculate_available_buildpoints,
     calculate_growth_factor,
     calculate_productivity_multiplier,
     calculate_staffing_ratio,
@@ -38,6 +39,14 @@ FILLER_ORDER_TYPES = (
     'BUILD_LAB',
     'BUILD_DEFENSE',
 )
+
+
+def empty_queue_requirements():
+    """Return a zeroed queue requirement map."""
+    requirements = {'bp': 0}
+    for key in ALL_RESOURCE_KEYS:
+        requirements[key] = 0
+    return requirements
 
 
 def _job_capacity(star):
@@ -114,6 +123,101 @@ def safe_mine_count(star):
     return int(sustainable)
 
 
+def projected_mining_output(star):
+    """Estimate one year of mining output for a real or projected colony."""
+    rates = {}
+    total_yield = 0
+    for key in ALL_RESOURCE_KEYS:
+        total_yield += int(getattr(star, '%s_yield' % key, 0) or 0)
+    if total_yield <= 0 or int(getattr(star, 'mines', 0) or 0) <= 0:
+        for key in ALL_RESOURCE_KEYS:
+            rates[key] = 0
+        return rates
+
+    staffing_ratio = calculate_staffing_ratio(star)
+    if staffing_ratio <= 0:
+        for key in ALL_RESOURCE_KEYS:
+            rates[key] = 0
+        return rates
+
+    productivity = calculate_productivity_multiplier(staffing_ratio)
+    total_extraction = int(getattr(star, 'mines', 0) or 0) * KT_PER_MINE * productivity
+
+    for key in ALL_RESOURCE_KEYS:
+        yield_val = int(getattr(star, '%s_yield' % key, 0) or 0)
+        if yield_val <= 0:
+            rates[key] = 0
+            continue
+        rates[key] = int(total_extraction * yield_val / total_yield)
+    return rates
+
+
+def remaining_queue_requirements(orders, cost_map):
+    """Estimate remaining BP and mineral demand for queued production."""
+    requirements = empty_queue_requirements()
+    for order in list(orders or []):
+        remaining_qty = max(
+            0,
+            int(getattr(order, 'quantity', 0) or 0) -
+            int(getattr(order, 'completed', 0) or 0),
+        )
+        if remaining_qty <= 0:
+            continue
+        cost = cost_map.get(getattr(order, 'order_type', None), {})
+        requirements['bp'] += max(
+            0,
+            int(cost.get('bp', 0) or 0) * remaining_qty -
+            int(getattr(order, 'spent_bp', 0) or 0),
+        )
+        for key in ALL_RESOURCE_KEYS:
+            requirements[key] += max(
+                0,
+                int(cost.get(key, 0) or 0) * remaining_qty -
+                int(getattr(order, 'spent_%s' % key, 0) or 0),
+            )
+    return requirements
+
+
+def _add_queue_cost(star_state, cost):
+    """Increase projected queue demand for one planned order."""
+    setattr(
+        star_state,
+        'queue_bp',
+        int(getattr(star_state, 'queue_bp', 0) or 0) +
+        max(0, int(cost.get('bp', 0) or 0)),
+    )
+    for key in ALL_RESOURCE_KEYS:
+        attr = 'queue_%s' % key
+        setattr(
+            star_state,
+            attr,
+            int(getattr(star_state, attr, 0) or 0) +
+            max(0, int(cost.get(key, 0) or 0)),
+        )
+
+
+def _queue_throughput_pressure(star):
+    """Return whether queue demand exceeds one year of projected output."""
+    pressure = {'mines': False, 'factories': False}
+    if int(getattr(star, 'queue_bp', 0) or 0) > calculate_available_buildpoints(star):
+        pressure['factories'] = True
+
+    mining_output = projected_mining_output(star)
+    for key in ALL_RESOURCE_KEYS:
+        demand = int(getattr(star, 'queue_%s' % key, 0) or 0)
+        if demand <= 0:
+            continue
+        inventory = int(getattr(star, '%s_inventory' % key, 0) or 0)
+        if demand <= inventory:
+            continue
+        if int(getattr(star, '%s_yield' % key, 0) or 0) <= 0:
+            continue
+        if demand > inventory + int(mining_output.get(key, 0) or 0):
+            pressure['mines'] = True
+            break
+    return pressure
+
+
 def preferred_terraform_order(player, star):
     if not player or not star:
         return None
@@ -170,15 +274,28 @@ def get_micromanager_candidate_orders(
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
     candidates = []
+    current_mines = int(getattr(star, 'mines', 0) or 0)
+    current_factories = int(getattr(star, 'factories', 0) or 0)
     max_mines = safe_mine_count(star)
-    mine_room = int(getattr(star, 'mines', 0) or 0) < max_mines
+    mine_room = current_mines < max_mines
     needs_jobs = current_jobs < thresholds['target_jobs']
+    queue_pressure = {'mines': False, 'factories': False}
+    if int(tier or 0) >= TIER_SUPPORT:
+        queue_pressure = _queue_throughput_pressure(star)
 
     if needs_jobs:
+        # Bootstrap economic base before considering other priorities.
+        if mine_room and current_mines <= 0:
+            candidates.append('BUILD_MINE')
+        if current_factories <= 0:
+            candidates.append('BUILD_FACTORY')
+        if queue_pressure.get('mines') and mine_room:
+            candidates.append('BUILD_MINE')
+        if queue_pressure.get('factories'):
+            candidates.append('BUILD_FACTORY')
+
         if mine_room:
-            if int(getattr(star, 'mines', 0) or 0) < (
-                int(getattr(star, 'factories', 0) or 0) + 1
-            ) * 2:
+            if current_mines < (current_factories + 1) * 2:
                 candidates.extend(['BUILD_MINE', 'BUILD_FACTORY'])
             else:
                 candidates.extend(['BUILD_FACTORY', 'BUILD_MINE'])
@@ -195,12 +312,17 @@ def get_micromanager_candidate_orders(
                 candidates.extend(FILLER_ORDER_TYPES)
             else:
                 candidates.append('BUILD_FACTORY')
-    elif (
-        int(tier or 0) >= TIER_SUPPORT and
-        int(getattr(star, 'shipyards', 0) or 0) < int(fleets_in_orbit or 0) and
-        _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD')
-    ):
-        candidates.append('BUILD_SHIPYARD')
+    else:
+        if queue_pressure.get('mines') and mine_room:
+            candidates.append('BUILD_MINE')
+        if queue_pressure.get('factories'):
+            candidates.append('BUILD_FACTORY')
+        if (
+            int(tier or 0) >= TIER_SUPPORT and
+            int(getattr(star, 'shipyards', 0) or 0) < int(fleets_in_orbit or 0) and
+            _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD')
+        ):
+            candidates.append('BUILD_SHIPYARD')
 
     if (
         int(tier or 0) >= TIER_TERRAFORM and
@@ -222,7 +344,8 @@ def get_micromanager_candidate_orders(
     return deduped
 
 
-def _project_star_state(star):
+def _project_star_state(star, queue_requirements=None):
+    queue_requirements = queue_requirements or empty_queue_requirements()
     return SimpleNamespace(
         colonists=int(getattr(star, 'colonists', 0) or 0),
         base_capacity=int(getattr(star, 'base_capacity', 0) or 0),
@@ -239,14 +362,34 @@ def _project_star_state(star):
         temperature=float(getattr(star, 'temperature', 0.0) or 0.0),
         radiation=float(getattr(star, 'radiation', 0.0) or 0.0),
         **{
+            '%s_inventory' % key: int(
+                getattr(star, '%s_inventory' % key, 0) or 0
+            )
+            for key in ALL_RESOURCE_KEYS
+        },
+        queue_bp=int(queue_requirements.get('bp', 0) or 0),
+        **{
+            'queue_%s' % key: int(queue_requirements.get(key, 0) or 0)
+            for key in ALL_RESOURCE_KEYS
+        },
+        **{
             '%s_yield' % key: int(getattr(star, '%s_yield' % key, 0) or 0)
             for key in ALL_RESOURCE_KEYS
         }
     )
 
 
-def apply_projected_order(player, star_state, order_type, terraform_rate=0.0):
+def apply_projected_order(
+    player,
+    star_state,
+    order_type,
+    terraform_rate=0.0,
+    cost_map=None,
+    add_queue_cost=False,
+):
     """Apply one planned order to a projected colony state."""
+    if add_queue_cost and cost_map is not None:
+        _add_queue_cost(star_state, cost_map.get(order_type, {}))
     if order_type == 'BUILD_MINE':
         star_state.mines += 1
     elif order_type == 'BUILD_FACTORY':
@@ -284,12 +427,17 @@ def plan_micromanager_orders(
     terraform_available=False,
     terraform_rate=0.0,
     preplanned_orders=None,
+    cost_map=None,
+    queue_requirements=None,
     limit=12,
 ):
     """Plan queued Micromanager orders for one colony."""
     if int(tier or 0) <= 0:
         return []
-    projected = _project_star_state(star)
+    projected = _project_star_state(
+        star,
+        queue_requirements=queue_requirements,
+    )
     terraform_used = False
     existing = list(preplanned_orders or [])
     for order_type in existing:
@@ -298,6 +446,8 @@ def plan_micromanager_orders(
             projected,
             order_type,
             terraform_rate=terraform_rate,
+            cost_map=cost_map,
+            add_queue_cost=False,
         )
         if str(order_type).startswith('TERRAFORM_'):
             terraform_used = True
@@ -321,7 +471,20 @@ def plan_micromanager_orders(
             projected,
             selected,
             terraform_rate=terraform_rate,
+            cost_map=cost_map,
+            add_queue_cost=True,
         )
         if str(selected).startswith('TERRAFORM_'):
             terraform_used = True
     return planned
+
+
+def compress_micromanager_order_runs(order_types):
+    """Collapse adjacent identical order types into (type, quantity) runs."""
+    runs = []
+    for order_type in list(order_types or []):
+        if not runs or runs[-1][0] != order_type:
+            runs.append([order_type, 1])
+            continue
+        runs[-1][1] += 1
+    return [(order_type, quantity) for order_type, quantity in runs]
