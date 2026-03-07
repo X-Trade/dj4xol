@@ -80,12 +80,17 @@ from .colony_rules import (
 )
 from .research import (
     process_player_research_for_year,
+    get_player_administration_profile,
     get_player_tech_effects,
     get_player_colony_defense_level,
     apply_research_bonus_rp,
     ensure_player_research_rows,
     get_player_production_costs,
     get_player_terraforming_profile,
+)
+from .micromanager_rules import (
+    ADMINISTRATION_ORDER_TYPE,
+    plan_micromanager_orders,
 )
 from .fleet_thumbnails import choose_fleet_thumbnail
 from .chance_rules import (
@@ -1344,11 +1349,9 @@ class GameTurn():
         if pair.id == endpoint.id:
             return
         pair = Anomaly.objects.get(id=pair.id)
-        first_traversal = not Report.objects.filter(
-            player=fleet.player,
-            target_type='anomaly',
-            target_id=endpoint.id,
-        ).exists()
+        first_traversal = not self._has_player_traversed_wormhole(
+            fleet.player, endpoint, pair
+        )
 
         stability = self._anomaly_stability(endpoint)
         if stability < 30:
@@ -1389,6 +1392,9 @@ class GameTurn():
 
         self._create_or_update_report(fleet.player, 'anomaly', endpoint, self.game.year)
         self._create_or_update_report(fleet.player, 'anomaly', pair, self.game.year)
+        self._mark_player_wormhole_traversed(
+            fleet.player, endpoint, pair, self.game.year
+        )
 
         if took_damage or first_traversal:
             fleet_label = format_map_object(fleet)
@@ -1409,6 +1415,41 @@ class GameTurn():
                     % (fleet_label, endpoint_label, pair_label, exit_label)
                 )
             self._create_anomaly_message(fleet.player, text, priority=False)
+
+    def _has_player_traversed_wormhole(self, player, endpoint, pair):
+        """Return True if the player has already traversed this wormhole pair."""
+        from .models import Report
+
+        anomaly_ids = [getattr(endpoint, 'id', None), getattr(pair, 'id', None)]
+        reports = Report.objects.filter(
+            player=player,
+            target_type='anomaly',
+            target_id__in=[anomaly_id for anomaly_id in anomaly_ids if anomaly_id],
+        )
+        for report in reports:
+            data = report.get_report_data()
+            if bool(data.get('wormhole_traversed')):
+                return True
+        return False
+
+    def _mark_player_wormhole_traversed(self, player, endpoint, pair, year):
+        """Persist traversal state for both endpoints of a wormhole pair."""
+        from .models import Report
+
+        anomaly_ids = [getattr(endpoint, 'id', None), getattr(pair, 'id', None)]
+        reports = Report.objects.filter(
+            player=player,
+            target_type='anomaly',
+            target_id__in=[anomaly_id for anomaly_id in anomaly_ids if anomaly_id],
+        )
+        for report in reports:
+            data = report.get_report_data()
+            if bool(data.get('wormhole_traversed')):
+                continue
+            data['wormhole_traversed'] = True
+            data['first_wormhole_traversal_year'] = int(year)
+            report.set_report_data(data)
+            report.save(update_fields=['cached_report'])
 
     def _calculate_next_generation(self):
         """Calculate next generation time based on turn scheme."""
@@ -1579,6 +1620,12 @@ class GameTurn():
                 report_tier=report_tier,
                 include_cargo=include_cargo,
             )
+            if existing_data.get('wormhole_traversed'):
+                report_data['wormhole_traversed'] = True
+                if 'first_wormhole_traversal_year' in existing_data:
+                    report_data['first_wormhole_traversal_year'] = (
+                        existing_data.get('first_wormhole_traversal_year')
+                    )
             report.set_report_data(report_data)
             report.save()
             created = False
@@ -4277,6 +4324,7 @@ class GameTurn():
             'factories': int(star.factories or 0),
             'labs': int(star.labs or 0),
             'shipyards': int(star.shipyards or 0),
+            'has_administration': bool(getattr(star, 'has_administration', False)),
         }
         effective_defenses = max(0.0, float(calculate_effective_defenses(star)))
         luck_multiplier = float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0)
@@ -4297,15 +4345,20 @@ class GameTurn():
         factories_lost = 0
         labs_lost = 0
         shipyards_lost = 0
+        administration_lost = 0
         if not smart_bombs_only_target_defenses_and_population(bomb_type):
             mines_lost = min(pre['mines'], damage_k)
             factories_lost = min(pre['factories'], damage_k)
             labs_lost = min(pre['labs'], damage_k)
             shipyards_lost = min(pre['shipyards'], damage_k)
+            if pre['has_administration'] and damage_k > 0:
+                administration_lost = 1
             star.mines = max(0, pre['mines'] - mines_lost)
             star.factories = max(0, pre['factories'] - factories_lost)
             star.labs = max(0, pre['labs'] - labs_lost)
             star.shipyards = max(0, pre['shipyards'] - shipyards_lost)
+            if administration_lost:
+                star.has_administration = False
 
         star_destroyed = False
         destroyed_star_name = star.name
@@ -4337,7 +4390,10 @@ class GameTurn():
             )
             self._create_nova_star_remnant(star_snapshot)
         else:
-            star.save(update_fields=['defenses', 'colonists', 'mines', 'factories', 'labs', 'shipyards'])
+            star.save(update_fields=[
+                'defenses', 'colonists', 'mines', 'factories', 'labs',
+                'shipyards', 'has_administration',
+            ])
 
         factory = FleetBombardmentReportMessageFactory(
             self.game,
@@ -4351,6 +4407,7 @@ class GameTurn():
             factories_lost=factories_lost,
             labs_lost=labs_lost,
             shipyards_lost=shipyards_lost,
+            administration_lost=administration_lost,
             integrity_lost=defense_fire.get('integrity_lost', 0),
             ships_lost=defense_fire.get('ships_lost', 0),
             star_destroyed=star_destroyed,
@@ -4363,7 +4420,8 @@ class GameTurn():
         if defending_player is not None:
             total_losses = (
                 defenses_lost + colonists_lost +
-                mines_lost + factories_lost + labs_lost + shipyards_lost
+                mines_lost + factories_lost + labs_lost + shipyards_lost +
+                administration_lost
             )
             if total_losses > 0 or star_destroyed:
                 defender_factory = FleetBombardmentReportMessageFactory(
@@ -4378,6 +4436,7 @@ class GameTurn():
                     factories_lost=factories_lost,
                     labs_lost=labs_lost,
                     shipyards_lost=shipyards_lost,
+                    administration_lost=administration_lost,
                     integrity_lost=defense_fire.get('integrity_lost', 0),
                     ships_lost=defense_fire.get('ships_lost', 0),
                     star_destroyed=star_destroyed,
@@ -5547,6 +5606,7 @@ class GameTurn():
         """
         from .models import Star, ProductionOrder
         for star in Star.objects.filter(game=self.game, player__isnull=False):
+            self._refresh_administration_production_queue(star)
             had_production_orders = star.production_orders.exists()
             star.buildpoints_consumed = 0
             colonists_busy = 0  # Track colonists busy with construction this turn
@@ -5560,7 +5620,8 @@ class GameTurn():
 
             # Track production counts for aggregate messages
             production_counts = {
-                'mine': 0, 'factory': 0, 'lab': 0, 'defense': 0, 'shipyard': 0
+                'mine': 0, 'factory': 0, 'lab': 0, 'defense': 0,
+                'shipyard': 0, 'administration': 0,
             }
 
             for order in list(star.production_orders.order_by('position')):
@@ -5648,7 +5709,10 @@ class GameTurn():
                         colonists_busy += colonist_cost
 
                     fleet_built = self._apply_production_effect(
-                        star, order, production_counts, terraform_rate=terraform_rate
+                        star,
+                        order.order_type,
+                        production_counts,
+                        terraform_rate=terraform_rate,
                     )
                     if fleet_built:
                         fleets_built_this_turn += 1
@@ -5690,34 +5754,41 @@ class GameTurn():
             available_shipyards = star.shipyards - fleets_built_this_turn
             self._repair_fleets_at_star(star, available_shipyards)
 
-    def _apply_production_effect(self, star, order, production_counts, terraform_rate=None):
+    def _apply_production_effect(
+        self, star, order_type, production_counts, terraform_rate=None
+    ):
         """Apply the effect of a completed production order.
 
         Returns True if a fleet was built (for shipyard availability tracking).
         """
-        if order.order_type == 'BUILD_FLEET':
-            self._build_fleet(star, order)
+        if order_type == 'BUILD_FLEET':
+            self._build_fleet(star)
             return True
-        elif order.order_type == 'BUILD_MINE':
+        elif order_type == 'BUILD_MINE':
             self._build_mine(star)
             production_counts['mine'] += 1
-        elif order.order_type == 'BUILD_FACTORY':
+        elif order_type == 'BUILD_FACTORY':
             self._build_factory(star)
             production_counts['factory'] += 1
-        elif order.order_type == 'BUILD_LAB':
+        elif order_type == 'BUILD_LAB':
             self._build_lab(star)
             production_counts['lab'] += 1
-        elif order.order_type == 'BUILD_DEFENSE':
+        elif order_type == 'BUILD_DEFENSE':
             self._build_defense(star)
             production_counts['defense'] += 1
-        elif order.order_type == 'BUILD_SHIPYARD':
+        elif order_type == 'BUILD_SHIPYARD':
             self._build_shipyard(star)
             production_counts['shipyard'] += 1
-        elif order.order_type.startswith('TERRAFORM_'):
-            self._apply_terraform_order(star, order, terraform_rate=terraform_rate)
+        elif order_type == ADMINISTRATION_ORDER_TYPE:
+            self._build_administration(star)
+            production_counts['administration'] += 1
+        elif str(order_type).startswith('TERRAFORM_'):
+            self._apply_terraform_effect(
+                star, order_type, terraform_rate=terraform_rate
+            )
         return False
 
-    def _build_fleet(self, star, order):
+    def _build_fleet(self, star):
         """Build a fleet at the given star and create notification."""
         from .models import Fleet
         player = star.player
@@ -5782,12 +5853,19 @@ class GameTurn():
         """Build a shipyard at the given star."""
         star.shipyards += 1
 
+    def _build_administration(self, star):
+        """Build Administration at the given star."""
+        star.has_administration = True
+
     def _send_production_summary_messages(self, star, production_counts):
         """Send one construction rollup message per star per year."""
         player = star.player
         completed = {
             key: int(production_counts.get(key) or 0)
-            for key in ('mine', 'factory', 'lab', 'defense', 'shipyard')
+            for key in (
+                'mine', 'factory', 'lab', 'defense', 'shipyard',
+                'administration',
+            )
             if int(production_counts.get(key) or 0) > 0
         }
         if not completed:
@@ -5824,16 +5902,33 @@ class GameTurn():
         if rate <= 0:
             return
 
+        self._apply_terraform_effect(
+            star, getattr(order, 'order_type', None), terraform_rate=rate
+        )
+
+    def _apply_terraform_effect(self, star, order_type, terraform_rate=None):
+        """Apply a single terraforming effect by order type."""
         env_map = {
             'TERRAFORM_GRAVITY': ('gravity', star.player.gravity_center),
-            'TERRAFORM_TEMPERATURE': ('temperature', star.player.temperature_center),
+            'TERRAFORM_TEMPERATURE': (
+                'temperature', star.player.temperature_center
+            ),
             'TERRAFORM_RADIATION': ('radiation', star.player.radiation_center),
         }
-
-        if order.order_type not in env_map:
+        if order_type not in (
+            'TERRAFORM_GRAVITY',
+            'TERRAFORM_TEMPERATURE',
+            'TERRAFORM_RADIATION',
+        ):
+            return
+        rate = terraform_rate
+        if rate is None:
+            profile = get_player_terraforming_profile(star.player)
+            rate = float(profile.get('rate', 0.0) or 0.0)
+        if rate <= 0:
             return
 
-        field, target = env_map[order.order_type]
+        field, target = env_map[order_type]
         current = getattr(star, field)
 
         # Move a portion of the way from current to target
@@ -5845,6 +5940,86 @@ class GameTurn():
 
         setattr(star, field, new_value)
         star.save()
+
+    def _order_has_progress(self, order):
+        if int(getattr(order, 'completed', 0) or 0) > 0:
+            return True
+        if int(getattr(order, 'spent_bp', 0) or 0) > 0:
+            return True
+        for key in ALL_RESOURCE_KEYS:
+            if int(getattr(order, 'spent_%s' % key, 0) or 0) > 0:
+                return True
+        return False
+
+    def _resequence_production_orders(self, star):
+        """Ensure player orders are before Micromanager orders."""
+        orders = list(star.production_orders.order_by(
+            'added_by_micromanager', 'position', 'id'
+        ))
+        changed = []
+        for idx, order in enumerate(orders, start=1):
+            if int(order.position or 0) == idx:
+                continue
+            order.position = idx
+            changed.append(order)
+        for order in changed:
+            order.save(update_fields=['position'])
+
+    def _refresh_administration_production_queue(self, star):
+        """Refresh zero-progress Micromanager queue items for one colony."""
+        from .models import ProductionOrder
+
+        profile = get_player_administration_profile(star.player)
+        tier = int(profile.get('level', 0) or 0)
+        micromanager_orders = list(star.production_orders.filter(
+            added_by_micromanager=True
+        ).order_by('position', 'id'))
+
+        if tier <= 0 or not bool(getattr(star, 'has_administration', False)):
+            for order in micromanager_orders:
+                if self._order_has_progress(order):
+                    continue
+                order.delete()
+            self._resequence_production_orders(star)
+            return
+
+        preserved = []
+        for order in micromanager_orders:
+            if self._order_has_progress(order):
+                preserved.append(order)
+                continue
+            order.delete()
+
+        self._resequence_production_orders(star)
+
+        existing_types = [order.order_type for order in preserved]
+        terraform_profile = get_player_terraforming_profile(star.player)
+        terraform_rate = float(terraform_profile.get('rate', 0.0) or 0.0)
+        planned = plan_micromanager_orders(
+            star.player,
+            star,
+            tier,
+            fleets_in_orbit=star.player.fleets.filter(x=star.x, y=star.y).count(),
+            terraform_available=(terraform_rate > 0),
+            terraform_rate=terraform_rate,
+            preplanned_orders=existing_types,
+        )
+        if not planned:
+            return
+
+        max_pos = star.production_orders.aggregate(
+            max_pos=models.Max('position')
+        )['max_pos'] or 0
+        for offset, order_type in enumerate(planned, start=1):
+            ProductionOrder.objects.create(
+                game=self.game,
+                star=star,
+                order_type=order_type,
+                position=max_pos + offset,
+                quantity=1,
+                repeat=False,
+                added_by_micromanager=True,
+            )
 
     def _repair_fleets_at_star(self, star, available_shipyards):
         """Repair damaged fleets orbiting a star using available shipyards.

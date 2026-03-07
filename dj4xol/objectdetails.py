@@ -17,12 +17,14 @@ from dj4xol.salvage_thumbnails import (
     get_salvage_thumbnail,
 )
 from dj4xol.research import (
+    get_player_administration_profile,
     get_player_colony_defense_level,
     get_player_production_costs,
     get_player_terraforming_profile,
     format_terraform_order_label,
     get_player_available_production_orders,
 )
+from dj4xol.micromanager_rules import ADMINISTRATION_ORDER_TYPE
 from dj4xol.colony_rules import (
     calculate_growth_factor,
     calculate_habitability_factor,
@@ -882,8 +884,13 @@ class DetailBuilder():
                     + self.selected_obj.shipyards * COLONISTS_PER_SHIPYARD)
             employment = calculate_employment_percent(self.selected_obj)
             defenses_tooltip = None
+            administration_level = 0
             if is_owned:
                 colony_defense_level = get_player_colony_defense_level(self.player)
+                administration_level = int(
+                    get_player_administration_profile(self.player).get('level', 0)
+                    or 0
+                )
                 defense_multiplier = 2.0 ** max(0.0, colony_defense_level)
                 effective_base_defenses = calculate_effective_defenses(
                     self.selected_obj
@@ -902,6 +909,11 @@ class DetailBuilder():
                 'Defenses': self.selected_obj.defenses,
                 'DefensesTooltip': defenses_tooltip,
                 'Shipyards': self.selected_obj.shipyards,
+                'Administration': (
+                    'Level %s' % administration_level
+                    if self.selected_obj.has_administration and administration_level > 0
+                    else None
+                ),
                 'Jobs': {'count': jobs, 'employment': employment},
             }
         return infrastructure
@@ -958,6 +970,8 @@ class DetailBuilder():
                 'quantity': o.quantity,
                 'completed': o.completed,
                 'repeat': o.repeat,
+                'repeat_allowed': o.order_type != ADMINISTRATION_ORDER_TYPE,
+                'added_by_micromanager': bool(o.added_by_micromanager),
                 'progress_percent': min(int(total_progress), 100),
                 'resource_progress': min(int(resource_progress), 50 if labor_cost > 0 and resource_cost > 0 else 100),
                 'labor_progress': min(int(labor_progress), 50 if resource_cost > 0 and labor_cost > 0 else 100),
@@ -989,6 +1003,9 @@ class DetailBuilder():
         for option in orders:
             order_type = option.get('value')
             cost = cost_map.get(order_type, {}) if order_type else {}
+            option['repeat_allowed'] = bool(
+                option.get('repeat_allowed', True)
+            )
             option['cost'] = {
                 'bp': int(cost.get('bp', 0) or 0),
                 **{key: int(cost.get(key, 0) or 0) for key in ALL_RESOURCE_KEYS},

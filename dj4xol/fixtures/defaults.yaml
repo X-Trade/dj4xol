@@ -1171,6 +1171,45 @@
     enabled: True
 
 - model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000411"
+  fields:
+    short_id: "tech00000411"
+    category: 2
+    level: 8
+    name: 'Administration Level 1'
+    description: 'Colony administrations can coordinate basic local industry.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"administration_level": 1}'
+    display_order: 210
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000412"
+  fields:
+    short_id: "tech00000412"
+    category: 2
+    level: 12
+    name: 'Administration Level 2'
+    description: 'Expanded administrative control adds orbital logistics support.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"administration_level": 2}'
+    display_order: 211
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000413"
+  fields:
+    short_id: "tech00000413"
+    category: 5
+    level: 18
+    name: 'Administration Level 3'
+    description: 'Senior administrations can direct mature colonies and terraforming.'
+    tech_type: 'INFRASTRUCTURE'
+    params_json: '{"administration_level": 3}'
+    display_order: 212
+    enabled: True
+
+- model: dj4xol.Technology
   pk: "00000000-0000-0000-0000-000000000500"
   fields:
     short_id: "tech00000500"

@@ -842,6 +842,7 @@ class Star(AbstractMapObject):
     labs = models.IntegerField(default=0)
     defenses = models.IntegerField(default=0)
     shipyards = models.IntegerField(default=0)
+    has_administration = models.BooleanField(default=False)
     buildpoints_consumed = models.IntegerField(default=0)  # Reset each turn
     thumbnail_path = models.CharField(max_length=255, blank=True, default='')
 
@@ -1551,6 +1552,8 @@ PRODUCTION_COSTS = {
     'BUILD_DEFENSE': {'bp': 50, 'ironium': 100, 'boranium': 50, 'germanium': 50, 'colonists': 0},
     'BUILD_SHIPYARD': {'bp': 100, 'ironium': 250, 'boranium': 50, 'germanium': 100,
                        'colonists': 0},
+    'BUILD_ADMINISTRATION': {'bp': 25, 'ironium': 25, 'boranium': 10,
+                             'germanium': 40, 'colonists': 0},
     'BUILD_FLEET': {'bp': 50, 'ironium': 100, 'boranium': 200, 'germanium': 200, 'colonists': 0},
     'TERRAFORM_GRAVITY': {'bp': 100, 'ironium': 750, 'boranium': 150, 'germanium': 100, 'colonists': 0},
     'TERRAFORM_TEMPERATURE': {'bp': 100, 'ironium': 200, 'boranium': 660, 'germanium': 140, 'colonists': 0},
@@ -1570,6 +1573,7 @@ class ProductionOrder(AbstractGameObject):
         ('BUILD_LAB', 'Build Lab'),
         ('BUILD_DEFENSE', 'Build Defense'),
         ('BUILD_SHIPYARD', 'Build Shipyard'),
+        ('BUILD_ADMINISTRATION', 'Build Administration'),
     ]
 
     star = models.ForeignKey(Star, related_name='production_orders',
@@ -1577,6 +1581,7 @@ class ProductionOrder(AbstractGameObject):
     order_type = models.CharField(max_length=24, choices=ORDER_TYPES)
     position = models.IntegerField(default=0)
     repeat = models.BooleanField(default=False)
+    added_by_micromanager = models.BooleanField(default=False)
     quantity = models.IntegerField(default=1)
     completed = models.IntegerField(default=0)
     # Track partial progress on current item (resources must be spent before BP)

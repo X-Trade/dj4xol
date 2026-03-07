@@ -9,6 +9,10 @@ from .colony_rules import (
     calculate_staffing_ratio,
 )
 from .bombardment_rules import normalize_bomb_type, normalize_miner_type
+from .micromanager_rules import (
+    ADMINISTRATION_ORDER_TYPE,
+    administration_level_from_params,
+)
 from .models import (
     DefaultResearchLevelRequirement,
     PlayerResearch,
@@ -45,6 +49,7 @@ TECH_PARAM_LABELS = {
     'basic_scanner_range': 'Basic Scanner Range',
     'advanced_scanner_range': 'Advanced Scanner Range',
     'terraforming_rate': 'Terraforming Rate',
+    'administration_level': 'Administration Level',
 }
 
 TERRAFORM_ORDER_LABELS = {
@@ -115,6 +120,11 @@ def _format_param_value(key, value):
             return '{}%'.format(int(round(float(value) * 100.0)))
         except (TypeError, ValueError):
             return value
+    if key == 'administration_level':
+        try:
+            return '{}'.format(int(value))
+        except (TypeError, ValueError):
+            return value
     return value
 
 
@@ -183,6 +193,28 @@ def _select_terraforming_tech(unlocked):
     return selected
 
 
+def _select_administration_tech(unlocked):
+    selected = None
+    selected_sort_key = None
+    for tech in unlocked:
+        if str(tech.tech_type or '') != 'INFRASTRUCTURE':
+            continue
+        params = _safe_params(tech)
+        level = administration_level_from_params(params)
+        if level <= 0:
+            continue
+        sort_key = (
+            int(level),
+            int(tech.level),
+            int(tech.display_order or 0),
+            str(tech.name or ''),
+        )
+        if selected is None or sort_key > selected_sort_key:
+            selected = tech
+            selected_sort_key = sort_key
+    return selected
+
+
 def get_player_terraforming_profile(player):
     """Return terraforming rate/costs for a player based on INFRASTRUCTURE tech."""
     if not player or not getattr(player, 'race_type', None):
@@ -208,6 +240,23 @@ def get_player_terraforming_profile(player):
     return {'rate': rate, 'costs': costs, 'tech': selected}
 
 
+def get_player_administration_profile(player):
+    """Return Administration automation tier from unlocked tech."""
+    if not player or not getattr(player, 'race_type', None):
+        return {'level': 0, 'tech': None}
+    unlocked = list(get_player_unlocked_technologies(player))
+    if not unlocked:
+        return {'level': 0, 'tech': None}
+    selected = _select_administration_tech(unlocked)
+    if selected is None:
+        return {'level': 0, 'tech': None}
+    params = _safe_params(selected)
+    return {
+        'level': administration_level_from_params(params),
+        'tech': selected,
+    }
+
+
 def get_player_production_costs(player):
     """Return production costs for the player, including tech overrides."""
     from .models import PRODUCTION_COSTS
@@ -229,6 +278,7 @@ def get_player_available_production_orders(player, star):
     if not player or not star or getattr(star, 'player_id', None) != player.id:
         return []
     orders = []
+    administration_profile = get_player_administration_profile(player)
     profile = get_player_terraforming_profile(player)
     rate = profile.get('rate', 0.0)
     if rate > 0:
@@ -237,16 +287,54 @@ def get_player_available_production_orders(player, star):
             orders.append({
                 'value': order_type,
                 'label': format_terraform_order_label(order_type, rate_percent),
+                'repeat_allowed': True,
             })
     if int(getattr(star, 'shipyards', 0) or 0) > 0:
-        orders.append({'value': 'BUILD_FLEET', 'label': 'Build Fleet'})
+        orders.append({
+            'value': 'BUILD_FLEET',
+            'label': 'Build Fleet',
+            'repeat_allowed': True,
+        })
     orders.extend([
-        {'value': 'BUILD_MINE', 'label': 'Build Mine'},
-        {'value': 'BUILD_FACTORY', 'label': 'Build Factory'},
-        {'value': 'BUILD_LAB', 'label': 'Build Lab'},
-        {'value': 'BUILD_DEFENSE', 'label': 'Build Defense'},
-        {'value': 'BUILD_SHIPYARD', 'label': 'Build Shipyard'},
+        {
+            'value': 'BUILD_MINE',
+            'label': 'Build Mine',
+            'repeat_allowed': True,
+        },
+        {
+            'value': 'BUILD_FACTORY',
+            'label': 'Build Factory',
+            'repeat_allowed': True,
+        },
+        {
+            'value': 'BUILD_LAB',
+            'label': 'Build Lab',
+            'repeat_allowed': True,
+        },
+        {
+            'value': 'BUILD_DEFENSE',
+            'label': 'Build Defense',
+            'repeat_allowed': True,
+        },
+        {
+            'value': 'BUILD_SHIPYARD',
+            'label': 'Build Shipyard',
+            'repeat_allowed': True,
+        },
     ])
+    has_admin_order = star.production_orders.filter(
+        order_type=ADMINISTRATION_ORDER_TYPE
+    ).exists()
+    if (
+        int(administration_profile.get('level', 0) or 0) > 0 and
+        not bool(getattr(star, 'has_administration', False)) and
+        not has_admin_order
+    ):
+        orders.append({
+            'value': ADMINISTRATION_ORDER_TYPE,
+            'label': 'Build Administration',
+            'repeat_allowed': False,
+        })
     return orders
 
 
