@@ -1,5 +1,21 @@
 # Thumbnail Blur Pipeline
 
+This is the authoritative specification for how blurred thumbnail variants
+work in `dj4xol`.
+
+Use `doc/thumbnail_regeneration.md` for the operational regeneration steps.
+
+## Scope
+
+This document defines:
+
+- why blurred thumbnail variants exist
+- what files are generated
+- what runtime code is allowed to do
+- what production and development environments are expected to contain
+
+It does not define the day-to-day regeneration workflow.
+
 ## Problem
 
 Basic-scan reports currently blur thumbnails in the browser with CSS.
@@ -101,3 +117,8 @@ Add coverage for:
 - fallback to original path when blurred asset is missing
 - catalog builders excluding blurred assets
 - detail-panel basic report using blurred asset paths
+
+## Related Document
+
+For the actual regeneration commands and verification steps, use
+`doc/thumbnail_regeneration.md`.

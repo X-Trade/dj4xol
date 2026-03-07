@@ -1,14 +1,27 @@
 # Thumbnail Regeneration
 
+This is the operational runbook for regenerating thumbnail catalogs and blurred
+thumbnail assets.
+
+Use `doc/thumbnail_blur_pipeline.md` for the authoritative behavior/spec.
+
+## Scope
+
+This document defines:
+
+- what command(s) to run
+- when regeneration is needed
+- what generated outputs should be refreshed
+- how to do a quick verification pass
+
+It does not redefine the blur system architecture or runtime rules.
+
 ## Purpose
 
 Use this when thumbnail source images change, when the blur recipe changes, or
 when the generated thumbnail catalogs need refreshing.
 
 This is a development/build-side process.
-
-The production server is expected to serve pre-generated thumbnail assets and
-should not require `Pillow`.
 
 ## One-Step Regeneration
 
@@ -41,13 +54,14 @@ pyenv exec python -m dj4xol.catalog_ship_thumbs
 pyenv exec python -m dj4xol.catalog_anomaly_thumbs
 ```
 
+## Preconditions
+
+- run this in development/build, not on production
+- `Pillow` is required only for this regeneration step
+
 ## Notes
 
 - blurred variants use the `__blur.png` suffix
-- blur variants are generated assets and are excluded from the normal thumbnail
-  selection catalogs
-- runtime code only resolves pre-generated variant paths; it does not generate
-  new images
 - salvage thumbnails do not have a generated Python catalog module, but their
   blurred variants are refreshed by `dj4xol.catalog_all_thumbs`
 
@@ -58,3 +72,8 @@ After regeneration, a useful targeted test pass is:
 ```sh
 pyenv exec python manage.py test dj4xol.tests.thumbnails dj4xol.tests.views
 ```
+
+## Related Document
+
+For the system design, deployment boundary, runtime fallback behavior, and
+catalog expectations, use `doc/thumbnail_blur_pipeline.md`.
