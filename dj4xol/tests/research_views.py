@@ -38,7 +38,11 @@ class ResearchViewTest(TestCase):
                 'alloc_%s' % self.electronics.id: '80',
             }
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.url,
+            reverse('dj4xol:research', args=[self.game.short_id]),
+        )
         rows = PlayerResearch.objects.filter(player=self.player)
         total = sum(row.allocation_percent for row in rows)
         self.assertAlmostEqual(total, 100.0, places=5)
@@ -53,7 +57,11 @@ class ResearchViewTest(TestCase):
                 'alloc_action': 'focus',
             }
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.url,
+            reverse('dj4xol:research', args=[self.game.short_id]),
+        )
         rows = {
             row.category_id: row.allocation_percent
             for row in PlayerResearch.objects.filter(player=self.player)
@@ -81,6 +89,38 @@ class ResearchViewTest(TestCase):
             reverse('dj4xol:research', args=[self.game.short_id]),
         )
 
+    def test_turn_in_from_research_preserves_selected_category(self):
+        response = self.client.post(
+            reverse('dj4xol:turn_in', args=[self.game.short_id]),
+            {'return_to': 'research', 'category': self.energy.id}
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.url,
+            '%s?category=%s' % (
+                reverse('dj4xol:research', args=[self.game.short_id]),
+                self.energy.id,
+            ),
+        )
+
+    def test_research_post_redirects_to_selected_category(self):
+        response = self.client.post(
+            reverse('dj4xol:research', args=[self.game.short_id]),
+            {
+                'category': str(self.energy.id),
+                'alloc_%s' % self.energy.id: '60',
+                'alloc_%s' % self.electronics.id: '40',
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.url,
+            '%s?category=%s' % (
+                reverse('dj4xol:research', args=[self.game.short_id]),
+                self.energy.id,
+            ),
+        )
+
     def test_turned_in_research_view_disables_allocation_controls(self):
         self.player.turned_in = True
         self.player.save(update_fields=['turned_in'])
@@ -90,6 +130,7 @@ class ResearchViewTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'class="allocation-input"', status_code=200)
+        self.assertContains(response, 'class="allocation-control"', status_code=200)
         self.assertContains(response, 'disabled', status_code=200)
         self.assertContains(response, 'id="alloc-even-btn"', status_code=200)
         self.assertContains(response, '?category=', status_code=200)

@@ -29,6 +29,9 @@
                         <form method="post" action="{% url 'dj4xol:turn_in' game.short_id %}" style="display:inline">
                             {% csrf_token %}
                             <input type="hidden" name="return_to" value="research">
+                            {% if selected_category %}
+                            <input type="hidden" name="category" value="{{ selected_category.id }}">
+                            {% endif %}
                             <button type="submit">Turn In</button>
                         </form>
                     {% endif %}
@@ -92,19 +95,21 @@
                                    {{ row.category.name }}
                                 </a>
                                 <span class="allocation-level">L{{ row.current_level|floatformat:0 }}</span>
-                                {% if singular_research %}
-                                <input type="radio" name="focus_category" value="{{ row.category.id }}"
-                                       {% if row.allocation_percent > 0 %}checked{% endif %}
-                                       {% if player.turned_in %}disabled{% endif %}>
-                                <span class="allocation-suffix">Focus</span>
-                                {% else %}
-                                <input type="number" step="1" min="0" max="100"
-                                       name="alloc_{{ row.category.id }}"
-                                       value="{{ row.allocation_percent|floatformat:0 }}"
-                                       class="allocation-input"
-                                       {% if player.turned_in %}disabled{% endif %}>
-                                <span class="allocation-suffix">%</span>
-                                {% endif %}
+                                <span class="allocation-control">
+                                    {% if singular_research %}
+                                    <input type="radio" name="focus_category" value="{{ row.category.id }}"
+                                           {% if row.allocation_percent > 0 %}checked{% endif %}
+                                           {% if player.turned_in %}disabled{% endif %}>
+                                    <span class="allocation-suffix">Focus</span>
+                                    {% else %}
+                                    <input type="number" step="1" min="0" max="100"
+                                           name="alloc_{{ row.category.id }}"
+                                           value="{{ row.allocation_percent|floatformat:0 }}"
+                                           class="allocation-input"
+                                           {% if player.turned_in %}disabled{% endif %}>
+                                    <span class="allocation-suffix">%</span>
+                                    {% endif %}
+                                </span>
                             </div>
                             {% empty %}
                             <p>No research categories configured.</p>
