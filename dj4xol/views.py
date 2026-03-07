@@ -2232,6 +2232,7 @@ def research(request, game_short_id):
         'research_rows': data['rows'],
         'selected_category': data['selected_category'],
         'selected_research': data['selected_research'],
+        'current_level_number': data['current_level_number'],
         'next_level_number': data['next_level_number'],
         'next_level_cost': data['next_level_cost'],
         'next_level_rp_current': data['next_level_rp_current'],
@@ -2244,6 +2245,7 @@ def research(request, game_short_id):
         'next_level_prerequisites': data['next_level_prerequisites'],
         'next_level_blocked': data['next_level_blocked'],
         'next_level_items': data['next_level_items'],
+        'recently_unlocked_items': data['recently_unlocked_items'],
         'singular_research': player.singular_research,
         'user_theme': account.theme if account else 'classic',
     })

@@ -418,6 +418,25 @@ def _tech_type_label(tech_type):
     return choice_map.get(str(tech_type or ''), str(tech_type or 'Other').title())
 
 
+def _build_research_tech_item(tech, resource_labels):
+    params = _safe_params(tech)
+    return {
+        'name': tech.name,
+        'description': tech.description,
+        'tech_type': tech.tech_type,
+        'tech_type_label': _tech_type_label(tech.tech_type),
+        'thumbnail_path': get_technology_thumbnail_path(tech),
+        'thumbnail_paths': get_technology_thumbnail_paths(tech),
+        'thumbnail_initial_index': get_technology_thumbnail_initial_index(tech),
+        'params': params,
+        'params_display': [
+            {'label': _format_param_key(key), 'value': _format_param_value(key, value)}
+            for key, value in params.items()
+            if _should_show_param(key, value)
+        ] + build_production_cost_entries(params, resource_labels=resource_labels),
+    }
+
+
 def _whole_percentages(values):
     """Normalise to whole-number percentages summing to 100."""
     norm = normalise_percentages(values)
@@ -1499,6 +1518,8 @@ def build_research_screen_data(player, selected_category_id=None):
     next_level_blocked = False
     selected_is_maxed = False
     selected_max_level = None
+    current_level_number = None
+    recently_unlocked_items = []
     resource_labels = {
         key: get_secret_resource_label(
             key,
@@ -1516,6 +1537,7 @@ def build_research_screen_data(player, selected_category_id=None):
                 selected_research = row
                 break
         selected_level = int(selected_research.current_level) if selected_research else 0
+        current_level_number = selected_level
         selected_max_level = max_level_by_category.get(selected.id, selected_level)
         selected_is_maxed = bool(
             selected_research and selected_max_level > 0 and selected_level >= selected_max_level
@@ -1591,6 +1613,17 @@ def build_research_screen_data(player, selected_category_id=None):
                     'unit': 'kt',
                 })
 
+        if selected_level > 0:
+            items = Technology.objects.filter(
+                enabled=True,
+                category=selected,
+                level=selected_level
+            ).order_by('display_order', 'name')
+            for item in items:
+                recently_unlocked_items.append(
+                    _build_research_tech_item(item, resource_labels)
+                )
+
         if not selected_is_maxed:
             items = Technology.objects.filter(
                 enabled=True,
@@ -1598,22 +1631,9 @@ def build_research_screen_data(player, selected_category_id=None):
                 level=next_level
             ).order_by('display_order', 'name')
             for item in items:
-                params = _safe_params(item)
-                next_level_items.append({
-                    'name': item.name,
-                    'description': item.description,
-                    'tech_type': item.tech_type,
-                    'tech_type_label': _tech_type_label(item.tech_type),
-                    'thumbnail_path': get_technology_thumbnail_path(item),
-                    'thumbnail_paths': get_technology_thumbnail_paths(item),
-                    'thumbnail_initial_index': get_technology_thumbnail_initial_index(item),
-                    'params': params,
-                    'params_display': [
-                        {'label': _format_param_key(key), 'value': _format_param_value(key, value)}
-                        for key, value in params.items()
-                        if _should_show_param(key, value)
-                    ] + build_production_cost_entries(params, resource_labels=resource_labels),
-                })
+                next_level_items.append(
+                    _build_research_tech_item(item, resource_labels)
+                )
 
     for row in rows:
         row_max_level = max_level_by_category.get(row.category_id, int(row.current_level))
@@ -1637,6 +1657,7 @@ def build_research_screen_data(player, selected_category_id=None):
         'rows': rows,
         'selected_category': selected,
         'selected_research': selected_research,
+        'current_level_number': current_level_number,
         'selected_is_maxed': selected_is_maxed,
         'selected_max_level': selected_max_level,
         'next_level_number': next_level_number,
@@ -1651,4 +1672,5 @@ def build_research_screen_data(player, selected_category_id=None):
         'next_level_prerequisites': next_level_prerequisites,
         'next_level_blocked': next_level_blocked,
         'next_level_items': next_level_items,
+        'recently_unlocked_items': recently_unlocked_items,
     }

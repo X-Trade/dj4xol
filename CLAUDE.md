@@ -57,6 +57,19 @@ A Django-based 4X space strategy game inspired by Stars!
 - Add actionable follow-up items to `todo.txt` when a doc introduces concrete cleanup or feature work.
 - `doc/plan.txt` is mainly reserved for broader future gameplay-device ideas and exploratory design notes, not general implementation cleanup tracking.
 
+## Technology Sync Policy
+
+- Until version `1.0`, expect regular technology-tree churn. When fixture-backed research categories, technologies, or research prerequisites change in `dj4xol/fixtures/defaults.yaml`, also add a technology synchronization migration so `migrate` brings existing databases forward.
+- Prefer the existing reusable sync helper in `dj4xol/default_sync.py`: `sync_factory_defaults(force=True)`, wrapped in a migration `RunPython` function, rather than copying another one-off fixture sync implementation unless there is a migration-safety reason to do otherwise.
+
+## Research Stage Bands
+
+- `L0-L3`: early hardcore grind for a challenging start
+- `L0-L6`: early game
+- `L7-L12`: mid-game
+- `L13-L18`: late-game
+- `L19-L26`: end-game
+
 ## Game Rules
 
 - Games can exist with zero players (allows cleanup/admin scenarios)
