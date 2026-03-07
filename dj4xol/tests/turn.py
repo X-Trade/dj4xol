@@ -7744,7 +7744,8 @@ class TestFleetFuel(TestCase):
 
         fleet = Fleet.objects.create(
             game=game, player=player, name="Dry Fleet",
-            x=star.x, y=star.y, max_safe_warp=6, fuel=1.0, max_fuel=10.0
+            x=star.x, y=star.y, max_safe_warp=6, fuel=1.0, max_fuel=10.0,
+            heading=87.0, travel_warp=4,
         )
         FleetOrders.objects.create(
             game=game, fleet=fleet, order_type='MOVE',
@@ -7756,6 +7757,8 @@ class TestFleetFuel(TestCase):
         fleet.refresh_from_db()
         self.assertEqual((fleet.x, fleet.y), (star.x, star.y))
         self.assertAlmostEqual(fleet.fuel, 1.0, places=4)
+        self.assertEqual(fleet.travel_warp, 0)
+        self.assertAlmostEqual(float(fleet.heading), 87.0, places=1)
         self.assertEqual(fleet.orders.count(), 1)
 
     def test_bussard_collectors_can_enable_reduced_warp_move(self):
@@ -7797,6 +7800,7 @@ class TestFleetFuel(TestCase):
         fleet.refresh_from_db()
         self.assertGreater(fleet.x, start_x)
         self.assertLess(fleet.x, start_x + 6)
+        self.assertEqual(fleet.travel_warp, expected_warp)
         self.assertLess(fleet.fuel, projected_fuel)
         self.assertGreater(player.messages.count(), start_messages)
         msg = player.messages.order_by('-id').first()

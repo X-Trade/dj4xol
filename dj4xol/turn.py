@@ -1801,26 +1801,10 @@ class GameTurn():
         except (TypeError, ValueError):
             heading = 0.0
 
-        travel_warp = 0
-        order = fleet.orders.order_by('position', 'id').first()
-        if order is not None:
-            if order.order_type == 'PATROL':
-                speed = int(getattr(order, 'intercept_speed', 0) or order.warpfactor or 0)
-            elif order.order_type in ('MOVE', 'INTERCEPT'):
-                speed = int(order.warpfactor or 0)
-            else:
-                speed = 0
-            _target, target_x, target_y, _kind = order.get_actual_target()
-            if (
-                speed > 0 and
-                target_x is not None and
-                target_y is not None and
-                (
-                    int(target_x) != int(fleet.x) or
-                    int(target_y) != int(fleet.y)
-                )
-            ):
-                travel_warp = max(0, speed)
+        try:
+            travel_warp = max(0, int(getattr(fleet, 'travel_warp', 0) or 0))
+        except (TypeError, ValueError):
+            travel_warp = 0
 
         snapshot = (travel_warp, heading)
         self._fleet_motion_cache[fleet.id] = snapshot
@@ -2073,6 +2057,8 @@ class GameTurn():
                 continue  # Fleet was deleted (e.g., by colonise order)
             if fleet.player is None or bool(getattr(fleet.player, 'defeated', False)):
                 continue
+            # Reset yearly motion snapshot; movement handlers set this when travel occurs.
+            fleet.travel_warp = 0
             if fleet.id in self._locked_fleet_ids_for_year:
                 self._refuel_fleet_if_in_friendly_shipyard_orbit(fleet)
                 fleet.save()
@@ -2787,11 +2773,12 @@ class GameTurn():
         vector = target - position
         distance = linalg.norm(vector)
 
-        # Calculate heading from movement direction (where it's going)
-        # 0 = north, 90 = east, 180 = south, 270 = west
-        dx, dy = vector[0], vector[1]
-        # atan2(dx, -dy) gives angle from north toward target
-        fleet.heading = degrees(atan2(dx, -dy)) % 360
+        def _heading_for_vector(vec):
+            """Return heading for vector where 0=north, 90=east."""
+            dx, dy = vec[0], vec[1]
+            return degrees(atan2(dx, -dy)) % 360
+
+        heading_to_target = _heading_for_vector(vector) if distance > 0 else None
 
         # Check if fleet can reach destination this turn
         warp_speed = order.warpfactor if order.order_type in ['MOVE', 'INTERCEPT'] else 5
@@ -2834,13 +2821,20 @@ class GameTurn():
             if self._is_within_intercept_snap_range(live_distance, effective_warp_speed):
                 live_vector = target_position - position
                 if linalg.norm(live_vector) > 0:
-                    dx, dy = live_vector[0], live_vector[1]
-                    fleet.heading = degrees(atan2(dx, -dy)) % 360
+                    fleet.heading = _heading_for_vector(live_vector)
+                    fleet.travel_warp = max(0, int(warp_speed))
+                else:
+                    fleet.travel_warp = 0
                 fleet.x = int(target_x)
                 fleet.y = int(target_y)
                 return True
 
         if warp_speed == WORMHOLE_WARPFACTOR and bool(fleet.has_wormhole_drive):
+            if heading_to_target is not None:
+                fleet.heading = heading_to_target
+                fleet.travel_warp = max(0, int(warp_speed))
+            else:
+                fleet.travel_warp = 0
             jump_result = self._execute_wormhole_jump(fleet, order, x, y, distance)
             if jump_result == 'destroyed':
                 return 'destroyed'
@@ -2857,6 +2851,11 @@ class GameTurn():
 
         if int(distance) <= effective_warp_speed:
             # Fleet reaches destination
+            if heading_to_target is not None:
+                fleet.heading = heading_to_target
+                fleet.travel_warp = max(0, int(warp_speed))
+            else:
+                fleet.travel_warp = 0
             fleet.x = x
             fleet.y = y
             if is_intercept:
@@ -2874,6 +2873,11 @@ class GameTurn():
                 step_y = 0 if vector[1] == 0 else (1 if vector[1] > 0 else -1)
                 new_x = fleet.x + step_x
                 new_y = fleet.y + step_y
+            if heading_to_target is not None:
+                fleet.heading = heading_to_target
+                fleet.travel_warp = max(0, int(warp_speed))
+            else:
+                fleet.travel_warp = 0
             fleet.x = new_x
             fleet.y = new_y
             if (fleet.x, fleet.y) == (x, y):

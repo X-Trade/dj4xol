@@ -696,6 +696,8 @@ class Fleet(AbstractMapObject):
             on_delete=models.SET_NULL, null=True, default=None)
     # Heading in degrees: 0 = north, 90 = east, 180 = south, 270 = west
     heading = models.FloatField(default=0.0)
+    # Effective warp actually traveled during the previous processed year.
+    travel_warp = models.IntegerField(default=0)
     ship_count = models.IntegerField(default=1)
 
     # Cargo capacity and inventory

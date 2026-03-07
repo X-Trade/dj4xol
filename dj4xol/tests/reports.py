@@ -1000,14 +1000,7 @@ class ScannerReportTest(TestCase):
             ship_count=4,
             integrity=77,
             heading=123.4,
-        )
-        FleetOrders.objects.create(
-            game=self.game,
-            fleet=enemy_fleet,
-            order_type='MOVE',
-            x=enemy_fleet.x + 6,
-            y=enemy_fleet.y,
-            warpfactor=6,
+            travel_warp=6,
         )
 
         GameTurn(self.game).generate_scanner_reports()
@@ -1384,14 +1377,7 @@ class NoScannerReportTierTest(TestCase):
             y=y,
             ship_count=2,
             heading=278.3,
-        )
-        FleetOrders.objects.create(
-            game=self.game,
-            fleet=enemy_fleet,
-            order_type='MOVE',
-            x=x + 6,
-            y=y,
-            warpfactor=6,
+            travel_warp=6,
         )
 
         GameTurn(self.game).generate_reports()

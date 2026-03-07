@@ -812,27 +812,13 @@ class DetailBuilder():
         )
 
     def _fleet_travel_warp(self, fleet):
-        """Return current travel warp inferred from the lead movement order."""
+        """Return last effective travel warp recorded on fleet state."""
         if not fleet or not isinstance(fleet, Fleet):
             return None
-        order = fleet.orders.order_by('position', 'id').first()
-        if not order:
-            return 0
-        if order.order_type == 'PATROL':
-            speed = int(getattr(order, 'intercept_speed', 0) or order.warpfactor or 0)
-        elif order.order_type in ('MOVE', 'INTERCEPT'):
-            speed = int(order.warpfactor or 0)
-        else:
-            return 0
-        _obj, target_x, target_y, _kind = order.get_actual_target()
-        if target_x is None or target_y is None:
-            return 0
         try:
-            if int(target_x) == int(fleet.x) and int(target_y) == int(fleet.y):
-                return 0
+            return max(0, int(getattr(fleet, 'travel_warp', 0) or 0))
         except (TypeError, ValueError):
             return 0
-        return max(0, speed)
 
     def _has_advanced_scanner_coverage(self, x, y):
         """Return True when player has advanced scanner visibility at location."""
