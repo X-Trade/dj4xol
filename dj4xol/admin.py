@@ -9,7 +9,8 @@ except ImportError:
     from django.urls import re_path as url
 
 from .models import (
-    Account, Player, Game, ServerSettings, ServerRaceType,
+    Account, Player, Game, ServerSettings, ServerRaceType, ServerRace,
+    EmailRollupLog, GameInvitation,
     DefaultResearchLevelRequirement, ResearchCategory, ResearchLevelRequirement,
     Technology, PlayerResearch, HullDesign, HullDesignSlot, Spectator,
 )
@@ -19,6 +20,24 @@ from .turn import GameTurn
 @admin.register(ServerRaceType)
 class ServerRaceTypeAdmin(admin.ModelAdmin):
     list_display = ('code', 'name', 'enabled')
+
+
+@admin.register(ServerRace)
+class ServerRaceAdmin(admin.ModelAdmin):
+    list_display = (
+        'name', 'owner', 'public', 'race_type', 'starting_tech_level', 'short_id'
+    )
+    list_filter = ('public', 'race_type', 'fixed_homeworld')
+    search_fields = (
+        'name',
+        'plural_name',
+        'homeworld_name',
+        'owner__alias',
+        'owner__django_user__username',
+        'short_id',
+    )
+    list_select_related = ('owner', 'owner__django_user', 'race_type')
+
 
 @admin.register(ServerSettings)
 class ServerAdmin(admin.ModelAdmin):
@@ -41,6 +60,49 @@ class AccountAdmin(admin.ModelAdmin):
         if obj:  # Editing existing account
             return ('pk', 'django_user')
         return ()  # Creating new account - allow django_user selection
+
+
+@admin.register(EmailRollupLog)
+class EmailRollupLogAdmin(admin.ModelAdmin):
+    list_display = (
+        'sent_at', 'account', 'player', 'game', 'year', 'message_count'
+    )
+    list_filter = ('year', 'game', 'account')
+    search_fields = (
+        'account__alias',
+        'account__email',
+        'player__name',
+        'player__short_id',
+        'game__name',
+        'game__short_id',
+    )
+    list_select_related = ('account', 'player', 'game')
+    date_hierarchy = 'sent_at'
+    readonly_fields = (
+        'account', 'player', 'game', 'year', 'sent_at', 'message_count'
+    )
+
+
+@admin.register(GameInvitation)
+class GameInvitationAdmin(admin.ModelAdmin):
+    list_display = ('game', 'invitation_target', 'created', 'short_id')
+    list_filter = ('game', 'created')
+    search_fields = (
+        'game__name',
+        'game__short_id',
+        'account__alias',
+        'account__django_user__username',
+        'email',
+        'short_id',
+    )
+    list_select_related = ('game', 'account', 'account__django_user')
+    readonly_fields = ('created', 'short_id')
+
+    def invitation_target(self, obj):
+        if obj.account_id:
+            return obj.account.alias
+        return obj.email
+    invitation_target.short_description = 'Target'
 
 @admin.register(Player)
 class PlayerAdmin(admin.ModelAdmin):
