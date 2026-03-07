@@ -63,6 +63,11 @@
     value: 'True'
 - model: dj4xol.ServerSettings
   fields:
+    key: 'allow_player_public_races'
+    description: 'Allow players to publish public races'
+    value: 'False'
+- model: dj4xol.ServerSettings
+  fields:
     key: 'enable_email'
     description: 'Enable email'
     value: 'False'

@@ -2,6 +2,7 @@ from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.password_validation import password_validators_help_text_html
+from django.db import models
 from urllib.parse import urlparse, urlunparse
 from .models import (
     ServerRace,
@@ -13,6 +14,44 @@ from .models import (
 )
 from .name_rules import validate_non_reserved_identity_name, validate_safe_public_text
 from .research import get_global_research_max_level, get_starting_tech_balance_cost
+
+
+def _race_queryset_for_account(account):
+    """Return race choices ordered as own, server, then other public races."""
+    return (
+        ServerRace.objects
+        .filter(models.Q(public=True) | models.Q(owner=account))
+        .annotate(
+            _own_rank=models.Case(
+                models.When(owner=account, then=models.Value(0)),
+                default=models.Value(1),
+                output_field=models.IntegerField(),
+            ),
+            _server_rank=models.Case(
+                models.When(owner__isnull=True, then=models.Value(0)),
+                default=models.Value(1),
+                output_field=models.IntegerField(),
+            ),
+        )
+        .order_by('_own_rank', '_server_rank', 'name', 'id')
+    )
+
+
+class RaceChoiceField(forms.ModelChoiceField):
+    """Race field that annotates labels by ownership."""
+
+    def __init__(self, *args, **kwargs):
+        self.account = kwargs.pop('account', None)
+        super().__init__(*args, **kwargs)
+
+    def label_from_instance(self, obj):
+        label = obj.name
+        account_pk = getattr(self.account, 'pk', None)
+        if account_pk is not None and obj.owner_id == account_pk:
+            return '%s (yours)' % label
+        if obj.owner_id is None:
+            return '%s (server)' % label
+        return label
 
 
 class ServerRaceForm(forms.ModelForm):
@@ -28,7 +67,7 @@ class ServerRaceForm(forms.ModelForm):
     class Meta:
         model = ServerRace
         fields = [
-            'name', 'plural_name', 'homeworld_name', 'race_type', 'description',
+            'name', 'plural_name', 'homeworld_name', 'race_type', 'public', 'description',
             'starting_colonists',
             'starting_mines', 'starting_factories', 'starting_labs',
             'starting_shipyards', 'starting_fleets', 'starting_tech_level',
@@ -56,10 +95,13 @@ class ServerRaceForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        show_public = bool(kwargs.pop('show_public', False))
         super().__init__(*args, **kwargs)
         max_level = get_global_research_max_level()
         self.fields['race_type'].queryset = ServerRaceType.objects.filter(enabled=True)
         self.fields['description'].required = False
+        if not show_public and 'public' in self.fields:
+            self.fields.pop('public')
         self.fields['starting_tech_level'].widget.attrs['max'] = str(max_level)
         if self.instance and self.instance.pk:
             self.fields['spend_leftover_on_research'].initial = bool(
@@ -317,7 +359,7 @@ class NewGameForm(forms.Form):
         initial=5,
         help_text="Highest starting tech level a race can keep in this game. Races above this are clamped and the difference is refunded into leftover points."
     )
-    race = forms.ModelChoiceField(
+    race = RaceChoiceField(
         label="Play as Race",
         queryset=ServerRace.objects.none()
     )
@@ -380,9 +422,8 @@ class NewGameForm(forms.Form):
         self.fields['max_starting_tech_level'].widget.attrs['max'] = str(
             get_global_research_max_level()
         )
-        self.fields['race'].queryset = ServerRace.objects.filter(
-            models.Q(public=True) | models.Q(owner=account)
-        )
+        self.fields['race'].queryset = _race_queryset_for_account(account)
+        self.fields['race'].account = account
 
     def clean_max_starting_tech_level(self):
         max_level = get_global_research_max_level()
@@ -438,6 +479,7 @@ class ServerSettingsForm(forms.Form):
             'server_url',
             'server_welcome',
             'allow_self_signup',
+            'allow_player_public_races',
             'enable_spectator_mode',
             'enable_debug_actions',
             'enable_play_api',
@@ -483,6 +525,11 @@ class ServerSettingsForm(forms.Form):
         label="Enable Email",
         required=False,
         help_text="Enables outgoing server email, including rollups, invitations, and test emails.",
+    )
+    allow_player_public_races = forms.BooleanField(
+        label="Allow Player Public Races",
+        required=False,
+        help_text="Allows non-staff players to publish race templates for others to use.",
     )
     enable_spectator_mode = forms.BooleanField(
         label="Enable Spectator Mode",
@@ -530,6 +577,11 @@ class ServerSettingsForm(forms.Form):
         'server_welcome': {'description': 'Welcome message on homepage', 'use_long_value': True},
         'allow_self_signup': {'description': 'Allow self-sign-up', 'boolean': True},
         'enable_email': {'description': 'Enable email', 'boolean': True},
+        'allow_player_public_races': {
+            'description': 'Allow players to publish public races',
+            'boolean': True,
+            'default': False,
+        },
         'enable_spectator_mode': {
             'description': 'Enable spectator mode',
             'boolean': True,
@@ -598,11 +650,6 @@ class ServerSettingsForm(forms.Form):
     def iter_sections(self):
         for title, field_names in self.SECTION_ORDER:
             yield title, [self[name] for name in field_names if name in self.fields]
-
-
-# Import models.Q for the query
-from django.db import models
-
 
 class SignupForm(UserCreationForm):
     """Combined form for creating Django user and dj4xol Account."""
@@ -807,14 +854,12 @@ class RegistrationForm(forms.ModelForm):
 
 class JoinGameForm(forms.Form):
     """Form for joining a game with a selected race."""
-    race = forms.ModelChoiceField(
+    race = RaceChoiceField(
         label="Play as Race",
         queryset=ServerRace.objects.none()
     )
 
     def __init__(self, account, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Show public races and races owned by this account
-        self.fields['race'].queryset = ServerRace.objects.filter(
-            models.Q(public=True) | models.Q(owner=account)
-        )
+        self.fields['race'].queryset = _race_queryset_for_account(account)
+        self.fields['race'].account = account

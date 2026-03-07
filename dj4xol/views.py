@@ -22,7 +22,7 @@ from .models import (
     Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology,
     ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
-    Spectator, profanity_filter_settings,
+    Spectator, profanity_filter_settings, server_setting_enabled,
 )
 from .email_rollups import (
     send_message_rollup_for_account,
@@ -1457,20 +1457,31 @@ def toggle_fleet_order_repeat(request, game_short_id, order_short_id):
     return _redirect_preserving_selection(request, game)
 
 
+def _can_publish_public_races(user):
+    if user and user.is_staff:
+        return True
+    return server_setting_enabled('allow_player_public_races', False)
+
+
+def _public_server_races_available():
+    return ServerRace.objects.filter(public=True, owner__isnull=True).exists()
+
+
 @registration_required()
 def create_race(request):
     """Create a new custom race template."""
     account = request.user.dj4xol_account
     selected_theme = account.theme if account else 'classic'
+    show_public = _can_publish_public_races(request.user)
     if request.method == 'POST':
-        form = ServerRaceForm(request.POST)
+        form = ServerRaceForm(request.POST, show_public=show_public)
         if form.is_valid():
             race = form.save(commit=False)
-            race.owner = account
+            race.owner = None if (request.user.is_staff and race.public) else account
             race.save()
             return redirect('dj4xol:index')
     else:
-        form = ServerRaceForm()
+        form = ServerRaceForm(show_public=show_public)
     max_level = get_global_research_max_level()
     return render(request, 'dj4xol/create_race.html', {
         'form': form,
@@ -2321,19 +2332,22 @@ def onboarding_race(request):
     account = request.user.dj4xol_account
     if ServerRace.objects.filter(owner=account).exists():
         return redirect('dj4xol:index')
+    show_public = _can_publish_public_races(request.user)
+    can_skip_race_creation = _public_server_races_available()
     if request.method == 'POST':
-        form = ServerRaceForm(request.POST)
+        form = ServerRaceForm(request.POST, show_public=show_public)
         if form.is_valid():
             race = form.save(commit=False)
-            race.owner = account
+            race.owner = None if (request.user.is_staff and race.public) else account
             race.save()
             return redirect('dj4xol:index')
     else:
-        form = ServerRaceForm()
+        form = ServerRaceForm(show_public=show_public)
     max_level = get_global_research_max_level()
     return render(request, 'dj4xol/onboarding_race.html', {
         'form': form,
         'selected_theme': account.theme,
+        'can_skip_race_creation': can_skip_race_creation,
         'starting_tech_costs_json': json.dumps(
             get_starting_tech_balance_costs(max_level=max_level)
         ),

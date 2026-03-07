@@ -36,13 +36,24 @@
         </td>
         <td class="hint">&nbsp;</td>
     </tr>
+    {% if form.public %}
+    <tr>
+        <th>{{ form.public.label_tag }}</th>
+        <td>
+            {{ form.public }}
+            <label for="id_public">Publish as public race</label>
+            {{ form.public.errors }}
+        </td>
+        <td class="hint">Makes this race selectable by other players. Staff-created public races are published as server races.</td>
+    </tr>
+    {% endif %}
     <tr>
         <th>{{ form.description.label_tag }}</th>
         <td>
             {{ form.description }}
             {{ form.description.errors }}
         </td>
-        <td class="hint">Private notes to remind you what this race is about.</td>
+        <td class="hint">Race notes/description (profanity and unsafe text filtering apply).</td>
     </tr>
     <tr>
         <th>Gravity:</th>

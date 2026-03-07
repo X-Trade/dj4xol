@@ -6,6 +6,7 @@ import shlex
 from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import authenticate
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Max, Q
 from django.utils import timezone
@@ -24,9 +25,11 @@ from dj4xol.models import (
     Report,
     Salvage,
     Star,
+    profanity_filter_settings,
 )
 from dj4xol.mineral_rules import ALL_RESOURCE_KEYS, SECRET_RESOURCE_KEYS, known_resource_keys
 from dj4xol.colony_rules import calculate_habitability_factor
+from dj4xol.name_rules import validate_safe_public_text
 from dj4xol.objectdetails import DetailBuilder
 from dj4xol.research import (
     build_research_budget,
@@ -902,6 +905,21 @@ class Command(BaseCommand):
         text = " ".join(text_parts).strip()
         if not text:
             self.stdout.write("Note text is required.")
+            return
+        profanity_filter = profanity_filter_settings()
+        try:
+            text = validate_safe_public_text(
+                text,
+                'Note text',
+                block_profanity=profanity_filter['enabled'],
+                profanity_whitelist=profanity_filter['whitelist'],
+                profanity_blacklist=profanity_filter['blacklist'],
+            )
+        except ValidationError as exc:
+            if getattr(exc, 'messages', None):
+                self.stdout.write(exc.messages[0])
+            else:
+                self.stdout.write(str(exc))
             return
         if note_id is None:
             note_id = self._next_note_id(player)

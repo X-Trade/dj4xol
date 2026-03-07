@@ -233,6 +233,7 @@ class DetailBuilder():
                      'last_known_position': None,
                      'last_known_report_year': None,
                      'suppress_locate': False,
+                     'fleet_motion_summary': None,
                      'salvage_inventory': self.build_salvage_inventory(),
                      'production_orders': self.get_production_orders(),
                      'production_order_choices': self.get_available_production_orders(),
@@ -264,6 +265,7 @@ class DetailBuilder():
                      'is_current': True,
                      'thumbnail_blurred': False,
                      }
+            self._apply_fleet_motion_summary(detail)
             if detail['effective_location']:
                 effective_x, effective_y = detail['effective_location']
                 detail['effective_location_name'] = self.format_empty_space(effective_x, effective_y)
@@ -312,6 +314,7 @@ class DetailBuilder():
             'last_known_report_year': None,
             'is_last_known': False,
             'suppress_locate': False,
+            'fleet_motion_summary': None,
             'secret_resource_labels': {key: self._resource_label(key) for key in SECRET_RESOURCE_KEYS},
             'x': obj.x,
             'y': obj.y,
@@ -342,6 +345,7 @@ class DetailBuilder():
         })
         if detail.get('is_anomaly'):
             detail['stability'] = None
+        self._apply_fleet_motion_summary(detail)
         return detail
 
     def _build_admin_detail(self):
@@ -369,6 +373,7 @@ class DetailBuilder():
             'report_year': None,
             'is_current': True,
         })
+        self._apply_fleet_motion_summary(detail)
         return detail
 
     def _build_spectator_fleet_capacity(self):
@@ -557,7 +562,61 @@ class DetailBuilder():
             detail['stability'] = data.get('stability')
             detail['heading'] = data.get('heading')
 
+        self._apply_fleet_motion_summary(detail)
         return detail
+
+    def _apply_fleet_motion_summary(self, detail):
+        """Attach a user-facing fleet movement summary line to detail payload."""
+        if not detail or not detail.get('is_fleet'):
+            return
+        detail['fleet_motion_summary'] = self._build_fleet_motion_summary(
+            detail.get('travel_warp'),
+            detail.get('heading'),
+            detail.get('x'),
+            detail.get('y'),
+        )
+
+    def _build_fleet_motion_summary(self, travel_warp, heading, x, y):
+        """Return readable motion status for fleet detail header."""
+        speed = None
+        if travel_warp is not None:
+            try:
+                speed = int(travel_warp)
+            except (TypeError, ValueError):
+                speed = None
+
+        if speed is None:
+            summary = 'Travelling at Warp Unknown'
+            if heading is None:
+                return summary
+            try:
+                return '%s | Heading %.1f°' % (summary, float(heading))
+            except (TypeError, ValueError):
+                return summary
+
+        if speed <= 0:
+            if self._has_star_at_position(x, y):
+                return 'In orbit'
+            return 'Stopped'
+
+        summary = 'Travelling at Warp %d' % speed
+        if heading is None:
+            return summary
+        try:
+            return '%s | Heading %.1f°' % (summary, float(heading))
+        except (TypeError, ValueError):
+            return summary
+
+    def _has_star_at_position(self, x, y):
+        """Return True if any star exists at the given coordinates."""
+        if x is None or y is None:
+            return False
+        try:
+            check_x = int(x)
+            check_y = int(y)
+        except (TypeError, ValueError):
+            return False
+        return Star.objects.filter(game=self.game, x=check_x, y=check_y).exists()
 
     def _apply_report_thumbnail_paths(self, detail, report_tier):
         if report_tier != 'basic':
