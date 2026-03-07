@@ -263,8 +263,8 @@ body.map-dragging * {
 
     .orders-section.panel.open {
         min-height: 248px;
-        max-height: 75vh;
-        height: 75vh;
+        max-height: 85vh;
+        height: 85vh;
     }
 
     #detail {
@@ -275,8 +275,17 @@ body.map-dragging * {
     }
 
     .orders-section .panel-content.panel-stack {
-        max-height: 75vh;
+        max-height: 85vh;
         overflow: hidden;
+    }
+
+    body.win95 .orders-section.panel.open {
+        max-height: 75vh;
+        height: 75vh;
+    }
+
+    body.win95 .orders-section .panel-content.panel-stack {
+        max-height: 75vh;
     }
 
     /* Reset panel flex rules for mobile - content-based height */
