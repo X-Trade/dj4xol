@@ -1179,7 +1179,7 @@
     name: 'Administration Level 1'
     description: 'Colony administrations can coordinate basic local industry.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"administration_level": 1}'
+    params_json: '{"administration_level": 1, "production_cost_overrides": {"BUILD_ADMINISTRATION": {"bp": 120, "ironium": 300, "boranium": 0, "germanium": 450, "colonists": 0}}}'
     display_order: 210
     enabled: True
 
@@ -1192,7 +1192,7 @@
     name: 'Administration Level 2'
     description: 'Expanded administrative control adds orbital logistics support.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"administration_level": 2}'
+    params_json: '{"administration_level": 2, "production_cost_overrides": {"BUILD_ADMINISTRATION": {"bp": 90, "ironium": 225, "boranium": 0, "germanium": 325, "colonists": 0}}}'
     display_order: 211
     enabled: True
 
@@ -1205,7 +1205,7 @@
     name: 'Administration Level 3'
     description: 'Senior administrations can direct mature colonies and terraforming.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"administration_level": 3}'
+    params_json: '{"administration_level": 3, "production_cost_overrides": {"BUILD_ADMINISTRATION": {"bp": 70, "ironium": 175, "boranium": 0, "germanium": 250, "colonists": 0}}}'
     display_order: 212
     enabled: True
 

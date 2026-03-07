@@ -1047,7 +1047,11 @@ def _redirect_preserving_selection(request, game):
 def add_production_order(request, game_short_id):
     """Add a production order to a star."""
     from .models import Star, ProductionOrder
-    from .micromanager_rules import ADMINISTRATION_ORDER_TYPE
+    from .micromanager_rules import (
+        ADMINISTRATION_ONE_OFF_ORDER_TYPES,
+        ADMINISTRATION_ORDER_TYPE,
+        REMOVE_ADMINISTRATION_ORDER_TYPE,
+    )
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
@@ -1071,6 +1075,15 @@ def add_production_order(request, game_short_id):
                 return _redirect_preserving_selection(request, game)
             if star.production_orders.filter(
                 order_type=ADMINISTRATION_ORDER_TYPE
+            ).exists():
+                return _redirect_preserving_selection(request, game)
+            quantity = 1
+            repeat = False
+        elif order_type == REMOVE_ADMINISTRATION_ORDER_TYPE:
+            if not star.has_administration:
+                return _redirect_preserving_selection(request, game)
+            if star.production_orders.filter(
+                order_type=REMOVE_ADMINISTRATION_ORDER_TYPE
             ).exists():
                 return _redirect_preserving_selection(request, game)
             quantity = 1
@@ -1122,7 +1135,7 @@ def remove_production_order(request, game_short_id, order_short_id):
 def toggle_production_order_repeat(request, game_short_id, order_short_id):
     """Toggle repeat flag for a production order."""
     from .models import ProductionOrder
-    from .micromanager_rules import ADMINISTRATION_ORDER_TYPE
+    from .micromanager_rules import ADMINISTRATION_ONE_OFF_ORDER_TYPES
 
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
@@ -1133,7 +1146,7 @@ def toggle_production_order_repeat(request, game_short_id, order_short_id):
     order = ProductionOrder.objects.get(
         short_id=order_short_id, game=game, star__player=player
     )
-    if order.order_type == ADMINISTRATION_ORDER_TYPE:
+    if order.order_type in ADMINISTRATION_ONE_OFF_ORDER_TYPES:
         return _redirect_preserving_selection(request, game)
     order.repeat = not bool(order.repeat)
     order.save(update_fields=['repeat'])

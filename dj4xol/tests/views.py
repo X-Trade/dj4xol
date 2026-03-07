@@ -146,6 +146,11 @@ class TestMessageFiltering(TestCase):
 
 class TestProductionOrders(TestCase):
     def _unlock_administration(self, player, tech_level=1, administration_level=1):
+        build_cost = {
+            1: {'bp': 120, 'ironium': 300, 'boranium': 0, 'germanium': 450},
+            2: {'bp': 90, 'ironium': 225, 'boranium': 0, 'germanium': 325},
+            3: {'bp': 70, 'ironium': 175, 'boranium': 0, 'germanium': 250},
+        }[administration_level]
         category = ResearchCategory.objects.create(
             code='VIEWAUTO%s' % tech_level,
             name='View Auto %s' % tech_level,
@@ -156,7 +161,17 @@ class TestProductionOrders(TestCase):
             level=tech_level,
             name='Administration %s' % administration_level,
             tech_type='INFRASTRUCTURE',
-            params_json='{"administration_level": %s}' % administration_level,
+            params_json=(
+                '{"administration_level": %s, "production_cost_overrides": '
+                '{"BUILD_ADMINISTRATION": {"bp": %s, "ironium": %s, '
+                '"boranium": %s, "germanium": %s, "colonists": 0}}}'
+            ) % (
+                administration_level,
+                build_cost['bp'],
+                build_cost['ironium'],
+                build_cost['boranium'],
+                build_cost['germanium'],
+            ),
         )
         rows = ensure_player_research_rows(player)
         for row in rows:
@@ -294,6 +309,37 @@ class TestProductionOrders(TestCase):
         order = ProductionOrder.objects.get(
             star=homeworld,
             order_type='BUILD_ADMINISTRATION',
+        )
+        self.assertEqual(order.quantity, 1)
+        self.assertFalse(order.repeat)
+
+    def test_add_remove_administration_order_forces_repeat_off(self):
+        """Administration removal should ignore repeat when added."""
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        homeworld.has_administration = True
+        homeworld.save(update_fields=['has_administration'])
+        self._unlock_administration(player)
+
+        user, account = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_production', args=[game.short_id]),
+            {
+                'star': homeworld.short_id,
+                'order_type': 'REMOVE_ADMINISTRATION',
+                'quantity': 9,
+                'repeat': 'on',
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+
+        order = ProductionOrder.objects.get(
+            star=homeworld,
+            order_type='REMOVE_ADMINISTRATION',
         )
         self.assertEqual(order.quantity, 1)
         self.assertFalse(order.repeat)

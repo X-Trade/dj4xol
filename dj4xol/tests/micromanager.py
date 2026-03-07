@@ -6,6 +6,7 @@ from ..research import (
     ensure_player_research_rows,
     get_player_administration_profile,
     get_player_available_production_orders,
+    get_player_production_costs,
 )
 from ..objectdetails import DetailBuilder
 from ..turn import GameTurn
@@ -38,12 +39,27 @@ class AdministrationAutomationTest(TestCase):
             name='Automation %s' % tech_level,
             enabled=True,
         )
+        build_cost = {
+            1: {'bp': 120, 'ironium': 300, 'boranium': 0, 'germanium': 450},
+            2: {'bp': 90, 'ironium': 225, 'boranium': 0, 'germanium': 325},
+            3: {'bp': 70, 'ironium': 175, 'boranium': 0, 'germanium': 250},
+        }[administration_level]
         Technology.objects.create(
             category=category,
             level=tech_level,
             name='Administration %s' % administration_level,
             tech_type='INFRASTRUCTURE',
-            params_json='{"administration_level": %s}' % administration_level,
+            params_json=(
+                '{"administration_level": %s, "production_cost_overrides": '
+                '{"BUILD_ADMINISTRATION": {"bp": %s, "ironium": %s, '
+                '"boranium": %s, "germanium": %s, "colonists": 0}}}'
+            ) % (
+                administration_level,
+                build_cost['bp'],
+                build_cost['ironium'],
+                build_cost['boranium'],
+                build_cost['germanium'],
+            ),
         )
         self._unlock_category_level(category, tech_level)
         return category
@@ -79,6 +95,10 @@ class AdministrationAutomationTest(TestCase):
             if item['value'] == 'BUILD_ADMINISTRATION'
         )
         self.assertFalse(administration['repeat_allowed'])
+        self.assertEqual(
+            get_player_production_costs(self.player)['BUILD_ADMINISTRATION']['germanium'],
+            450,
+        )
 
         ProductionOrder.objects.create(
             game=self.game,
@@ -97,11 +117,11 @@ class AdministrationAutomationTest(TestCase):
 
     def test_build_administration_order_completes(self):
         self._create_administration_tech(1, 1)
-        self.star.colonists = 10_000
-        self.star.factories = 5
-        self.star.ironium_inventory = 500
-        self.star.boranium_inventory = 500
-        self.star.germanium_inventory = 500
+        self.star.colonists = 200_000
+        self.star.factories = 20
+        self.star.ironium_inventory = 1_000
+        self.star.boranium_inventory = 1_000
+        self.star.germanium_inventory = 1_000
         self.star.save()
 
         ProductionOrder.objects.create(
@@ -114,6 +134,60 @@ class AdministrationAutomationTest(TestCase):
         GameTurn(self.game).production()
         self.star.refresh_from_db()
         self.assertTrue(self.star.has_administration)
+
+    def test_remove_administration_order_available_with_negative_ironium_refund(self):
+        self._create_administration_tech(2, 2)
+        self.star.has_administration = True
+        self.star.save(update_fields=['has_administration'])
+
+        options = get_player_available_production_orders(self.player, self.star)
+        self.assertIn('REMOVE_ADMINISTRATION', [item['value'] for item in options])
+        costs = get_player_production_costs(self.player)
+        self.assertEqual(costs['REMOVE_ADMINISTRATION']['bp'], 40)
+        self.assertEqual(costs['REMOVE_ADMINISTRATION']['ironium'], -225)
+
+    def test_remove_administration_order_completes_and_refunds_ironium(self):
+        self._create_administration_tech(1, 1)
+        self.star.has_administration = True
+        self.star.colonists = 200_000
+        self.star.factories = 20
+        self.star.ironium_inventory = 10
+        self.star.save(update_fields=[
+            'has_administration', 'colonists', 'factories',
+            'ironium_inventory',
+        ])
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='REMOVE_ADMINISTRATION',
+            position=1,
+            quantity=1,
+        )
+
+        GameTurn(self.game).production()
+        self.star.refresh_from_db()
+
+        self.assertFalse(self.star.has_administration)
+        self.assertEqual(self.star.ironium_inventory, 310)
+
+    def test_higher_administration_levels_reduce_build_cost(self):
+        self._create_administration_tech(1, 1)
+        level_one_costs = get_player_production_costs(self.player)
+        self.assertEqual(level_one_costs['BUILD_ADMINISTRATION']['bp'], 120)
+        self.assertEqual(level_one_costs['BUILD_ADMINISTRATION']['ironium'], 300)
+        self.assertEqual(level_one_costs['BUILD_ADMINISTRATION']['germanium'], 450)
+
+        self._create_administration_tech(2, 2)
+        level_two_costs = get_player_production_costs(self.player)
+        self.assertEqual(level_two_costs['BUILD_ADMINISTRATION']['bp'], 90)
+        self.assertEqual(level_two_costs['BUILD_ADMINISTRATION']['ironium'], 225)
+        self.assertEqual(level_two_costs['BUILD_ADMINISTRATION']['germanium'], 325)
+
+        self._create_administration_tech(3, 3)
+        level_three_costs = get_player_production_costs(self.player)
+        self.assertEqual(level_three_costs['BUILD_ADMINISTRATION']['bp'], 70)
+        self.assertEqual(level_three_costs['BUILD_ADMINISTRATION']['ironium'], 175)
+        self.assertEqual(level_three_costs['BUILD_ADMINISTRATION']['germanium'], 250)
 
     def test_player_added_orders_stay_ahead_of_micromanager_orders(self):
         self._create_administration_tech(1, 1)
@@ -207,6 +281,26 @@ class AdministrationAutomationTest(TestCase):
             if item['value'] == 'BUILD_ADMINISTRATION'
         )
         self.assertFalse(administration['repeat_allowed'])
+        self.assertEqual(administration['cost']['germanium'], 450)
+
+    def test_available_production_details_show_remove_administration_refund(self):
+        self._create_administration_tech(2, 2)
+        self.star.has_administration = True
+        self.star.save(update_fields=['has_administration'])
+        details = DetailBuilder(
+            self.game,
+            x=self.star.x,
+            y=self.star.y,
+            selected=self.star.short_id.lower(),
+            player=self.player,
+        ).build_detail()
+
+        remove_administration = next(
+            item for item in details['production_order_choices']
+            if item['value'] == 'REMOVE_ADMINISTRATION'
+        )
+        self.assertFalse(remove_administration['repeat_allowed'])
+        self.assertEqual(remove_administration['cost']['ironium'], -225)
 
     def test_administration_level_one_builds_mines_and_factories(self):
         self._create_administration_tech(1, 1)
