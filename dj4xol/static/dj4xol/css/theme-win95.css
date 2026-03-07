@@ -824,6 +824,10 @@ input[type="range"]::-webkit-slider-thumb {
     color: #000000;
 }
 
+.env-value-plain {
+    color: #000000;
+}
+
 /* Inventory bars */
 .inventory-bar {
     background: #ffffff;

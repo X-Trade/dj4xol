@@ -117,9 +117,6 @@ class StarMap():
                 self.salvage_report_tiers[report.target_id] = tier
             if not getattr(self.game, 'no_scanners', False):
                 self.salvages = self.salvages.filter(id__in=self.explored_salvage_ids)
-        self.homeworld_star_ids = set(
-            game.players.exclude(homeworld=None).values_list('homeworld_id', flat=True)
-        )
         self.map = self.render_map()
 
     @property
@@ -189,11 +186,8 @@ class StarMap():
     def render_star_group(self, stars):
         """Render stars at the same position with offsets for multiples."""
         html = ""
-        label_star = next((s for s in stars if s.id in self.homeworld_star_ids), stars[0])
-        anchor_star = next(
-            (s for s in stars if self._get_exploration_class(s) == "mapstar-explored"),
-            stars[0],
-        )
+        anchor_star = self._primary_star_for_group(stars)
+        label_star = anchor_star
         if len(stars) == 1:
             html += self.render_star(anchor_star)
             html += self.render_star_name(label_star)
@@ -215,9 +209,31 @@ class StarMap():
                 angle = radians(angle_start + i * angle_step)
                 offset_x = center_adjust + offset_distance * cos(angle)
                 offset_y = center_adjust + offset_distance * sin(angle)
-                html += self.render_star(star, offset_x, offset_y, satellite=True)
+                html += self.render_star(
+                    star,
+                    offset_x,
+                    offset_y,
+                    satellite=True,
+                    selection_star=anchor_star,
+                )
             html += self.render_star_name(label_star)
         return html
+
+    def _primary_star_for_group(self, stars):
+        """Return the canonical primary star for a stacked star location."""
+        if not stars:
+            return None
+        if self.player and self.player.homeworld_id:
+            for star in stars:
+                if star.id == self.player.homeworld_id:
+                    return star
+        return sorted(
+            stars,
+            key=lambda star: (
+                str(getattr(star, 'short_id', '') or ''),
+                int(getattr(star, 'id', 0) or 0),
+            ),
+        )[0]
 
     def render_star_name(self, star):
         """Render a star name label above the star position."""
@@ -287,8 +303,19 @@ class StarMap():
 
         return f'{html_class}{class_additional}'
 
-    def render_object(self, object, extra_style="", offset_x=0, offset_y=0, class_override=None, extra_classes="", name_override=None):
+    def render_object(
+        self,
+        object,
+        extra_style="",
+        offset_x=0,
+        offset_y=0,
+        class_override=None,
+        extra_classes="",
+        name_override=None,
+        selection_object=None,
+    ):
         """Render a game object on map using HTML"""
+        selected = selection_object or object
         x = object.x * self.MAP_SCALE + offset_x + self.border_offset
         y = object.y * self.MAP_SCALE + offset_y + self.border_offset
         html_class = class_override or self.resolve_html_class(object)
@@ -306,19 +333,28 @@ class StarMap():
             object_type = 'star'
         data_attrs = (
             f'data-map-object="1" data-object-type="{object_type}" '
-            f'data-object-id="{object.short_id}" data-x="{object.x}" data-y="{object.y}"'
+            f'data-object-id="{selected.short_id}" data-x="{selected.x}" '
+            f'data-y="{selected.y}"'
         )
 
         # In destination mode, clicks call JavaScript instead of navigating
         if self.dest_mode and isinstance(object, (Star, Fleet, Salvage, Anomaly)):
-            url = (f"javascript:submitDestination('{object.short_id}', "
-                   f"{object.x}, {object.y}, '{object_type}')")
+            url = (f"javascript:submitDestination('{selected.short_id}', "
+                   f"{selected.x}, {selected.y}, '{object_type}')")
         else:
-            url = "?x=%i&y=%i&sel=%s" % (object.x, object.y, object.short_id)
+            url = "?x=%i&y=%i&sel=%s" % (selected.x, selected.y, selected.short_id)
 
         return f'<a href="{url}" title="{name}"><div class="{html_class}" {data_attrs} style="{style}"></div></a>'
 
-    def render_star(self, star, offset_x=0, offset_y=0, satellite=False, class_override=None):
+    def render_star(
+        self,
+        star,
+        offset_x=0,
+        offset_y=0,
+        satellite=False,
+        class_override=None,
+        selection_star=None,
+    ):
         """Render a star object on map using HTML"""
         explored_class = self._get_exploration_class(star)
         if satellite:
@@ -331,6 +367,7 @@ class StarMap():
                 offset_y=offset_y,
                 class_override=satellite_class,
                 extra_classes=explored_class,
+                selection_object=selection_star,
             )
         else:
             # Main star renders on top
@@ -342,6 +379,7 @@ class StarMap():
                 offset_y=offset_y,
                 class_override=class_override,
                 extra_classes=explored_class,
+                selection_object=selection_star,
             )
 
     def _get_exploration_class(self, star):

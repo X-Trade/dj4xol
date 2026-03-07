@@ -1030,6 +1030,42 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'Bombs')
         self.assertContains(response, 'Wormhole Drive')
 
+    def test_encounter_fleet_report_without_level_fields_hides_capabilities(self):
+        self.game.joinable = True
+        self.game.save(update_fields=['joinable'])
+        other_user = User.objects.create_user('detail_enemy2b', 'de2b@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        factory = GameFactory(game=self.game)
+        enemy_player = factory.join_player(other_account, get_default_race())
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=enemy_player,
+            name='Enemy Fleet',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            integrity=90,
+            has_bombs='CONVENTIONAL',
+            has_wormhole_drive=True,
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report=json.dumps({
+                'name': enemy_fleet.name,
+                'x': enemy_fleet.x,
+                'y': enemy_fleet.y,
+                'ship_count': 6,
+                'integrity': 90,
+                'report_tier': 'encounter',
+            }),
+        )
+        response = self._get_detail_response(enemy_fleet)
+        self.assertNotContains(response, 'data-section="capabilities"')
+
     def test_basic_star_report_blurs_thumbnail(self):
         Report.objects.create(
             game=self.game,

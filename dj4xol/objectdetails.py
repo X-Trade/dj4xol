@@ -1,6 +1,10 @@
 from django.db import models
 from dj4xol.models import Fleet, Star, Salvage, Anomaly, Report
-from dj4xol.scanners import get_scanner_sources_for_player, fleet_visible_to_player
+from dj4xol.scanners import (
+    get_scanner_sources_for_player,
+    fleet_visible_to_player,
+    position_in_scanner_range,
+)
 from dj4xol.turn import (
     KT_PER_MINE,
     apply_population_change,
@@ -165,6 +169,11 @@ class DetailBuilder():
                 return self._build_detail_from_report(report_year)
 
             # Current data (owned or fleet present)
+            is_selected_fleet = isinstance(self.selected_obj, Fleet)
+            can_show_fleet_levels = (
+                self._can_show_fleet_level_data(self.selected_obj)
+                if is_selected_fleet else False
+            )
             detail = {'name': self.get_object_name(),
                      'selected_id': self.selected_obj.short_id,
                      'objects_here': self.get_objects_here(),
@@ -216,7 +225,10 @@ class DetailBuilder():
                      'production_order_choices': self.get_available_production_orders(),
                      'fleet_orders': self.get_fleet_orders(),
                      'fleet_cargo': self.get_fleet_cargo(),
-                     'fleet_capabilities': self.get_fleet_capabilities(),
+                     'fleet_capabilities': self.get_fleet_capabilities(
+                         include_scanners=can_show_fleet_levels,
+                         allow_foreign_levels=can_show_fleet_levels,
+                     ),
                      'fleet_inventory': self.build_fleet_inventory(),
                      'transfer_targets': self.get_transfer_targets(),
                      'transfer_recipients': self.get_transfer_recipients(),
@@ -230,6 +242,10 @@ class DetailBuilder():
                      'secret_resource_labels': {key: self._resource_label(key) for key in SECRET_RESOURCE_KEYS},
                      'x': self.selected_obj.x,
                      'y': self.selected_obj.y,
+                     'report_tier': (
+                         None if (not is_selected_fleet or can_show_fleet_levels)
+                         else 'basic'
+                     ),
                      'report_year': None,
                      'is_current': True,
                      'thumbnail_blurred': False,
@@ -322,7 +338,10 @@ class DetailBuilder():
             'salvage_inventory': self.build_salvage_inventory(),
             'fleet_inventory': self.build_fleet_inventory(allow_foreign=True),
             'fleet_cargo': self.get_fleet_cargo(include_cargo=True),
-            'fleet_capabilities': self.get_fleet_capabilities(),
+            'fleet_capabilities': self.get_fleet_capabilities(
+                include_scanners=True,
+                allow_foreign_levels=True,
+            ),
             'report_year': None,
             'is_current': True,
         })
@@ -643,6 +662,74 @@ class DetailBuilder():
                 return format_basic_hidden_salvage_name(obj)
         return data.get('name') or obj.name or f"{obj.__class__.__name__} {obj.id}"
 
+    def _get_cached_report_data(self, obj, target_type):
+        """Return cached report data for object when available."""
+        if not self.player:
+            return None
+        report = Report.objects.filter(
+            player=self.player,
+            target_type=target_type,
+            target_id=obj.id,
+        ).first()
+        if not report:
+            return None
+        try:
+            return report.get_report_data()
+        except Exception:
+            return None
+
+    def _has_advanced_scanner_coverage(self, x, y):
+        """Return True when player has advanced scanner visibility at location."""
+        if not self.player:
+            return False
+        if getattr(self.game, 'no_scanners', False):
+            return False
+        return position_in_scanner_range(
+            x,
+            y,
+            self._scanner_sources,
+            range_key='advanced',
+        )
+
+    def _display_name_for_target(self, obj, target_type=None):
+        """Return target display name with scanner concealment rules applied."""
+        if not obj:
+            return ''
+        target_type = target_type or self._get_target_type(obj)
+        if target_type == 'fleet':
+            if self.spectator_mode or self.admin_view or not self.player:
+                return obj.name
+            if obj.player_id == self.player.id:
+                return obj.name
+            if getattr(self.game, 'no_scanners', False):
+                return obj.name
+            report_data = self._get_cached_report_data(obj, 'fleet')
+            if report_data:
+                return self._reported_object_name(obj, 'fleet', report_data)
+            if self._has_advanced_scanner_coverage(obj.x, obj.y):
+                return obj.name
+            return format_basic_unknown_fleet_name(obj)
+        if target_type == 'salvage':
+            return self._salvage_display_name(obj)
+        return obj.name or f"{obj.__class__.__name__} {obj.id}"
+
+    def _primary_star_for_location(self, stars):
+        """Return canonical primary star (homeworld first, then id order)."""
+        if not stars:
+            return None
+        homeworld_id = self.player.homeworld_id if self.player else None
+        if homeworld_id:
+            for star in stars:
+                if star.id == homeworld_id:
+                    return star
+        return sorted(
+            stars,
+            key=lambda star: (
+                str(getattr(star, 'short_id', '') or ''),
+                int(getattr(star, 'id', 0) or 0),
+            ),
+        )[0]
+
     def _decorate_target(self, target):
         """Attach shared display and sort metadata to a target dict."""
         data = dict(target)
@@ -789,10 +876,14 @@ class DetailBuilder():
         return self.at_cursor
 
     def find_selected_from_coordinates(self, x, y):
-        try:
-           self.selected_obj = self.at_cursor[0]
-        except IndexError:
+        if not self.at_cursor:
             self.selected_obj = None
+            return self.selected_obj
+        stars = [obj for obj in self.at_cursor if isinstance(obj, Star)]
+        if stars:
+            self.selected_obj = self._primary_star_for_location(stars)
+        else:
+            self.selected_obj = self.at_cursor[0]
         return self.selected_obj
 
     def process_selected(self, selected):
@@ -1142,7 +1233,7 @@ class DetailBuilder():
             obj, x, y, kind = o.get_actual_target()
             eta_years = None
             if kind in ['star', 'fleet', 'salvage', 'anomaly'] and obj:
-                target = obj.name
+                target = self._display_name_for_target(obj, kind)
                 target_link = f'?x={obj.x}&y={obj.y}&sel={obj.short_id}&locate=1'
             elif kind == 'space':
                 target = DetailBuilder.format_empty_space(x, y)
@@ -1263,9 +1354,19 @@ class DetailBuilder():
             })
         return cargo
 
-    def get_fleet_capabilities(self):
+    def get_fleet_capabilities(
+        self,
+        include_scanners=True,
+        allow_foreign_levels=False,
+    ):
         """Get capability details for selected fleet."""
         if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
+            return None
+        if (
+            not allow_foreign_levels and
+            self.player and
+            self.selected_obj.player_id != self.player.id
+        ):
             return None
         return self._build_fleet_capabilities(
             self.selected_obj.has_bombs,
@@ -1274,8 +1375,20 @@ class DetailBuilder():
             bool(self.selected_obj.has_wormhole_drive),
             getattr(self.selected_obj, 'basic_scanner_range', 0),
             getattr(self.selected_obj, 'advanced_scanner_range', 0),
-            include_scanners=True,
+            include_scanners=include_scanners,
         )
+
+    def _can_show_fleet_level_data(self, fleet):
+        """Return True when current viewer can see foreign fleet levels."""
+        if not fleet or not isinstance(fleet, Fleet):
+            return False
+        if self.admin_view:
+            return True
+        if not self.player:
+            return False
+        if fleet.player_id == self.player.id:
+            return True
+        return self._has_advanced_scanner_coverage(fleet.x, fleet.y)
 
     def _build_fleet_composition(self, fleet):
         """Build non-cargo fleet composition fields."""
@@ -1561,7 +1674,7 @@ class DetailBuilder():
                 fleets_qs = fleets_qs.exclude(id=exclude_fleet_id)
             for fleet in fleets_qs:
                 add_target({
-                    'name': fleet.name,
+                    'name': self._display_name_for_target(fleet, 'fleet'),
                     'short_id': fleet.short_id,
                     'type': 'fleet',
                     'is_owned': bool(self.player and fleet.player_id == self.player.id),
@@ -1614,7 +1727,7 @@ class DetailBuilder():
                     if exclude_fleet_id is not None and fleet.id == exclude_fleet_id:
                         continue
                     add_target({
-                        'name': fleet.name,
+                        'name': self._display_name_for_target(fleet, 'fleet'),
                         'short_id': fleet.short_id,
                         'type': 'fleet',
                         'is_owned': bool(self.player and fleet.player_id == self.player.id),

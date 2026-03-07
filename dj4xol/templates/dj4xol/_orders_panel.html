@@ -327,11 +327,13 @@
                 <!-- Transfer-specific parameters -->
                 <div id="transfer-params" class="order-type-params" style="display: none;">
                     <div class="order-param-row">
-                        <label>Action</label>
+                        <label for="transfer-type-select">Action</label>
                         <div class="transfer-type-row">
-                            <label><input type="radio" name="transfer_type_radio" value="LOAD" checked> Load</label>
-                            <label><input type="radio" name="transfer_type_radio" value="UNLOAD"> Unload</label>
-                            <label><input type="radio" name="transfer_type_radio" value="UNLOAD_ALL"> Unload All</label>
+                            <select id="transfer-type-select" class="transfer-target-select">
+                                <option value="LOAD" selected>Load</option>
+                                <option value="UNLOAD">Unload</option>
+                                <option value="UNLOAD_ALL">Unload All</option>
+                            </select>
                         </div>
                     </div>
 
@@ -1208,11 +1210,11 @@
         });
     }
 
-    // Transfer type radio buttons
-    var transferTypeRadios = document.querySelectorAll('input[name="transfer_type_radio"]');
+    // Transfer type selector
+    var transferTypeSelect = document.getElementById('transfer-type-select');
     var transferSlidersDiv = document.getElementById('transfer-sliders');
-    transferTypeRadios.forEach(function(radio) {
-        radio.addEventListener('change', function() {
+    if (transferTypeSelect) {
+        transferTypeSelect.addEventListener('change', function() {
             transferTypeInput.value = this.value;
             // Hide sliders for UNLOAD_ALL, show for others
             if (transferSlidersDiv) {
@@ -1226,7 +1228,7 @@
             }
             updateAddButtonStateTransfer();
         });
-    });
+    }
     
     if (moveTargetSelect) {
         moveTargetSelect.addEventListener('change', function() {
