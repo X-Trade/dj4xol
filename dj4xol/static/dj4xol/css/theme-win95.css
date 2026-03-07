@@ -914,6 +914,17 @@ input[type="range"]::-webkit-slider-thumb {
     color: #ffffff;
 }
 
+.form-message-banner {
+    background: #000080;
+    color: #ffffff;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+}
+
+.form-message-banner.form-message-banner-error {
+    background: #800000;
+    color: #ffffff;
+}
+
 .dest-cancel {
     background: #c0c0c0;
     color: #000000;

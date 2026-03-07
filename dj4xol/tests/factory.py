@@ -355,3 +355,19 @@ class testStarNamer(TestCase):
         namer = StarNamer()
         names = [namer.get_unique() for _ in range(1000)]
         self.assertEqual(len(names), len(set(names)))
+
+    def test_primary_primary_name_can_fall_back_to_single_name(self):
+        namer = StarNamer()
+        with patch('dj4xol.starnamer.random.randint', side_effect=[0]):
+            self.assertEqual(
+                namer._random_name(index=0, chance=7),
+                namer._data[0],
+            )
+
+    def test_primary_primary_name_still_exists_when_gate_passes(self):
+        namer = StarNamer()
+        with patch('dj4xol.starnamer.random.randint', side_effect=[1, 2]):
+            self.assertEqual(
+                namer._random_name(index=0, chance=7),
+                '%s %s' % (namer._data[2], namer._data[0]),
+            )

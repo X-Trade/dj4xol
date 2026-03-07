@@ -611,6 +611,28 @@ body:not(.lcars):not(.win95) .env-label {
 }
 
 /* ============================================
+   Inline Message Banners
+   ============================================ */
+.form-message-banner {
+    margin: 12px 0 16px 0;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: #2a5a8a;
+    color: #fff;
+}
+
+.form-message-banner.form-message-banner-error {
+    background: #8a2a2a;
+}
+
+.form-message-banner p {
+    margin: 0;
+    font-weight: bold;
+}
+
+/* ============================================
    Form Errors
    ============================================ */
 .form-errors,

@@ -438,6 +438,7 @@ class ServerSettingsForm(forms.Form):
             'server_url',
             'server_welcome',
             'allow_self_signup',
+            'enable_spectator_mode',
             'enable_debug_actions',
             'enable_play_api',
         ]),
@@ -483,6 +484,11 @@ class ServerSettingsForm(forms.Form):
         required=False,
         help_text="Enables outgoing server email, including rollups, invitations, and test emails.",
     )
+    enable_spectator_mode = forms.BooleanField(
+        label="Enable Spectator Mode",
+        required=False,
+        help_text="Shows View actions for public games and allows spectator access.",
+    )
     enable_gpt = forms.BooleanField(
         label="Enable GPT",
         required=False,
@@ -524,6 +530,11 @@ class ServerSettingsForm(forms.Form):
         'server_welcome': {'description': 'Welcome message on homepage', 'use_long_value': True},
         'allow_self_signup': {'description': 'Allow self-sign-up', 'boolean': True},
         'enable_email': {'description': 'Enable email', 'boolean': True},
+        'enable_spectator_mode': {
+            'description': 'Enable spectator mode',
+            'boolean': True,
+            'default': True,
+        },
         'enable_gpt': {'description': 'Enable GPT API usage', 'boolean': True},
         'enable_debug_actions': {'description': 'Enable debug actions in game panels', 'boolean': True},
         'enable_play_api': {'description': 'Enable web Play CLI API', 'boolean': True},

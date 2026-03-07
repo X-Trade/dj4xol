@@ -221,9 +221,34 @@ def _allow_self_signup():
     return _setting_enabled(value, default=True)
 
 
+def _spectator_mode_enabled():
+    value = ServerSettings.get('enable_spectator_mode', None)
+    return _setting_enabled(value, default=True)
+
+
 def _debug_actions_enabled():
     value = ServerSettings.get('enable_debug_actions', 'False')
     return _setting_enabled(value, default=False)
+
+
+def _game_list_status(game, player=None):
+    if getattr(game, 'is_generating', False):
+        return 'Generating...'
+    if player and game.turn_scheme == 'QUORUM' and player.turned_in:
+        return 'Turned in'
+    return game.get_turn_scheme_short_display()
+
+
+def _build_game_list_entries(games, player_by_game_id=None):
+    entries = []
+    player_by_game_id = player_by_game_id or {}
+    for game in games:
+        player = player_by_game_id.get(game.id)
+        entries.append({
+            'game': game,
+            'status': _game_list_status(game, player=player),
+        })
+    return entries
 
 
 def _play_cli_web_enabled():
@@ -255,28 +280,39 @@ def gamelist(request):
         return redirect('dj4xol:register')
 
     account = request.user.dj4xol_account
-    playing_game_ids = Player.objects.filter(account=account).values('game')
+    playing_players = list(
+        Player.objects.filter(account=account, game__ended=False).select_related('game')
+    )
+    playing_game_ids = [player.game_id for player in playing_players]
+    player_by_game_id = {
+        player.game_id: player for player in playing_players
+    }
     spectating_game_ids = set(
         Spectator.objects.filter(account=account).values_list('game_id', flat=True)
     )
 
-    my_games = Game.objects.filter(pk__in=playing_game_ids, ended=False)
-    open_games = Game.objects.filter(public=True, ended=False).exclude(pk__in=playing_game_ids)
+    my_games = [player.game for player in playing_players]
+    open_games = list(
+        Game.objects.filter(public=True, ended=False).exclude(pk__in=playing_game_ids)
+    )
 
     # Games I'm invited to (by account or email) that I haven't joined yet
-    invited_games = Game.objects.filter(
+    invited_games = list(Game.objects.filter(
         pk__in=GameInvitation.objects.filter(
             models.Q(account=account) | models.Q(email=account.email)
         ).values('game'),
         ended=False
-    ).exclude(pk__in=playing_game_ids)
+    ).exclude(pk__in=playing_game_ids))
 
     return render(request, 'dj4xol/games.html', {
         'account': account,
-        'my_games': my_games,
-        'invited_games': invited_games,
-        'open_games': open_games,
+        'my_game_entries': _build_game_list_entries(
+            my_games, player_by_game_id=player_by_game_id
+        ),
+        'invited_game_entries': _build_game_list_entries(invited_games),
+        'open_game_entries': _build_game_list_entries(open_games),
         'spectating_game_ids': spectating_game_ids,
+        'spectator_mode_enabled': _spectator_mode_enabled(),
         'server_name': ServerSettings.get('server_name', 'dj4xol'),
         'server_tagline': ServerSettings.get('server_tagline', ''),
         'server_welcome': ServerSettings.get('server_welcome', ''),
@@ -513,6 +549,11 @@ def spectate_game_confirm(request, game_short_id):
             'message': 'You are already playing in this game.'
         }, status=403)
 
+    if not _spectator_mode_enabled():
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Spectator mode is disabled on this server.'
+        }, status=403)
+
     if not game.public:
         return render(request, 'dj4xol/forbidden.html', {
             'message': 'This game is not open for spectating.'
@@ -541,6 +582,11 @@ def spectate_starmap(request, game_short_id):
 
     if Player.objects.filter(game=game, account=account).exists():
         return redirect('dj4xol:game', game_short_id=game.short_id)
+
+    if not _spectator_mode_enabled():
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Spectator mode is disabled on this server.'
+        }, status=403)
 
     if not game.public:
         return render(request, 'dj4xol/forbidden.html', {
@@ -2288,19 +2334,26 @@ def profile(request):
     account = request.user.dj4xol_account
 
     # Get games the user is playing in
-    playing = Player.objects.filter(account=account, game__ended=False)
-    games_playing = [p.game for p in playing.select_related('game')]
+    playing = list(
+        Player.objects.filter(account=account, game__ended=False).select_related('game')
+    )
+    games_playing = [p.game for p in playing]
+    player_by_game_id = {
+        player.game_id: player for player in playing
+    }
 
     # Get races owned by the user
     races = ServerRace.objects.filter(owner=account)
 
     # Get games owned by the user
-    games_owned = Game.objects.filter(owner=account, ended=False)
+    games_owned = list(Game.objects.filter(owner=account, ended=False))
 
     return render(request, 'dj4xol/profile.html', {
         'account': account,
-        'games_playing': games_playing,
-        'games_owned': games_owned,
+        'games_playing_entries': _build_game_list_entries(
+            games_playing, player_by_game_id=player_by_game_id
+        ),
+        'games_owned_entries': _build_game_list_entries(games_owned),
         'races': races,
         'theme_choices': Account.THEME_CHOICES,
     })

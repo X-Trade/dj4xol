@@ -1,0 +1,14 @@
+{% if messages or errors %}
+<div class="form-message-banner form-message-banner-error" role="alert">
+    {% if messages %}
+        {% for message in messages %}
+        <p>{{ message }}</p>
+        {% endfor %}
+    {% endif %}
+    {% if errors %}
+        {% for error in errors %}
+        <p>{{ error }}</p>
+        {% endfor %}
+    {% endif %}
+</div>
+{% endif %}

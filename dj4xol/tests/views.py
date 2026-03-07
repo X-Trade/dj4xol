@@ -44,6 +44,20 @@ class TestLandingPage(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Server Settings')
 
+    def test_home_shows_turned_in_status_for_my_quorum_game(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        player.turned_in = True
+        player.save(update_fields=['turned_in'])
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:index'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Turned in')
+
 
 class TestMessageFiltering(TestCase):
     def test_messages_filtered_by_messages_seen_year(self):
@@ -368,6 +382,7 @@ class TestServerSettingsView(TestCase):
         self.assertContains(response, 'Profanity Filter')
         self.assertContains(response, 'Public Server URL')
         self.assertContains(response, 'Used for links in emails')
+        self.assertContains(response, 'Enable Spectator Mode')
         self.assertContains(response, 'Enable Profanity Filter')
         self.assertContains(response, 'Profanity Whitelist')
         self.assertContains(response, 'Profanity Blacklist')
@@ -383,6 +398,7 @@ class TestServerSettingsView(TestCase):
                 'server_welcome': 'Welcome to the production cluster.',
                 'allow_self_signup': 'on',
                 'enable_email': 'on',
+                'enable_spectator_mode': 'on',
                 'enable_gpt': '',
                 'enable_debug_actions': '',
                 'enable_play_api': 'on',
@@ -394,6 +410,8 @@ class TestServerSettingsView(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Server settings updated.')
+        self.assertContains(response, 'form-message-banner')
+        self.assertNotContains(response, 'data-panel="alerts"')
 
         self.assertEqual(ServerSettings.get('server_name'), 'DJ4XOL Production')
         self.assertEqual(ServerSettings.get('server_contact'), 'admin@example.test')
@@ -410,6 +428,7 @@ class TestServerSettingsView(TestCase):
             'Welcome to the production cluster.',
         )
         self.assertEqual(ServerSettings.get('enable_email'), 'True')
+        self.assertEqual(ServerSettings.get('enable_spectator_mode'), 'True')
         self.assertEqual(ServerSettings.get('enable_gpt'), 'False')
         self.assertEqual(ServerSettings.get('enable_profanity_filter'), 'False')
         self.assertEqual(ServerSettings.get('profanity_filter_whitelist'), 'scunthorpe')
@@ -430,6 +449,7 @@ class TestServerSettingsView(TestCase):
                 'server_welcome': '',
                 'allow_self_signup': 'on',
                 'enable_email': '',
+                'enable_spectator_mode': '',
                 'enable_gpt': '',
                 'enable_debug_actions': '',
                 'enable_play_api': 'on',
@@ -503,6 +523,35 @@ class TestGameDetailRendering(TestCase):
         self.assertEqual(response.status_code, 302)
         order.refresh_from_db()
         self.assertFalse(order.repeat)
+
+
+class TestProfileView(TestCase):
+    def test_profile_shows_turned_in_status_for_my_quorum_game(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        player.turned_in = True
+        player.save(update_fields=['turned_in'])
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:profile'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Turned in')
+
+
+class TestPreJoinNavigation(TestCase):
+    def test_join_game_hides_in_game_navigation_links(self):
+        game = default_game(stars=5)
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:join_game', args=[game.short_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'class="nav-link-game"')
+        self.assertNotContains(response, '>Research<', html=True)
 
 
 class TestRenameObjectView(TestCase):

@@ -409,6 +409,8 @@ class DetailBuilder():
             # Build environmental detail from cached data
             if all(k in data for k in ['gravity', 'temperature', 'radiation']):
                 detail['environmentals'] = self._build_env_from_report(data)
+                if detail['capacity'] is None:
+                    detail['capacity'] = self._capacity_from_report(data)
                 if detail['is_survivable'] is None:
                     detail['is_survivable'] = self._is_survivable_from_report(data)
             if all(k in data for k in [
@@ -619,17 +621,33 @@ class DetailBuilder():
 
     def _is_survivable_from_report(self, data):
         """Return survivability from cached environmental report data."""
+        report_star = self._build_report_star_for_habitability(data)
+        if report_star is None:
+            return None
+        return calculate_habitability_factor(self.player, report_star) >= 0
+
+    def _capacity_from_report(self, data):
+        """Estimate carrying capacity from cached environmental report data."""
+        report_star = self._build_report_star_for_habitability(data)
+        if report_star is None:
+            return None
+        return effective_capacity(self.player, report_star)
+
+    def _build_report_star_for_habitability(self, data):
+        """Build a lightweight star object for habitability-only calculations."""
         if not self.player:
             return None
         for env in ['gravity', 'temperature', 'radiation']:
             if env not in data:
                 return None
 
-        report_star = type('ReportStar', (), {
+        return type('ReportStar', (), {
             'gravity': data['gravity'],
             'temperature': data['temperature'],
             'radiation': data['radiation'],
-            # Cached reports do not include infrastructure economy context.
+            'base_capacity': getattr(self.selected_obj, 'base_capacity', 1),
+            # Cached reports may omit infrastructure; these defaults keep the
+            # shared rules callable without leaking extra report detail.
             'colonists': data.get('colonists', 0),
             'mines': data.get('mines', 0),
             'factories': data.get('factories', 0),
@@ -638,7 +656,6 @@ class DetailBuilder():
             'shipyards': data.get('shipyards', 0),
             'buildpoints_consumed': data.get('buildpoints_consumed', 0),
         })()
-        return calculate_habitability_factor(self.player, report_star) >= 0
 
     def get_object_name(self):
         if isinstance(self.selected_obj, Salvage):

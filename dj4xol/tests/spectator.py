@@ -2,7 +2,7 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
 
-from ..models import Game, Account, Spectator, Fleet
+from ..models import Account, Fleet, ServerSettings, Spectator
 from ..factory import GameFactory
 from ._util import get_default_race
 
@@ -39,6 +39,62 @@ class SpectatorViewTest(TestCase):
             reverse('dj4xol:join_game', args=[self.game.short_id])
         )
         self.assertEqual(join_response.status_code, 403)
+
+    def test_disabled_spectator_mode_hides_view_action(self):
+        ServerSettings.objects.update_or_create(
+            key='enable_spectator_mode',
+            defaults={'value': 'False', 'description': 'Enable spectator mode'},
+        )
+
+        response = self.client.get(reverse('dj4xol:index'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(
+            response,
+            reverse('dj4xol:spectate_game_confirm', args=[self.game.short_id]),
+        )
+
+    def test_spectate_confirm_uses_form_navigation_menu(self):
+        response = self.client.get(
+            reverse('dj4xol:spectate_game_confirm', args=[self.game.short_id])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="hamburger-btn"')
+        self.assertContains(response, 'id="nav-dropdown"')
+        self.assertNotContains(response, 'class="nav-link-game"')
+        self.assertNotContains(response, '>Research<', html=True)
+
+    def test_disabled_spectator_mode_blocks_confirm(self):
+        ServerSettings.objects.update_or_create(
+            key='enable_spectator_mode',
+            defaults={'value': 'False', 'description': 'Enable spectator mode'},
+        )
+
+        response = self.client.get(
+            reverse('dj4xol:spectate_game_confirm', args=[self.game.short_id])
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(
+            response,
+            'Spectator mode is disabled on this server',
+            status_code=403,
+        )
+
+    def test_disabled_spectator_mode_blocks_starmap(self):
+        ServerSettings.objects.update_or_create(
+            key='enable_spectator_mode',
+            defaults={'value': 'False', 'description': 'Enable spectator mode'},
+        )
+        Spectator.objects.create(game=self.game, account=self.account)
+
+        response = self.client.get(
+            reverse('dj4xol:spectate_game', args=[self.game.short_id])
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(
+            response,
+            'Spectator mode is disabled on this server',
+            status_code=403,
+        )
 
     def test_spectator_basic_detail_includes_star_resources_and_population(self):
         star = self.game.stars.first()

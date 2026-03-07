@@ -43,6 +43,7 @@ from .messages import (
     StarVanishedOminousMessageFactory,
     ResearchLevelUnlockedMessageFactory,
     ResearchBreakthroughMessageFactory,
+    ScannerHabitableWorldRollupMessageFactory,
     SecretResourceDiscoveryMessageFactory,
     AnomalyTargetLostMessageFactory,
     format_map_object,
@@ -1484,6 +1485,10 @@ class GameTurn():
             if not sources:
                 continue
 
+            player_fleet_positions = set(
+                player.fleets.values_list('x', 'y')
+            )
+            habitable_stars_found = []
             has_basic = any(int(src.get('basic') or 0) > 0 for src in sources)
             has_advanced = any(int(src.get('advanced') or 0) > 0 for src in sources)
             if not has_basic and not has_advanced:
@@ -1496,16 +1501,30 @@ class GameTurn():
                 if has_advanced and position_in_scanner_range(
                     star.x, star.y, sources, range_key='advanced'
                 ):
-                    self._create_or_update_report(
+                    created = self._create_or_update_report(
                         player, 'star', star, self.game.year, report_tier='advanced'
                     )
                     self._discover_secret_resources_from_star(player, star)
+                    self._queue_scanner_habitable_star(
+                        habitable_stars_found,
+                        player,
+                        star,
+                        created,
+                        player_fleet_positions,
+                    )
                     continue
                 if has_basic and position_in_scanner_range(
                     star.x, star.y, sources, range_key='basic'
                 ):
-                    self._create_or_update_report(
+                    created = self._create_or_update_report(
                         player, 'star', star, self.game.year, report_tier='basic'
+                    )
+                    self._queue_scanner_habitable_star(
+                        habitable_stars_found,
+                        player,
+                        star,
+                        created,
+                        player_fleet_positions,
                     )
 
             # Fleets: basic scans confirm presence, advanced scans reveal composition.
@@ -1553,6 +1572,9 @@ class GameTurn():
                     self._create_or_update_report(
                         player, 'anomaly', anomaly, self.game.year, report_tier='basic'
                     )
+            self._send_scanner_habitable_world_rollup(
+                player, habitable_stars_found
+            )
 
     def _generate_reports_for_fleet(self, fleet):
         """Generate reports for all objects at fleet's location."""
@@ -1613,7 +1635,7 @@ class GameTurn():
             existing_data = report.get_report_data()
             existing_tier = existing_data.get('report_tier') or 'advanced'
             if self._report_tier_rank(existing_tier) > self._report_tier_rank(report_tier):
-                return report
+                return False
             report.year = year
             report.game = self.game
             report_data = self._build_report_data(
@@ -1659,6 +1681,37 @@ class GameTurn():
                 msg = factory.new_message()
                 msg.year = self.game.year
                 msg.save()
+        return created
+
+    def _queue_scanner_habitable_star(
+        self,
+        habitable_stars_found,
+        player,
+        star,
+        created,
+        player_fleet_positions,
+    ):
+        if not created or not player or not star:
+            return
+        if star.player_id == player.id:
+            return
+        if (star.x, star.y) in player_fleet_positions:
+            return
+        if calculate_habitability_factor(player, star) < 0:
+            return
+        habitable_stars_found.append(star)
+
+    def _send_scanner_habitable_world_rollup(self, player, stars):
+        if not player or not stars:
+            return
+        factory = ScannerHabitableWorldRollupMessageFactory(
+            self.game,
+            player,
+            stars,
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
 
     def _mark_secret_resource_discovered(self, player, resource_key, star=None, fleet=None, source=None):
         if not player:
@@ -1722,6 +1775,10 @@ class GameTurn():
                 'radiation': obj.radiation,
             })
             if report_tier == 'basic':
+                base.update({
+                    'capacity': effective_capacity(player, obj),
+                    'is_survivable': calculate_habitability_factor(player, obj) >= 0,
+                })
                 return base
             base.update({
                 'colonists': obj.colonists,

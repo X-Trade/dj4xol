@@ -1653,6 +1653,34 @@ class HabitableWorldMessageFactory(MessageFactory):
         )
 
 
+class ScannerHabitableWorldRollupMessageFactory(MessageFactory):
+    """Roll up newly scanned habitable stars into a single turn message."""
+    category = 'ENVIRONMENTAL'
+    max_listed_stars = 6
+
+    def __init__(self, game, player, stars, message=None):
+        super(ScannerHabitableWorldRollupMessageFactory, self).__init__(
+            game, player, message, intensity=0.1
+        )
+        self.stars = list(stars or [])
+
+    def _format_star_list(self):
+        names = [format_map_object(star) for star in self.stars]
+        shown = names[:self.max_listed_stars]
+        remainder = len(names) - len(shown)
+        if remainder <= 0:
+            return ', '.join(shown)
+        return '%s, and %s more' % (', '.join(shown), remainder)
+
+    def format_message(self):
+        count = len(self.stars)
+        noun = 'star' if count == 1 else 'stars'
+        return (
+            'Long-range scanners have detected %s potentially habitable '
+            '%s: %s.'
+        ) % (count, noun, self._format_star_list())
+
+
 class FleetBuildBlockedNoShipyardMessageFactory(MessageFactory):
     """Messages for blocked fleet construction due to no shipyard."""
     category = 'PRODUCTION'

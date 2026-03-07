@@ -4,7 +4,7 @@ import json
 from django.test import TestCase
 from django.contrib.auth.models import User
 from ..models import (
-    Account, Star, Fleet, Salvage, Report, Anomaly
+    Account, Star, Fleet, Salvage, Report, Anomaly, GameMessage
 )
 from ..factory import GameFactory
 from ..objectdetails import DetailBuilder
@@ -727,6 +727,35 @@ class CachedReportDisplayTest(TestCase):
         self.assertFalse(detail['is_current'])
         self.assertFalse(detail['is_survivable'])
 
+    def test_basic_cached_report_derives_habitability_summary(self):
+        """Basic cached reports still show survivability and population cap."""
+        self.star.base_capacity = 45
+        self.star.save(update_fields=['base_capacity'])
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=2400,
+            target_type='star',
+            target_id=self.star.id,
+            cached_report='{"name": "Old Name", '
+                         '"report_tier": "basic", '
+                         '"gravity": 1.0, '
+                         '"temperature": 1.0, '
+                         '"radiation": 1.0}'
+        )
+
+        builder = DetailBuilder(
+            self.game,
+            x=self.star.x,
+            y=self.star.y,
+            player=self.player
+        )
+        detail = builder.build_detail()
+
+        self.assertEqual(detail['report_tier'], 'basic')
+        self.assertTrue(detail['is_survivable'])
+        self.assertEqual(detail['capacity'], 45000000)
+
     def test_report_age_calculated_correctly(self):
         """Report age shows years since report was generated."""
         # Game starts at year 2400, advance to 2405
@@ -846,7 +875,7 @@ class ScannerReportTest(TestCase):
             advanced_scanner_range=advanced,
         )
 
-    def test_basic_scanner_reports_star_environment_only(self):
+    def test_basic_scanner_reports_star_habitability_summary_only(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=0, x=10, y=10)
         star = self._place_enemy_star_near(fleet.x, fleet.y, distance=4)
 
@@ -862,9 +891,47 @@ class ScannerReportTest(TestCase):
         self.assertIn('gravity', data)
         self.assertIn('temperature', data)
         self.assertIn('radiation', data)
+        self.assertIn('capacity', data)
+        self.assertIn('is_survivable', data)
         self.assertNotIn('ironium_yield', data)
         self.assertNotIn('player_name', data)
         self.assertNotIn('colonists', data)
+
+    def test_basic_scanner_rolls_up_habitable_star_messages(self):
+        fleet = self._create_scanner_fleet(basic=8, advanced=0, x=10, y=10)
+        first_star = self._place_enemy_star_near(fleet.x, fleet.y, distance=4)
+        second_star = self.game.stars.filter(
+            player__isnull=True
+        ).exclude(id=first_star.id).first()
+
+        first_star.gravity = self.player1.gravity_center
+        first_star.temperature = self.player1.temperature_center
+        first_star.radiation = self.player1.radiation_center
+        first_star.save(update_fields=['gravity', 'temperature', 'radiation'])
+
+        second_star.x = fleet.x
+        second_star.y = fleet.y + 5
+        second_star.gravity = self.player1.gravity_center
+        second_star.temperature = self.player1.temperature_center
+        second_star.radiation = self.player1.radiation_center
+        second_star.save(update_fields=[
+            'x', 'y', 'gravity', 'temperature', 'radiation'
+        ])
+
+        turn = GameTurn(self.game)
+        turn.generate_scanner_reports()
+        turn.generate_scanner_reports()
+
+        messages = GameMessage.objects.filter(
+            game=self.game,
+            player=self.player1,
+            category='ENVIRONMENTAL',
+        )
+        self.assertEqual(messages.count(), 1)
+        message = messages.first()
+        self.assertIn('potentially habitable stars', message.message)
+        self.assertIn(first_star.name, message.message)
+        self.assertIn(second_star.name, message.message)
 
     def test_advanced_scanner_reports_star_minerals_no_infrastructure(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=6, x=12, y=12)
@@ -1234,6 +1301,8 @@ class NoScannerReportTierTest(TestCase):
         data = self._visit_enemy_star(basic=5, advanced=0)
         self.assertEqual(data.get('report_tier'), 'basic')
         self.assertIn('gravity', data)
+        self.assertIn('capacity', data)
+        self.assertIn('is_survivable', data)
         self.assertNotIn('ironium_yield', data)
 
     def test_visit_with_advanced_scanners_reports_resources(self):

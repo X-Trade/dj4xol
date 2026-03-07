@@ -103,16 +103,16 @@
 
             <div class="column column-right">
                 <div class="panel no-transition open" data-panel="games">
-                    <h2><span>Games Playing ({{ games_playing|length }})</span><span class="panel-toggle"></span></h2>
+                    <h2><span>Games Playing ({{ games_playing_entries|length }})</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
                         <section class="panel-scrollable-list">
-                        {% if games_playing %}
+                        {% if games_playing_entries %}
                         <ul class="game-list">
-                        {% for game in games_playing %}
+                        {% for entry in games_playing_entries %}
                             <li>
                                 <div class="game-entry-main">
-                                    <a href="{% url 'dj4xol:game' game.short_id %}" class="game-entry-title">{{ game.name }}</a>
-                                    <span class="game-meta">Year {{ game.year }}</span>
+                                    <a href="{% url 'dj4xol:game' entry.game.short_id %}" class="game-entry-title">{{ entry.game.name }}</a>
+                                    <span class="game-meta">Year {{ entry.game.year }} &middot; {{ entry.status }}</span>
                                 </div>
                             </li>
                         {% endfor %}
@@ -127,17 +127,17 @@
                     </div>
                 </div>
 
-                {% if games_owned %}
+                {% if games_owned_entries %}
                 <div class="panel no-transition open" data-panel="owned">
-                    <h2><span>Games Owned ({{ games_owned|length }})</span><span class="panel-toggle"></span></h2>
+                    <h2><span>Games Owned ({{ games_owned_entries|length }})</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
                         <section class="panel-scrollable-list">
                         <ul class="game-list">
-                        {% for game in games_owned %}
+                        {% for entry in games_owned_entries %}
                             <li>
                                 <div class="game-entry-main">
-                                    <a href="{% url 'dj4xol:game' game.short_id %}" class="game-entry-title">{{ game.name }}</a>
-                                    <span class="game-meta">Year {{ game.year }}</span>
+                                    <a href="{% url 'dj4xol:game' entry.game.short_id %}" class="game-entry-title">{{ entry.game.name }}</a>
+                                    <span class="game-meta">Year {{ entry.game.year }} &middot; {{ entry.status }}</span>
                                 </div>
                             </li>
                         {% endfor %}

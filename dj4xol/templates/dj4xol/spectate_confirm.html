@@ -14,7 +14,7 @@
         <div class="title-bar">
             <span class="title">Spectate Game</span>
             <span class="tagline">Read-only view</span>
-            {% include 'dj4xol/_nav_menu.html' with current_page='games' %}
+            {% include 'dj4xol/_nav_menu.html' with current_page='spectate_game_confirm' game=None %}
         </div>
         <div class="columns single-column">
             <div class="column">
@@ -38,5 +38,37 @@
                 </div>
             </div>
         </div>
+        <script>
+            (function() {
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (header) {
+                        header.addEventListener('click', function() {
+                            panel.classList.remove('no-transition');
+                            panel.classList.toggle('open');
+                        });
+                    }
+                });
+            })();
+        </script>
     </body>
 </html>
