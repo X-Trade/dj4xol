@@ -2,8 +2,16 @@ from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.password_validation import password_validators_help_text_html
-from .models import ServerRace, ServerRaceType, Game, Account, ServerSettings
-from .name_rules import validate_non_reserved_identity_name
+from urllib.parse import urlparse, urlunparse
+from .models import (
+    ServerRace,
+    ServerRaceType,
+    Game,
+    Account,
+    ServerSettings,
+    profanity_filter_settings,
+)
+from .name_rules import validate_non_reserved_identity_name, validate_safe_public_text
 from .research import get_global_research_max_level, get_starting_tech_balance_cost
 
 
@@ -71,6 +79,38 @@ class ServerRaceForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         from .habitability_rules import RaceCreationRules
+        profanity_filter = profanity_filter_settings()
+
+        for field_name, label in [
+            ('name', 'Race name'),
+            ('plural_name', 'Race plural name'),
+            ('homeworld_name', 'Homeworld name'),
+        ]:
+            value = cleaned_data.get(field_name)
+            if value:
+                try:
+                    cleaned_data[field_name] = validate_non_reserved_identity_name(
+                        value,
+                        label,
+                        block_profanity=profanity_filter['enabled'],
+                        profanity_whitelist=profanity_filter['whitelist'],
+                        profanity_blacklist=profanity_filter['blacklist'],
+                    )
+                except forms.ValidationError as exc:
+                    self.add_error(field_name, exc)
+        description = cleaned_data.get('description')
+        if description:
+            try:
+                cleaned_data['description'] = validate_safe_public_text(
+                    description,
+                    label='Race description',
+                    allow_newlines=True,
+                    block_profanity=profanity_filter['enabled'],
+                    profanity_whitelist=profanity_filter['whitelist'],
+                    profanity_blacklist=profanity_filter['blacklist'],
+                )
+            except forms.ValidationError as exc:
+                self.add_error('description', exc)
 
         spend_leftover_on_minerals = cleaned_data.get('spend_leftover_on_minerals', False)
         spend_leftover_on_research = cleaned_data.get('spend_leftover_on_research', False)
@@ -288,6 +328,27 @@ class NewGameForm(forms.Form):
         help_text="Usernames or emails, comma-separated"
     )
 
+    def clean_name(self):
+        profanity_filter = profanity_filter_settings()
+        return validate_safe_public_text(
+            self.cleaned_data.get('name'),
+            'Game name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
+
+    def clean_description(self):
+        profanity_filter = profanity_filter_settings()
+        return validate_safe_public_text(
+            self.cleaned_data.get('description'),
+            'Game description',
+            allow_newlines=True,
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
+
     def __init__(self, account, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.order_fields([
@@ -369,11 +430,44 @@ class NewGameForm(forms.Form):
 
 
 class ServerSettingsForm(forms.Form):
+    SECTION_ORDER = [
+        ('General (web)', [
+            'server_name',
+            'server_tagline',
+            'server_admin',
+            'server_url',
+            'server_welcome',
+            'allow_self_signup',
+            'enable_debug_actions',
+            'enable_play_api',
+        ]),
+        ('Email', [
+            'server_contact',
+            'enable_email',
+        ]),
+        ('AI Integration', [
+            'enable_gpt',
+        ]),
+        ('Profanity Filter', [
+            'enable_profanity_filter',
+            'profanity_filter_whitelist',
+            'profanity_filter_blacklist',
+        ]),
+    ]
+
     server_name = forms.CharField(label="Server Name", max_length=120)
     server_tagline = forms.CharField(label="Server Tagline", max_length=255, required=False)
     server_admin = forms.CharField(label="Server Admin", max_length=120, required=False)
-    server_contact = forms.EmailField(label="Server Contact Email", required=False)
-    server_url = forms.URLField(label="Public Server URL", required=False)
+    server_contact = forms.EmailField(
+        label="Server Contact Email",
+        required=False,
+        help_text="Public contact address shown in server-facing email and profile/help contexts.",
+    )
+    server_url = forms.URLField(
+        label="Public Server URL",
+        required=False,
+        help_text="Used for links in emails. Use the public site root only; /4x and trailing slashes are removed automatically.",
+    )
     server_welcome = forms.CharField(
         label="Homepage Welcome",
         required=False,
@@ -382,10 +476,12 @@ class ServerSettingsForm(forms.Form):
     allow_self_signup = forms.BooleanField(
         label="Allow Self Sign-up",
         required=False,
+        help_text="Allows visitors without an account to register themselves through the onboarding flow.",
     )
     enable_email = forms.BooleanField(
         label="Enable Email",
         required=False,
+        help_text="Enables outgoing server email, including rollups, invitations, and test emails.",
     )
     enable_gpt = forms.BooleanField(
         label="Enable GPT",
@@ -394,10 +490,29 @@ class ServerSettingsForm(forms.Form):
     enable_debug_actions = forms.BooleanField(
         label="Enable Debug Actions",
         required=False,
+        help_text="Shows staff-only debug actions in game panels and related admin UI.",
     )
     enable_play_api = forms.BooleanField(
         label="Enable Web Play CLI",
         required=False,
+        help_text="Enables the authenticated in-browser Play CLI overlay and its web API.",
+    )
+    enable_profanity_filter = forms.BooleanField(
+        label="Enable Profanity Filter",
+        required=False,
+        help_text="Blocks profane names and public text according to this server's social policy.",
+    )
+    profanity_filter_whitelist = forms.CharField(
+        label="Profanity Whitelist",
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3}),
+        help_text="Optional allowed terms to ignore during profanity checks, for false positives. Terms are matched after removing spaces and punctuation.",
+    )
+    profanity_filter_blacklist = forms.CharField(
+        label="Profanity Blacklist",
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 3}),
+        help_text="Optional extra blocked terms for this server. Separate terms with commas or spaces. Terms are matched after removing spaces and punctuation.",
     )
 
     SETTINGS_META = {
@@ -412,18 +527,36 @@ class ServerSettingsForm(forms.Form):
         'enable_gpt': {'description': 'Enable GPT API usage', 'boolean': True},
         'enable_debug_actions': {'description': 'Enable debug actions in game panels', 'boolean': True},
         'enable_play_api': {'description': 'Enable web Play CLI API', 'boolean': True},
+        'enable_profanity_filter': {'description': 'Enable profanity filter', 'boolean': True, 'default': True},
+        'profanity_filter_whitelist': {'description': 'Profanity filter whitelist', 'use_long_value': True},
+        'profanity_filter_blacklist': {'description': 'Profanity filter blacklist', 'use_long_value': True},
     }
 
     @classmethod
     def initial_from_settings(cls):
         initial = {}
         for key, meta in cls.SETTINGS_META.items():
-            value = ServerSettings.get(key, '')
+            setting = ServerSettings.objects.filter(key=key).first()
+            if setting is None and meta.get('boolean'):
+                initial[key] = bool(meta.get('default', False))
+                continue
+            value = setting.long_value or setting.value if setting else ''
             if meta.get('boolean'):
                 initial[key] = str(value).strip().lower() in ('1', 'true', 'yes', 'on')
             else:
                 initial[key] = value
         return initial
+
+    def clean_server_url(self):
+        raw_value = (self.cleaned_data.get('server_url') or '').strip()
+        if not raw_value:
+            return ''
+        parsed = urlparse(raw_value)
+        path = (parsed.path or '').rstrip('/')
+        if path == '/4x':
+            path = ''
+        normalized = parsed._replace(path=path, params='', query='', fragment='')
+        return urlunparse(normalized).rstrip('/')
 
     def save(self, user=None):
         for key, meta in self.SETTINGS_META.items():
@@ -451,6 +584,10 @@ class ServerSettingsForm(forms.Form):
             }
             ServerSettings.objects.update_or_create(key=key, defaults=defaults)
 
+    def iter_sections(self):
+        for title, field_names in self.SECTION_ORDER:
+            yield title, [self[name] for name in field_names if name in self.fields]
+
 
 # Import models.Q for the query
 from django.db import models
@@ -477,7 +614,14 @@ class SignupForm(UserCreationForm):
 
     def clean_username(self):
         username = super(SignupForm, self).clean_username()
-        validate_non_reserved_identity_name(username, 'Username')
+        profanity_filter = profanity_filter_settings()
+        validate_non_reserved_identity_name(
+            username,
+            'Username',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
         return username
 
     def save(self, commit=True):
@@ -566,13 +710,37 @@ class RegistrationForm(forms.ModelForm):
             raise forms.ValidationError('This field is required.')
         if User.objects.filter(username=username).exists():
             raise forms.ValidationError('A user with that username already exists.')
-        validate_non_reserved_identity_name(username, 'Username')
+        profanity_filter = profanity_filter_settings()
+        validate_non_reserved_identity_name(
+            username,
+            'Username',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
         return username
 
     def clean_alias(self):
         alias = (self.cleaned_data.get('alias') or '').strip()
-        validate_non_reserved_identity_name(alias, 'Account name')
+        profanity_filter = profanity_filter_settings()
+        validate_non_reserved_identity_name(
+            alias,
+            'Account name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
         return alias
+
+    def clean_full_name(self):
+        profanity_filter = profanity_filter_settings()
+        return validate_safe_public_text(
+            self.cleaned_data.get('full_name'),
+            'Full name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
 
     def clean(self):
         cleaned = super().clean()

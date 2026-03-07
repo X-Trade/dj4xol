@@ -83,6 +83,21 @@
     value: 'True'
 - model: dj4xol.ServerSettings
   fields:
+    key: 'enable_profanity_filter'
+    description: 'Enable profanity filter'
+    value: 'True'
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'profanity_filter_whitelist'
+    description: 'Profanity filter whitelist'
+    long_value: ''
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'profanity_filter_blacklist'
+    description: 'Profanity filter blacklist'
+    long_value: ''
+- model: dj4xol.ServerSettings
+  fields:
     key: 'gpt_api_key'
     description: 'GPT API key'
     value: ''

@@ -397,6 +397,7 @@ body.map-dragging * {
 .detail-section.panel.open .panel-content.detail-panel-stack {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
+    position: relative;
 }
 
 .object-thumbnail-frame {
@@ -452,13 +453,22 @@ body.map-dragging * {
 
 .rename-popover {
     position: absolute;
+    top: 72px;
+    left: 0;
     z-index: 1000;
     background: #333;
     border: 1px solid #808080;
     padding: 12px;
     margin-top: 5px;
     min-width: 200px;
+    width: auto;
+    max-width: min(320px, calc(100vw - 40px));
+    box-sizing: border-box;
     box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.panel-content > .rename-popover {
+    width: auto;
 }
 
 .rename-popover-content {
@@ -1199,6 +1209,7 @@ body.floating-tooltips-enabled .has-tooltip::after {
     display: flex;
     gap: 5px;
     align-items: center;
+    min-width: 0;
 }
 
 .order-type-row select,
@@ -1244,6 +1255,8 @@ body.floating-tooltips-enabled .has-tooltip::after {
     border: 1px solid #ddd;
     border-radius: 4px;
     padding: 10px;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .order-params--costs {
@@ -1266,8 +1279,10 @@ body.floating-tooltips-enabled .has-tooltip::after {
 
 .order-param-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 8px;
+    gap: 8px;
+    min-width: 0;
 }
 
 .order-param-row:last-child {
@@ -1288,6 +1303,8 @@ body.floating-tooltips-enabled .has-tooltip::after {
     align-items: center;
     flex: 1;
     gap: 8px;
+    min-width: 0;
+    flex-wrap: wrap;
 }
 
 .dest-display {
@@ -1297,6 +1314,8 @@ body.floating-tooltips-enabled .has-tooltip::after {
     border: 1px solid #ccc;
     border-radius: 3px;
     min-height: 1.4em;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .dest-set-btn {
@@ -1318,18 +1337,22 @@ body.floating-tooltips-enabled .has-tooltip::after {
     align-items: center;
     flex: 1;
     gap: 10px;
+    min-width: 0;
+    flex-wrap: wrap;
 }
 
 .warp-slider {
     flex: 1;
     height: 6px;
     cursor: pointer;
+    min-width: 0;
 }
 
 .warp-value {
     min-width: 60px;
     text-align: right;
     font-size: 0.9em;
+    white-space: nowrap;
 }
 
 .warp-value.warp-warning {
@@ -1347,6 +1370,8 @@ body.floating-tooltips-enabled .has-tooltip::after {
     display: flex;
     gap: 15px;
     flex: 1;
+    min-width: 0;
+    flex-wrap: wrap;
 }
 
 .transfer-type-row label {
@@ -1355,6 +1380,7 @@ body.floating-tooltips-enabled .has-tooltip::after {
     align-items: center;
     gap: 4px;
     cursor: pointer;
+    min-width: 0;
 }
 
 /* Transfer target dropdown */
@@ -1363,6 +1389,7 @@ body.floating-tooltips-enabled .has-tooltip::after {
     align-items: center;
     flex: 1;
     gap: 8px;
+    min-width: 0;
 }
 
 .transfer-target-select {
@@ -1373,6 +1400,8 @@ body.floating-tooltips-enabled .has-tooltip::after {
     background: #fff;
     font-size: 0.9em;
     min-height: 1.4em;
+    min-width: 0;
+    max-width: 100%;
 }
 
 /* Transfer sliders */
@@ -1381,12 +1410,15 @@ body.floating-tooltips-enabled .has-tooltip::after {
     align-items: center;
     flex: 1;
     gap: 10px;
+    min-width: 0;
+    flex-wrap: wrap;
 }
 
 .transfer-slider {
     flex: 1;
     height: 6px;
     cursor: pointer;
+    min-width: 0;
 }
 
 .transfer-value {
@@ -1395,6 +1427,7 @@ body.floating-tooltips-enabled .has-tooltip::after {
     text-align: right;
     font-size: 0.9em;
     font-weight: bold;
+    white-space: nowrap;
 }
 
 /* Transfer slider help note */
@@ -1403,6 +1436,8 @@ body.floating-tooltips-enabled .has-tooltip::after {
     margin-top: 8px;
     padding-top: 8px;
     border-top: 1px solid #eee;
+    width: 100%;
+    overflow-wrap: anywhere;
 }
 
 /* Order type parameters - initially hidden for transfer */
@@ -1435,6 +1470,32 @@ body.floating-tooltips-enabled .has-tooltip::after {
 .repeat-icon {
     color: #2a5a8a;
     font-weight: bold;
+}
+
+.colonise-warning,
+.remotemine-focus-option {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+    .order-param-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .order-param-row > label {
+        flex: 0 0 auto;
+        width: auto;
+        min-width: 0;
+    }
+
+    .dest-display-row,
+    .speed-row,
+    .transfer-type-row,
+    .transfer-slider-row,
+    .transfer-target-row {
+        width: 100%;
+    }
 }
 
 /* Production order tooltip */

@@ -18,7 +18,11 @@ from .anomaly_thumbnails import (
     choose_random_anomaly_thumbnail,
     is_valid_anomaly_thumbnail,
 )
-from .name_rules import validate_non_reserved_identity_name
+from .name_rules import (
+    parse_profanity_terms,
+    validate_non_reserved_identity_name,
+    validate_safe_public_text,
+)
 from . import mineral_rules
 import random
 import uuid
@@ -238,6 +242,19 @@ class ServerSettings(models.Model):
             return default
 
 
+def server_setting_enabled(key, default=False):
+    value = ServerSettings.get(key, 'True' if default else 'False')
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def profanity_filter_settings():
+    return {
+        'enabled': server_setting_enabled('enable_profanity_filter', True),
+        'whitelist': parse_profanity_terms(ServerSettings.get('profanity_filter_whitelist', '')),
+        'blacklist': parse_profanity_terms(ServerSettings.get('profanity_filter_blacklist', '')),
+    }
+
+
 class Account(models.Model):
     """A dj4xol account linked to a Django user."""
     THEME_CHOICES = [
@@ -262,9 +279,23 @@ class Account(models.Model):
     discovered_resource_z = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
+        profanity_filter = profanity_filter_settings()
         if not self.alias:
             self.alias = self.django_user.username
-        validate_non_reserved_identity_name(self.alias, 'Account name')
+        validate_non_reserved_identity_name(
+            self.alias,
+            'Account name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
+        self.full_name = validate_safe_public_text(
+            self.full_name,
+            'Full name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
         if not self.email_unsubscribe_key:
             self.email_unsubscribe_key = uuid.uuid4().hex
         super(Account, self).save(*args, **kwargs)
@@ -348,6 +379,25 @@ class Game(UUIDMixin):
 
     def __str__(self):
         return f'{self.short_id} {self.name}'
+
+    def save(self, *args, **kwargs):
+        profanity_filter = profanity_filter_settings()
+        self.name = validate_safe_public_text(
+            self.name,
+            'Game name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
+        self.description = validate_safe_public_text(
+            self.description,
+            'Game description',
+            allow_newlines=True,
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
+        super(Game, self).save(*args, **kwargs)
 
     def get_star_names(self):
         return [star["name"] for star in self.stars.values("name").all()]
@@ -689,6 +739,14 @@ class Fleet(AbstractMapObject):
         return None
 
     def save(self, *args, **kwargs):
+        profanity_filter = profanity_filter_settings()
+        self.name = validate_safe_public_text(
+            self.name,
+            'Fleet name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
         self.has_bombs = self._normalize_choice_or_none(
             self.has_bombs,
             {choice for choice, _label in BOMB_TYPE_CHOICES},
@@ -788,6 +846,14 @@ class Star(AbstractMapObject):
     thumbnail_path = models.CharField(max_length=255, blank=True, default='')
 
     def save(self, *args, **kwargs):
+        profanity_filter = profanity_filter_settings()
+        self.name = validate_safe_public_text(
+            self.name,
+            'Star name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
         if not self.thumbnail_path or not is_valid_star_thumbnail(self.thumbnail_path):
             self.thumbnail_path = choose_star_thumbnail(self.id or self.short_id or self.name)
         super(Star, self).save(*args, **kwargs)
@@ -829,8 +895,36 @@ class ServerRace(UUIDMixin, HabitabilityMixin):
         return self.name
 
     def save(self, *args, **kwargs):
-        validate_non_reserved_identity_name(self.name, 'Race name')
-        validate_non_reserved_identity_name(self.plural_name, 'Race name')
+        profanity_filter = profanity_filter_settings()
+        self.name = validate_non_reserved_identity_name(
+            self.name,
+            'Race name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
+        self.plural_name = validate_non_reserved_identity_name(
+            self.plural_name,
+            'Race plural name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
+        self.homeworld_name = validate_non_reserved_identity_name(
+            self.homeworld_name,
+            'Homeworld name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        ) if self.homeworld_name else self.homeworld_name
+        self.description = validate_safe_public_text(
+            self.description,
+            'Race description',
+            allow_newlines=True,
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
         super(ServerRace, self).save(*args, **kwargs)
 
     class Meta:
@@ -871,10 +965,38 @@ class Player(AbstractGameObject, HabitabilityMixin):
     discovered_resource_z = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
+        profanity_filter = profanity_filter_settings()
         if self.plural_name is None:
             self.plural_name = self.name + 's'
-        validate_non_reserved_identity_name(self.name, 'Player name')
-        validate_non_reserved_identity_name(self.plural_name, 'Player name')
+        self.name = validate_non_reserved_identity_name(
+            self.name,
+            'Player name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
+        self.plural_name = validate_non_reserved_identity_name(
+            self.plural_name,
+            'Player plural name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
+        self.homeworld_name = validate_non_reserved_identity_name(
+            self.homeworld_name,
+            'Homeworld name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        ) if self.homeworld_name else self.homeworld_name
+        self.description = validate_safe_public_text(
+            self.description,
+            'Player description',
+            allow_newlines=True,
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
         super(Player, self).save(*args, **kwargs)
 
     class Meta:

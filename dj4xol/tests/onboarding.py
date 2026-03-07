@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.test import Client, TestCase
 from django.urls import reverse
 
+from ..name_rules import parse_profanity_terms, validate_safe_public_text
 from ..models import Account, Player, ServerRace, ServerSettings
 from ._util import default_game, get_default_race_type
 
@@ -123,8 +124,96 @@ class OnboardingRegistrationTest(TestCase):
         self.assertContains(response, 'Account name is reserved.')
         self.assertFalse(User.objects.filter(username='Abandoned').exists())
 
+    def test_register_rejects_profane_alias_and_non_ascii_full_name(self):
+        ServerSettings.objects.update_or_create(
+            key='allow_self_signup',
+            defaults={
+                'value': 'True',
+                'description': 'Allow self-sign-up',
+            }
+        )
+        response = self.client.post(reverse('dj4xol:register'), {
+            'username': 'newpilot',
+            'password1': 'pw-test-12345',
+            'password2': 'pw-test-12345',
+            'alias': 'fuckpilot',
+            'email': 'pilot@example.com',
+            'full_name': 'New Pilot 😎',
+            'website_url': '',
+            'email_game_updates': 'on',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Account name contains blocked profanity.')
+        self.assertContains(response, 'Full name contains unsupported characters.')
+        self.assertFalse(User.objects.filter(username='newpilot').exists())
+
+    def test_register_allows_profane_alias_when_filter_disabled(self):
+        ServerSettings.objects.update_or_create(
+            key='allow_self_signup',
+            defaults={
+                'value': 'True',
+                'description': 'Allow self-sign-up',
+            }
+        )
+        ServerSettings.objects.update_or_create(
+            key='enable_profanity_filter',
+            defaults={
+                'value': 'False',
+                'description': 'Enable profanity filter',
+            }
+        )
+        response = self.client.post(reverse('dj4xol:register'), {
+            'username': 'fuckpilot',
+            'password1': 'pw-test-12345',
+            'password2': 'pw-test-12345',
+            'alias': 'fuckpilot',
+            'email': 'pilot@example.com',
+            'full_name': 'New Pilot',
+            'website_url': '',
+            'email_game_updates': 'on',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(User.objects.filter(username='fuckpilot').exists())
+
 
 class IdentityNameRulesTest(TestCase):
+    def test_safe_public_text_rejects_markup_characters(self):
+        with self.assertRaises(ValidationError):
+            validate_safe_public_text('Bad <script>alert(1)</script>', 'Name')
+
+    def test_safe_public_text_rejects_profanity(self):
+        with self.assertRaises(ValidationError):
+            validate_safe_public_text('Captain fuckface', 'Name')
+
+    def test_safe_public_text_rejects_spaced_or_dotted_profanity(self):
+        with self.assertRaises(ValidationError):
+            validate_safe_public_text(
+                'Captain f . u c k face',
+                'Name',
+                profanity_whitelist=set(),
+                profanity_blacklist=set(),
+            )
+
+    def test_safe_public_text_whitelist_can_override_false_positive(self):
+        self.assertEqual(
+            validate_safe_public_text(
+                'Scunthorpe',
+                'Name',
+                profanity_whitelist=parse_profanity_terms('scunthorpe'),
+                profanity_blacklist=set(),
+            ),
+            'Scunthorpe',
+        )
+
+    def test_safe_public_text_blacklist_can_add_server_specific_term(self):
+        with self.assertRaises(ValidationError):
+            validate_safe_public_text(
+                'Void Admiral',
+                'Name',
+                profanity_whitelist=set(),
+                profanity_blacklist=parse_profanity_terms('void'),
+            )
+
     def test_server_race_name_cannot_be_abandoned(self):
         with self.assertRaises(ValidationError):
             ServerRace.objects.create(

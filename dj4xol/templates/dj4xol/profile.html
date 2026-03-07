@@ -128,8 +128,10 @@
                         <ul class="game-list">
                         {% for game in games_playing %}
                             <li>
-                                <a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
-                                <span class="game-meta">Year {{ game.year }}</span>
+                                <div class="game-entry-main">
+                                    <a href="{% url 'dj4xol:game' game.short_id %}" class="game-entry-title">{{ game.name }}</a>
+                                    <span class="game-meta">Year {{ game.year }}</span>
+                                </div>
                             </li>
                         {% endfor %}
                         </ul>
@@ -151,8 +153,10 @@
                         <ul class="game-list">
                         {% for game in games_owned %}
                             <li>
-                                <a href="{% url 'dj4xol:game' game.short_id %}">{{ game.name }}</a>
-                                <span class="game-meta">Year {{ game.year }}</span>
+                                <div class="game-entry-main">
+                                    <a href="{% url 'dj4xol:game' game.short_id %}" class="game-entry-title">{{ game.name }}</a>
+                                    <span class="game-meta">Year {{ game.year }}</span>
+                                </div>
                             </li>
                         {% endfor %}
                         </ul>
@@ -169,8 +173,10 @@
                         <ul class="game-list">
                         {% for race in races %}
                             <li>
-                                <span>{{ race.name }}</span>
-                                <span class="game-meta">{{ race.race_type.name }}</span>
+                                <div class="game-entry-main">
+                                    <span class="game-entry-title">{{ race.name }}</span>
+                                    <span class="game-meta">{{ race.race_type.name }}</span>
+                                </div>
                             </li>
                         {% endfor %}
                         </ul>

@@ -6,6 +6,7 @@ from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from datetime import timedelta
 import os
@@ -21,7 +22,7 @@ from .models import (
     Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology,
     ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
-    Spectator,
+    Spectator, profanity_filter_settings,
 )
 from .email_rollups import (
     send_message_rollup_for_account,
@@ -55,6 +56,7 @@ from .forms import (
     JoinGameForm,
     ServerSettingsForm,
 )
+from .name_rules import validate_safe_public_text
 from .scanners import get_scanner_sources_for_player
 
 
@@ -2285,6 +2287,7 @@ def server_settings(request):
 
     return render(request, 'dj4xol/server_settings.html', {
         'form': form,
+        'form_sections': list(form.iter_sections()),
         'selected_theme': request.user.dj4xol_account.theme,
         'server_name': ServerSettings.get('server_name', 'dj4xol'),
         'server_tagline': ServerSettings.get('server_tagline', ''),
@@ -2516,6 +2519,17 @@ def rename_object(request, game_short_id, object_short_id):
         return JsonResponse({'error': 'Name is required'}, status=400)
     if len(new_name) > 30:
         return JsonResponse({'error': 'Name must be 30 characters or less'}, status=400)
+    profanity_filter = profanity_filter_settings()
+    try:
+        new_name = validate_safe_public_text(
+            new_name,
+            'Name',
+            block_profanity=profanity_filter['enabled'],
+            profanity_whitelist=profanity_filter['whitelist'],
+            profanity_blacklist=profanity_filter['blacklist'],
+        )
+    except ValidationError as exc:
+        return JsonResponse({'error': exc.messages[0]}, status=400)
 
     # Try to find the object (star or fleet) and verify ownership
     obj = None

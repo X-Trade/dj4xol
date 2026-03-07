@@ -36,18 +36,23 @@
                         <section class="panel-scrollable-text">
                         <form method="post" class="game-form">
                             {% csrf_token %}
-                            <table class="profile-table">
-                                {% for field in form %}
-                                <tr>
-                                    <th>{{ field.label_tag }}</th>
-                                    <td>
-                                        {{ field }}
-                                        {{ field.errors }}
-                                        {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </table>
+                            {% for section_title, section_fields in form_sections %}
+                            <div class="detail-subpanel">
+                                <h3 class="settings-section-title">{{ section_title }}</h3>
+                                <table class="profile-table">
+                                    {% for field in section_fields %}
+                                    <tr>
+                                        <th>{{ field.label_tag }}</th>
+                                        <td>
+                                            {{ field }}
+                                            {{ field.errors }}
+                                            {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </table>
+                            </div>
+                            {% endfor %}
                             <div class="form-nav">
                                 <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:index' %}'">Back to Games</button>
                                 <button type="submit" class="nav-button primary">Save Settings</button>
