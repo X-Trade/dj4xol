@@ -217,6 +217,33 @@ class UnexploredDetailTest(TestCase):
         self.assertNotIn('environmentals', detail)
         self.assertNotIn('resources', detail)
 
+    def test_salvage_is_hidden_without_report(self):
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=self.distant_star.x,
+            y=self.distant_star.y,
+            ironium_inventory=25,
+            boranium_inventory=10,
+            germanium_inventory=5,
+        )
+
+        detail = DetailBuilder(
+            self.game,
+            x=self.distant_star.x,
+            y=self.distant_star.y,
+            player=self.player,
+        ).build_detail()
+
+        objects_here = detail.get('objects_here') or []
+        self.assertFalse(any(obj.get('short_id') == salvage.short_id for obj in objects_here))
+
+        hidden = DetailBuilder(
+            self.game,
+            selected=salvage.short_id.lower(),
+            player=self.player,
+        ).build_detail()
+        self.assertIsNone(hidden)
+
 
 class ReportGenerationTest(TestCase):
     """Tests for report generation during turn processing."""
@@ -923,6 +950,50 @@ class ScannerReportTest(TestCase):
         )
         self.assertEqual(salvage_report.get_report_data().get('report_tier'), 'advanced')
         self.assertEqual(anomaly_report.get_report_data().get('report_tier'), 'advanced')
+
+    def test_basic_scanner_reports_salvage_total_and_anomaly_type(self):
+        fleet = self._create_scanner_fleet(basic=6, advanced=0, x=20, y=20)
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=fleet.x + 2,
+            y=fleet.y,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            ironium_inventory=10,
+            boranium_inventory=5,
+            germanium_inventory=2,
+        )
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=fleet.x + 3,
+            y=fleet.y,
+            name='Scanner Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=77,
+        )
+
+        GameTurn(self.game).generate_scanner_reports()
+        salvage_report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='salvage',
+            target_id=salvage.id,
+        )
+        anomaly_report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='anomaly',
+            target_id=anomaly.id,
+        )
+
+        salvage_data = salvage_report.get_report_data()
+        anomaly_data = anomaly_report.get_report_data()
+        self.assertEqual(salvage_data.get('report_tier'), 'basic')
+        self.assertEqual(salvage_data.get('salvage_type'), Salvage.TYPE_ANCIENT_DEBRIS)
+        self.assertEqual(salvage_data.get('total_minerals'), salvage.total_minerals)
+        self.assertNotIn('ironium_inventory', salvage_data)
+        self.assertEqual(anomaly_data.get('report_tier'), 'basic')
+        self.assertEqual(anomaly_data.get('anomaly_type'), Anomaly.TYPE_RIFT)
+        self.assertNotIn('stability', anomaly_data)
 
     def test_encounter_reports_include_infrastructure_and_capabilities(self):
         x, y = self._find_empty_coord(exclude_star=self.enemy_star)

@@ -919,7 +919,7 @@ class FleetOrders(AbstractGameObject):
     target_fleet = models.ForeignKey(Fleet, null=True, related_name='+',
             on_delete=models.CASCADE)
     target_salvage = models.ForeignKey(Salvage, null=True, related_name='+',
-            on_delete=models.CASCADE)
+            on_delete=models.SET_NULL)
 
     # Transfer parameters
     TRANSFER_TYPE_CHOICES = [

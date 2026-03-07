@@ -408,6 +408,10 @@ body.map-dragging * {
     image-rendering: auto;
 }
 
+.object-thumbnail-blurred {
+    filter: blur(3px) saturate(0.8);
+}
+
 .detail-header h3 {
     margin: 0;
     flex: 1;

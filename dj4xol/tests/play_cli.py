@@ -202,7 +202,7 @@ class PlayCommandTest(TestCase):
         self.assertIn('%s:' % enemy_fleet.short_id, output)
         self.assertIn('owner: %s' % self.player2.name, output)
         self.assertIn('is_owned: false', output)
-        self.assertIn('visibility: report', output)
+        self.assertIn('visibility: current', output)
         self.assertIn('ship_count: 6', output)
 
     def test_fleets_other_excludes_owned_and_unknown_enemy_fleets(self):
@@ -845,6 +845,15 @@ class PlayCommandTest(TestCase):
             y=self.player2.homeworld.y,
             ironium_inventory=100,
         )
+        Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year,
+            target_type='salvage',
+            target_id=salvage.id,
+            cached_report='{"name": "%s", "x": %s, "y": %s, "salvage_type": "%s", "total_minerals": %s, "report_tier": "basic"}'
+            % (salvage.name, salvage.x, salvage.y, salvage.salvage_type, salvage.total_minerals),
+        )
 
         output = self._run_play(
             self.game.short_id,
@@ -935,6 +944,37 @@ class PlayCommandTest(TestCase):
         )
         self.assertIn('Object not found in this game: %s' % hidden_salvage.short_id, output)
         self.assertNotIn('selected_id: %s' % hidden_salvage.short_id, output)
+
+    def test_detail_command_shows_basic_salvage_report_total_without_inventory_breakdown(self):
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=self.player1.homeworld.x,
+            y=self.player1.homeworld.y + 1,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            ironium_inventory=13,
+            boranium_inventory=7,
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year,
+            target_type='salvage',
+            target_id=salvage.id,
+            cached_report='{"name": "%s", "x": %s, "y": %s, "salvage_type": "%s", "total_minerals": %s, "report_tier": "basic"}'
+            % (salvage.name, salvage.x, salvage.y, salvage.salvage_type, salvage.total_minerals),
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/detail %s' % salvage.short_id, '/exit'],
+        )
+        self.assertIn('salvage_type: ANCIENT_DEBRIS', output)
+        self.assertIn('total: 20', output)
+        self.assertIn('thumbnail_blurred: true', output)
+        self.assertNotIn('Ironium', output)
 
     def test_salvages_alias_is_removed(self):
         output = self._run_play(

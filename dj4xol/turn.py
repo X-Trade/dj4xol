@@ -1442,22 +1442,35 @@ class GameTurn():
                         player, 'fleet', fleet, self.game.year, report_tier='basic'
                     )
 
-            # Salvage and anomalies: advanced scans reveal contents/traits.
-            if has_advanced:
-                for salvage in Salvage.objects.filter(game=self.game):
-                    if position_in_scanner_range(
-                        salvage.x, salvage.y, sources, range_key='advanced'
-                    ):
-                        self._create_or_update_report(
-                            player, 'salvage', salvage, self.game.year, report_tier='advanced'
-                        )
-                for anomaly in Anomaly.objects.filter(game=self.game):
-                    if position_in_scanner_range(
-                        anomaly.x, anomaly.y, sources, range_key='advanced'
-                    ):
-                        self._create_or_update_report(
-                            player, 'anomaly', anomaly, self.game.year, report_tier='advanced'
-                        )
+            # Salvage and anomalies: basic scans confirm identity; advanced scans reveal detail.
+            for salvage in Salvage.objects.filter(game=self.game):
+                if has_advanced and position_in_scanner_range(
+                    salvage.x, salvage.y, sources, range_key='advanced'
+                ):
+                    self._create_or_update_report(
+                        player, 'salvage', salvage, self.game.year, report_tier='advanced'
+                    )
+                    continue
+                if has_basic and position_in_scanner_range(
+                    salvage.x, salvage.y, sources, range_key='basic'
+                ):
+                    self._create_or_update_report(
+                        player, 'salvage', salvage, self.game.year, report_tier='basic'
+                    )
+            for anomaly in Anomaly.objects.filter(game=self.game):
+                if has_advanced and position_in_scanner_range(
+                    anomaly.x, anomaly.y, sources, range_key='advanced'
+                ):
+                    self._create_or_update_report(
+                        player, 'anomaly', anomaly, self.game.year, report_tier='advanced'
+                    )
+                    continue
+                if has_basic and position_in_scanner_range(
+                    anomaly.x, anomaly.y, sources, range_key='basic'
+                ):
+                    self._create_or_update_report(
+                        player, 'anomaly', anomaly, self.game.year, report_tier='basic'
+                    )
 
     def _generate_reports_for_fleet(self, fleet):
         """Generate reports for all objects at fleet's location."""
@@ -1707,16 +1720,20 @@ class GameTurn():
             return data
         elif target_type == 'salvage':
             if report_tier in ('ownership', 'basic'):
-                return {
+                data = {
                     'name': obj.name,
                     'x': obj.x,
                     'y': obj.y,
+                    'salvage_type': obj.salvage_type,
+                    'total_minerals': obj.total_minerals,
                     'report_tier': report_tier,
                 }
+                return data
             return {
                 'name': obj.name,
                 'x': obj.x,
                 'y': obj.y,
+                'salvage_type': obj.salvage_type,
                 'ironium_inventory': obj.ironium_inventory,
                 'boranium_inventory': obj.boranium_inventory,
                 'germanium_inventory': obj.germanium_inventory,
