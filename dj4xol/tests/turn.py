@@ -7766,15 +7766,19 @@ class TestFleetFuel(TestCase):
         star = player.homeworld
         star.shipyards = 0
         star.save(update_fields=['shipyards'])
+        # Keep this test deterministic: avoid random salvage hazards and map-edge deletion.
+        game.salvages.all().delete()
         start_messages = player.messages.count()
+        start_x = 10
+        start_y = 10
 
         fleet = Fleet.objects.create(
             game=game, player=player, name="Collector Fleet",
-            x=star.x, y=star.y, max_safe_warp=6, fuel=0.2, max_fuel=10.0
+            x=start_x, y=start_y, max_safe_warp=6, fuel=0.2, max_fuel=10.0
         )
         FleetOrders.objects.create(
             game=game, fleet=fleet, order_type='MOVE',
-            x=star.x + 20, y=star.y, warpfactor=6
+            x=start_x + 20, y=start_y, warpfactor=6
         )
 
         turn = GameTurn(game)
@@ -7791,8 +7795,8 @@ class TestFleetFuel(TestCase):
             GameTurn(game).generate_turn()
 
         fleet.refresh_from_db()
-        self.assertGreater(fleet.x, star.x)
-        self.assertLess(fleet.x, star.x + 6)
+        self.assertGreater(fleet.x, start_x)
+        self.assertLess(fleet.x, start_x + 6)
         self.assertLess(fleet.fuel, projected_fuel)
         self.assertGreater(player.messages.count(), start_messages)
         msg = player.messages.order_by('-id').first()
