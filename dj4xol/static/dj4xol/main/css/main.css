@@ -449,11 +449,25 @@ body.map-dragging * {
 
 .detail-header h3 {
     margin: 0;
-    flex: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .detail-header .detail-selector {
-    flex: 1;
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.detail-header .rename-btn {
+    flex: 0 0 auto;
 }
 
 .rename-btn {
@@ -1358,6 +1372,20 @@ body.floating-tooltips-enabled .has-tooltip::after {
     flex-wrap: wrap;
 }
 
+/* Move/intercept destination keeps dropdown + Set button on one row. */
+#move-destination {
+    flex-wrap: nowrap;
+}
+
+#move-destination .transfer-target-select {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#move-destination .dest-set-btn {
+    flex: 0 0 auto;
+}
+
 .dest-display {
     flex: 1;
     padding: 4px 8px;
@@ -1445,7 +1473,8 @@ body.floating-tooltips-enabled .has-tooltip::after {
 }
 
 .transfer-target-select {
-    flex: 1;
+    flex: 0 1 18rem;
+    width: min(100%, 18rem);
     padding: 4px 8px;
     border: 1px solid #ccc;
     border-radius: 3px;
