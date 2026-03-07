@@ -1,7 +1,8 @@
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from ..models import PlayerResearch, ResearchCategory
+from ..models import PlayerResearch, ResearchCategory, Technology
+from ..research import ensure_player_research_rows
 from ._util import default_game, get_default_user
 
 
@@ -79,3 +80,50 @@ class ResearchViewTest(TestCase):
             response.url,
             reverse('dj4xol:research', args=[self.game.short_id]),
         )
+
+    def test_turned_in_research_view_disables_allocation_controls(self):
+        self.player.turned_in = True
+        self.player.save(update_fields=['turned_in'])
+
+        response = self.client.get(
+            reverse('dj4xol:research', args=[self.game.short_id])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="allocation-input"', status_code=200)
+        self.assertContains(response, 'disabled', status_code=200)
+        self.assertContains(response, 'id="alloc-even-btn"', status_code=200)
+        self.assertContains(response, '?category=', status_code=200)
+
+    def test_research_detail_shows_recently_unlocked_for_current_level(self):
+        Technology.objects.create(
+            category=self.energy,
+            level=1,
+            name='Energy Shield I',
+            tech_type='SHIELD',
+            description='Current shield envelope.',
+            params_json='{"shield_level": 1}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=self.energy,
+            level=2,
+            name='Energy Shield II',
+            tech_type='SHIELD',
+            description='Next shield envelope.',
+            params_json='{"shield_level": 2}',
+            enabled=True,
+        )
+        ensure_player_research_rows(self.player)
+        row = PlayerResearch.objects.get(player=self.player, category=self.energy)
+        row.current_level = 1.0
+        row.save(update_fields=['current_level'])
+
+        response = self.client.get(
+            reverse('dj4xol:research', args=[self.game.short_id]),
+            {'category': self.energy.id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Recently Unlocked')
+        self.assertContains(response, 'Energy Shield I')
+        self.assertContains(response, 'Current shield envelope.')
+        self.assertContains(response, 'Energy Shield II')

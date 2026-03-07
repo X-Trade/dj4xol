@@ -94,13 +94,15 @@
                                 <span class="allocation-level">L{{ row.current_level|floatformat:0 }}</span>
                                 {% if singular_research %}
                                 <input type="radio" name="focus_category" value="{{ row.category.id }}"
-                                       {% if row.allocation_percent > 0 %}checked{% endif %}>
+                                       {% if row.allocation_percent > 0 %}checked{% endif %}
+                                       {% if player.turned_in %}disabled{% endif %}>
                                 <span class="allocation-suffix">Focus</span>
                                 {% else %}
                                 <input type="number" step="1" min="0" max="100"
                                        name="alloc_{{ row.category.id }}"
                                        value="{{ row.allocation_percent|floatformat:0 }}"
-                                       class="allocation-input">
+                                       class="allocation-input"
+                                       {% if player.turned_in %}disabled{% endif %}>
                                 <span class="allocation-suffix">%</span>
                                 {% endif %}
                             </div>
@@ -109,8 +111,8 @@
                             {% endfor %}
                             {% if not singular_research %}
                             <div class="allocation-actions">
-                                <button type="button" id="alloc-even-btn">Even Split</button>
-                                <button type="submit">Update Allocation</button>
+                                <button type="button" id="alloc-even-btn" {% if player.turned_in %}disabled{% endif %}>Even Split</button>
+                                <button type="submit" {% if player.turned_in %}disabled{% endif %}>Update Allocation</button>
                             </div>
                             {% endif %}
                         </form>
@@ -217,6 +219,49 @@
                         {% else %}
                         <p>No technology items defined for the next level in this category.</p>
                         {% endif %}
+                        {% if current_level_number and current_level_number > 0 %}
+                        <hr class="detail-divider">
+                        <h4>Recently Unlocked</h4>
+                        {% if recently_unlocked_items %}
+                        {% for item in recently_unlocked_items %}
+                        <div class="tech-item">
+                            <div class="tech-thumb-wrap">
+                                <img
+                                    class="tech-thumb"
+                                    src="{% static item.thumbnail_path %}"
+                                    alt="{{ item.tech_type }}"
+                                    data-icons="{% for path in item.thumbnail_paths %}{% static path %}{% if not forloop.last %}|{% endif %}{% endfor %}"
+                                    data-index="{{ item.thumbnail_initial_index }}"
+                                >
+                                {% if item.thumbnail_paths|length > 1 %}
+                                <span class="tech-thumb-corner" title="Multiple variants (long-press to zoom)"></span>
+                                {% endif %}
+                            </div>
+                            <div class="tech-body">
+                                <div class="tech-head">
+                                    <strong>{{ item.name }}</strong>
+                                    <span>{{ item.tech_type_label }}</span>
+                                </div>
+                                {% if item.description %}
+                                <p>{{ item.description }}</p>
+                                {% endif %}
+                                {% if item.params_display %}
+                                <table class="tech-params">
+                                    {% for entry in item.params_display %}
+                                    <tr>
+                                        <td>{{ entry.label }}</td>
+                                        <td>{{ entry.value }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </table>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <p>No technology items are defined for the current level in this category.</p>
+                        {% endif %}
+                        {% endif %}
                         </section>
                     </div>
                 </div>
@@ -278,6 +323,9 @@
                     countdownEl.classList.add('status-due');
                     if (!window.turnIsDue) {
                         window.turnIsDue = true;
+                        if (window.__applyResearchLock) {
+                            window.__applyResearchLock();
+                        }
                         if (window.__startTurnPoll) {
                             window.__startTurnPoll();
                         }
@@ -337,6 +385,27 @@
 
             window.__startTurnPoll = startTurnPoll;
             startTurnPoll();
+        })();
+        (function() {
+            function applyResearchLock() {
+                if (!window.playerTurnedIn && !window.turnIsDue) {
+                    return;
+                }
+                var form = document.getElementById('research-allocation-form');
+                if (!form) {
+                    return;
+                }
+                form.classList.add('allocation-locked');
+                var controls = form.querySelectorAll(
+                    'input[name="focus_category"], .allocation-input, .allocation-actions button'
+                );
+                Array.prototype.forEach.call(controls, function(control) {
+                    control.disabled = true;
+                });
+            }
+
+            window.__applyResearchLock = applyResearchLock;
+            applyResearchLock();
         })();
         (function() {
             var columns = document.querySelector('.research-columns');
