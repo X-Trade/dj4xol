@@ -493,6 +493,15 @@ class DetailBuilder():
                         'employment': data.get('jobs_employment', 0.0),
                     },
                 }
+            if (
+                not detail.get('player') and
+                any(
+                    int(data.get(field, 0) or 0) > 0
+                    for field in ('mines', 'factories', 'labs', 'defenses', 'shipyards')
+                )
+            ):
+                detail['player'] = 'Abandoned'
+                detail['owner_known'] = True
         elif target_type == 'fleet':
             detail['fleet_short_id'] = self.selected_obj.short_id
             stale_fleet_report = not self._is_fleet_currently_visible(self.selected_obj)
@@ -517,7 +526,6 @@ class DetailBuilder():
             if 'ship_count' in data:
                 detail['fleet_cargo'] = {
                     'ship_count': data.get('ship_count'),
-                    'max_safe_warp': data.get('max_safe_warp'),
                     'integrity': data.get('integrity'),
                     'offense_modifier': data.get('offense_modifier'),
                     'defense_modifier': data.get('defense_modifier'),
@@ -528,6 +536,7 @@ class DetailBuilder():
                 }
                 if data.get('report_tier') == 'encounter':
                     detail['fleet_capabilities'] = self._build_fleet_capabilities(
+                        data.get('max_safe_warp'),
                         data.get('has_bombs'),
                         data.get('has_miners'),
                         bool(data.get('has_fuel_factory')),
@@ -1010,9 +1019,21 @@ class DetailBuilder():
         if player:
             username = player.account.alias if player.account else 'Unknown'
             return '%s (%s)' % (player.name, username)
+        if (
+            isinstance(self.selected_obj, Star) and
+            self._star_has_leftover_infrastructure(self.selected_obj)
+        ):
+            return 'Abandoned'
         if isinstance(self.selected_obj, Fleet):
             return 'Abandoned'
         return None
+
+    @staticmethod
+    def _star_has_leftover_infrastructure(star):
+        if not star:
+            return False
+        infra_fields = ('mines', 'factories', 'labs', 'defenses', 'shipyards')
+        return any(int(getattr(star, field, 0) or 0) > 0 for field in infra_fields)
 
     def find_all_at_coordinates(self, x, y):
         x = int(x)
@@ -1538,6 +1559,7 @@ class DetailBuilder():
         ):
             return None
         return self._build_fleet_capabilities(
+            getattr(self.selected_obj, 'max_safe_warp', None),
             self.selected_obj.has_bombs,
             self.selected_obj.has_miners,
             bool(self.selected_obj.has_fuel_factory),
@@ -1564,7 +1586,6 @@ class DetailBuilder():
         offense_mod = int(round(float(fleet.offense_level) * 10.0))
         defense_mod = int(round(float(fleet.defense_level) * 10.0))
         return {
-            'max_safe_warp': fleet.max_safe_warp,
             'integrity': fleet.integrity,
             'ship_count': fleet.ship_count,
             'offense_modifier': f'{offense_mod:+d}',
@@ -1577,6 +1598,7 @@ class DetailBuilder():
 
     def _build_fleet_capabilities(
         self,
+        max_safe_warp,
         bombs,
         miners,
         has_fuel_factory,
@@ -1587,6 +1609,11 @@ class DetailBuilder():
     ):
         """Build list of capability label/value pairs."""
         capabilities = []
+        if max_safe_warp is not None:
+            capabilities.append({
+                'label': 'Max Warp',
+                'value': str(max_safe_warp),
+            })
         if bombs:
             capabilities.append({
                 'label': 'Bombs',

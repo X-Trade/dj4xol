@@ -4071,9 +4071,13 @@ class TestFleetCargo(TestCase):
         self.assertEqual(cargo_info['colonists'], 50)
         self.assertEqual(cargo_info['fuel'], 50.0)
         self.assertEqual(cargo_info['max_fuel'], 50.0)
-        self.assertEqual(cargo_info['max_safe_warp'], 2)
         self.assertEqual(cargo_info['offense_modifier'], '+0')
         self.assertEqual(cargo_info['defense_modifier'], '+0')
+        self.assertIsNotNone(details['fleet_capabilities'])
+        self.assertIn(
+            {'label': 'Max Warp', 'value': '2'},
+            details['fleet_capabilities'],
+        )
 
         # Test inventory display data
         inventory = details['fleet_inventory']
@@ -6541,6 +6545,49 @@ class TestFleetColoniseOrders(TestCase):
                     target_star.boranium_inventory +
                     target_star.germanium_inventory)
         self.assertEqual(new_total, 100)
+
+    def test_colonise_on_unowned_star_with_existing_infrastructure_retains_it(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = game.fleets.first()
+        target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+
+        target_star.player = None
+        target_star.colonists = 0
+        target_star.mines = 4
+        target_star.factories = 3
+        target_star.labs = 2
+        target_star.defenses = 1
+        target_star.shipyards = 1
+        target_star.save(update_fields=[
+            'player', 'colonists', 'mines', 'factories', 'labs', 'defenses', 'shipyards'
+        ])
+
+        fleet_id = fleet.id
+        fleet.x = target_star.x
+        fleet.y = target_star.y
+        fleet.colonists = 10
+        fleet.dry_mass = 0
+        fleet.save(update_fields=['x', 'y', 'colonists', 'dry_mass'])
+
+        from ..models import FleetOrders
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='COLONISE',
+            target_star=target_star
+        )
+
+        GameTurn(game).generate_turn()
+
+        target_star.refresh_from_db()
+        self.assertFalse(Fleet.objects.filter(id=fleet_id).exists())
+        self.assertEqual(target_star.player, player)
+        self.assertEqual(target_star.mines, 4)
+        self.assertEqual(target_star.factories, 3)
+        self.assertEqual(target_star.labs, 2)
+        self.assertEqual(target_star.defenses, 1)
+        self.assertEqual(target_star.shipyards, 1)
 
     def test_colonise_destroys_fleet(self):
         """Colonise order should delete the fleet after execution."""

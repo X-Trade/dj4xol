@@ -162,12 +162,6 @@
                 <span class="env-label">Ships</span>
                 <span class="env-value-plain">{{ detail.fleet_cargo.ship_count }}</span>
             </div>
-            {% if not detail.report_tier or detail.report_tier == 'encounter' %}
-            <div class="env-row">
-                <span class="env-label">Max Warp</span>
-                <span class="env-value-plain">{% if detail.fleet_cargo.max_safe_warp != None %}{{ detail.fleet_cargo.max_safe_warp }}{% else %}???{% endif %}</span>
-            </div>
-            {% endif %}
             <div class="env-row">
                 <span class="env-label">Integrity</span>
                 {% if detail.fleet_cargo.integrity != None %}

@@ -1212,6 +1212,55 @@ class TestDetailPanelReportTiers(TestCase):
         response = self._get_detail_response(self.star)
         self.assertContains(response, 'data-section="infrastructure"')
 
+    def test_unowned_star_with_leftover_infrastructure_shows_abandoned_owner(self):
+        self.star.player = None
+        self.star.mines = 2
+        self.star.factories = 1
+        self.star.save(update_fields=['player', 'mines', 'factories'])
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Surveyor',
+            x=self.star.x,
+            y=self.star.y,
+        )
+
+        response = self._get_detail_response(self.star)
+        self.assertContains(response, 'Abandoned')
+        self.assertNotContains(response, 'Unowned')
+
+    def test_unowned_star_report_with_leftover_infrastructure_shows_abandoned_owner(self):
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='star',
+            target_id=self.star.id,
+            cached_report=json.dumps({
+                'name': self.star.name,
+                'x': self.star.x,
+                'y': self.star.y,
+                'gravity': self.star.gravity,
+                'temperature': self.star.temperature,
+                'radiation': self.star.radiation,
+                'colonists': 0,
+                'mines': 1,
+                'factories': 0,
+                'factories_bp': 0,
+                'labs': 0,
+                'labs_rp': 0,
+                'defenses': 0,
+                'defenses_tooltip': None,
+                'shipyards': 0,
+                'jobs_count': 1000,
+                'jobs_employment': 0.0,
+                'report_tier': 'encounter',
+            }),
+        )
+        response = self._get_detail_response(self.star)
+        self.assertContains(response, 'Abandoned')
+        self.assertNotContains(response, 'Unowned')
+
     def test_advanced_fleet_report_hides_capabilities(self):
         self.game.joinable = True
         self.game.save(update_fields=['joinable'])
@@ -1248,6 +1297,7 @@ class TestDetailPanelReportTiers(TestCase):
         )
         response = self._get_detail_response(enemy_fleet)
         self.assertContains(response, 'data-section="composition"')
+        self.assertNotContains(response, 'Max Warp')
         self.assertNotContains(response, 'Bombs')
         self.assertNotContains(response, 'Wormhole Drive')
         self.assertNotContains(response, '__blur.png')
@@ -1285,6 +1335,7 @@ class TestDetailPanelReportTiers(TestCase):
         response = self._get_detail_response(enemy_fleet)
         self.assertContains(response, format_basic_unknown_fleet_name(enemy_fleet))
         self.assertNotContains(response, 'Leakable Fleet Name')
+        self.assertNotContains(response, 'Max Warp')
 
     def test_encounter_fleet_report_shows_capabilities(self):
         self.game.joinable = True
@@ -1324,6 +1375,7 @@ class TestDetailPanelReportTiers(TestCase):
             }),
         )
         response = self._get_detail_response(enemy_fleet)
+        self.assertContains(response, 'Max Warp')
         self.assertContains(response, 'Bombs')
         self.assertContains(response, 'Wormhole Drive')
 
