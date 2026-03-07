@@ -103,6 +103,70 @@ class TestStarMap(TestCase):
         html = starmap.render_map()
         self.assertIn(f'data-object-id="{salvage.short_id}"', html)
 
+    def test_basic_scanner_fleet_map_title_is_obfuscated(self):
+        game = default_game(stars=5, fleets=0)
+        player1 = game.players.first()
+        user2 = User.objects.create_user('fleet_map_enemy', 'fme@test.com', 'pass')
+        account2 = Account.objects.create(django_user=user2)
+        factory = GameFactory(game=game)
+        player2 = factory.join_player(account2, get_default_race())
+
+        scanner = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Our Scanner',
+            x=20,
+            y=20,
+            basic_scanner_range=6,
+            advanced_scanner_range=0,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name='Leaky Fleet Name',
+            x=scanner.x + 3,
+            y=scanner.y,
+        )
+
+        starmap = StarMap(game, player1)
+        html = starmap.render_map()
+        self.assertIn('title="Unknown Fleet"', html)
+        self.assertNotIn('title="Leaky Fleet Name"', html)
+        self.assertIn(f'data-object-id="{enemy_fleet.short_id}"', html)
+
+    def test_basic_ancient_debris_map_title_is_hidden(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        salvage = Salvage.objects.create(
+            game=game,
+            x=24,
+            y=24,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            ironium_inventory=40,
+            boranium_inventory=10,
+            germanium_inventory=5,
+        )
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='salvage',
+            target_id=salvage.id,
+            cached_report=json.dumps({
+                'name': salvage.name,
+                'x': salvage.x,
+                'y': salvage.y,
+                'salvage_type': salvage.salvage_type,
+                'total_minerals': salvage.total_minerals,
+                'report_tier': 'basic',
+            }),
+        )
+
+        starmap = StarMap(game, player)
+        html = starmap.render_map()
+        self.assertIn('title="???"', html)
+        self.assertNotIn(salvage.name, html)
+
     def test_rift_anomaly_has_deterministic_variable_height_style(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()

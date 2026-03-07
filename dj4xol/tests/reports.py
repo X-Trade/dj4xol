@@ -8,7 +8,11 @@ from ..models import (
 )
 from ..factory import GameFactory
 from ..objectdetails import DetailBuilder
-from ..turn import GameTurn
+from ..turn import (
+    GameTurn,
+    format_basic_hidden_salvage_name,
+    format_basic_unknown_fleet_name,
+)
 from ._util import get_default_race_type, get_default_race, default_game
 
 
@@ -975,8 +979,19 @@ class ScannerReportTest(TestCase):
         )
         data = report.get_report_data()
         self.assertEqual(data.get('report_tier'), 'basic')
+        self.assertEqual(data.get('name'), format_basic_unknown_fleet_name(enemy_fleet))
+        self.assertNotEqual(data.get('name'), enemy_fleet.name)
         self.assertNotIn('ship_count', data)
         self.assertNotIn('integrity', data)
+
+        enemy_fleet.name = 'Renamed Leak Attempt'
+        enemy_fleet.save(update_fields=['name'])
+        GameTurn(self.game).generate_scanner_reports()
+        report.refresh_from_db()
+        self.assertEqual(
+            report.get_report_data().get('name'),
+            format_basic_unknown_fleet_name(enemy_fleet)
+        )
 
     def test_advanced_scanner_reports_fleet_composition_only(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=6, x=15, y=15)
@@ -1085,6 +1100,10 @@ class ScannerReportTest(TestCase):
         salvage_data = salvage_report.get_report_data()
         anomaly_data = anomaly_report.get_report_data()
         self.assertEqual(salvage_data.get('report_tier'), 'basic')
+        self.assertEqual(
+            salvage_data.get('name'),
+            format_basic_hidden_salvage_name(salvage)
+        )
         self.assertEqual(salvage_data.get('salvage_type'), Salvage.TYPE_ANCIENT_DEBRIS)
         self.assertEqual(salvage_data.get('total_minerals'), salvage.total_minerals)
         self.assertNotIn('ironium_inventory', salvage_data)
