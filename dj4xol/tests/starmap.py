@@ -236,3 +236,21 @@ class TestStarMap(TestCase):
         end = html.find('>', idx)
         tag = html[start:end]
         self.assertIn('mapstar-enemy', tag)
+
+    def test_no_scanners_shows_salvage_without_report(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        game.no_scanners = True
+        game.save(update_fields=['no_scanners'])
+        salvage = Salvage.objects.create(
+            game=game,
+            x=26,
+            y=26,
+            ironium_inventory=30,
+            boranium_inventory=5,
+            germanium_inventory=0,
+        )
+
+        starmap = StarMap(game, player)
+        html = starmap.render_map()
+        self.assertIn(f'data-object-id="{salvage.short_id}"', html)

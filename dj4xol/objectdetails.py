@@ -664,6 +664,8 @@ class DetailBuilder():
             return self.game.salvages.all()
         if not self.player:
             return self.game.salvages.none()
+        if getattr(self.game, 'no_scanners', False):
+            return self.game.salvages.all()
         return self.game.salvages.filter(id__in=self._reported_salvage_ids)
 
     def _is_salvage_visible(self, salvage):
@@ -673,6 +675,8 @@ class DetailBuilder():
             return True
         if not self.player:
             return False
+        if getattr(self.game, 'no_scanners', False):
+            return True
         return salvage.id in self._reported_salvage_ids
 
     def check_selected(self):

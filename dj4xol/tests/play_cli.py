@@ -867,6 +867,27 @@ class PlayCommandTest(TestCase):
         self.assertIn('total_minerals_kt: 23', output)
         self.assertNotIn('total_minerals_kt: 100', output)
 
+    def test_salvage_command_lists_visible_salvage_without_report_in_no_scanners_game(self):
+        self.game.no_scanners = True
+        self.game.save(update_fields=['no_scanners'])
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=self.player2.homeworld.x,
+            y=self.player2.homeworld.y,
+            ironium_inventory=100,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/salvage', '/detail %s' % salvage.short_id, '/exit'],
+        )
+        self.assertIn('%s:' % salvage.short_id, output)
+        self.assertIn('visibility: visible', output)
+        self.assertIn('unexplored: true', output)
+
     def test_detail_command_supports_anomalies(self):
         anomaly = Anomaly.objects.create(
             game=self.game,
