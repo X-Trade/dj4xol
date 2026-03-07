@@ -534,6 +534,84 @@ class TestGameDetailRendering(TestCase):
         order.refresh_from_db()
         self.assertFalse(order.repeat)
 
+    def test_fleet_detail_shows_in_orbit_when_stationary_at_star(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'In orbit')
+        self.assertNotContains(response, 'Travelling at:')
+        self.assertNotContains(response, 'Heading:')
+
+    def test_fleet_detail_shows_stopped_when_stationary_in_empty_space(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        empty_coords = None
+        for x in range(int(game.map_size_x)):
+            for y in range(int(game.map_size_y)):
+                if game.stars.filter(x=x, y=y).exists():
+                    continue
+                if x == fleet.x and y == fleet.y:
+                    continue
+                empty_coords = (x, y)
+                break
+            if empty_coords:
+                break
+        self.assertIsNotNone(empty_coords)
+
+        fleet.x, fleet.y = empty_coords
+        fleet.save(update_fields=['x', 'y'])
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Stopped')
+        self.assertNotContains(response, 'Travelling at:')
+        self.assertNotContains(response, 'Heading:')
+
+    def test_fleet_detail_moving_summary_omits_colons(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            warpfactor=6,
+            x=max(0, int(fleet.x) - 1),
+            y=int(fleet.y),
+            target_kind='SPACE',
+            position=1,
+        )
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Travelling at Warp 6 | Heading ')
+        self.assertNotContains(response, 'Travelling at:')
+        self.assertNotContains(response, 'Heading:')
+
 
 class TestProfileView(TestCase):
     def test_profile_shows_turned_in_status_for_my_quorum_game(self):

@@ -12,8 +12,8 @@
                         <div class="progress-single" style="width: {{ order.progress_percent }}%;"></div>
                     </div>
                     <span class="order-info">
-                        {% if order.added_by_micromanager %}<span class="order-automation-tag">Auto</span> {% endif %}
                         {{ order.display }}{% if order.quantity > 1 %} <span class="order-quantity">({{ order.completed }}/{{ order.quantity }})</span>{% endif %}
+                        {% if order.added_by_micromanager %} <span class="order-automation-tag">Auto</span>{% endif %}
                     </span>
                     <div class="order-tooltip">
                         <div class="tooltip-header">{{ order.display }} - {{ order.progress_percent }}%</div>
