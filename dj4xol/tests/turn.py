@@ -1,4 +1,14 @@
-from ..turn import GameTurn, KT_PER_MINE, HOMEWORLD_MIN_YIELD, calculate_fleet_strength
+from ..turn import (
+    GameTurn,
+    KT_PER_MINE,
+    HOMEWORLD_MIN_YIELD,
+    NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION,
+    NOVA_ASTEROID_FIELD_SPAWN_CHANCE,
+    NOVA_BLACK_HOLE_SPAWN_CHANCE,
+    NOVA_STAR_DESTRUCTION_CHANCE,
+    YIELD_DEPLETION_RATE,
+    calculate_fleet_strength,
+)
 from ..objectdetails import DetailBuilder
 from ..colony_rules import (
     habitability_proportion,
@@ -8528,8 +8538,8 @@ class TestBombardmentOrders(TestCase):
             'dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet',
             return_value={'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
         ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0), patch(
-            'dj4xol.turn.random.random', return_value=0.0
-        ), patch('dj4xol.turn.random.randint', return_value=75):
+            'dj4xol.turn.random.randint', return_value=75
+        ):
             GameTurn(game).generate_turn()
 
         self.assertFalse(Star.objects.filter(id=star.id).exists())
@@ -8584,6 +8594,80 @@ class TestBombardmentOrders(TestCase):
             ).filter(
                 message__icontains='Astronomers report',
             ).exists()
+        )
+
+    def test_nova_bombs_can_create_asteroid_field_from_destroyed_star(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_nova_rock_def')
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10_000
+        star.defenses = 0
+        star.ironium_inventory = 1200
+        star.boranium_inventory = 300
+        star.germanium_inventory = 0
+        star.resource_x_inventory = 40
+        star.ironium_yield = 100
+        star.boranium_yield = 50
+        star.germanium_yield = 0
+        star.resource_x_yield = 20
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
+        star.save(update_fields=[
+            'player', 'colonists', 'defenses',
+            'ironium_inventory', 'boranium_inventory', 'germanium_inventory',
+            'resource_x_inventory', 'resource_y_inventory', 'resource_z_inventory',
+            'ironium_yield', 'boranium_yield', 'germanium_yield',
+            'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Nova Miner',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='NOVA',
+        )
+        FleetOrders.objects.create(game=game, fleet=fleet, order_type='BOMB', target_star=star)
+
+        def nova_roll(threshold):
+            if threshold == NOVA_STAR_DESTRUCTION_CHANCE:
+                return True
+            if threshold == NOVA_BLACK_HOLE_SPAWN_CHANCE:
+                return False
+            if threshold == NOVA_ASTEROID_FIELD_SPAWN_CHANCE:
+                return True
+            return False
+
+        with patch('dj4xol.turn.roll_chance', side_effect=nova_roll), patch(
+            'dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet',
+            return_value={'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
+        ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Star.objects.filter(id=star.id).exists())
+        self.assertFalse(Anomaly.objects.filter(game=game, x=star.x, y=star.y).exists())
+
+        asteroid_field = Salvage.objects.get(game=game, x=star.x, y=star.y)
+        self.assertEqual(asteroid_field.salvage_type, Salvage.TYPE_ASTEROID_FIELD)
+        self.assertEqual(
+            asteroid_field.ironium_inventory,
+            1200 + int(round((100 / YIELD_DEPLETION_RATE) * NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION)),
+        )
+        self.assertEqual(
+            asteroid_field.boranium_inventory,
+            300 + int(round((50 / YIELD_DEPLETION_RATE) * NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION)),
+        )
+        self.assertEqual(asteroid_field.germanium_inventory, 0)
+        self.assertEqual(
+            asteroid_field.resource_x_inventory,
+            40 + int(round((20 / YIELD_DEPLETION_RATE) * NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION)),
         )
 
     def test_destroyed_star_retargets_movement_orders_and_deletes_other_orders(self):

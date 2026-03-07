@@ -166,7 +166,9 @@ BUSSARD_RECOVERY_MIN_MG = 1
 BUSSARD_RECOVERY_MAX_MG = 5
 FUEL_CONSUMPTION_MULTIPLIER = 2.0
 NOVA_STAR_DESTRUCTION_CHANCE = 0.40
-NOVA_BLACK_HOLE_SPAWN_CHANCE = 0.01
+NOVA_BLACK_HOLE_SPAWN_CHANCE = 0.10
+NOVA_ASTEROID_FIELD_SPAWN_CHANCE = 0.40
+NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION = 0.05
 STAR_VANISH_FLEET_MENTION_CHANCE = 0.35
 REMOTE_MINER_UNITS_BY_TYPE = {
     'SMALL': 1,
@@ -4309,6 +4311,7 @@ class GameTurn():
         destroyed_star_name = star.name
         if bomb_type == 'NOVA' and roll_chance(NOVA_STAR_DESTRUCTION_CHANCE):
             star_destroyed = True
+            star_snapshot = self._snapshot_star_for_nova_remnant(star)
             destroyed_x = star.x
             destroyed_y = star.y
             destroyed_owner_id = star.player_id
@@ -4332,7 +4335,7 @@ class GameTurn():
                 destroyed_star_name, destroyed_x, destroyed_y, fleet,
                 former_owner_id=destroyed_owner_id
             )
-            self._maybe_spawn_black_hole_from_nova(destroyed_x, destroyed_y)
+            self._create_nova_star_remnant(star_snapshot)
         else:
             star.save(update_fields=['defenses', 'colonists', 'mines', 'factories', 'labs', 'shipyards'])
 
@@ -4409,14 +4412,43 @@ class GameTurn():
             return 'executed'
         return 'blocked'
 
+    def _snapshot_star_for_nova_remnant(self, star):
+        """Capture star mineral and yield state before nova destruction."""
+        if star is None:
+            return None
+        snapshot = {
+            'x': int(star.x),
+            'y': int(star.y),
+        }
+        for key in ALL_RESOURCE_KEYS:
+            snapshot['%s_yield' % key] = int(getattr(star, '%s_yield' % key, 0) or 0)
+            snapshot['%s_inventory' % key] = int(
+                getattr(star, '%s_inventory' % key, 0) or 0
+            )
+        return snapshot
+
+    def _create_nova_star_remnant(self, star_snapshot):
+        """Create a black hole or asteroid field after nova star destruction."""
+        if not star_snapshot:
+            return None
+        x = int(star_snapshot.get('x', 0) or 0)
+        y = int(star_snapshot.get('y', 0) or 0)
+        if self._maybe_spawn_black_hole_from_nova(x, y):
+            return 'black_hole'
+        if roll_chance(NOVA_ASTEROID_FIELD_SPAWN_CHANCE):
+            salvage = self._create_asteroid_field_from_nova(star_snapshot)
+            if salvage is not None:
+                return salvage
+        return None
+
     def _maybe_spawn_black_hole_from_nova(self, x, y):
-        """Rarely create a black hole at a nova-destroyed star location."""
-        if random.random() >= NOVA_BLACK_HOLE_SPAWN_CHANCE:
-            return
+        """Create a black hole at a nova-destroyed star location when it rolls."""
+        if not roll_chance(NOVA_BLACK_HOLE_SPAWN_CHANCE):
+            return None
         from .models import Anomaly
         if Anomaly.objects.filter(game=self.game, x=x, y=y).exists():
-            return
-        Anomaly.objects.create(
+            return None
+        return Anomaly.objects.create(
             game=self.game,
             x=int(x),
             y=int(y),
@@ -4425,6 +4457,58 @@ class GameTurn():
             heading=random.random() * 360.0,
             stability=random.randint(30, 91),
         )
+
+    def _nova_exposed_minerals_from_yield(self, yield_pct):
+        """Expose a recoverable fraction of a star's long-term mineral potential."""
+        try:
+            yield_pct = int(yield_pct or 0)
+        except (TypeError, ValueError):
+            yield_pct = 0
+        if yield_pct <= 0:
+            return 0
+        potential_kt = float(yield_pct) / float(YIELD_DEPLETION_RATE)
+        exposed = potential_kt * float(NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION)
+        return max(0, int(round(exposed)))
+
+    def _create_asteroid_field_from_nova(self, star_snapshot):
+        """Create or enrich an asteroid field with surface and exposed deep minerals."""
+        from .models import Salvage
+
+        x = int(star_snapshot.get('x', 0) or 0)
+        y = int(star_snapshot.get('y', 0) or 0)
+        minerals = {}
+        for key in ALL_RESOURCE_KEYS:
+            surface = int(star_snapshot.get('%s_inventory' % key, 0) or 0)
+            yield_pct = int(star_snapshot.get('%s_yield' % key, 0) or 0)
+            minerals[key] = surface + self._nova_exposed_minerals_from_yield(yield_pct)
+
+        if sum(int(value or 0) for value in minerals.values()) <= 0:
+            return None
+
+        salvage, created = Salvage.objects.get_or_create(
+            game=self.game,
+            x=x,
+            y=y,
+            defaults={
+                'salvage_type': Salvage.TYPE_ASTEROID_FIELD,
+                'ironium_inventory': int(minerals.get('ironium', 0) or 0),
+                'boranium_inventory': int(minerals.get('boranium', 0) or 0),
+                'germanium_inventory': int(minerals.get('germanium', 0) or 0),
+                'resource_x_inventory': int(minerals.get('resource_x', 0) or 0),
+                'resource_y_inventory': int(minerals.get('resource_y', 0) or 0),
+                'resource_z_inventory': int(minerals.get('resource_z', 0) or 0),
+            }
+        )
+        if created:
+            return salvage
+
+        salvage.salvage_type = Salvage.TYPE_ASTEROID_FIELD
+        for key in ALL_RESOURCE_KEYS:
+            field = '%s_inventory' % key
+            current = int(getattr(salvage, field, 0) or 0)
+            setattr(salvage, field, current + int(minerals.get(key, 0) or 0))
+        salvage.save()
+        return salvage
 
     def _notify_star_vanished(self, star_name, x, y, attacking_fleet, former_owner_id=None):
         """Send ominous notifications when a star disappears."""
