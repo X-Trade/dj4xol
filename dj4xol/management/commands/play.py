@@ -851,6 +851,21 @@ class Command(BaseCommand):
         if len(new_name) > 30:
             self.stdout.write("Name must be 30 characters or less.")
             return
+        profanity_filter = profanity_filter_settings()
+        try:
+            new_name = validate_safe_public_text(
+                new_name,
+                'Name',
+                block_profanity=profanity_filter['enabled'],
+                profanity_whitelist=profanity_filter['whitelist'],
+                profanity_blacklist=profanity_filter['blacklist'],
+            )
+        except ValidationError as exc:
+            if getattr(exc, 'messages', None):
+                self.stdout.write(exc.messages[0])
+            else:
+                self.stdout.write(str(exc))
+            return
         try:
             obj = self._resolve_owned_rename_target(player, selector)
         except CommandError as exc:
