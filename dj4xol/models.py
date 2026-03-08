@@ -741,14 +741,6 @@ class Fleet(AbstractMapObject):
         return None
 
     def save(self, *args, **kwargs):
-        profanity_filter = profanity_filter_settings()
-        self.name = validate_safe_public_text(
-            self.name,
-            'Fleet name',
-            block_profanity=profanity_filter['enabled'],
-            profanity_whitelist=profanity_filter['whitelist'],
-            profanity_blacklist=profanity_filter['blacklist'],
-        )
         self.has_bombs = self._normalize_choice_or_none(
             self.has_bombs,
             {choice for choice, _label in BOMB_TYPE_CHOICES},
@@ -849,14 +841,6 @@ class Star(AbstractMapObject):
     thumbnail_path = models.CharField(max_length=255, blank=True, default='')
 
     def save(self, *args, **kwargs):
-        profanity_filter = profanity_filter_settings()
-        self.name = validate_safe_public_text(
-            self.name,
-            'Star name',
-            block_profanity=profanity_filter['enabled'],
-            profanity_whitelist=profanity_filter['whitelist'],
-            profanity_blacklist=profanity_filter['blacklist'],
-        )
         if not self.thumbnail_path or not is_valid_star_thumbnail(self.thumbnail_path):
             self.thumbnail_path = choose_star_thumbnail(self.id or self.short_id or self.name)
         super(Star, self).save(*args, **kwargs)

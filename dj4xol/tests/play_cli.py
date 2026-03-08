@@ -1161,6 +1161,22 @@ class PlayCommandTest(TestCase):
         self.assertEqual(fleet.name, 'New Spear')
         self.assertIn('Renamed Fleet <%s>' % fleet.short_id, output)
 
+    def test_rename_command_rejects_profanity(self):
+        fleet = self.player1.fleets.first()
+        fleet.name = 'Old Spear'
+        fleet.save(update_fields=['name'])
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/rename "Old Spear" "fuck spear"', '/exit'],
+        )
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.name, 'Old Spear')
+        self.assertIn('Name contains blocked profanity.', output)
+
     def test_notes_command_adds_lists_and_removes_notes(self):
         output = self._run_play(
             self.game.short_id,
