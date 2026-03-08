@@ -15,12 +15,44 @@ class HelpPagesTest(TestCase):
         response = self.client.get(reverse('dj4xol:help_index'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Help Index')
+        self.assertContains(response, 'Exploration &amp; First Turns')
+        self.assertContains(response, 'How to Colonise')
+        self.assertContains(response, 'Colony Management Basics')
+        self.assertContains(response, 'Mining, Salvage &amp; Asteroids')
         self.assertContains(response, 'Colony Calculator')
         self.assertContains(response, 'Technology Directory')
         self.assertContains(response, 'Fleet Composition')
         self.assertContains(response, 'Research &amp; Labs')
         self.assertContains(response, 'Space Combat')
         self.assertContains(response, 'Invasion')
+
+    def test_help_exploration_renders(self):
+        response = self.client.get(reverse('dj4xol:help_exploration'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Exploration &amp; First Turns')
+        self.assertContains(response, 'scanner')
+        self.assertContains(response, 'Toggle scanner overlay')
+        self.assertContains(response, 'inside advanced range')
+        self.assertContains(response, 'inside basic range')
+        self.assertContains(response, 'out of range')
+
+    def test_help_colonising_renders(self):
+        response = self.client.get(reverse('dj4xol:help_colonising'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'How to Colonise')
+        self.assertContains(response, 'Colonise')
+
+    def test_help_colony_management_renders(self):
+        response = self.client.get(reverse('dj4xol:help_colony_management'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Colony Management Basics')
+        self.assertContains(response, 'mines')
+
+    def test_help_mining_salvage_renders(self):
+        response = self.client.get(reverse('dj4xol:help_mining_salvage'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Mining, Salvage &amp; Asteroids')
+        self.assertContains(response, 'Remote Mine')
 
     def test_help_space_combat_renders(self):
         response = self.client.get(reverse('dj4xol:help_space_combat'))

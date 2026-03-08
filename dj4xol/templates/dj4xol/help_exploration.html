@@ -1,0 +1,150 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Exploration &amp; First Turns</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/starmap/css/map.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index single-panel-page">
+        <div class="title-bar">
+            <span class="title">Exploration &amp; First Turns</span>
+            <span class="tagline">Find Habitable Worlds Fast</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_exploration' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-exploration">
+                    <h2><span>Exploration &amp; First Turns</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                        <p>
+                            You usually begin with one or two basic fleets. Your first job is to find new worlds worth colonising.
+                        </p>
+                        <h4>Typical Opening</h4>
+                        <ol class="help-steps">
+                            <li>Send your starting fleets out with the <strong>Move to</strong> order.</li>
+                            <li>Spread them across nearby stars instead of duplicating routes.</li>
+                            <li>Inspect your homeworld while they travel so production does not stall.</li>
+                        </ol>
+                        <h4>With Scanners</h4>
+                        <p>
+                            Fleets with scanners can reveal basic habitability of stars in range. On the starmap this appears
+                            as a brown circular underlay when the scanner overlay is toggled on.
+                        </p>
+                        <div class="help-callout scanner-demo" aria-label="Scanner range example using starmap styling">
+                            <div class="starmap-wrapper scanner-demo__wrapper">
+                                <div class="starmap scanner-demo__starmap">
+                                    <div class="maparea show-star-names scanner-demo__maparea">
+                                        <svg class="scanner-range-overlay" viewBox="0 0 160 100" preserveAspectRatio="none" aria-hidden="true">
+                                            <g class="scanner-range-basic-group">
+                                                <circle class="scanner-range-basic" cx="80" cy="50" r="34"></circle>
+                                            </g>
+                                            <g class="scanner-range-advanced-group">
+                                                <circle class="scanner-range-advanced" cx="80" cy="50" r="18"></circle>
+                                            </g>
+                                        </svg>
+                                        <div class="mapfleet-owned scanner-demo__fleet" style="left: 50%; top: 50%;" aria-hidden="true"></div>
+                                        <div class="mapstar" style="left: 57%; top: 41%;" aria-hidden="true"></div>
+                                        <span class="mapstar-name" style="left: 57%; top: 41%;">A</span>
+                                        <div class="mapstar" style="left: 67%; top: 59%;" aria-hidden="true"></div>
+                                        <span class="mapstar-name" style="left: 67%; top: 59%;">B</span>
+                                        <div class="mapstar" style="left: 28%; top: 66%;" aria-hidden="true"></div>
+                                        <span class="mapstar-name" style="left: 28%; top: 66%;">C</span>
+                                    </div>
+                                </div>
+                                <div class="starmap-controls scanner-demo__controls">
+                                    <button id="starmap-scanners" class="active" type="button" aria-pressed="true" aria-label="Toggle scanner overlay"></button>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="help-caption">
+                            Tap the scanner button to compare the same map with the overlay on and off.
+                        </p>
+                        <p>
+                            In this example, <strong>A</strong> is inside advanced range, so you can expect the best ranged
+                            report. <strong>B</strong> is outside advanced range but still inside basic range, so you only get
+                            the lighter basic report. <strong>C</strong> is out of range, so you need to move closer or visit it
+                            directly.
+                        </p>
+                        <p>
+                            Players just starting a new game often will not have the green advanced zone yet. Early scanner fleets usually only
+                            show the wider brown basic range until better scanner technology is unlocked.
+                        </p>
+                        <h4>Without Scanners</h4>
+                        <p>
+                            Fleets without scanners must visit each star directly before you get useful information. This makes
+                            route planning and coverage much more important in the opening turns.
+                        </p>
+                        <h4>Checking a Star</h4>
+                        <p>
+                            Clicking a star opens the detail panel. That report tells you whether the world is habitable and how
+                            much population it can support. Use that before committing colonists.
+                        </p>
+                        <h4>While Your Scouts Are Away</h4>
+                        <p>
+                            Check your homeworld production. A simple early priority is usually <strong>mines</strong>, then
+                            <strong>factories</strong>, then <strong>labs</strong>. Keep at least one <strong>shipyard</strong>
+                            so the colony can build, repair, and refuel fleets.
+                        </p>
+                        <p>
+                            Once you find a good world, continue with the
+                            <a href="{% url 'dj4xol:help_colonising' %}">How to Colonise</a> page.
+                        </p>
+                        </section>
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                            <a class="action-link" href="{% url 'dj4xol:help_colonising' %}">Next: 102 &raquo;</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+
+                var scannerButton = document.getElementById('starmap-scanners');
+                var scannerDemo = document.querySelector('.scanner-demo');
+                if (scannerButton && scannerDemo) {
+                    scannerButton.addEventListener('click', function() {
+                        var enabled = scannerButton.classList.toggle('active');
+                        scannerButton.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+                        scannerDemo.classList.toggle('scanner-demo--overlay-off', !enabled);
+                    });
+                }
+            })();
+        </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+    </body>
+</html>

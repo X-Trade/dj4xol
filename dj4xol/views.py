@@ -1799,6 +1799,38 @@ def hull_design_edit(request, hull_id=None):
 
 
 @registration_required()
+def help_exploration(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_exploration.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
+def help_colonising(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_colonising.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
+def help_colony_management(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_colony_management.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
+def help_mining_salvage(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_mining_salvage.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
 def help_colony(request):
     account = request.user.dj4xol_account
     return render(request, 'dj4xol/help_colony.html', {
