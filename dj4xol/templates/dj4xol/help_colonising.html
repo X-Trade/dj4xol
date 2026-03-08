@@ -1,0 +1,98 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>How to Colonise</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index single-panel-page">
+        <div class="title-bar">
+            <span class="title">How to Colonise</span>
+            <span class="tagline">Move, Load, Found</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_colonising' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-colonising">
+                    <h2><span>How to Colonise</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                        <div class="help-callout">
+                            Colonising uses up the fleet. The colonise order scuttles it onto the target world and leaves all carried cargo behind.
+                        </div>
+                        <h4>Basic Sequence</h4>
+                        <ol class="help-steps">
+                            <li>Pick a fleet at your homeworld.</li>
+                            <li>Use <strong>Transfer</strong> to load colonists.</li>
+                            <li>Do not drain the homeworld completely. Leave enough population behind to keep the colony productive.</li>
+                            <li>Load useful starting minerals too, especially <strong>ironium</strong>.</li>
+                            <li>Give the fleet a <strong>Move to</strong> order for the target star.</li>
+                            <li>Add a <strong>Colonise</strong> order for that same destination.</li>
+                        </ol>
+                        <h4>What to Bring</h4>
+                        <p>
+                            Colonists are mandatory. Minerals are optional, but early colonies benefit a lot from starting ironium because
+                            mines and other infrastructure consume it quickly.
+                        </p>
+                        <h4>Common Mistake</h4>
+                        <p>
+                            New players often load too many colonists from the homeworld. Avoid crippling your first colony just to found the second.
+                            A smaller but sustainable transfer is usually better than emptying the capital.
+                        </p>
+                        <h4>When the Fleet Arrives</h4>
+                        <p>
+                            If the star is still unowned and the fleet has colonists aboard, the colonise order will found the colony, transfer the
+                            fleet cargo onto the surface, and remove the fleet.
+                        </p>
+                        <h4>After Landing</h4>
+                        <p>
+                            Your new colony normally wants mines first so it can feed its own construction. See
+                            <a href="{% url 'dj4xol:help_colony_management' %}">Colony Management Basics</a> for the next step.
+                        </p>
+                        </section>
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                            <a class="action-link" href="{% url 'dj4xol:help_colony_management' %}">Next: 103 &raquo;</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+    </body>
+</html>

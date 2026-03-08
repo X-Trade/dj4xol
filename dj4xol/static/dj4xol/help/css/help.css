@@ -76,3 +76,146 @@
 .colony-help .panel-footer > :last-child:not(:first-child) {
     margin-left: auto;
 }
+
+.help-callout {
+    margin: 0 0 16px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--panel-border);
+    background: rgba(128, 96, 48, 0.12);
+    border-radius: 6px;
+}
+
+.help-steps {
+    margin: 0 0 16px 20px;
+    padding: 0;
+}
+
+.help-steps li {
+    margin: 0 0 8px 0;
+}
+
+.help-caption {
+    margin-top: 8px;
+    font-size: 0.92em;
+    opacity: 0.85;
+}
+
+.help-icon-list {
+    margin: 0 0 16px 0;
+}
+
+.help-icon-list__item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 0 0 12px 0;
+}
+
+.help-map-icon {
+    position: relative;
+    left: auto;
+    top: auto;
+    display: inline-block;
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+}
+
+.help-map-icon.mapsalvage {
+    width: 9px;
+    height: 9px;
+    margin-left: 3px;
+}
+
+.help-map-icon.mapsalvage-asteroid {
+    width: 14px;
+    height: 14px;
+}
+
+.help-map-icon.mapsalvage-ancient {
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+    font-size: 14px;
+}
+
+.help-map-icon.mapsalvage-ancient::before {
+    transform: none;
+}
+
+.scanner-demo {
+    position: relative;
+    margin: 12px 0 6px 0;
+}
+
+.scanner-demo__wrapper {
+    width: 100%;
+    height: clamp(170px, 24vw, 240px);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    background: #000;
+    position: relative;
+    overflow: hidden;
+}
+
+.scanner-demo__starmap {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    aspect-ratio: 16 / 10;
+    transform: translateY(-50%);
+    overflow: hidden;
+    padding: 0;
+    cursor: default;
+    touch-action: auto;
+}
+
+.scanner-demo__maparea {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.10), transparent 14%),
+        radial-gradient(circle at 78% 16%, rgba(255, 255, 255, 0.10), transparent 11%),
+        radial-gradient(circle at 61% 71%, rgba(255, 255, 255, 0.08), transparent 12%),
+        linear-gradient(180deg, rgba(5, 10, 24, 0.96), rgba(2, 5, 14, 0.99));
+}
+
+.scanner-demo .scanner-range-overlay {
+    width: 100%;
+    height: 100%;
+}
+
+.scanner-demo .mapstar-name {
+    opacity: 1;
+}
+
+.scanner-demo__fleet {
+    margin-left: -3px;
+    margin-top: -5px;
+    transform: rotate(45deg);
+}
+
+.scanner-demo__controls {
+    right: 12px;
+    bottom: 12px;
+}
+
+.scanner-demo--overlay-off .scanner-range-overlay {
+    display: none;
+}
+
+.scanner-demo--overlay-off .mapstar-name {
+    opacity: 1;
+}
+
+@media (max-width: 520px) {
+    .scanner-demo__wrapper {
+        height: clamp(160px, 42vw, 210px);
+    }
+}

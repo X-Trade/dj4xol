@@ -1,0 +1,107 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Mining, Salvage &amp; Asteroids</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/starmap/css/map.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index single-panel-page">
+        <div class="title-bar">
+            <span class="title">Mining, Salvage &amp; Asteroids</span>
+            <span class="tagline">Where Minerals Come From</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_mining_salvage' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-mining-salvage">
+                    <h2><span>Mining, Salvage &amp; Asteroids</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                        <h4>Surface Minerals</h4>
+                        <p>
+                            Stars and salvage can already have minerals sitting on the surface. A fleet at the location can load them directly
+                            with a <strong>Transfer</strong> order.
+                        </p>
+                        <h4>Remote Mining</h4>
+                        <p>
+                            Remote mining is different from surface transfer. You send a fleet to a star and give it a <strong>Remote Mine</strong>
+                            order. That fleet then pulls minerals up from underground deposits over time until its hold is full or the order changes.
+                        </p>
+                        <h4>Why Colonies Still Want Mines</h4>
+                        <p>
+                            A proper colony with mines is the long-term way to keep extracting local mineral wealth. If you keep mining at a
+                            moderate level rather than stripping the world as fast as possible, a colony can continue to draw useful minerals
+                            for a very long time. Remote mining is mainly an alternative for depleted colonies, awkward worlds you do not want
+                            to settle properly, or late-game optimisation.
+                        </p>
+                        <h4>Salvage Types</h4>
+                        <div class="help-icon-list">
+                            <div class="help-icon-list__item">
+                                <span class="mapsalvage help-map-icon" aria-hidden="true"></span>
+                                <span><strong>Salvage</strong> is the general wreckage left behind by destroyed fleets.</span>
+                            </div>
+                            <div class="help-icon-list__item">
+                                <span class="mapsalvage-asteroid help-map-icon" aria-hidden="true"></span>
+                                <span><strong>Asteroid fields</strong> are mineral-rich salvage sites that can simply be looted by transfer.</span>
+                            </div>
+                            <div class="help-icon-list__item">
+                                <span class="mapsalvage-ancient help-map-icon" aria-hidden="true"></span>
+                                <span><strong>Ancient debris</strong> is another recoverable site type, but it poses unique challenges and rewards compared to other salvage types.</span>
+                            </div>
+                        </div>
+                        <h4>Using Asteroid Fields</h4>
+                        <p>
+                            Move a fleet onto the asteroid field and use <strong>Transfer</strong> to load the minerals you want. This is direct
+                            pickup, not remote mining.
+                        </p>
+                        <h4>Practical Early Use</h4>
+                        <p>
+                            If a new colony is short on ironium, a nearby salvage or asteroid site can be a fast way to bootstrap mines and factories.
+                        </p>
+                        </section>
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+    </body>
+</html>

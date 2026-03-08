@@ -1,0 +1,101 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Colony Management Basics</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index single-panel-page">
+        <div class="title-bar">
+            <span class="title">Colony Management Basics</span>
+            <span class="tagline">Early Production Priorities</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_colony_management' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-colony-management">
+                    <h2><span>Colony Management Basics</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                        <h4>Simple Early Rule</h4>
+                        <p>
+                            On young colonies, a safe default priority is usually <strong>mines</strong>, then
+                            <strong>factories</strong>, then <strong>labs</strong>.
+                        </p>
+                        <h4>Mines First</h4>
+                        <p>
+                            Colonies need minerals to grow. Mines pull resources from underground deposits, and without minerals your colony
+                            quickly stalls out on later construction.
+                        </p>
+                        <h4>Factories Next</h4>
+                        <p>
+                            Factories create <strong>BP</strong> (Build Points). Most production orders depend on BP, so factories are what let
+                            a colony accelerate beyond its initial setup.
+                        </p>
+                        <h4>Labs After That</h4>
+                        <p>
+                            Labs matter, but very early colonies often need to become self-supporting before they can spare population and minerals
+                            for research infrastructure. For more detail, see
+                            <a href="{% url 'dj4xol:help_research_labs' %}">Research &amp; Labs</a>.
+                        </p>
+                        <h4>Shipyards</h4>
+                        <p>
+                            Keep at least one shipyard on an important colony. Shipyards are required to build fleets, repair damaged ones,
+                            and refuel fleets in orbit.
+                        </p>
+                        <h4>Staffing Still Matters</h4>
+                        <p>
+                            Infrastructure also needs colonists to work it. If you move too much population away, output and growth can both suffer.
+                        </p>
+                        <h4>Use the Calculator</h4>
+                        <p>
+                            If you want to inspect productivity and staffing more closely, open the
+                            <a href="{% url 'dj4xol:help_colony' %}">Colony Calculator</a>.
+                        </p>
+                        </section>
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                            <a class="action-link" href="{% url 'dj4xol:help_mining_salvage' %}">Next: 104 &raquo;</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+    </body>
+</html>
