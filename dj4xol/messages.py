@@ -26,6 +26,17 @@ def map_coordinate_link(game, x, y, label=None):
     return format_map_link(base_url, x, y, label)
 
 
+def diplomacy_player_link(game, player, label=None):
+    """Format a player/race as a clickable link to diplomacy detail."""
+    from django.urls import reverse
+    if player is None:
+        return escape(label or 'Unknown race')
+    base_url = reverse('dj4xol:diplomacy', args=[game.short_id])
+    target = escape(getattr(player, 'short_id', ''))
+    text = escape(label or getattr(player, 'name', 'Unknown race'))
+    return '<a href="%s?target=%s">%s</a>' % (base_url, target, text)
+
+
 def format_space(x, y):
     return format_space_label(x, y)
 
@@ -1629,6 +1640,28 @@ class FirstContactStarMessageFactory(MessageFactory):
         if self.first_any:
             msg += self.first_contact_suffix
         return msg
+
+
+class DiplomaticStanceChangedMessageFactory(MessageFactory):
+    """Message emitted when another race's stance toward us changes."""
+    category = 'DIPLOMATIC'
+    priority = True
+
+    def __init__(self, game, player, source_player, stance_label_text, message=None):
+        super().__init__(game, player, message, intensity=0.2)
+        self.source_player = source_player
+        self.stance_label_text = stance_label_text
+
+    def format_message(self):
+        race_link = diplomacy_player_link(
+            self.game,
+            self.source_player,
+            label='Race %s' % self.source_player.name,
+        )
+        return '%s has changed their stance with us. They are now %s.' % (
+            race_link,
+            escape(self.stance_label_text),
+        )
 
 
 class HabitableWorldMessageFactory(MessageFactory):

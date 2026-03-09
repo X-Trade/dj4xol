@@ -46,6 +46,7 @@ from .messages import (
     ScannerHabitableWorldRollupMessageFactory,
     SecretResourceDiscoveryMessageFactory,
     AnomalyTargetLostMessageFactory,
+    DiplomaticStanceChangedMessageFactory,
     format_map_object,
     format_location,
     map_coordinate_link,
@@ -58,11 +59,13 @@ from .diplomacy import (
     PERMISSION_SHARE_INTEL,
     PERMISSION_SHIPYARD_REPAIR_RATE,
     build_stance_map,
+    apply_pending_diplomacy_snapshot,
     combat_chance_percent,
     combat_readiness_multiplier,
     ensure_contact_stance_entry,
     player_grants_permission,
     player_permission_value,
+    stance_label,
     stance_towards,
 )
 
@@ -443,6 +446,8 @@ class GameTurn():
     def _process_year(self):
         """Process a single year of game time."""
         self._scanner_sources_by_player_id = {}
+        self._stance_map_by_player_id = {}
+        self._apply_pending_diplomacy_snapshot()
         self.move_comets()
         self.move_wormholes()
         self.decay_anomalies()
@@ -467,6 +472,25 @@ class GameTurn():
         self.generate_reports()
         self.generate_shared_intel_reports()
         self.game.year += 1
+
+    def _apply_pending_diplomacy_snapshot(self):
+        """Apply staged diplomacy updates and notify affected players."""
+        changes = apply_pending_diplomacy_snapshot(self.game)
+        for change in changes:
+            target_player = change.get('target_player')
+            source_player = change.get('source_player')
+            new_stance = change.get('new_stance')
+            if not target_player or not source_player:
+                continue
+            factory = DiplomaticStanceChangedMessageFactory(
+                self.game,
+                target_player,
+                source_player,
+                stance_label(new_stance),
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
 
     @staticmethod
     def _anomaly_stability(anomaly):
