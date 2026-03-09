@@ -1,5 +1,7 @@
 from __future__ import unicode_literals
 
+from math import sqrt
+
 from django.db.models import Q
 
 from .models import Player, PlayerDiplomaticStance, Report
@@ -187,10 +189,50 @@ def stance_label(value):
 def combat_chance_percent(stance_a, stance_b):
     stance_a = normalise_stance(stance_a)
     stance_b = normalise_stance(stance_b)
+    if stance_a == STANCE_HOSTILE and stance_b == STANCE_NEUTRAL:
+        return 98
+    if stance_b == STANCE_HOSTILE and stance_a == STANCE_NEUTRAL:
+        return 98
+    if stance_a == STANCE_HOSTILE and stance_b == STANCE_WARM:
+        return 95
+    if stance_b == STANCE_HOSTILE and stance_a == STANCE_WARM:
+        return 95
+    if stance_a == STANCE_HOSTILE and stance_b == STANCE_ALLIED:
+        return 90
+    if stance_b == STANCE_HOSTILE and stance_a == STANCE_ALLIED:
+        return 90
     if stance_a == STANCE_HOSTILE or stance_b == STANCE_HOSTILE:
         return 100
     score = STANCE_SCORES[stance_a] + STANCE_SCORES[stance_b]
     return COMBINED_SCORE_COMBAT_CHANCES.get(score, 0)
+
+
+def player_persuasion_multiplier(player):
+    if not player:
+        return 1.0
+    race_type = getattr(player, 'race_type', None)
+    try:
+        value = float(getattr(race_type, 'persuasion_multiplier', 1.0))
+    except (TypeError, ValueError):
+        value = 1.0
+    return max(0.01, value)
+
+
+def combined_persuasion_chance_scale(player_a, player_b):
+    persuasion_a = player_persuasion_multiplier(player_a)
+    persuasion_b = player_persuasion_multiplier(player_b)
+    return 1.0 / sqrt(persuasion_a * persuasion_b)
+
+
+def combat_chance_with_persuasion_percent(stance_a, stance_b, player_a, player_b):
+    base_chance = float(combat_chance_percent(stance_a, stance_b))
+    scaled = base_chance * combined_persuasion_chance_scale(player_a, player_b)
+    return max(0, min(100, int(round(scaled))))
+
+
+def combat_chance_modifier_percent(player_a, player_b):
+    modifier = combined_persuasion_chance_scale(player_a, player_b) - 1.0
+    return int(round(modifier * 100.0))
 
 
 def combat_readiness_multiplier(stance_self, stance_other):

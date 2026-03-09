@@ -25,7 +25,7 @@ from ..colony_rules import (
     COLONISTS_PER_JOB,
     BUILDPOINTS_PER_FACTORY,
 )
-from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, Report
+from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, Report, ServerRaceType
 from ..factory import GameFactory
 from ..research import ensure_player_research_rows
 from ..chance_rules import transfer_raid_success_chance
@@ -5716,6 +5716,72 @@ class TestFleetTransferOrders(TestCase):
 
         fleet.refresh_from_db()
         self.assertEqual(fleet.integrity, 100)
+
+    def test_hostile_orbit_hazard_uses_persuasion_bias_on_trigger_chance(self):
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
+        if not defender:
+            other_user = User.objects.create_user('orb_def_persuasion', 'orb_def_persuasion@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(
+                game=game,
+                account=other_account,
+                race_type=attacker.race_type,
+            )
+
+        attacker_type = ServerRaceType.objects.create(
+            code='ODP1',
+            name='Orbit Diplomatic A',
+            enabled=True,
+            description='',
+            persuasion_multiplier=2.0,
+        )
+        defender_type = ServerRaceType.objects.create(
+            code='ODP2',
+            name='Orbit Diplomatic B',
+            enabled=True,
+            description='',
+            persuasion_multiplier=2.0,
+        )
+        attacker.race_type = attacker_type
+        attacker.save(update_fields=['race_type'])
+        defender.race_type = defender_type
+        defender.save(update_fields=['race_type'])
+
+        PlayerDiplomaticStance.objects.create(
+            player=defender,
+            target_player=attacker,
+            stance='HOSTILE',
+        )
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10000
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.defenses = 12
+        star.save(update_fields=[
+            'player', 'colonists', 'mines', 'factories', 'labs', 'shipyards', 'defenses'
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name="Diplomatic Raider",
+            x=star.x,
+            y=star.y,
+            integrity=100,
+            ship_count=2,
+        )
+
+        with patch('dj4xol.turn.luck_ratio_chance', return_value=0.2), \
+             patch('dj4xol.turn.roll_chance', return_value=False) as trigger_roll:
+            GameTurn(game)._resolve_orbital_defense_hazard(star, fleet)
+
+        trigger_roll.assert_called_once_with(0.1)
 
     def test_hostile_orbit_hazard_uses_colony_defense_technology(self):
         from ..models import ResearchCategory, Technology
