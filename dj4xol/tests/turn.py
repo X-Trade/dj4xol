@@ -7,6 +7,7 @@ from ..turn import (
     NOVA_BLACK_HOLE_SPAWN_CHANCE,
     NOVA_STAR_DESTRUCTION_CHANCE,
     YIELD_DEPLETION_RATE,
+    calculate_fleet_defense_multiplier,
     calculate_fleet_strength,
 )
 from ..objectdetails import DetailBuilder
@@ -19,6 +20,7 @@ from ..colony_rules import (
     calculate_employment_percent,
     calculate_economy_percent,
     calculate_available_buildpoints,
+    calculate_effective_defenses,
     calculate_productivity_percent,
     calculate_productivity_multiplier,
     calculate_economy_factor,
@@ -361,6 +363,21 @@ class TestPopulationGrowth(TestCase):
         GameTurn(game).generate_turn()
         homeworld.refresh_from_db()
         self.assertLess(homeworld.colonists, 1000)
+
+    def test_population_growth_multiplier_can_suppress_decline(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        player.race_type.population_growth_multiplier = 0.0
+        player.race_type.save(update_fields=['population_growth_multiplier'])
+        homeworld = player.homeworld
+        homeworld.gravity = 2.0
+        homeworld.temperature = 2.0
+        homeworld.radiation = 2.0
+        homeworld.colonists = 1000
+        homeworld.save()
+        GameTurn(game).generate_turn()
+        homeworld.refresh_from_db()
+        self.assertEqual(homeworld.colonists, 1000)
 
     def test_empty_planet_loses_ownership(self):
         """Planet with zero population loses player ownership."""
@@ -1970,6 +1987,22 @@ class TestEconomicCalculations(TestCase):
         star.factories = 7
         star.colonists = 7000  # Fully staff the factories
         self.assertEqual(calculate_available_buildpoints(star), 7 * BUILDPOINTS_PER_FACTORY)
+
+    def test_available_buildpoints_respects_manufacturing_multiplier(self):
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.factories = 7
+        star.colonists = 7000
+        star.save(update_fields=['factories', 'colonists'])
+        baseline = calculate_available_buildpoints(star)
+        player.race_type.manufacturing_multiplier = 1.5
+        player.race_type.save(update_fields=['manufacturing_multiplier'])
+        star = star.__class__.objects.get(pk=star.pk)
+        self.assertEqual(
+            calculate_available_buildpoints(star),
+            int(baseline * 1.5),
+        )
 
     def test_available_buildpoints_no_factories(self):
         """No factories means no buildpoints."""
@@ -5933,6 +5966,29 @@ class TestFleetTransferOrders(TestCase):
         ).build_detail()
         self.assertEqual(detail['infrastructure']['DefensesTooltip'], '5(+0)')
 
+    def test_owned_star_defenses_tooltip_shows_race_defense_multiplier(self):
+        from ..objectdetails import DetailBuilder
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        player.race_type.defence_multiplier = 1.2
+        player.race_type.save(update_fields=['defence_multiplier'])
+        star = player.homeworld
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.defenses = 10
+        star.colonists = 10000
+        star.save(update_fields=[
+            'mines', 'factories', 'labs', 'shipyards', 'defenses', 'colonists'
+        ])
+
+        detail = DetailBuilder(
+            game, x=star.x, y=star.y, selected=star.short_id, player=player
+        ).build_detail()
+        self.assertEqual(detail['infrastructure']['DefensesTooltip'], '12(+0) (+20%)')
+
     def test_new_fleet_gets_thumbnail_path(self):
         game = default_game(stars=2)
         player = game.players.first()
@@ -8940,6 +8996,36 @@ class TestCombat(TestCase):
         strength2 = calculate_fleet_strength(fleet2, opponent_defence_multiplier=1.0)
         self.assertGreater(strength2, strength1)
 
+    def test_race_combat_multiplier_increases_combat_strength(self):
+        game, player1, player2 = self._create_two_player_game()
+        player1.race_type = ServerRaceType.objects.create(
+            code='ATK1',
+            name='Attackers',
+            enabled=True,
+            description='',
+            combat_multiplier=1.5,
+        )
+        player1.save(update_fields=['race_type'])
+        player2.race_type = ServerRaceType.objects.create(
+            code='ATK0',
+            name='Normals',
+            enabled=True,
+            description='',
+            combat_multiplier=1.0,
+        )
+        player2.save(update_fields=['race_type'])
+        fleet1 = Fleet.objects.create(
+            game=game, player=player1, name="Attack Boosted",
+            x=10, y=10, ship_count=2, integrity=100, offense_level=0.0
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player2, name="Attack Normal",
+            x=10, y=10, ship_count=2, integrity=100, offense_level=0.0
+        )
+        strength1 = calculate_fleet_strength(fleet1, opponent_defence_multiplier=1.0)
+        strength2 = calculate_fleet_strength(fleet2, opponent_defence_multiplier=1.0)
+        self.assertGreater(strength1, strength2)
+
     def test_higher_opponent_defense_reduces_combat_strength(self):
         """Opponent defense multipliers should reduce attacker strength."""
         game, player1, _ = self._create_two_player_game()
@@ -8950,6 +9036,48 @@ class TestCombat(TestCase):
         low_def = calculate_fleet_strength(fleet, opponent_defence_multiplier=1.0)
         high_def = calculate_fleet_strength(fleet, opponent_defence_multiplier=2.0)
         self.assertGreater(low_def, high_def)
+
+    def test_race_combat_multiplier_reduces_incoming_combat_strength_via_fleet_defense(self):
+        game, player1, player2 = self._create_two_player_game()
+        player2.race_type = ServerRaceType.objects.create(
+            code='DEF1',
+            name='Defenders',
+            enabled=True,
+            description='',
+            combat_multiplier=1.5,
+        )
+        player2.save(update_fields=['race_type'])
+        attacker = Fleet.objects.create(
+            game=game, player=player1, name="Attacker",
+            x=10, y=10, ship_count=2, integrity=100, offense_level=1.0
+        )
+        defender = Fleet.objects.create(
+            game=game, player=player2, name="Defender",
+            x=10, y=10, ship_count=2, integrity=100, defense_level=0.0
+        )
+        baseline = calculate_fleet_strength(attacker, opponent_defence_multiplier=1.0)
+        defended = calculate_fleet_strength(
+            attacker,
+            opponent_defence_multiplier=calculate_fleet_defense_multiplier(defender),
+        )
+        self.assertGreater(baseline, defended)
+
+    def test_race_defence_multiplier_strengthens_colony_defenses(self):
+        game = default_game(stars=2)
+        player = game.players.first()
+        player.race_type.defence_multiplier = 1.5
+        player.race_type.save(update_fields=['defence_multiplier'])
+        star = player.homeworld
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.defenses = 10
+        star.colonists = 10000
+        star.save(update_fields=[
+            'mines', 'factories', 'labs', 'shipyards', 'defenses', 'colonists'
+        ])
+        self.assertEqual(calculate_effective_defenses(star), 15.0)
 
     def test_combat_destruction_creates_salvage_and_messages(self):
         """Combat destroys fleets, creates salvage, and sends combat messages."""

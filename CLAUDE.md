@@ -28,6 +28,7 @@ A Django-based 4X space strategy game inspired by Stars!
 - **No boilerplate**: Avoid repetition and irrelevant verbosity.
 - **Sensible defaults**: Models and test fixtures should have sensible defaults so you don't spell out every field.
 - **Single responsibility**: One function, one job. Compose small functions rather than large monolithic ones.
+- **Modifier display semantics**: If a displayed value already includes a modifier, show the modifier in brackets, for example `120BP/Year (+20%)` or `12(+10)`. If the modifier is shown separately and is applied afterwards, show it without brackets, for example `30% -50%`.
 
 ### `_rules` Pattern (Important)
 

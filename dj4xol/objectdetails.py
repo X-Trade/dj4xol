@@ -1027,7 +1027,12 @@ class DetailBuilder():
             return None
 
         factor = calculate_growth_factor(self.player, self.selected_obj)
-        factor *= self.player.race_type.population_growth_multiplier
+        raw_multiplier = getattr(self.player.race_type, 'population_growth_multiplier', 1.0)
+        if raw_multiplier is None:
+            raw_multiplier = 1.0
+        factor *= float(
+            raw_multiplier
+        )
         current = self.selected_obj.colonists
         new_pop = apply_population_change(current, factor)
         return new_pop - current
@@ -1376,10 +1381,23 @@ class DetailBuilder():
                 )
                 modifier = int(round(colony_defense_level * 10.0))
                 defenses_tooltip = f"{effective_defenses}({modifier:+d})"
+                try:
+                    raw_multiplier = getattr(self.player.race_type, 'defence_multiplier', 1.0)
+                    if raw_multiplier is None:
+                        raw_multiplier = 1.0
+                    race_multiplier = float(
+                        raw_multiplier
+                    )
+                except (TypeError, ValueError):
+                    race_multiplier = 1.0
+                if abs(race_multiplier - 1.0) >= 1e-9:
+                    percent = int(round((race_multiplier - 1.0) * 100.0))
+                    defenses_tooltip = f"{defenses_tooltip} ({percent:+d}%)"
             infrastructure = {
                 'Mines': self.selected_obj.mines,
                 'Factories': self.selected_obj.factories,
                 'FactoriesBP': calculate_available_buildpoints(self.selected_obj),
+                'FactoriesTooltip': self._build_factories_tooltip(self.selected_obj),
                 'Labs': self.selected_obj.labs,
                 'LabsRP': calculate_available_researchpoints(self.selected_obj),
                 'Defenses': self.selected_obj.defenses,
@@ -1393,6 +1411,25 @@ class DetailBuilder():
                 'Jobs': {'count': jobs, 'employment': employment},
             }
         return infrastructure
+
+    def _build_factories_tooltip(self, star):
+        base_text = f"{calculate_available_buildpoints(star)}BP/Year"
+        owner = getattr(star, 'player', None)
+        if not owner or not getattr(owner, 'race_type', None):
+            return base_text
+        try:
+            raw_multiplier = getattr(owner.race_type, 'manufacturing_multiplier', 1.0)
+            if raw_multiplier is None:
+                raw_multiplier = 1.0
+            multiplier = float(
+                raw_multiplier
+            )
+        except (TypeError, ValueError):
+            multiplier = 1.0
+        if abs(multiplier - 1.0) < 1e-9:
+            return base_text
+        percent = int(round((multiplier - 1.0) * 100.0))
+        return f"{base_text} ({percent:+d}%)"
 
     def get_production_orders(self):
         """Get production orders for selected star."""

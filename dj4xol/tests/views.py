@@ -634,6 +634,26 @@ class TestGameDetailRendering(TestCase):
         self.assertNotContains(response, 'Travelling at:')
         self.assertNotContains(response, 'Heading:')
 
+    def test_star_detail_factories_tooltip_shows_manufacturing_multiplier(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player.race_type.manufacturing_multiplier = 1.2
+        player.race_type.save(update_fields=['manufacturing_multiplier'])
+        target = player.homeworld
+        target.factories = 5
+        target.colonists = 5000
+        target.save(update_fields=['factories', 'colonists'])
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': target.x, 'y': target.y, 'sel': target.short_id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'BP/Year (+20%)')
+
 
 class TestProfileView(TestCase):
     def test_profile_shows_turned_in_status_for_my_quorum_game(self):

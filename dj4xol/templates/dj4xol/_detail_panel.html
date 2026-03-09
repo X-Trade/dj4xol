@@ -240,10 +240,17 @@
             <div class="detail-row">
                 <span class="env-label">Factories</span>
                 <span class="detail-value">
+                    {% if detail.infrastructure.FactoriesTooltip %}
+                    <span class="has-tooltip"
+                          data-tooltip="{{ detail.infrastructure.FactoriesTooltip }}">
+                        {{ detail.infrastructure.Factories }}
+                    </span>
+                    {% else %}
                     <span class="has-tooltip"
                           data-tooltip="{{ detail.infrastructure.FactoriesBP }}BP/Year">
                         {{ detail.infrastructure.Factories }}
                     </span>
+                    {% endif %}
                 </span>
             </div>
             <div class="detail-row">

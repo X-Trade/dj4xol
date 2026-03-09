@@ -27,7 +27,7 @@
 }
 
 .diplomacy-name {
-    min-width: 100px;
+    min-width: 68px;
     display: block;
     max-width: 120px;
     overflow: hidden;
@@ -78,7 +78,7 @@
     }
 
     .diplomacy-heading {
-        font-size: 0.82em;
+        font-size: 0.65em;
     }
 
     .diplomacy-effects-row {

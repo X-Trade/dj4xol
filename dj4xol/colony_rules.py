@@ -103,7 +103,19 @@ def calculate_effective_defenses(star):
         return 0.0
     employment_ratio = jobs / star.colonists
     effectiveness = 1.0 if employment_ratio <= 1.0 else (1.0 / employment_ratio)
-    return star.defenses * effectiveness
+    defense_multiplier = 1.0
+    player = getattr(star, 'player', None)
+    if player and getattr(player, 'race_type', None):
+        try:
+            raw_multiplier = getattr(player.race_type, 'defence_multiplier', 1.0)
+            if raw_multiplier is None:
+                raw_multiplier = 1.0
+            defense_multiplier = float(
+                raw_multiplier
+            )
+        except (TypeError, ValueError):
+            defense_multiplier = 1.0
+    return star.defenses * effectiveness * defense_multiplier
 
 
 def calculate_available_buildpoints(star):
@@ -119,7 +131,19 @@ def calculate_available_buildpoints(star):
     if employment_ratio <= 0:
         return 0
     productivity = calculate_productivity_multiplier(employment_ratio)
-    return int(star.factories * BUILDPOINTS_PER_FACTORY * productivity)
+    manufacturing_multiplier = 1.0
+    player = getattr(star, 'player', None)
+    if player and getattr(player, 'race_type', None):
+        try:
+            raw_multiplier = getattr(player.race_type, 'manufacturing_multiplier', 1.0)
+            if raw_multiplier is None:
+                raw_multiplier = 1.0
+            manufacturing_multiplier = float(
+                raw_multiplier
+            )
+        except (TypeError, ValueError):
+            manufacturing_multiplier = 1.0
+    return int(star.factories * BUILDPOINTS_PER_FACTORY * productivity * manufacturing_multiplier)
 
 
 def calculate_available_researchpoints(star):
