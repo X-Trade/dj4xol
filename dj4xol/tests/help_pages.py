@@ -24,6 +24,7 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'Fleet Composition')
         self.assertContains(response, 'Research &amp; Labs')
         self.assertContains(response, 'Space Combat')
+        self.assertContains(response, 'Diplomacy')
         self.assertContains(response, 'Invasion')
 
     def test_help_exploration_renders(self):
@@ -59,6 +60,13 @@ class HelpPagesTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Space Combat')
         self.assertContains(response, 'Damage Resolution')
+
+    def test_help_diplomacy_renders(self):
+        response = self.client.get(reverse('dj4xol:help_diplomacy'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Diplomacy')
+        self.assertContains(response, 'Effect on Combat Initiation')
+        self.assertContains(response, 'Readiness Advantage')
 
     def test_help_invasion_renders(self):
         response = self.client.get(reverse('dj4xol:help_invasion'))

@@ -25,7 +25,7 @@ from ..colony_rules import (
     COLONISTS_PER_JOB,
     BUILDPOINTS_PER_FACTORY,
 )
-from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, Report
+from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, Report
 from ..factory import GameFactory
 from ..research import ensure_player_research_rows
 from ..chance_rules import transfer_raid_success_chance
@@ -57,6 +57,60 @@ class TestGameTurn(TestCase):
         game = factory.save()  # No players joined
         with self.assertRaises(Exception):
             GameTurn(game).generate_turn()
+
+    def test_allied_stances_can_prevent_encounter_combat(self):
+        user1 = User.objects.create_user('diplo_combat_1', 'dc1@test.com', 'pass')
+        user2 = User.objects.create_user('diplo_combat_2', 'dc2@test.com', 'pass')
+        account1 = Account.objects.create(django_user=user1, alias='DC1')
+        account2 = Account.objects.create(django_user=user2, alias='DC2')
+        factory = GameFactory()
+        factory.set_map_size(100, 100)
+        factory.set_owner(account1)
+        factory.create_stars(8)
+        game = factory.save()
+        player1 = factory.join_player(account1, get_default_race())
+        player2 = factory.join_player(account2, get_default_race(), invited=True)
+        fleet1 = player1.fleets.first()
+        fleet2 = player2.fleets.first()
+        fleet1.x = fleet2.x = 25
+        fleet1.y = fleet2.y = 25
+        fleet1.save(update_fields=['x', 'y'])
+        fleet2.save(update_fields=['x', 'y'])
+        PlayerDiplomaticStance.objects.create(player=player1, target_player=player2, stance='ALLIED')
+        PlayerDiplomaticStance.objects.create(player=player2, target_player=player1, stance='ALLIED')
+
+        with patch('dj4xol.turn.random.random', return_value=0.99):
+            GameTurn(game)._resolve_battle_at_location(25, 25, [fleet1, fleet2])
+
+        self.assertEqual(Report.objects.filter(game=game, player=player1).count(), 0)
+        self.assertEqual(Report.objects.filter(game=game, player=player2).count(), 0)
+
+    def test_hostile_stances_force_encounter_combat(self):
+        user1 = User.objects.create_user('diplo_combat_3', 'dc3@test.com', 'pass')
+        user2 = User.objects.create_user('diplo_combat_4', 'dc4@test.com', 'pass')
+        account1 = Account.objects.create(django_user=user1, alias='DC3')
+        account2 = Account.objects.create(django_user=user2, alias='DC4')
+        factory = GameFactory()
+        factory.set_map_size(100, 100)
+        factory.set_owner(account1)
+        factory.create_stars(8)
+        game = factory.save()
+        player1 = factory.join_player(account1, get_default_race())
+        player2 = factory.join_player(account2, get_default_race(), invited=True)
+        fleet1 = player1.fleets.first()
+        fleet2 = player2.fleets.first()
+        fleet1.x = fleet2.x = 30
+        fleet1.y = fleet2.y = 30
+        fleet1.save(update_fields=['x', 'y'])
+        fleet2.save(update_fields=['x', 'y'])
+        PlayerDiplomaticStance.objects.create(player=player1, target_player=player2, stance='HOSTILE')
+        PlayerDiplomaticStance.objects.create(player=player2, target_player=player1, stance='HOSTILE')
+
+        with patch('dj4xol.turn.random.random', return_value=0.99):
+            GameTurn(game)._resolve_battle_at_location(30, 30, [fleet1, fleet2])
+
+        self.assertTrue(Report.objects.filter(game=game, player=player1).exists())
+        self.assertTrue(Report.objects.filter(game=game, player=player2).exists())
 
     def test_refuses_if_already_generating(self):
         """Turn generation should fail if is_generating flag is set."""
@@ -3399,6 +3453,10 @@ class TestFirstContactMessages(TestCase):
         game.save()
         player1 = factory.join_player(account1, get_default_race())
         player2 = factory.join_player(account2, get_default_race())
+        player1.default_diplomatic_stance = 'HOSTILE'
+        player2.default_diplomatic_stance = 'HOSTILE'
+        player1.save(update_fields=['default_diplomatic_stance'])
+        player2.save(update_fields=['default_diplomatic_stance'])
         return game, player1, player2
 
     def _create_scanner_fleet(
@@ -3458,6 +3516,57 @@ class TestFirstContactMessages(TestCase):
         GameTurn(game).generate_turn()
         msg = player1.messages.filter(category='DIPLOMATIC', priority=True).order_by('-id').first()
         self.assertIsNotNone(msg)
+
+    def test_first_contact_copies_default_stance_into_new_entry(self):
+        game, player1, player2 = self._create_two_player_game()
+        player1.default_diplomatic_stance = 'WARM'
+        player1.save(update_fields=['default_diplomatic_stance'])
+        x, y = 10, 10
+
+        Fleet.objects.create(
+            game=game, player=player1, name="Scout",
+            x=x, y=y
+        )
+        Fleet.objects.create(
+            game=game, player=player2, name="Stranger",
+            x=x, y=y
+        )
+
+        GameTurn(game).generate_turn()
+
+        row = PlayerDiplomaticStance.objects.get(
+            player=player1,
+            target_player=player2,
+        )
+        self.assertEqual(row.stance, 'WARM')
+
+    def test_in_situ_fleet_contact_does_not_repeat_first_contact_next_turn(self):
+        game, player1, player2 = self._create_two_player_game()
+        player1.default_diplomatic_stance = 'COLD'
+        player1.save(update_fields=['default_diplomatic_stance'])
+        x, y = 10, 10
+
+        Fleet.objects.create(
+            game=game, player=player1, name="Scout",
+            x=x, y=y
+        )
+        Fleet.objects.create(
+            game=game, player=player2, name="Stranger",
+            x=x, y=y
+        )
+
+        GameTurn(game).generate_turn()
+        GameTurn(game).generate_turn()
+
+        self.assertEqual(
+            player1.messages.filter(category='DIPLOMATIC', priority=True).count(),
+            1,
+        )
+        row = PlayerDiplomaticStance.objects.get(
+            player=player1,
+            target_player=player2,
+        )
+        self.assertEqual(row.stance, 'COLD')
 
     def test_advanced_scanner_range_triggers_first_contact_message(self):
         """Advanced scanner intel should trigger first contact once ownership is known."""
@@ -4862,7 +4971,7 @@ class TestFleetTransferOrders(TestCase):
         attacker_race = attacker.race_type
         attacker_race.population_growth_multiplier = 0
         attacker_race.save()
-        defender = Player.objects.exclude(id=attacker.id).first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
         if not defender:
             other_user = User.objects.create_user('inv_def', 'invdef@test.com', 'pass')
             other_account = Account.objects.create(django_user=other_user)
@@ -4935,7 +5044,7 @@ class TestFleetTransferOrders(TestCase):
         game.no_scanners = True
         game.save(update_fields=['no_scanners'])
         attacker = game.players.first()
-        defender = Player.objects.exclude(id=attacker.id).first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
         if not defender:
             other_user = User.objects.create_user('inv_def_destroy', 'invdefd@test.com', 'pass')
             other_account = Account.objects.create(django_user=other_user)
@@ -5000,7 +5109,7 @@ class TestFleetTransferOrders(TestCase):
         attacker_race = attacker.race_type
         attacker_race.population_growth_multiplier = 0
         attacker_race.save()
-        defender = Player.objects.exclude(id=attacker.id).first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
         if not defender:
             other_user = User.objects.create_user('inv_def2', 'invdef2@test.com', 'pass')
             other_account = Account.objects.create(django_user=other_user)
@@ -5053,7 +5162,7 @@ class TestFleetTransferOrders(TestCase):
 
         game = default_game(stars=2)
         attacker = game.players.first()
-        defender = Player.objects.exclude(id=attacker.id).first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
         if not defender:
             other_user = User.objects.create_user('inv_def3', 'invdef3@test.com', 'pass')
             other_account = Account.objects.create(django_user=other_user)
@@ -5103,7 +5212,7 @@ class TestFleetTransferOrders(TestCase):
         def _run_invasion(with_colony_tech):
             game = default_game(stars=2)
             attacker = game.players.first()
-            defender = Player.objects.exclude(id=attacker.id).first()
+            defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
             if not defender:
                 other_user = User.objects.create_user(
                     f'inv_def4_{"tech" if with_colony_tech else "base"}',
@@ -5173,7 +5282,7 @@ class TestFleetTransferOrders(TestCase):
     def test_hostile_orbit_can_take_defense_hazard_damage(self):
         game = default_game(stars=2)
         attacker = game.players.first()
-        defender = Player.objects.exclude(id=attacker.id).first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
         if not defender:
             other_user = User.objects.create_user('orb_def1', 'orbdef1@test.com', 'pass')
             other_account = Account.objects.create(django_user=other_user)
@@ -5220,7 +5329,7 @@ class TestFleetTransferOrders(TestCase):
     def test_hostile_orbit_hazard_respects_trigger_roll(self):
         game = default_game(stars=2)
         attacker = game.players.first()
-        defender = Player.objects.exclude(id=attacker.id).first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
         if not defender:
             other_user = User.objects.create_user('orb_def2', 'orbdef2@test.com', 'pass')
             other_account = Account.objects.create(django_user=other_user)
@@ -5265,7 +5374,7 @@ class TestFleetTransferOrders(TestCase):
         def _run_hazard(with_colony_tech):
             game = default_game(stars=2)
             attacker = game.players.first()
-            defender = Player.objects.exclude(id=attacker.id).first()
+            defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
             if not defender:
                 other_user = User.objects.create_user(
                     f'orb_def3_{"tech" if with_colony_tech else "base"}',
@@ -5528,7 +5637,7 @@ class TestFleetTransferOrders(TestCase):
         game = default_game(stars=2)
         player = game.players.first()
 
-        other_player = Player.objects.exclude(id=player.id).first()
+        other_player = Player.objects.filter(game=game).exclude(id=player.id).first()
         if not other_player:
             other_user = User.objects.create_user('gift_owner', 'gift@test.com', 'pass')
             other_account = Account.objects.create(django_user=other_user)
@@ -6894,7 +7003,7 @@ class TestFleetColoniseOrders(TestCase):
         game = default_game(stars=2)
         player = game.players.first()
 
-        other_player = Player.objects.exclude(id=player.id).first()
+        other_player = Player.objects.filter(game=game).exclude(id=player.id).first()
         if not other_player:
             other_user = User.objects.create_user('other_owner', 'o@test.com', 'pass')
             other_account = Account.objects.create(django_user=other_user)
@@ -8376,6 +8485,10 @@ class TestCombat(TestCase):
         game.save()
         player1 = factory.join_player(account1, get_default_race())
         player2 = factory.join_player(account2, get_default_race())
+        player1.default_diplomatic_stance = 'HOSTILE'
+        player2.default_diplomatic_stance = 'HOSTILE'
+        player1.save(update_fields=['default_diplomatic_stance'])
+        player2.save(update_fields=['default_diplomatic_stance'])
         return game, player1, player2
 
     def test_combat_strength_ship_count_has_diminishing_returns(self):
@@ -8575,6 +8688,10 @@ class TestInterceptPatrolOrders(TestCase):
         game.save()
         player1 = factory.join_player(account1, get_default_race())
         player2 = factory.join_player(account2, get_default_race())
+        player1.default_diplomatic_stance = 'HOSTILE'
+        player2.default_diplomatic_stance = 'HOSTILE'
+        player1.save(update_fields=['default_diplomatic_stance'])
+        player2.save(update_fields=['default_diplomatic_stance'])
         return game, player1, player2
 
     def test_patrol_repeat_appends_new_patrol(self):

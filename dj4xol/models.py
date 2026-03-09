@@ -920,6 +920,14 @@ class ServerRace(UUIDMixin, HabitabilityMixin):
 
 class Player(AbstractGameObject, HabitabilityMixin):
     """A player instance in a game, with their chosen race."""
+    STANCE_CHOICES = [
+        ('HOSTILE', 'Hostile'),
+        ('COLD', 'Cold'),
+        ('NEUTRAL', 'Neutral'),
+        ('WARM', 'Warm'),
+        ('ALLIED', 'Allied'),
+    ]
+
     account = models.ForeignKey(Account, related_name="players",
                                 null=True, default=None,
                                 on_delete=models.SET_NULL)
@@ -950,6 +958,11 @@ class Player(AbstractGameObject, HabitabilityMixin):
     discovered_resource_x = models.BooleanField(default=False)
     discovered_resource_y = models.BooleanField(default=False)
     discovered_resource_z = models.BooleanField(default=False)
+    default_diplomatic_stance = models.CharField(
+        max_length=8,
+        choices=STANCE_CHOICES,
+        default='NEUTRAL',
+    )
 
     def save(self, *args, **kwargs):
         profanity_filter = profanity_filter_settings()
@@ -1003,6 +1016,31 @@ class PlayerNote(models.Model):
     class Meta:
         ordering = ['note_id']
         unique_together = [['player', 'note_id']]
+
+
+class PlayerDiplomaticStance(models.Model):
+    player = models.ForeignKey(
+        Player, related_name='diplomatic_stances', on_delete=models.CASCADE
+    )
+    target_player = models.ForeignKey(
+        Player, related_name='diplomatic_stances_targeted_by', on_delete=models.CASCADE
+    )
+    stance = models.CharField(
+        max_length=8,
+        choices=Player.STANCE_CHOICES,
+        default='NEUTRAL',
+    )
+
+    class Meta:
+        unique_together = [['player', 'target_player']]
+
+    def save(self, *args, **kwargs):
+        if self.player_id and self.target_player_id:
+            if self.player_id == self.target_player_id:
+                raise ValidationError('Players cannot set diplomacy toward themselves.')
+            if self.player.game_id != self.target_player.game_id:
+                raise ValidationError('Diplomacy targets must be in the same game.')
+        super(PlayerDiplomaticStance, self).save(*args, **kwargs)
 
 
 class FleetOrders(AbstractGameObject):

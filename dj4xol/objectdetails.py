@@ -523,6 +523,10 @@ class DetailBuilder():
                 detail['y'] = self.selected_obj.y
                 detail['heading'] = self.selected_obj.heading
                 detail['travel_warp'] = self._fleet_travel_warp(self.selected_obj)
+            if self._should_show_live_fleet_identity(self.selected_obj, data):
+                detail['name'] = self.selected_obj.name
+                detail['player'] = self.selected_obj.owner_display_name
+                detail['owner_known'] = True
             if 'ship_count' in data:
                 detail['fleet_cargo'] = {
                     'ship_count': data.get('ship_count'),
@@ -786,6 +790,8 @@ class DetailBuilder():
         report_tier = data.get('report_tier')
         if report_tier == 'basic':
             if target_type == 'fleet':
+                if self._should_show_live_fleet_identity(obj, data):
+                    return obj.name or f"{obj.__class__.__name__} {obj.id}"
                 return format_basic_unknown_fleet_name(obj)
             if (
                 target_type == 'salvage' and
@@ -861,6 +867,51 @@ class DetailBuilder():
             fleet,
             self.player,
             sources=self._scanner_sources,
+        )
+
+    def _player_has_persistent_contact_with_owner(self, owner):
+        """Return True when viewer has already resolved this player's identity."""
+        if not self.player or not owner:
+            return False
+        if owner.id == self.player.id:
+            return True
+
+        from dj4xol.models import PlayerDiplomaticStance
+
+        if PlayerDiplomaticStance.objects.filter(
+            player=self.player,
+            target_player=owner,
+        ).exists():
+            return True
+
+        for report in Report.objects.filter(
+            player=self.player,
+            target_type__in=['fleet', 'star'],
+        ).order_by('id'):
+            try:
+                data = report.get_report_data()
+            except Exception:
+                continue
+            if data.get('player_name') == owner.name:
+                return True
+        return False
+
+    def _should_show_live_fleet_identity(self, fleet, report_data=None):
+        """Return True when a no-scanners fleet should keep resolved identity."""
+        if not fleet or not isinstance(fleet, Fleet):
+            return False
+        if self.spectator_mode or self.admin_view:
+            return True
+        if not self.player:
+            return False
+        if fleet.player_id == self.player.id:
+            return True
+        if not getattr(self.game, 'no_scanners', False):
+            return False
+        if report_data and report_data.get('player_name'):
+            return True
+        return self._player_has_persistent_contact_with_owner(
+            getattr(fleet, 'player', None)
         )
 
     def _fleet_travel_warp(self, fleet):

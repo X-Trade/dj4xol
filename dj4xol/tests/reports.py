@@ -1550,6 +1550,56 @@ class NoScannerReportTierTest(TestCase):
         self.assertNotIn('offense_modifier', data)
         self.assertNotIn('has_bombs', data)
 
+    def test_no_scanners_basic_fleet_report_keeps_identity_after_contact(self):
+        x = self.enemy_star.x
+        y = self.enemy_star.y
+        own_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Contact Fleet',
+            x=x,
+            y=y,
+            basic_scanner_range=5,
+            advanced_scanner_range=0,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Vector Ghost',
+            x=x,
+            y=y,
+            ship_count=4,
+            integrity=90,
+        )
+
+        turn = GameTurn(self.game)
+        turn.first_contact_checks()
+        turn.generate_reports()
+
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        )
+        self.assertEqual(report.get_report_data().get('report_tier'), 'basic')
+        self.assertIsNone(report.get_report_data().get('player_name'))
+
+        own_fleet.delete()
+
+        detail = DetailBuilder(
+            self.game,
+            x=x,
+            y=y,
+            selected=enemy_fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+
+        self.assertEqual(detail.get('report_tier'), 'basic')
+        self.assertEqual(detail.get('name'), 'Vector Ghost')
+        self.assertEqual(detail.get('player'), self.player2.name)
+        self.assertTrue(detail.get('owner_known'))
+
     def test_no_scanners_basic_visit_records_anomaly_type(self):
         anomaly = Anomaly.objects.create(
             game=self.game,

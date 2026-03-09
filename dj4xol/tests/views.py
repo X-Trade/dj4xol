@@ -11,6 +11,8 @@ from ..models import (
     FleetOrders,
     GameMessage,
     GameInvitation,
+    Player,
+    PlayerDiplomaticStance,
     ProductionOrder,
     Report,
     ResearchCategory,
@@ -21,6 +23,7 @@ from ..models import (
 )
 from ..forms import JoinGameForm, NewGameForm
 from ..research import ensure_player_research_rows
+from ..diplomacy import combat_chance_percent, combat_readiness_multiplier
 from ..turn import (
     GameTurn,
     format_basic_hidden_salvage_name,
@@ -1653,6 +1656,143 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, 'Create Fleet')
         self.assertContains(response, 'Create Anomaly')
         self.assertNotContains(response, 'Debug:')
+
+
+class TestDiplomacyView(TestCase):
+    def test_diplomacy_page_lists_contact_and_default(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_account_user = User.objects.create_user('diplo_other', 'diplo_other@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_account_user, alias='DIP2')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Other Race',
+            plural_name='Other Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Default')
+        self.assertContains(response, other_player.name)
+        self.assertContains(response, 'Encounter Combat')
+        self.assertNotContains(response, 'Update Standing')
+
+    def test_diplomacy_post_updates_default_and_specific_stance(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_account_user = User.objects.create_user('diplo_target', 'diplo_target@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_account_user, alias='DIP3')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Target Race',
+            plural_name='Target Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'advanced',
+            }),
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'stance_default': 'COLD',
+                'stance_%s' % other_player.short_id: 'ALLIED',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        player.refresh_from_db()
+        self.assertEqual(player.default_diplomatic_stance, 'COLD')
+        row = PlayerDiplomaticStance.objects.get(player=player, target_player=other_player)
+        self.assertEqual(row.stance, 'ALLIED')
+
+    def test_diplomacy_page_lists_contact_from_stance_row_without_report(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_account_user = User.objects.create_user('diplo_stance_only', 'diplo_stance_only@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_account_user, alias='DIP4')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Stance Race',
+            plural_name='Stance Races',
+            race_type=race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=player,
+            target_player=other_player,
+            stance='COLD',
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:diplomacy', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Stance Race')
+
+    def test_diplomacy_chance_scale_matches_anchor_values(self):
+        self.assertEqual(combat_chance_percent('HOSTILE', 'HOSTILE'), 100)
+        self.assertEqual(combat_chance_percent('HOSTILE', 'COLD'), 100)
+        self.assertEqual(combat_chance_percent('HOSTILE', 'ALLIED'), 100)
+        self.assertEqual(combat_chance_percent('NEUTRAL', 'NEUTRAL'), 30)
+        self.assertEqual(combat_chance_percent('NEUTRAL', 'WARM'), 8)
+        self.assertEqual(combat_chance_percent('WARM', 'WARM'), 1)
+        self.assertEqual(combat_chance_percent('ALLIED', 'ALLIED'), 0)
+
+    def test_diplomacy_readiness_modifier_favors_more_hostile_side(self):
+        self.assertEqual(combat_readiness_multiplier('HOSTILE', 'ALLIED'), 1.4)
+        self.assertEqual(combat_readiness_multiplier('ALLIED', 'HOSTILE'), 0.6)
+        self.assertEqual(combat_readiness_multiplier('NEUTRAL', 'NEUTRAL'), 1.0)
 
     def test_fleet_order_panel_shows_give_fleet_option(self):
         game = default_game(stars=5, fleets=1)

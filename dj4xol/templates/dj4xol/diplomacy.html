@@ -1,0 +1,164 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Diplomacy - {{ game.name }}</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/research/css/research.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/diplomacy/css/diplomacy.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+    </head>
+    <body{% if user_theme %} class="{{ user_theme }}"{% endif %}>
+        <div class="title-bar">
+            <span class="title">{{ game.name }}</span>
+            <span class="year"><span class="year-prefix">Year </span><span class="year-value">{{ game.year }}</span></span>
+            <span class="turn-status">
+                {% if game.turn_scheme == 'HOURLY' or game.turn_scheme == 'DAILY' or game.turn_scheme == 'WEEKLY' %}
+                    <span class="turn-prefix">Next turn: </span>
+                    {% if game.next_generation %}
+                    <span class="turn-value" id="next-turn-countdown" data-next-turn-iso="{{ game.next_generation|date:'c' }}">pending</span>
+                    {% else %}
+                    <span class="turn-value">pending</span>
+                    {% endif %}
+                {% elif game.turn_scheme == 'QUORUM' %}
+                    {% if player.turned_in %}
+                        <span class="status-done">Turned in</span>
+                    {% else %}
+                        <form method="post" action="{% url 'dj4xol:turn_in' game.short_id %}" style="display:inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="return_to" value="diplomacy">
+                            <input type="hidden" name="target" value="{{ selected_target }}">
+                            <button type="submit">Turn In</button>
+                        </form>
+                    {% endif %}
+                    ({{ game.players.all|length }} players)
+                {% elif game.turn_scheme == 'OWNER' and is_owner %}
+                    <form method="post" action="{% url 'dj4xol:generate_turn' game.short_id %}" style="display:inline">
+                        {% csrf_token %}
+                        <button type="submit">Generate Turn</button>
+                    </form>
+                {% endif %}
+            </span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='diplomacy' game=game %}
+        </div>
+        <div class="research-columns diplomacy-columns">
+            <div class="research-left diplomacy-left">
+                <div class="panel no-transition open" data-panel="stances">
+                    <h2><span>Diplomatic Standing</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack research-panel-body">
+                        <form method="post" class="panel-scrollable-list diplomacy-form" id="diplomacy-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="target" value="{{ selected_target }}" id="diplomacy-target-input">
+                            <div class="diplomacy-headings">
+                                <span class="diplomacy-headings-race">Race</span>
+                                {% for value, label in stance_choices %}
+                                <span class="diplomacy-heading">{{ label }}</span>
+                                {% endfor %}
+                            </div>
+                            {% for row in rows %}
+                            <div class="allocation-row diplomacy-row">
+                                <a href="?target={{ row.short_id }}" class="allocation-name diplomacy-name{% if row.selected %} selected{% endif %}">{{ row.name }}</a>
+                                <div class="allocation-control diplomacy-control">
+                                    {% for value, label in stance_choices %}
+                                    <label class="diplomacy-radio">
+                                        <input type="radio"
+                                               name="stance_{{ row.short_id }}"
+                                               value="{{ value }}"
+                                               data-target="{{ row.short_id }}"
+                                               {% if row.stance == value %}checked{% endif %}
+                                               {% if player.turned_in %}disabled{% endif %}>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="research-right diplomacy-right">
+                <div class="panel no-transition open" data-panel="details">
+                    <h2><span>Detail{% if detail and not detail.is_default %} - {{ detail.name }}{% endif %}</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack research-panel-body">
+                        <section class="research-detail-body panel-scrollable-text">
+                            <div class="research-detail-kv">
+                                <div class="detail-row">
+                                    <span class="env-label">Name</span>
+                                    <span class="detail-value">{{ detail.name }}</span>
+                                </div>
+                                {% if detail.is_default %}
+                                <div class="detail-row">
+                                    <span class="env-label">Applies To</span>
+                                    <span class="detail-value">Used as your starting standing when you first encounter an unknown race, and for any race without a specific override.</span>
+                                </div>
+                                {% else %}
+                                <div class="detail-row">
+                                    <span class="env-label">Their Stance</span>
+                                    <span class="detail-value">{{ detail.their_stance }}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="env-label">Our Stance</span>
+                                    <span class="detail-value">{{ detail.our_stance }}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="env-label">Encounter Combat</span>
+                                    <span class="detail-value">{{ detail.combat_chance }}%</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <hr class="detail-divider">
+                            <h4>Current Effects</h4>
+                            {% if detail.is_default %}
+                            <p>This is the default standing applied when you first make contact with an unknown race, and it remains in effect unless you later set a specific override.</p>
+                            {% else %}
+                            <p>When your fleets encounter {{ detail.name }}, combat rolls are based on both sides' current standings.</p>
+                            <p>Additional diplomacy benefits and penalties will be listed here in a later update.</p>
+                            {% endif %}
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+        (function() {
+            var hamburger = document.getElementById('hamburger-btn');
+            var dropdown = document.getElementById('nav-dropdown');
+            if (!hamburger || !dropdown) {
+                return;
+            }
+            hamburger.addEventListener('click', function(e) {
+                e.stopPropagation();
+                dropdown.classList.toggle('open');
+                hamburger.classList.toggle('open');
+            });
+            document.addEventListener('click', function(e) {
+                if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                    dropdown.classList.remove('open');
+                    hamburger.classList.remove('open');
+                }
+            });
+        })();
+        (function() {
+            var form = document.getElementById('diplomacy-form');
+            var targetInput = document.getElementById('diplomacy-target-input');
+            if (!form || !targetInput) {
+                return;
+            }
+            var radios = form.querySelectorAll('input[type="radio"][data-target]');
+            Array.prototype.forEach.call(radios, function(radio) {
+                radio.addEventListener('change', function() {
+                    targetInput.value = radio.getAttribute('data-target') || 'default';
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.submit();
+                    }
+                });
+            });
+        })();
+        </script>
+    </body>
+</html>
