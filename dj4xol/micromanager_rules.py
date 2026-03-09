@@ -64,8 +64,11 @@ def _projected_population(player, star):
     if population <= 0 or not player or not getattr(player, 'race_type', None):
         return population
     factor = calculate_growth_factor(player, star)
+    raw_multiplier = getattr(player.race_type, 'population_growth_multiplier', 1.0)
+    if raw_multiplier is None:
+        raw_multiplier = 1.0
     factor *= float(
-        getattr(player.race_type, 'population_growth_multiplier', 1.0) or 1.0
+        raw_multiplier
     )
     if factor <= 0:
         return population

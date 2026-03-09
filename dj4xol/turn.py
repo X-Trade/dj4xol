@@ -396,7 +396,7 @@ def calculate_fleet_attack_multiplier(fleet):
 
 def calculate_fleet_defense_multiplier(fleet):
     """Return combined defense multiplier from race + fleet tech."""
-    race_mult = fleet.player.race_type.defence_multiplier
+    race_mult = fleet.player.race_type.combat_multiplier
     return race_mult * tech_level_to_multiplier(fleet.defense_level)
 
 
@@ -4594,7 +4594,10 @@ class GameTurn():
         """Return colony defense multiplier including tech and fixed homeworld bonus."""
         if defender is None:
             return 1.0
-        defender_defence_mult = float(getattr(defender.race_type, 'defence_multiplier', 1.0) or 1.0)
+        raw_defence_mult = getattr(defender.race_type, 'defence_multiplier', 1.0)
+        if raw_defence_mult is None:
+            raw_defence_mult = 1.0
+        defender_defence_mult = float(raw_defence_mult)
         defender_defence_mult *= tech_level_to_multiplier(get_player_colony_defense_level(defender))
         if star is not None and bool(getattr(defender, 'fixed_homeworld', False)):
             if int(getattr(defender, 'homeworld_id', 0) or 0) == int(getattr(star, 'id', 0) or 0):
@@ -5771,7 +5774,12 @@ class GameTurn():
             hab_factor = calculate_habitability_factor(player, star)
 
             factor = calculate_growth_factor(player, star)
-            factor *= player.race_type.population_growth_multiplier
+            raw_multiplier = getattr(player.race_type, 'population_growth_multiplier', 1.0)
+            if raw_multiplier is None:
+                raw_multiplier = 1.0
+            factor *= float(
+                raw_multiplier
+            )
             star.colonists = apply_population_change(star.colonists, factor)
             change = star.colonists - old_pop
 

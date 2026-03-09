@@ -1376,7 +1376,10 @@ def build_research_budget(player):
     lab_generated_base = 0
     converted_rp_base = 0
     leftover_bonus_rp = 0
-    research_multiplier = float(getattr(player.race_type, 'research_multiplier', 1.0) or 1.0)
+    raw_multiplier = getattr(player.race_type, 'research_multiplier', 1.0)
+    if raw_multiplier is None:
+        raw_multiplier = 1.0
+    research_multiplier = float(raw_multiplier)
     for star in stars:
         total_labs += star.labs
         lab_generated_base += int(calculate_available_researchpoints(star))
