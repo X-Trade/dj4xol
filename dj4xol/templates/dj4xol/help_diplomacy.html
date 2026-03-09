@@ -1,0 +1,116 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Diplomacy Help</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index single-panel-page">
+        <div class="title-bar">
+            <span class="title">Diplomacy</span>
+            <span class="tagline">Standings &amp; Contact Rules</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_diplomacy' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-diplomacy">
+                    <h2><span>Diplomacy</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                        <p>
+                            The Diplomacy screen lets you choose a standing toward every race you have encountered, plus a default standing for unknown races.
+                            Your default is copied into a new diplomacy entry the first time you identify another race.
+                        </p>
+                        <p>
+                            Standings are currently used only for combat initiation. Later updates can attach additional effects to warmer or more hostile relations.
+                        </p>
+                        <h4>First Contact &amp; Defaults</h4>
+                        <p>
+                            When you make first contact with a race, the game creates a specific diplomacy row for that race using your current default standing.
+                            After that, changing the default does not retroactively change existing race-specific entries.
+                        </p>
+                        <p>
+                            Each empire keeps its own standings. Your setting toward another race can differ from their setting toward you.
+                        </p>
+                        <h4>Effect on Combat Initiation</h4>
+                        <p>
+                            When fleets from two races meet, the game compares both standings and rolls for combat.
+                            Any encounter involving <strong>Hostile</strong> is guaranteed to escalate into combat.
+                        </p>
+                        <table class="detail-table">
+                            <thead>
+                                <tr class="detail-table-section">
+                                    <th>You \ Them</th>
+                                    <th>Hostile</th>
+                                    <th>Cold</th>
+                                    <th>Neutral</th>
+                                    <th>Warm</th>
+                                    <th>Allied</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><th>Hostile</th><td>100%</td><td>100%</td><td>100%</td><td>100%</td><td>100%</td></tr>
+                                <tr><th>Cold</th><td>100%</td><td>70%</td><td>50%</td><td>30%</td><td>8%</td></tr>
+                                <tr><th>Neutral</th><td>100%</td><td>50%</td><td>30%</td><td>8%</td><td>1%</td></tr>
+                                <tr><th>Warm</th><td>100%</td><td>30%</td><td>8%</td><td>1%</td><td>0%</td></tr>
+                                <tr><th>Allied</th><td>100%</td><td>8%</td><td>1%</td><td>0%</td><td>0%</td></tr>
+                            </tbody>
+                        </table>
+                        <h4>Readiness Advantage</h4>
+                        <p>
+                            If combat starts between mismatched standings, the more hostile side gains a readiness advantage and the less hostile side suffers a matching disadvantage.
+                            This represents one side approaching contact more aggressively while the other is less prepared for violence.
+                        </p>
+                        <p>
+                            In practical terms, a strongly hostile empire is more likely to strike first and perform better in opening contact than a race that expected a neutral or friendly meeting.
+                        </p>
+                        <h4>Current Limits</h4>
+                        <p>
+                            Diplomacy currently affects whether a fleet encounter turns into combat and gives the more hostile side an edge when it does.
+                            It does not yet change trade, scanner sharing, movement rights, or other strategic systems.
+                        </p>
+                        </section>
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+    </body>
+</html>

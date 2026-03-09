@@ -42,6 +42,14 @@ from .research import (
     get_starting_tech_balance_costs, build_production_cost_entries,
     get_player_available_production_orders,
 )
+from .diplomacy import (
+    STANCE_CHOICES,
+    combat_chance_percent,
+    encountered_players,
+    stance_label,
+    stance_towards,
+    update_player_stances,
+)
 from .technology_thumbnails import (
     get_technology_thumbnail_initial_index,
     get_technology_thumbnail_path,
@@ -1103,6 +1111,12 @@ def _redirect_preserving_selection(request, game, suppress_autolocate=False):
         if category:
             url = '%s?%s' % (url, urlencode({'category': category}))
         return redirect(url)
+    if return_to == 'diplomacy':
+        url = reverse('dj4xol:diplomacy', kwargs={'game_short_id': game.short_id})
+        target = request.POST.get('target') or request.GET.get('target')
+        if target:
+            url = '%s?%s' % (url, urlencode({'target': target}))
+        return redirect(url)
 
     url = reverse('dj4xol:game', kwargs={'game_short_id': game.short_id})
     params = {k: request.POST.get(k) or request.GET.get(k)
@@ -1895,6 +1909,14 @@ def help_space_combat(request):
 
 
 @registration_required()
+def help_diplomacy(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_diplomacy.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
 def help_invasion(request):
     account = request.user.dj4xol_account
     return render(request, 'dj4xol/help_invasion.html', {
@@ -2339,6 +2361,88 @@ def research(request, game_short_id):
         'next_level_items': data['next_level_items'],
         'recently_unlocked_items': data['recently_unlocked_items'],
         'singular_research': player.singular_research,
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@player_only_view()
+def diplomacy(request, game_short_id):
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+
+    contact_players = encountered_players(player)
+    selected_target = request.POST.get('target') or request.GET.get('target') or 'default'
+
+    if request.method == 'POST' and not player.turned_in:
+        stance_updates = {}
+        for other in contact_players:
+            key = 'stance_%s' % other.short_id
+            if key in request.POST:
+                stance_updates[other.short_id] = request.POST.get(key)
+        update_player_stances(
+            player,
+            request.POST.get('stance_default'),
+            stance_updates,
+        )
+        url = reverse('dj4xol:diplomacy', kwargs={'game_short_id': game.short_id})
+        if selected_target:
+            url = '%s?%s' % (url, urlencode({'target': selected_target}))
+        return redirect(url)
+
+    own_stance_map = {other.id: stance_towards(player, other) for other in contact_players}
+    rows = [{
+        'short_id': 'default',
+        'name': 'Default',
+        'stance': getattr(player, 'default_diplomatic_stance', 'NEUTRAL'),
+        'selected': selected_target == 'default',
+        'is_default': True,
+    }]
+    for other in contact_players:
+        rows.append({
+            'short_id': other.short_id,
+            'name': other.name,
+            'stance': own_stance_map[other.id],
+            'selected': selected_target == other.short_id,
+            'is_default': False,
+        })
+
+    selected_player = None
+    if selected_target and selected_target != 'default':
+        selected_player = next(
+            (other for other in contact_players if other.short_id == selected_target),
+            None,
+        )
+    if selected_target != 'default' and selected_player is None:
+        selected_target = 'default'
+
+    if selected_player:
+        their_stance = stance_towards(selected_player, player)
+        our_stance = own_stance_map.get(selected_player.id, stance_towards(player, selected_player))
+        detail = {
+            'name': selected_player.name,
+            'their_stance': stance_label(their_stance),
+            'our_stance': stance_label(our_stance),
+            'combat_chance': combat_chance_percent(our_stance, their_stance),
+            'is_default': False,
+        }
+    else:
+        detail = {
+            'name': 'Default Stance',
+            'their_stance': None,
+            'our_stance': stance_label(player.default_diplomatic_stance),
+            'combat_chance': None,
+            'is_default': True,
+        }
+
+    return render(request, 'dj4xol/diplomacy.html', {
+        'game': game,
+        'player': player,
+        'is_owner': account == game.owner,
+        'rows': rows,
+        'selected_target': selected_target,
+        'detail': detail,
+        'stance_choices': STANCE_CHOICES,
         'user_theme': account.theme if account else 'classic',
     })
 

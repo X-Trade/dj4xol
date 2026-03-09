@@ -51,6 +51,13 @@ from .messages import (
     map_coordinate_link,
 )
 import random
+from .diplomacy import (
+    build_stance_map,
+    combat_chance_percent,
+    combat_readiness_multiplier,
+    ensure_contact_stance_entry,
+    stance_towards,
+)
 
 from .mineral_rules import ALL_RESOURCE_KEYS, random_asteroid_field_minerals, random_ancient_debris_minerals
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_name, get_secret_resource_label
@@ -406,6 +413,7 @@ class GameTurn():
         self._scanner_sources_by_player_id = {}
         self._first_contact_sent = set()
         self._first_contact_any_sent = set()
+        self._stance_map_by_player_id = {}
 
     def generate_turn(self):
         """Generate a turn for the game. Requires at least one player."""
@@ -2224,10 +2232,16 @@ class GameTurn():
         exclude_target=None,
     ):
         """Return True if player has already resolved ownership for other_player."""
-        from .models import Fleet, Report, Star
+        from .models import Fleet, PlayerDiplomaticStance, Report, Star
 
         if not player or not other_player or player.id == other_player.id:
             return False
+
+        if PlayerDiplomaticStance.objects.filter(
+            player=player,
+            target_player=other_player,
+        ).exists():
+            return True
 
         exclude_target = exclude_target or (None, None)
         reports = Report.objects.filter(
@@ -2302,6 +2316,7 @@ class GameTurn():
         msg = factory.new_message()
         msg.year = self.game.year
         msg.save()
+        ensure_contact_stance_entry(player, other_player)
         self._first_contact_sent.add(pair_key)
         if first_any:
             self._first_contact_any_sent.add(player.id)
@@ -2319,6 +2334,15 @@ class GameTurn():
         players = sorted(fleets_by_player.keys(), key=lambda p: p.id)
         if len(players) < 2:
             return
+
+        combatant_players = self._combatants_for_location(players)
+        if len(combatant_players) < 2:
+            return
+        fleets_by_player = {
+            player: fleets_by_player[player]
+            for player in combatant_players
+        }
+        players = sorted(fleets_by_player.keys(), key=lambda p: p.id)
 
         strength_by_player = {}
         for player in players:
@@ -2338,14 +2362,22 @@ class GameTurn():
                     for f in opponent_fleets
                 ) / float(total_enemy_ships)
                 opponent_defence = weighted_enemy_def
+                diplomacy_attack_scale = sum(
+                    self._combat_readiness_multiplier(player, f.player) *
+                    max(1, f.ship_count)
+                    for f in opponent_fleets
+                ) / float(total_enemy_ships)
             else:
                 opponent_defence = 1.0
+                diplomacy_attack_scale = 1.0
             strength_by_player[player] = sum(
                 calculate_fleet_strength(
                     fleet,
                     opponent_defence,
-                    attack_roll_scale=roll_attack_scale(
+                    attack_roll_scale=(
+                        roll_attack_scale(
                         getattr(fleet.player.race_type, 'luck_multiplier', 1.0)
+                        ) * diplomacy_attack_scale
                     ),
                 )
                 for fleet in fleets_by_player[player]
@@ -2389,6 +2421,58 @@ class GameTurn():
             msg = factory.new_message()
             msg.year = self.game.year
             msg.save()
+
+    def _stance_map_for_player(self, player):
+        if not player:
+            return {}
+        if player.id not in self._stance_map_by_player_id:
+            self._stance_map_by_player_id[player.id] = build_stance_map(player)
+        return self._stance_map_by_player_id[player.id]
+
+    def _players_should_engage(self, player_a, player_b):
+        if not player_a or not player_b or player_a.id == player_b.id:
+            return False
+        stance_a = stance_towards(
+            player_a,
+            player_b,
+            stance_map=self._stance_map_for_player(player_a),
+        )
+        stance_b = stance_towards(
+            player_b,
+            player_a,
+            stance_map=self._stance_map_for_player(player_b),
+        )
+        chance = combat_chance_percent(stance_a, stance_b)
+        if chance >= 100:
+            return True
+        if chance <= 0:
+            return False
+        return (random.random() * 100.0) < float(chance)
+
+    def _combat_readiness_multiplier(self, player_a, player_b):
+        if not player_a or not player_b or player_a.id == player_b.id:
+            return 1.0
+        stance_a = stance_towards(
+            player_a,
+            player_b,
+            stance_map=self._stance_map_for_player(player_a),
+        )
+        stance_b = stance_towards(
+            player_b,
+            player_a,
+            stance_map=self._stance_map_for_player(player_b),
+        )
+        return combat_readiness_multiplier(stance_a, stance_b)
+
+    def _combatants_for_location(self, players):
+        combatants = set()
+        players = [player for player in players if player is not None]
+        for idx, player_a in enumerate(players):
+            for player_b in players[idx + 1:]:
+                if self._players_should_engage(player_a, player_b):
+                    combatants.add(player_a)
+                    combatants.add(player_b)
+        return combatants
 
     def _create_combat_encounter_reports(self, x, y):
         """Ensure surviving fleets get encounter reports on opposing fleets."""

@@ -39,6 +39,7 @@ urlpatterns = [
     url(r'^help/anomalies/$', views.help_anomalies, name='help_anomalies'),
     url(r'^help/secret-resources/$', views.help_secret_resources, name='help_secret_resources'),
     url(r'^help/space-combat/$', views.help_space_combat, name='help_space_combat'),
+    url(r'^help/diplomacy/$', views.help_diplomacy, name='help_diplomacy'),
     url(r'^help/invasion/$', views.help_invasion, name='help_invasion'),
     url(r'^help/technology/$', views.help_technology, name='help_technology'),
     url(r'^help/version-history/$', views.help_version_history, name='help_version_history'),
@@ -64,5 +65,6 @@ urlpatterns = [
     url(r'^(?P<game_short_id>[0-9a-z]{8})/objects-at/(?P<x>\d+)/(?P<y>\d+)/$', views.objects_at_location, name='objects_at_location'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/messages/$', views.message_history, name='message_history'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/research/$', views.research, name='research'),
+    url(r'^(?P<game_short_id>[0-9a-z]{8})/diplomacy/$', views.diplomacy, name='diplomacy'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/rename/(?P<object_short_id>[0-9a-z]{12})/$', views.rename_object, name='rename_object'),
 ]
