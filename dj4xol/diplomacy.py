@@ -205,6 +205,15 @@ def player_default_stance(player):
     return normalise_stance(getattr(player, 'default_diplomatic_stance', DEFAULT_STANCE))
 
 
+def player_pending_default_stance(player):
+    if not player:
+        return DEFAULT_STANCE
+    pending = getattr(player, 'pending_default_diplomatic_stance', None)
+    if pending in (None, ''):
+        pending = getattr(player, 'default_diplomatic_stance', DEFAULT_STANCE)
+    return normalise_stance(pending)
+
+
 def stance_permission_profile(stance):
     return STANCE_PERMISSION_PROFILES[normalise_stance(stance)]
 
@@ -225,6 +234,15 @@ def build_stance_map(player):
         return {}
     return {
         row.target_player_id: normalise_stance(row.stance)
+        for row in PlayerDiplomaticStance.objects.filter(player=player)
+    }
+
+
+def build_pending_stance_map(player):
+    if not player:
+        return {}
+    return {
+        row.target_player_id: normalise_stance(getattr(row, 'pending_stance', row.stance))
         for row in PlayerDiplomaticStance.objects.filter(player=player)
     }
 
@@ -320,8 +338,8 @@ def update_player_stances(player, default_stance, stance_by_target_short_id):
     if not player:
         return
 
-    player.default_diplomatic_stance = normalise_stance(default_stance)
-    player.save(update_fields=['default_diplomatic_stance'])
+    player.pending_default_diplomatic_stance = normalise_stance(default_stance)
+    player.save(update_fields=['pending_default_diplomatic_stance'])
 
     targets = {
         p.short_id: p for p in Player.objects.filter(game=player.game).exclude(id=player.id)
@@ -334,11 +352,14 @@ def update_player_stances(player, default_stance, stance_by_target_short_id):
         row, _created = PlayerDiplomaticStance.objects.get_or_create(
             player=player,
             target_player=target,
-            defaults={'stance': stance_value},
+            defaults={
+                'stance': player_default_stance(player),
+                'pending_stance': stance_value,
+            },
         )
-        if row.stance != stance_value:
-            row.stance = stance_value
-            row.save(update_fields=['stance'])
+        if row.pending_stance != stance_value:
+            row.pending_stance = stance_value
+            row.save(update_fields=['pending_stance'])
 
 
 def ensure_contact_stance_entry(player, other_player):
@@ -349,6 +370,42 @@ def ensure_contact_stance_entry(player, other_player):
     row, _created = PlayerDiplomaticStance.objects.get_or_create(
         player=player,
         target_player=other_player,
-        defaults={'stance': player_default_stance(player)},
+        defaults={
+            'stance': player_default_stance(player),
+            'pending_stance': player_default_stance(player),
+        },
     )
     return row
+
+
+def apply_pending_diplomacy_snapshot(game):
+    """Apply pending diplomacy changes to effective stance values for this turn."""
+    if not game:
+        return []
+
+    changed_rows = []
+
+    for player in Player.objects.filter(game=game):
+        pending_default = player_pending_default_stance(player)
+        if normalise_stance(player.default_diplomatic_stance) != pending_default:
+            player.default_diplomatic_stance = pending_default
+            player.save(update_fields=['default_diplomatic_stance'])
+
+    rows = PlayerDiplomaticStance.objects.filter(
+        player__game=game
+    ).select_related('player', 'target_player')
+    for row in rows:
+        old_stance = normalise_stance(row.stance)
+        new_stance = normalise_stance(getattr(row, 'pending_stance', row.stance))
+        if old_stance == new_stance:
+            continue
+        row.stance = new_stance
+        row.save(update_fields=['stance'])
+        changed_rows.append({
+            'source_player': row.player,
+            'target_player': row.target_player,
+            'old_stance': old_stance,
+            'new_stance': new_stance,
+        })
+
+    return changed_rows

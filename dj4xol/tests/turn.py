@@ -112,6 +112,71 @@ class TestGameTurn(TestCase):
         self.assertTrue(Report.objects.filter(game=game, player=player1).exists())
         self.assertTrue(Report.objects.filter(game=game, player=player2).exists())
 
+    def test_pending_stance_applies_at_turn_start_and_notifies_target(self):
+        user1 = User.objects.create_user('diplo_snapshot_1', 'ds1@test.com', 'pass')
+        user2 = User.objects.create_user('diplo_snapshot_2', 'ds2@test.com', 'pass')
+        account1 = Account.objects.create(django_user=user1, alias='DS1')
+        account2 = Account.objects.create(django_user=user2, alias='DS2')
+        factory = GameFactory()
+        factory.set_map_size(200, 200)
+        factory.set_owner(account1)
+        factory.create_stars(10)
+        game = factory.save()
+        player1 = factory.join_player(account1, get_default_race())
+        player2 = factory.join_player(account2, get_default_race(), invited=True)
+
+        scanner = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Shared Scanner',
+            x=90,
+            y=90,
+            ship_count=1,
+            integrity=100,
+            basic_scanner_range=6,
+            advanced_scanner_range=0,
+        )
+        shared_star = game.stars.exclude(id=player1.homeworld_id).exclude(id=player2.homeworld_id).first()
+        shared_star.player = player1
+        shared_star.x = scanner.x + 4
+        shared_star.y = scanner.y
+        shared_star.save(update_fields=['player', 'x', 'y'])
+
+        stance_row = PlayerDiplomaticStance.objects.create(
+            player=player1,
+            target_player=player2,
+            stance='NEUTRAL',
+            pending_stance='ALLIED',
+        )
+
+        GameTurn(game).generate_scanner_reports()
+        self.assertFalse(
+            Report.objects.filter(
+                player=player2,
+                target_type='star',
+                target_id=shared_star.id,
+            ).exists()
+        )
+
+        GameTurn(game).generate_turn()
+        stance_row.refresh_from_db()
+        self.assertEqual(stance_row.stance, 'ALLIED')
+
+        self.assertTrue(
+            Report.objects.filter(
+                player=player2,
+                target_type='star',
+                target_id=shared_star.id,
+            ).exists()
+        )
+        notice = player2.messages.filter(
+            category='DIPLOMATIC',
+            message__contains='has changed their stance with us',
+        ).order_by('-id').first()
+        self.assertIsNotNone(notice)
+        self.assertIn('?target=%s' % player1.short_id, notice.message)
+        self.assertIn('They are now Allied.', notice.message)
+
     def test_refuses_if_already_generating(self):
         """Turn generation should fail if is_generating flag is set."""
         game = default_game()

@@ -44,9 +44,11 @@ from .research import (
 )
 from .diplomacy import (
     STANCE_CHOICES,
+    build_pending_stance_map,
     combat_chance_percent,
     encountered_players,
     has_encountered_player,
+    player_pending_default_stance,
     stance_effect_items,
     stance_label,
     stance_towards,
@@ -2409,11 +2411,16 @@ def diplomacy(request, game_short_id):
             url = '%s?%s' % (url, urlencode({'target': selected_target}))
         return redirect(url)
 
-    own_stance_map = {other.id: stance_towards(player, other) for other in contact_players}
+    pending_default_stance = player_pending_default_stance(player)
+    pending_stance_map = build_pending_stance_map(player)
+    own_stance_map = {
+        other.id: pending_stance_map.get(other.id, pending_default_stance)
+        for other in contact_players
+    }
     rows = [{
         'short_id': 'default',
         'name': 'Default',
-        'stance': getattr(player, 'default_diplomatic_stance', 'NEUTRAL'),
+        'stance': pending_default_stance,
         'selected': selected_target == 'default',
         'is_default': True,
     }]
@@ -2437,7 +2444,7 @@ def diplomacy(request, game_short_id):
 
     if selected_player:
         their_stance = stance_towards(selected_player, player)
-        our_stance = own_stance_map.get(selected_player.id, stance_towards(player, selected_player))
+        our_stance = own_stance_map.get(selected_player.id, pending_default_stance)
         detail = {
             'name': _player_display_name(selected_player),
             'their_stance': stance_label(their_stance),
@@ -2448,14 +2455,13 @@ def diplomacy(request, game_short_id):
             'is_default': False,
         }
     else:
-        default_stance = getattr(player, 'default_diplomatic_stance', 'NEUTRAL')
         detail = {
             'name': 'Default Stance',
             'their_stance': None,
-            'our_stance': stance_label(default_stance),
-            'our_stance_raw': default_stance,
+            'our_stance': stance_label(pending_default_stance),
+            'our_stance_raw': pending_default_stance,
             'combat_chance': None,
-            'effects': stance_effect_items(default_stance),
+            'effects': stance_effect_items(pending_default_stance),
             'is_default': True,
         }
 

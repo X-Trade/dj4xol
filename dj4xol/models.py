@@ -964,8 +964,19 @@ class Player(AbstractGameObject, HabitabilityMixin):
         choices=STANCE_CHOICES,
         default='NEUTRAL',
     )
+    pending_default_diplomatic_stance = models.CharField(
+        max_length=8,
+        choices=STANCE_CHOICES,
+        default='NEUTRAL',
+    )
 
     def save(self, *args, **kwargs):
+        update_fields = kwargs.get('update_fields')
+        if update_fields and 'default_diplomatic_stance' in update_fields and 'pending_default_diplomatic_stance' not in update_fields:
+            self.pending_default_diplomatic_stance = self.default_diplomatic_stance
+            kwargs['update_fields'] = list(set(update_fields) | {'pending_default_diplomatic_stance'})
+        elif self._state.adding and self.pending_default_diplomatic_stance == 'NEUTRAL' and self.default_diplomatic_stance != 'NEUTRAL':
+            self.pending_default_diplomatic_stance = self.default_diplomatic_stance
         profanity_filter = profanity_filter_settings()
         if self.plural_name is None:
             self.plural_name = self.name + 's'
@@ -1031,11 +1042,23 @@ class PlayerDiplomaticStance(models.Model):
         choices=Player.STANCE_CHOICES,
         default='NEUTRAL',
     )
+    pending_stance = models.CharField(
+        max_length=8,
+        choices=Player.STANCE_CHOICES,
+        default='NEUTRAL',
+    )
 
     class Meta:
         unique_together = [['player', 'target_player']]
 
     def save(self, *args, **kwargs):
+        update_fields = kwargs.get('update_fields')
+        if update_fields and 'stance' in update_fields and 'pending_stance' not in update_fields:
+            self.pending_stance = self.stance
+            kwargs['update_fields'] = list(set(update_fields) | {'pending_stance'})
+        # Preserve historical behavior for callers that only set `stance` on create.
+        elif self._state.adding and self.pending_stance == 'NEUTRAL' and self.stance != 'NEUTRAL':
+            self.pending_stance = self.stance
         if self.player_id and self.target_player_id:
             if self.player_id == self.target_player_id:
                 raise ValidationError('Players cannot set diplomacy toward themselves.')

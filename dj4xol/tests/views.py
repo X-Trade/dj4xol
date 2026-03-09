@@ -1751,9 +1751,11 @@ class TestDiplomacyView(TestCase):
 
         self.assertEqual(response.status_code, 302)
         player.refresh_from_db()
-        self.assertEqual(player.default_diplomatic_stance, 'COLD')
+        self.assertEqual(player.default_diplomatic_stance, 'NEUTRAL')
+        self.assertEqual(player.pending_default_diplomatic_stance, 'COLD')
         row = PlayerDiplomaticStance.objects.get(player=player, target_player=other_player)
-        self.assertEqual(row.stance, 'ALLIED')
+        self.assertEqual(row.stance, 'NEUTRAL')
+        self.assertEqual(row.pending_stance, 'ALLIED')
 
     def test_diplomacy_page_lists_contact_from_stance_row_without_report(self):
         game = default_game(stars=5, fleets=0)
