@@ -27,6 +27,7 @@ from .models import (
 from .email_rollups import (
     send_message_rollup_for_account,
     send_generic_test_email_for_account,
+    send_game_join_email,
 )
 from .decorators import registration_required, player_only_view
 from .play_cli_web import (
@@ -488,6 +489,12 @@ def join_game(request, game_short_id):
         if form.is_valid():
             player = GameFactory(game).join_player(account, form.cleaned_data['race'], invited=is_invited)
             if player:
+                send_game_join_email(
+                    game,
+                    game.owner,
+                    account,
+                    via_invitation=is_invited,
+                )
                 # Clean up invitation
                 game.invitations.filter(
                     models.Q(account=account) | models.Q(email=account.email)

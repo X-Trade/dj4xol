@@ -338,6 +338,15 @@ body.map-dragging * {
         min-height: 150px;
     }
 
+    .order-params-overlay-shell {
+        width: calc(100vw - 20px);
+        max-height: calc(100vh - 20px);
+    }
+
+    .order-params-overlay-body {
+        padding: 10px;
+    }
+
 }
 
 @media (min-width: 1100px) {
@@ -1020,6 +1029,15 @@ body.turned-in.lcars .order-params::after {
     margin-top: 15px;
     padding-top: 10px;
     border-top: 1px dashed #999;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.debug-actions form {
+    display: inline-flex !important;
+    margin: 0;
 }
 
 .debug-actions button {
@@ -1027,6 +1045,7 @@ body.turned-in.lcars .order-params::after {
     color: #fff;
     border: 1px solid #443;
     padding: 4px 8px;
+    white-space: nowrap;
     cursor: pointer;
     font-size: 0.85em;
 }
@@ -1283,11 +1302,12 @@ body.floating-tooltips-enabled .has-tooltip::after {
     height: 32px;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
 }
 
-/* Add bottom margin when followed by params section */
+/* Themes can opt in to extra spacing before the params box. */
 .order-type-row:has(+ .order-params) {
-    margin-bottom: 8px;
+    margin-bottom: 0;
 }
 
 .order-add-btn {
@@ -1309,18 +1329,238 @@ body.floating-tooltips-enabled .has-tooltip::after {
     cursor: not-allowed;
 }
 
+.panel-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.panel-header-button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.85);
+    color: inherit;
+    font: inherit;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.panel-header-button:hover {
+    background: rgba(255, 255, 255, 0.95);
+}
+
+.panel-header-button:focus {
+    outline: 2px solid var(--theme-accent);
+    outline-offset: 1px;
+}
+
 /* Order parameters box */
 .order-params {
     background: #f0f0f0;
     border: 1px solid #ddd;
     border-radius: 4px;
-    padding: 10px;
+    padding: 24px 10px 10px 10px;
     min-width: 0;
     overflow: hidden;
+    position: relative;
+}
+
+.order-params::before {
+    content: 'Parameters';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 20px;
+    padding: 3px 28px 0 8px;
+    box-sizing: border-box;
+    background: #e2e2e2;
+    border-bottom: 1px solid #d0d0d0;
+    color: #444;
+    font-size: 0.78em;
+    font-weight: bold;
+    letter-spacing: 0.02em;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+}
+
+.order-params-popout-toggle {
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.85);
+    color: inherit;
+    font: inherit;
+    font-size: 0;
+    line-height: 0;
+    cursor: pointer;
+    z-index: 3;
+}
+
+.order-params-popout-toggle:hover {
+    background: rgba(255, 255, 255, 0.95);
+}
+
+.order-params-popout-toggle::before,
+.order-params-popout-toggle::after {
+    content: '';
+    position: absolute;
+    box-sizing: border-box;
+}
+
+.order-params-popout-toggle::before {
+    width: 8px;
+    height: 8px;
+    left: 4px;
+    top: 4px;
+    border: 1px solid currentColor;
+    background: transparent;
+}
+
+.order-params-popout-toggle::after {
+    width: 8px;
+    height: 2px;
+    left: 4px;
+    top: 4px;
+    border: 0;
+    background: currentColor;
 }
 
 .order-params--costs {
     margin-top: 8px;
+}
+
+.order-params--costs::before {
+    content: 'Costs';
+}
+
+.order-params--costs.is-empty {
+    display: none;
+}
+
+.order-params-overlay[hidden] {
+    display: none;
+}
+
+.order-params-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1250;
+}
+
+.order-params-overlay-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.order-params-overlay-shell {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(760px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    display: flex;
+    flex-direction: column;
+    background: var(--panel-content-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+}
+
+.order-params-overlay-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--panel-header-bg);
+    color: var(--panel-header-text);
+    border-bottom: 1px solid var(--panel-border);
+    font-weight: bold;
+}
+
+.order-params-overlay-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.order-params-overlay-add,
+.order-params-overlay-close {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.85);
+    color: inherit;
+    font: inherit;
+    font-weight: bold;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.order-params-overlay-close {
+    font-size: 20px;
+}
+
+.order-params-overlay-add {
+    width: auto;
+    min-width: 48px;
+    padding: 0 12px;
+}
+
+.order-params-overlay-body {
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.order-params-overlay-body .order-form {
+    margin: 0;
+}
+
+.order-form--overlay .order-type-row {
+    display: none;
+}
+
+.order-params-overlay-body .order-form--overlay .order-params {
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+.order-params-overlay-body .order-form--overlay .order-params::before {
+    content: none !important;
+    display: none !important;
+}
+
+.order-params-overlay-body .order-form--overlay .order-params-popout-toggle,
+.order-params-overlay-body .order-form--overlay #add-order-btn {
+    display: none !important;
+}
+
+.order-form--overlay .order-param-row:last-child {
+    margin-bottom: 0;
+}
+
+body.order-params-overlay-open {
+    overflow: hidden;
 }
 
 .order-params--costs .cost-row {
@@ -1536,13 +1776,18 @@ body.floating-tooltips-enabled .has-tooltip::after {
 }
 
 .repeat-checkbox {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     gap: 2px;
     cursor: pointer;
     font-size: 1.1em;
+    line-height: 1;
 }
 
 .repeat-checkbox input {
     margin: 0;
+    vertical-align: middle;
 }
 
 .order-quantity {

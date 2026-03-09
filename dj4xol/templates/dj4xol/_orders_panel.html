@@ -88,7 +88,8 @@
             {% endif %}
         </section>
 
-        <form method="post" action="{% url 'dj4xol:add_fleet_order' game.short_id %}" class="order-form panel-footer-form">
+        <div id="order-form-home" hidden></div>
+        <form method="post" action="{% url 'dj4xol:add_fleet_order' game.short_id %}" class="order-form panel-footer-form" id="order-form">
             {% csrf_token %}
             <input type="hidden" name="fleet" value="{{ detail.fleet_short_id }}">
             <input type="hidden" name="order_type" id="order-type-input" value="{% if request.GET.order_type %}{{ request.GET.order_type }}{% else %}MOVE{% endif %}">
@@ -145,6 +146,14 @@
             </div>
 
             <div class="order-params">
+                <button
+                    type="button"
+                    class="order-params-popout-toggle"
+                    id="order-params-popout-toggle"
+                    aria-haspopup="dialog"
+                    aria-expanded="false"
+                    title="Pop out parameters"
+                ></button>
                 <!-- Destination for MOVE orders, Target for TRANSFER orders - same visual location -->
                 <div class="order-param-row" id="destination-row">
                     <label id="dest-target-label">Destination</label>
@@ -487,6 +496,19 @@
             </div>
         </form>
     </div>
+    <div id="order-params-overlay" class="order-params-overlay" hidden aria-hidden="true">
+        <div class="order-params-overlay-backdrop"></div>
+        <div class="order-params-overlay-shell" role="dialog" aria-modal="true" aria-labelledby="order-params-overlay-title">
+            <div class="order-params-overlay-header">
+                <span id="order-params-overlay-title">Order Parameters</span>
+                <div class="order-params-overlay-actions">
+                    <button type="button" class="order-params-overlay-add" id="order-params-overlay-add">Add</button>
+                    <button type="button" class="order-params-overlay-close" id="order-params-overlay-close" aria-label="Close parameters">&times;</button>
+                </div>
+            </div>
+            <div class="order-params-overlay-body" id="order-params-overlay-body"></div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -508,6 +530,14 @@
     var remotemineFocusInput = document.getElementById('remotemine-focus-input');
     var remotemineFocusRow = document.getElementById('remotemine-focus-row');
     var addBtn = document.getElementById('add-order-btn');
+    var orderForm = document.querySelector('.order-form');
+    var orderFormHome = document.getElementById('order-form-home');
+    var orderParamsOverlay = document.getElementById('order-params-overlay');
+    var orderParamsOverlayBody = document.getElementById('order-params-overlay-body');
+    var orderParamsOverlayClose = document.getElementById('order-params-overlay-close');
+    var orderParamsOverlayAdd = document.getElementById('order-params-overlay-add');
+    var orderParamsOverlayTitle = document.getElementById('order-params-overlay-title');
+    var orderParamsPopoutToggle = document.getElementById('order-params-popout-toggle');
     
     // Warp factor slider elements
     var warpSlider = document.getElementById('warp-slider');
@@ -613,6 +643,60 @@
 
     function updateAddButtonStateGive() {
         addBtn.disabled = false;
+    }
+
+    function restoreOrderForm() {
+        if (!orderForm || !orderFormHome || !orderFormHome.parentNode) return;
+        if (orderForm.parentNode === orderFormHome.parentNode) return;
+        orderForm.classList.remove('order-form--overlay');
+        orderFormHome.parentNode.insertBefore(orderForm, orderFormHome.nextSibling);
+    }
+
+    function currentOrderTypeLabel() {
+        var labels = {
+            MOVE: 'Move Order',
+            INTERCEPT: 'Intercept Order',
+            TRANSFER: 'Transfer Order',
+            GIVE: 'Give Fleet Order',
+            COLONISE: 'Colonise Order',
+            BOMB: 'Bomb Order',
+            REMOTEMINE: 'Remote Mine Order',
+            MERGE: 'Merge Order',
+            SCUTTLE: 'Scuttle Order',
+            PATROL: 'Patrol Order'
+        };
+        var currentType = orderTypeInput ? orderTypeInput.value : '';
+        return labels[currentType] || 'Order Parameters';
+    }
+
+    function updateOrderParamsOverlayTitle() {
+        if (orderParamsOverlayTitle) {
+            orderParamsOverlayTitle.textContent = currentOrderTypeLabel();
+        }
+    }
+
+    function closeOrderParamsOverlay() {
+        if (!orderParamsOverlay) return;
+        restoreOrderForm();
+        orderParamsOverlay.hidden = true;
+        orderParamsOverlay.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('order-params-overlay-open');
+        if (orderParamsPopoutToggle) {
+            orderParamsPopoutToggle.setAttribute('aria-expanded', 'false');
+        }
+    }
+
+    function openOrderParamsOverlay() {
+        if (!orderParamsOverlay || !orderParamsOverlayBody || !orderForm) return;
+        updateOrderParamsOverlayTitle();
+        orderForm.classList.add('order-form--overlay');
+        orderParamsOverlayBody.appendChild(orderForm);
+        orderParamsOverlay.hidden = false;
+        orderParamsOverlay.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('order-params-overlay-open');
+        if (orderParamsPopoutToggle) {
+            orderParamsPopoutToggle.setAttribute('aria-expanded', 'true');
+        }
     }
     
     // Initialize transfer target input based on display mode
@@ -1237,8 +1321,21 @@
             }
             orderTypeInput.value = this.value;
             initializeOrderType();
+            updateOrderParamsOverlayTitle();
             if (warpSlider) {
                 warpSlider.dispatchEvent(new Event('input'));
+            }
+        });
+    }
+
+    if (orderParamsOverlayAdd) {
+        orderParamsOverlayAdd.addEventListener('click', function() {
+            if (orderForm && typeof orderForm.requestSubmit === 'function') {
+                orderForm.requestSubmit();
+                return;
+            }
+            if (addBtn) {
+                addBtn.click();
             }
         });
     }
@@ -1379,6 +1476,48 @@
             updateAddButtonStateGive();
         });
     }
+
+    if (orderParamsPopoutToggle) {
+        orderParamsPopoutToggle.addEventListener('click', function(ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (orderParamsOverlay && !orderParamsOverlay.hidden) {
+                closeOrderParamsOverlay();
+            } else {
+                openOrderParamsOverlay();
+            }
+        });
+    }
+
+    if (orderParamsOverlayClose) {
+        orderParamsOverlayClose.addEventListener('click', function(ev) {
+            ev.preventDefault();
+            closeOrderParamsOverlay();
+        });
+    }
+
+    if (orderParamsOverlay) {
+        orderParamsOverlay.addEventListener('click', function(ev) {
+            if (
+                ev.target === orderParamsOverlay ||
+                ev.target.classList.contains('order-params-overlay-backdrop')
+            ) {
+                closeOrderParamsOverlay();
+            }
+        });
+    }
+
+    document.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Escape' && orderParamsOverlay && !orderParamsOverlay.hidden) {
+            closeOrderParamsOverlay();
+        }
+    });
+
+    if (orderForm) {
+        orderForm.addEventListener('submit', function() {
+            closeOrderParamsOverlay();
+        });
+    }
     
     // Warp factor slider
     if (warpSlider && warpDisplay && warpInput) {
@@ -1488,6 +1627,7 @@
     
     // Initialize on page load (call this last)
     initializeOrderType();
+    updateOrderParamsOverlayTitle();
     if (warpSlider) {
         warpSlider.dispatchEvent(new Event('input'));
     }

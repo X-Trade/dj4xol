@@ -1,0 +1,7 @@
+Account {{ joining_account.alias }} has joined your game "{{ game.name }}".
+
+Join source: {{ join_source }}
+
+Game URL: {{ game_url }}
+{% if server_url %}Server URL: {{ server_url }}
+{% endif %}Unsubscribe URL: {{ unsubscribe_url }}

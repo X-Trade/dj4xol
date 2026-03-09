@@ -1,6 +1,8 @@
 import json
 
+from django.core import mail
 from django.test import TestCase, Client
+from django.test.utils import override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
 from ..models import (
@@ -8,6 +10,7 @@ from ..models import (
     Fleet,
     FleetOrders,
     GameMessage,
+    GameInvitation,
     ProductionOrder,
     Report,
     ResearchCategory,
@@ -244,6 +247,24 @@ class TestProductionOrders(TestCase):
         # Verify the order type
         order = ProductionOrder.objects.filter(star=homeworld).first()
         self.assertEqual(order.order_type, 'BUILD_MINE')
+
+    def test_production_costs_panel_starts_hidden_with_costs_label(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': homeworld.x, 'y': homeworld.y, 'sel': homeworld.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="production-costs-panel"', html=False)
+        self.assertContains(response, 'order-params--costs order-params--columns is-empty', html=False)
+        self.assertContains(response, 'Select a production item to view costs.')
 
     def test_toggle_production_order_repeat(self):
         """Production order repeat can be toggled from the list button."""
@@ -664,6 +685,99 @@ class TestPreJoinNavigation(TestCase):
         self.assertIn('x=%s' % int(player.homeworld.x), response.url)
         self.assertIn('y=%s' % int(player.homeworld.y), response.url)
         self.assertIn('sel=%s' % player.homeworld.short_id, response.url)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_join_game_sends_owner_email_for_public_join(self):
+        ServerSettings.objects.update_or_create(
+            key='enable_email',
+            defaults={'value': 'True', 'description': 'Enable outbound email'},
+        )
+        ServerSettings.objects.update_or_create(
+            key='server_url',
+            defaults={'value': 'https://example.test', 'description': 'Server URL'},
+        )
+        game = default_game(stars=8)
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        owner = game.owner
+        owner.email = 'owner@example.test'
+        owner.email_game_updates = True
+        owner.save(update_fields=['email', 'email_game_updates'])
+
+        joiner_user = User.objects.create_user('join_public_user', 'join-public@example.com', 'pass')
+        joiner_account = Account.objects.create(
+            django_user=joiner_user,
+            alias='JoinPublic',
+            full_name='Join Public',
+            email='join-public@example.com',
+        )
+        race = ServerRace.objects.create(
+            name='JoinPublicRace',
+            plural_name='JoinPublicRaces',
+            race_type=get_default_race_type(),
+            owner=joiner_account,
+        )
+
+        client = Client()
+        client.force_login(joiner_user)
+        response = client.post(
+            reverse('dj4xol:join_game', args=[game.short_id]),
+            {'race': str(race.id)},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ['owner@example.test'])
+        self.assertIn('Account JoinPublic has joined your game', message.body)
+        self.assertIn('Join source: public joinability', message.body)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_join_game_sends_owner_email_for_invited_join(self):
+        ServerSettings.objects.update_or_create(
+            key='enable_email',
+            defaults={'value': 'True', 'description': 'Enable outbound email'},
+        )
+        ServerSettings.objects.update_or_create(
+            key='server_url',
+            defaults={'value': 'https://example.test', 'description': 'Server URL'},
+        )
+        game = default_game(stars=8)
+        game.joinable = False
+        game.save(update_fields=['joinable'])
+        owner = game.owner
+        owner.email = 'owner@example.test'
+        owner.email_game_updates = True
+        owner.save(update_fields=['email', 'email_game_updates'])
+
+        joiner_user = User.objects.create_user('join_invited_user', 'join-invited@example.com', 'pass')
+        joiner_account = Account.objects.create(
+            django_user=joiner_user,
+            alias='JoinInvited',
+            full_name='Join Invited',
+            email='join-invited@example.com',
+        )
+        GameInvitation.objects.create(game=game, account=joiner_account)
+        race = ServerRace.objects.create(
+            name='JoinInvitedRace',
+            plural_name='JoinInvitedRaces',
+            race_type=get_default_race_type(),
+            owner=joiner_account,
+        )
+
+        client = Client()
+        client.force_login(joiner_user)
+        response = client.post(
+            reverse('dj4xol:join_game', args=[game.short_id]),
+            {'race': str(race.id)},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ['owner@example.test'])
+        self.assertIn('Account JoinInvited has joined your game', message.body)
+        self.assertIn('Join source: invitation', message.body)
 
 
 class TestRaceCreationView(TestCase):
@@ -1474,6 +1588,25 @@ class TestDetailPanelReportTiers(TestCase):
 
 
 class TestFleetOrderViews(TestCase):
+    def test_orders_panel_shows_popout_button(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="order-params-popout-toggle"', html=False)
+        self.assertContains(response, 'id="order-params-overlay"', html=False)
+        self.assertContains(response, 'id="order-params-overlay-add"', html=False)
+        self.assertContains(response, 'id="order-params-overlay-title">Order Parameters<', html=False)
+
     def test_move_and_patrol_defaults_follow_fleet_max_safe_warp(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
@@ -1495,6 +1628,31 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, 'data-max-safe-warp="8"', html=False)
         self.assertContains(response, 'name="intercept_speed" id="intercept-speed-input" value="8"', html=False)
         self.assertContains(response, 'id="intercept-speed-slider"', html=False)
+
+    def test_debug_actions_drop_debug_prefix(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        user.is_superuser = True
+        user.is_staff = True
+        user.save(update_fields=['is_superuser', 'is_staff'])
+        ServerSettings.objects.update_or_create(
+            key='enable_debug_actions',
+            defaults={'value': 'True'},
+        )
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Create Fleet')
+        self.assertContains(response, 'Create Anomaly')
+        self.assertNotContains(response, 'Debug:')
 
     def test_fleet_order_panel_shows_give_fleet_option(self):
         game = default_game(stars=5, fleets=1)
