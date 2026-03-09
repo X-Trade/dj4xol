@@ -549,8 +549,14 @@ class DetailBuilder():
                 detail['fleet_inventory'] = self._build_fleet_inventory_from_report(data)
         elif target_type == 'salvage':
             detail['salvage_short_id'] = self.selected_obj.short_id
-            detail['salvage_type'] = data.get('salvage_type')
-            detail['salvage_type_display'] = self.selected_obj.get_salvage_type_display()
+            if self._report_hides_ancient_debris_type(data):
+                detail['salvage_type'] = None
+                detail['salvage_type_display'] = '???'
+            else:
+                detail['salvage_type'] = data.get('salvage_type')
+                detail['salvage_type_display'] = self._salvage_type_display_from_code(
+                    data.get('salvage_type')
+                )
             if 'total_minerals' in data:
                 items = []
                 has_inventory_breakdown = False
@@ -803,6 +809,29 @@ class DetailBuilder():
             return report.get_report_data()
         except Exception:
             return None
+
+    def _report_hides_ancient_debris_type(self, data):
+        if getattr(self.game, 'no_scanners', False):
+            return False
+        if data.get('report_tier') != 'basic':
+            return False
+        return (
+            isinstance(self.selected_obj, Salvage) and
+            getattr(self.selected_obj, 'salvage_type', None) == Salvage.TYPE_ANCIENT_DEBRIS
+        )
+
+    def _salvage_type_display_from_code(self, salvage_type):
+        if not salvage_type:
+            return None
+        if (
+            isinstance(self.selected_obj, Salvage) and
+            getattr(self.selected_obj, 'salvage_type', None) == salvage_type
+        ):
+            return self.selected_obj.get_salvage_type_display()
+        return dict(Salvage.SALVAGE_TYPE_CHOICES).get(
+            salvage_type,
+            str(salvage_type).replace('_', ' ').title(),
+        )
 
     def _fleet_report_coordinates(self, fleet):
         """Return cached report (x, y) for a fleet when available."""
@@ -1527,6 +1556,7 @@ class DetailBuilder():
         # Always expose composition for visible fleets (own or observed).
         # Cargo/inventory remains owner-only.
         cargo = self._build_fleet_composition(self.selected_obj)
+        cargo['max_safe_warp'] = getattr(self.selected_obj, 'max_safe_warp', None)
         if include_cargo or (self.player and self.selected_obj.player == self.player):
             cargo.update({
                 'capacity': self.selected_obj.cargo_capacity,

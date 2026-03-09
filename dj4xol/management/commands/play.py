@@ -1023,7 +1023,7 @@ class Command(BaseCommand):
 
     def _report_object_subclass(self, obj, detail):
         if detail.get("is_salvage"):
-            return obj.get_salvage_type_display()
+            return detail.get("salvage_type_display")
         if detail.get("is_anomaly") and detail.get("anomaly_type"):
             return obj.get_anomaly_type_display()
         return None

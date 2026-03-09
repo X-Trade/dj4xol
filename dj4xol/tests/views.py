@@ -1435,7 +1435,7 @@ class TestDetailPanelReportTiers(TestCase):
         response = self._get_detail_response(self.star)
         self.assertContains(response, '__blur.png')
 
-    def test_basic_salvage_report_shows_total_and_type_with_blurred_thumbnail(self):
+    def test_basic_ancient_debris_report_hides_type_with_blurred_thumbnail(self):
         salvage = Salvage.objects.create(
             game=self.game,
             x=self.star.x + 1,
@@ -1466,13 +1466,36 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'data-section="salvage"')
         self.assertContains(response, 'data-section="salvage-contents"')
         self.assertContains(response, 'Type')
-        self.assertContains(response, 'Ancient Debris')
+        self.assertContains(response, '???')
+        self.assertNotContains(response, 'Ancient Debris')
         self.assertContains(response, 'total: 20kt')
         self.assertContains(response, 'Mineral composition unknown.')
         self.assertNotContains(response, 'Ironium')
 
 
 class TestFleetOrderViews(TestCase):
+    def test_move_and_patrol_defaults_follow_fleet_max_safe_warp(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.max_safe_warp = 8
+        fleet.save(update_fields=['max_safe_warp'])
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="warpfactor" id="warpfactor-input" value="8"', html=False)
+        self.assertContains(response, 'id="warp-slider"', html=False)
+        self.assertContains(response, 'data-max-safe-warp="8"', html=False)
+        self.assertContains(response, 'name="intercept_speed" id="intercept-speed-input" value="8"', html=False)
+        self.assertContains(response, 'id="intercept-speed-slider"', html=False)
+
     def test_fleet_order_panel_shows_give_fleet_option(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
