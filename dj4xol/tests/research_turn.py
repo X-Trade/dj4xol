@@ -227,6 +227,47 @@ class ResearchTurnTest(TestCase):
         self.assertEqual(budget['converted_rp'], 35)
         self.assertEqual(budget['generated_rp'], 35)
 
+    def test_research_multiplier_applies_to_recurring_yearly_rp(self):
+        self.player.race_type.research_multiplier = 1.5
+        self.player.race_type.save(update_fields=['research_multiplier'])
+        self.player.convert_unused_buildpoints_to_research = True
+        self.player.spend_leftover_points_on_research = True
+        self.player.leftover_points = 3.0
+        self.player.save(update_fields=[
+            'convert_unused_buildpoints_to_research',
+            'spend_leftover_points_on_research',
+            'leftover_points',
+        ])
+        self.star.mines = 0
+        self.star.factories = 10
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.labs = 10
+        self.star.colonists = 10000
+        self.star.buildpoints_consumed = 30
+        self.star.save()
+
+        budget = build_research_budget(self.player)
+        self.assertEqual(budget['research_multiplier_display'], '+50%')
+        self.assertGreater(budget['lab_generated_base_rp'], 0)
+        self.assertEqual(
+            budget['lab_generated_rp'],
+            int(round(budget['lab_generated_base_rp'] * 1.5)),
+        )
+        self.assertGreater(budget['converted_base_rp'], 0)
+        self.assertEqual(
+            budget['converted_rp'],
+            int(round(budget['converted_base_rp'] * 1.5)),
+        )
+        self.assertEqual(
+            budget['yearly_generated_rp'],
+            budget['lab_generated_rp'] + budget['converted_rp'],
+        )
+        self.assertEqual(
+            budget['generated_rp'],
+            budget['yearly_generated_rp'] + budget['leftover_bonus_rp'],
+        )
+
     def test_leftover_balance_points_convert_to_one_time_research_bonus(self):
         category = ResearchCategory.objects.create(
             code='LEFT', name='Leftover', enabled=True

@@ -758,10 +758,7 @@ class GameFactory():
         Transposes resource yields from 0-100% into 50-100%, and ensures
         surface minerals are at least 1000kt."""
         star.player = player
-        if player.starting_colonists is not None:
-            star.colonists = player.starting_colonists * 1000
-        else:
-            star.colonists = player.race_type.starting_population
+        star.colonists = int(player.starting_colonists or 20) * 1000
         # Set environmentals to player's ideal (center) values
         star.gravity = player.gravity_center
         star.temperature = player.temperature_center

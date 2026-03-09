@@ -27,7 +27,7 @@ from ..research import ensure_player_research_rows
 from ..diplomacy import (
     combat_chance_modifier_percent,
     combat_chance_percent,
-    combat_chance_with_persuasion_percent,
+    combat_chance_with_diplomacy_percent,
     combat_readiness_multiplier,
 )
 from ..turn import (
@@ -823,6 +823,31 @@ class TestRaceCreationView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'id="id_public"')
 
+    def test_create_race_shows_race_type_browser_link(self):
+        response = self.client.get(reverse('dj4xol:create_race'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('dj4xol:help_race_types'))
+        self.assertContains(response, 'Browse')
+
+    def test_create_race_prefills_race_type_from_query_param(self):
+        alt_type = ServerRaceType.objects.create(
+            code='RSEL',
+            name='Selectable',
+            enabled=True,
+            description='',
+        )
+        response = self.client.get(
+            reverse('dj4xol:create_race'),
+            {'race_type': alt_type.code},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'option value="%s" selected' % alt_type.code, html=False)
+
+    def test_create_race_has_no_blank_race_type_option(self):
+        response = self.client.get(reverse('dj4xol:create_race'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, '---------')
+
     def test_create_race_staff_public_detaches_owner(self):
         self.user.is_staff = True
         self.user.save(update_fields=['is_staff'])
@@ -886,6 +911,102 @@ class TestOnboardingRaceView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Skip for now')
 
+    def test_onboarding_race_shows_race_type_browser_link(self):
+        response = self.client.get(reverse('dj4xol:onboarding_race'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('dj4xol:help_race_types'))
+        self.assertContains(response, 'Browse')
+
+
+class TestRaceTypeHelpView(TestCase):
+    def setUp(self):
+        self.user, self.account = get_default_user()
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.race_type = get_default_race_type()
+
+    def test_help_race_types_renders_single_panel_with_effects(self):
+        self.race_type.diplomacy_multiplier = 1.2
+        self.race_type.scan_multiplier = 0.8
+        self.race_type.save(update_fields=['diplomacy_multiplier', 'scan_multiplier'])
+
+        response = self.client.get(
+            reverse('dj4xol:help_race_types'),
+            {'race_type': self.race_type.code},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Race Type Effects')
+        self.assertContains(response, self.race_type.name)
+        self.assertContains(response, 'Diplomacy')
+        self.assertContains(response, '+20%')
+        self.assertContains(response, 'Scanners')
+        self.assertContains(response, '-20%')
+
+    def test_help_race_types_use_type_link_returns_to_create_race(self):
+        response = self.client.get(
+            reverse('dj4xol:help_race_types'),
+            {'return_to': 'create_race', 'race_type': self.race_type.code},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            '%s?race_type=%s' % (reverse('dj4xol:create_race'), self.race_type.code),
+        )
+
+    def test_help_race_types_orders_choices_by_display_order_then_name(self):
+        later = ServerRaceType.objects.create(
+            code='ZZZZ',
+            name='Later',
+            display_order=100,
+            enabled=True,
+            description='',
+        )
+        earlier = ServerRaceType.objects.create(
+            code='AAAA',
+            name='Earlier',
+            display_order=0,
+            enabled=True,
+            description='',
+        )
+        response = self.client.get(reverse('dj4xol:help_race_types'))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        self.assertLess(content.index('value="%s"' % earlier.code), content.index('value="%s"' % later.code))
+
+    def test_create_race_orders_race_types_by_display_order_then_name(self):
+        later = ServerRaceType.objects.create(
+            code='ZZZZ',
+            name='Later',
+            display_order=100,
+            enabled=True,
+            description='',
+        )
+        earlier = ServerRaceType.objects.create(
+            code='AAAA',
+            name='Earlier',
+            display_order=0,
+            enabled=True,
+            description='',
+        )
+        response = self.client.get(reverse('dj4xol:create_race'))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        self.assertLess(content.index('value="%s"' % earlier.code), content.index('value="%s"' % later.code))
+
+    def test_help_race_types_use_type_link_returns_to_onboarding_race(self):
+        response = self.client.get(
+            reverse('dj4xol:help_race_types'),
+            {'return_to': 'onboarding_race', 'race_type': self.race_type.code},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            '%s?race_type=%s' % (reverse('dj4xol:onboarding_race'), self.race_type.code),
+        )
+
 
 class TestRaceChoiceOrdering(TestCase):
     def setUp(self):
@@ -930,6 +1051,26 @@ class TestRaceChoiceOrdering(TestCase):
         self.assertEqual(new_game_form.fields['race'].label_from_instance(mine), 'ZuluMine (yours)')
         self.assertEqual(new_game_form.fields['race'].label_from_instance(server), 'AlphaServer (server)')
         self.assertEqual(new_game_form.fields['race'].label_from_instance(other), 'BetaOther')
+
+
+class TestResearchView(TestCase):
+    def setUp(self):
+        self.game = default_game(stars=5)
+        self.player = self.game.players.first()
+        self.player.race_type.research_multiplier = 1.2
+        self.player.race_type.save(update_fields=['research_multiplier'])
+        self.player.homeworld.labs = 10
+        self.player.homeworld.colonists = 10000
+        self.player.homeworld.save(update_fields=['labs', 'colonists'])
+        self.user, self.account = get_default_user()
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_research_budget_shows_research_multiplier_suffix(self):
+        response = self.client.get(reverse('dj4xol:research', args=[self.game.short_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'RP/Year')
+        self.assertContains(response, '(+20%)')
 
 
 class TestRenameObjectView(TestCase):
@@ -1814,7 +1955,7 @@ class TestDiplomacyView(TestCase):
             name='Persuasive A',
             enabled=True,
             description='',
-            persuasion_multiplier=2.0,
+            diplomacy_multiplier=2.0,
         )
         player.race_type = persuasive_type
         player.save(update_fields=['race_type'])
@@ -1825,7 +1966,7 @@ class TestDiplomacyView(TestCase):
             name='Persuasive B',
             enabled=True,
             description='',
-            persuasion_multiplier=0.5,
+            diplomacy_multiplier=0.5,
         )
         other_player = Player.objects.create(
             game=game,
@@ -1837,25 +1978,25 @@ class TestDiplomacyView(TestCase):
 
         self.assertEqual(combat_chance_modifier_percent(player, other_player), 0)
         self.assertEqual(
-            combat_chance_with_persuasion_percent('NEUTRAL', 'NEUTRAL', player, other_player),
+            combat_chance_with_diplomacy_percent('NEUTRAL', 'NEUTRAL', player, other_player),
             30,
         )
 
-        other_race_type.persuasion_multiplier = 2.0
-        other_race_type.save(update_fields=['persuasion_multiplier'])
+        other_race_type.diplomacy_multiplier = 2.0
+        other_race_type.save(update_fields=['diplomacy_multiplier'])
         self.assertEqual(combat_chance_modifier_percent(player, other_player), -50)
         self.assertEqual(
-            combat_chance_with_persuasion_percent('NEUTRAL', 'NEUTRAL', player, other_player),
+            combat_chance_with_diplomacy_percent('NEUTRAL', 'NEUTRAL', player, other_player),
             15,
         )
 
-        other_race_type.persuasion_multiplier = 0.5
-        other_race_type.save(update_fields=['persuasion_multiplier'])
-        persuasive_type.persuasion_multiplier = 0.5
-        persuasive_type.save(update_fields=['persuasion_multiplier'])
+        other_race_type.diplomacy_multiplier = 0.5
+        other_race_type.save(update_fields=['diplomacy_multiplier'])
+        persuasive_type.diplomacy_multiplier = 0.5
+        persuasive_type.save(update_fields=['diplomacy_multiplier'])
         self.assertEqual(combat_chance_modifier_percent(player, other_player), 100)
         self.assertEqual(
-            combat_chance_with_persuasion_percent('NEUTRAL', 'NEUTRAL', player, other_player),
+            combat_chance_with_diplomacy_percent('NEUTRAL', 'NEUTRAL', player, other_player),
             60,
         )
 
@@ -1867,14 +2008,14 @@ class TestDiplomacyView(TestCase):
             name='View Persuasive A',
             enabled=True,
             description='',
-            persuasion_multiplier=2.0,
+            diplomacy_multiplier=2.0,
         )
         other_type = ServerRaceType.objects.create(
             code='PSV2',
             name='View Persuasive B',
             enabled=True,
             description='',
-            persuasion_multiplier=2.0,
+            diplomacy_multiplier=2.0,
         )
         player.race_type = player_type
         player.save(update_fields=['race_type'])

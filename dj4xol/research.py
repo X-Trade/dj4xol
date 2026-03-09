@@ -71,6 +71,14 @@ RESEARCH_RESOURCE_LABELS = {
 }
 
 
+def _format_signed_percent(value):
+    try:
+        percent = int(round((float(value) - 1.0) * 100.0))
+    except (TypeError, ValueError):
+        percent = 0
+    return '{:+d}%'.format(percent)
+
+
 def _safe_params(tech):
     try:
         data = json.loads(tech.params_json or '{}')
@@ -1365,24 +1373,35 @@ def build_research_budget(player):
     """Build a per-turn RP budget summary."""
     stars = player.stars.all()
     total_labs = 0
-    lab_generated = 0
-    converted_rp = 0
+    lab_generated_base = 0
+    converted_rp_base = 0
     leftover_bonus_rp = 0
+    research_multiplier = float(getattr(player.race_type, 'research_multiplier', 1.0) or 1.0)
     for star in stars:
         total_labs += star.labs
-        lab_generated += int(calculate_available_researchpoints(star))
+        lab_generated_base += int(calculate_available_researchpoints(star))
         if player.convert_unused_buildpoints_to_research:
             available_bp = int(calculate_available_buildpoints(star))
             used_bp = int(star.buildpoints_consumed or 0)
-            converted_rp += max(0, (available_bp - used_bp) // 2)
+            converted_rp_base += max(0, (available_bp - used_bp) // 2)
     if player.spend_leftover_points_on_research and (player.leftover_points or 0) > 0:
         leftover_bonus_rp = int(round(float(player.leftover_points) * 10.0))
-    lab_generated = int(round(lab_generated * player.race_type.research_multiplier))
-    generated = int(lab_generated + converted_rp + leftover_bonus_rp)
+    lab_generated = int(round(lab_generated_base * research_multiplier))
+    converted_rp = int(round(converted_rp_base * research_multiplier))
+    yearly_generated_rp = int(lab_generated + converted_rp)
+    generated = int(yearly_generated_rp + leftover_bonus_rp)
     return {
         'total_labs': total_labs,
+        'research_multiplier': research_multiplier,
+        'research_multiplier_display': (
+            _format_signed_percent(research_multiplier)
+            if abs(research_multiplier - 1.0) > 1e-9 else ''
+        ),
+        'lab_generated_base_rp': lab_generated_base,
         'lab_generated_rp': lab_generated,
+        'converted_base_rp': converted_rp_base,
         'converted_rp': converted_rp,
+        'yearly_generated_rp': yearly_generated_rp,
         'leftover_bonus_rp': leftover_bonus_rp,
         'generated_rp': generated,
     }

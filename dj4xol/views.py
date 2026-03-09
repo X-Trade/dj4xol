@@ -19,7 +19,7 @@ from dj4xol.secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_la
 from dj4xol.mineral_rules import ALL_RESOURCE_KEYS, known_resource_keys
 
 from .models import (
-    Game, Player, ServerSettings, ServerRace, Account, GameInvitation, Fleet,
+    Game, Player, ServerSettings, ServerRace, ServerRaceType, Account, GameInvitation, Fleet,
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology,
     ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
     Spectator, profanity_filter_settings, server_setting_enabled,
@@ -72,6 +72,94 @@ from .forms import (
 )
 from .name_rules import validate_safe_public_text
 from .scanners import get_scanner_sources_for_player
+
+
+RACE_TYPE_PERCENT_FIELDS = [
+    ('population_growth_multiplier', 'Population Growth'),
+    ('manufacturing_multiplier', 'Manufacturing'),
+    ('combat_multiplier', 'Combat'),
+    ('defence_multiplier', 'Defence'),
+    ('bombardment_multiplier', 'Bombardment'),
+    ('ground_force_multiplier', 'Ground Forces'),
+    ('diplomacy_multiplier', 'Diplomacy'),
+    ('scan_multiplier', 'Scanners'),
+    ('shield_multiplier', 'Shields'),
+    ('warp_multiplier', 'Warp'),
+    ('stealth_multiplier', 'Stealth'),
+    ('terraforming_multiplier', 'Terraforming'),
+    ('political_stability', 'Political Stability'),
+    ('luck_multiplier', 'Luck'),
+    ('research_multiplier', 'Research'),
+    ('initiative_multiplier', 'Initiative'),
+    ('cargo_multiplier', 'Cargo'),
+]
+RACE_TYPE_INTEGER_FIELDS = [
+    ('starting_planets', 'Starting Planets', 1),
+    ('starting_economy', 'Starting Economy', 2),
+    ('economy_offset', 'Economy Offset', 0),
+]
+RACE_TYPE_BOOLEAN_FIELDS = [
+    ('population_growth_uses_resources', 'Growth Uses Resources', True, False),
+    ('starting_planet_has_stargate', 'Start With Stargate', True, False),
+    ('ignores_radiation', 'Ignores Radiation', True, False),
+    ('ignores_temperature', 'Ignores Temperature', True, False),
+    ('ignores_gravity', 'Ignores Gravity', True, False),
+    ('has_terraforming', 'Terraforming', False, True),
+    ('has_advanced_mines', 'Advanced Mines', True, False),
+    ('has_advanced_stargates', 'Advanced Stargates', True, False),
+    ('has_advanced_remoteminers', 'Advanced Remote Miners', True, False),
+    ('has_advanced_hulls', 'Advanced Hulls', True, False),
+    ('has_superweapon', 'Superweapon', True, False),
+    ('has_bombs', 'Bombs', False, True),
+    ('has_metalurgy', 'Metallurgy', False, True),
+    ('has_stealth', 'Stealth Systems', False, True),
+    ('has_generalised_research', 'Generalised Research', True, False),
+    ('is_parasitic', 'Parasitic', True, False),
+    ('is_cybernetic', 'Cybernetic', True, False),
+    ('is_mechanical', 'Mechanical', True, False),
+    ('is_energy_being', 'Energy Being', True, False),
+]
+
+
+def _format_signed_percent(value):
+    try:
+        percent = int(round((float(value) - 1.0) * 100.0))
+    except (TypeError, ValueError):
+        percent = 0
+    return '%+d%%' % percent
+
+
+def _race_type_detail_rows(race_type):
+    rows = []
+    if not race_type:
+        return rows
+    for field_name, label in RACE_TYPE_PERCENT_FIELDS:
+        value = float(getattr(race_type, field_name, 1.0) or 1.0)
+        if abs(value - 1.0) < 1e-9:
+            continue
+        rows.append({'name': label, 'value': _format_signed_percent(value)})
+    for field_name, label, default in RACE_TYPE_INTEGER_FIELDS:
+        value = int(getattr(race_type, field_name, default) or 0)
+        if value == default:
+            continue
+        if field_name == 'economy_offset':
+            rows.append({'name': label, 'value': '%+d' % value})
+        else:
+            rows.append({'name': label, 'value': str(value)})
+    for field_name, label, active_value, default_value in RACE_TYPE_BOOLEAN_FIELDS:
+        value = bool(getattr(race_type, field_name, default_value))
+        if value != active_value:
+            continue
+        rows.append({'name': label, 'value': 'Yes'})
+    return rows
+
+
+def _race_type_return_target(return_to):
+    if return_to == 'onboarding_race':
+        return ('dj4xol:onboarding_race', 'Back to Race Creation')
+    if return_to == 'create_race':
+        return ('dj4xol:create_race', 'Back to Race Creation')
+    return (None, None)
 
 
 def _build_player_movement_paths(game, player):
@@ -1544,6 +1632,7 @@ def create_race(request):
     account = request.user.dj4xol_account
     selected_theme = account.theme if account else 'classic'
     show_public = _can_publish_public_races(request.user)
+    selected_race_type = request.GET.get('race_type')
     if request.method == 'POST':
         form = ServerRaceForm(request.POST, show_public=show_public)
         if form.is_valid():
@@ -1552,11 +1641,18 @@ def create_race(request):
             race.save()
             return redirect('dj4xol:index')
     else:
-        form = ServerRaceForm(show_public=show_public)
+        form = ServerRaceForm(
+            show_public=show_public,
+            selected_race_type=selected_race_type,
+        )
     max_level = get_global_research_max_level()
     return render(request, 'dj4xol/create_race.html', {
         'form': form,
         'selected_theme': selected_theme,
+        'race_type_browser_url': '%s?%s' % (
+            reverse('dj4xol:help_race_types'),
+            urlencode({'return_to': 'create_race'}),
+        ),
         'starting_tech_costs_json': json.dumps(
             get_starting_tech_balance_costs(max_level=max_level)
         ),
@@ -1931,6 +2027,37 @@ def help_diplomacy(request):
     account = request.user.dj4xol_account
     return render(request, 'dj4xol/help_diplomacy.html', {
         'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
+def help_race_types(request):
+    account = request.user.dj4xol_account
+    race_types = list(
+        ServerRaceType.objects.filter(enabled=True).order_by('display_order', 'name', 'code')
+    )
+    selected_code = request.GET.get('race_type')
+    selected_race_type = next(
+        (race_type for race_type in race_types if race_type.code == selected_code),
+        race_types[0] if race_types else None,
+    )
+    return_to = request.GET.get('return_to')
+    return_url_name, return_label = _race_type_return_target(return_to)
+    use_type_url = None
+    if selected_race_type is not None and return_url_name is not None:
+        use_type_url = '%s?%s' % (
+            reverse(return_url_name),
+            urlencode({'race_type': selected_race_type.code}),
+        )
+    return render(request, 'dj4xol/help_race_types.html', {
+        'user_theme': account.theme if account else 'classic',
+        'race_types': race_types,
+        'selected_race_type': selected_race_type,
+        'effect_rows': _race_type_detail_rows(selected_race_type),
+        'return_url_name': return_url_name,
+        'return_label': return_label,
+        'use_type_url': use_type_url,
+        'return_to': return_to,
     })
 
 
@@ -2543,6 +2670,7 @@ def onboarding_race(request):
         return redirect('dj4xol:index')
     show_public = _can_publish_public_races(request.user)
     can_skip_race_creation = _public_server_races_available()
+    selected_race_type = request.GET.get('race_type')
     if request.method == 'POST':
         form = ServerRaceForm(request.POST, show_public=show_public)
         if form.is_valid():
@@ -2551,12 +2679,19 @@ def onboarding_race(request):
             race.save()
             return redirect('dj4xol:index')
     else:
-        form = ServerRaceForm(show_public=show_public)
+        form = ServerRaceForm(
+            show_public=show_public,
+            selected_race_type=selected_race_type,
+        )
     max_level = get_global_research_max_level()
     return render(request, 'dj4xol/onboarding_race.html', {
         'form': form,
         'selected_theme': account.theme,
         'can_skip_race_creation': can_skip_race_creation,
+        'race_type_browser_url': '%s?%s' % (
+            reverse('dj4xol:help_race_types'),
+            urlencode({'return_to': 'onboarding_race'}),
+        ),
         'starting_tech_costs_json': json.dumps(
             get_starting_tech_balance_costs(max_level=max_level)
         ),

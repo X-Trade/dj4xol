@@ -5735,14 +5735,14 @@ class TestFleetTransferOrders(TestCase):
             name='Orbit Diplomatic A',
             enabled=True,
             description='',
-            persuasion_multiplier=2.0,
+            diplomacy_multiplier=2.0,
         )
         defender_type = ServerRaceType.objects.create(
             code='ODP2',
             name='Orbit Diplomatic B',
             enabled=True,
             description='',
-            persuasion_multiplier=2.0,
+            diplomacy_multiplier=2.0,
         )
         attacker.race_type = attacker_type
         attacker.save(update_fields=['race_type'])

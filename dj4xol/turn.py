@@ -61,8 +61,8 @@ from .diplomacy import (
     build_stance_map,
     apply_pending_diplomacy_snapshot,
     combat_chance_percent,
-    combat_chance_with_persuasion_percent,
-    combined_persuasion_chance_scale,
+    combat_chance_with_diplomacy_percent,
+    combined_diplomacy_chance_scale,
     combat_readiness_multiplier,
     ensure_contact_stance_entry,
     player_grants_permission,
@@ -2502,7 +2502,7 @@ class GameTurn():
             player_a,
             stance_map=self._stance_map_for_player(player_b),
         )
-        chance = combat_chance_with_persuasion_percent(
+        chance = combat_chance_with_diplomacy_percent(
             stance_a,
             stance_b,
             player_a,
@@ -4088,7 +4088,7 @@ class GameTurn():
             chance *= max(0.0, float(stance_scale))
         except (TypeError, ValueError):
             chance *= 1.0
-        chance *= combined_persuasion_chance_scale(defender, attacker)
+        chance *= combined_diplomacy_chance_scale(defender, attacker)
         chance = max(0.0, min(1.0, chance))
         if chance <= 0.0:
             return

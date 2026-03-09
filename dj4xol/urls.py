@@ -40,6 +40,7 @@ urlpatterns = [
     url(r'^help/secret-resources/$', views.help_secret_resources, name='help_secret_resources'),
     url(r'^help/space-combat/$', views.help_space_combat, name='help_space_combat'),
     url(r'^help/diplomacy/$', views.help_diplomacy, name='help_diplomacy'),
+    url(r'^help/race-types/$', views.help_race_types, name='help_race_types'),
     url(r'^help/invasion/$', views.help_invasion, name='help_invasion'),
     url(r'^help/technology/$', views.help_technology, name='help_technology'),
     url(r'^help/version-history/$', views.help_version_history, name='help_version_history'),
