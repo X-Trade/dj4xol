@@ -18,12 +18,18 @@ from ..models import (
     ResearchCategory,
     Salvage,
     ServerRace,
+    ServerRaceType,
     ServerSettings,
     Technology,
 )
 from ..forms import JoinGameForm, NewGameForm
 from ..research import ensure_player_research_rows
-from ..diplomacy import combat_chance_percent, combat_readiness_multiplier
+from ..diplomacy import (
+    combat_chance_modifier_percent,
+    combat_chance_percent,
+    combat_chance_with_persuasion_percent,
+    combat_readiness_multiplier,
+)
 from ..turn import (
     GameTurn,
     format_basic_hidden_salvage_name,
@@ -1705,7 +1711,6 @@ class TestDiplomacyView(TestCase):
         self.assertNotContains(response, 'Update Standing')
         self.assertContains(response, 'Current Effects')
         self.assertNotContains(response, 'Effects They Grant')
-
     def test_diplomacy_post_updates_default_and_specific_stance(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
@@ -1787,7 +1792,10 @@ class TestDiplomacyView(TestCase):
     def test_diplomacy_chance_scale_matches_anchor_values(self):
         self.assertEqual(combat_chance_percent('HOSTILE', 'HOSTILE'), 100)
         self.assertEqual(combat_chance_percent('HOSTILE', 'COLD'), 100)
-        self.assertEqual(combat_chance_percent('HOSTILE', 'ALLIED'), 100)
+        self.assertEqual(combat_chance_percent('HOSTILE', 'NEUTRAL'), 98)
+        self.assertEqual(combat_chance_percent('HOSTILE', 'WARM'), 95)
+        self.assertEqual(combat_chance_percent('HOSTILE', 'ALLIED'), 90)
+        self.assertEqual(combat_chance_percent('ALLIED', 'HOSTILE'), 90)
         self.assertEqual(combat_chance_percent('NEUTRAL', 'NEUTRAL'), 30)
         self.assertEqual(combat_chance_percent('NEUTRAL', 'WARM'), 8)
         self.assertEqual(combat_chance_percent('WARM', 'WARM'), 1)
@@ -1797,6 +1805,116 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(combat_readiness_multiplier('HOSTILE', 'ALLIED'), 1.4)
         self.assertEqual(combat_readiness_multiplier('ALLIED', 'HOSTILE'), 0.6)
         self.assertEqual(combat_readiness_multiplier('NEUTRAL', 'NEUTRAL'), 1.0)
+
+    def test_persuasion_modifier_reduces_and_increases_effective_encounter_chance(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        persuasive_type = ServerRaceType.objects.create(
+            code='PSA1',
+            name='Persuasive A',
+            enabled=True,
+            description='',
+            persuasion_multiplier=2.0,
+        )
+        player.race_type = persuasive_type
+        player.save(update_fields=['race_type'])
+        other_account_user = User.objects.create_user('diplo_persuasion', 'diplo_persuasion@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_account_user, alias='DIP5')
+        other_race_type = ServerRaceType.objects.create(
+            code='PSB1',
+            name='Persuasive B',
+            enabled=True,
+            description='',
+            persuasion_multiplier=0.5,
+        )
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Persuasion Race',
+            plural_name='Persuasion Races',
+            race_type=other_race_type,
+        )
+
+        self.assertEqual(combat_chance_modifier_percent(player, other_player), 0)
+        self.assertEqual(
+            combat_chance_with_persuasion_percent('NEUTRAL', 'NEUTRAL', player, other_player),
+            30,
+        )
+
+        other_race_type.persuasion_multiplier = 2.0
+        other_race_type.save(update_fields=['persuasion_multiplier'])
+        self.assertEqual(combat_chance_modifier_percent(player, other_player), -50)
+        self.assertEqual(
+            combat_chance_with_persuasion_percent('NEUTRAL', 'NEUTRAL', player, other_player),
+            15,
+        )
+
+        other_race_type.persuasion_multiplier = 0.5
+        other_race_type.save(update_fields=['persuasion_multiplier'])
+        persuasive_type.persuasion_multiplier = 0.5
+        persuasive_type.save(update_fields=['persuasion_multiplier'])
+        self.assertEqual(combat_chance_modifier_percent(player, other_player), 100)
+        self.assertEqual(
+            combat_chance_with_persuasion_percent('NEUTRAL', 'NEUTRAL', player, other_player),
+            60,
+        )
+
+    def test_diplomacy_page_shows_signed_persuasion_modifier_next_to_base_chance(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player_type = ServerRaceType.objects.create(
+            code='PSV1',
+            name='View Persuasive A',
+            enabled=True,
+            description='',
+            persuasion_multiplier=2.0,
+        )
+        other_type = ServerRaceType.objects.create(
+            code='PSV2',
+            name='View Persuasive B',
+            enabled=True,
+            description='',
+            persuasion_multiplier=2.0,
+        )
+        player.race_type = player_type
+        player.save(update_fields=['race_type'])
+        other_account_user = User.objects.create_user('diplo_other_mod', 'diplo_other_mod@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_account_user, alias='DIP6')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Other Race',
+            plural_name='Other Races',
+            race_type=other_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '30% (-50%)')
 
     def test_fleet_order_panel_shows_give_fleet_option(self):
         game = default_game(stars=5, fleets=1)

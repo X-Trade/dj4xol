@@ -25,15 +25,22 @@
                         <section class="panel-scrollable-text">
                         <p>
                             The Diplomacy screen lets you choose a standing toward every race you have encountered, plus a default standing for unknown races.
-                            Your default is copied into a new diplomacy entry the first time you identify another race.
                         </p>
                         <p>
-                            Standings are currently used only for combat initiation. Later updates can attach additional effects to warmer or more hostile relations.
+                            Standings now affect combat behavior, colony defensive posture, visiting shipyard service levels, and allied intel/scanner sharing.
+                        </p>
+                        <h4>When Changes Apply</h4>
+                        <p>
+                            Changes take effect on the next generated turn, rather than immediately.
+                        </p>
+                        <p>
+                            When another race changes their stance toward you and it is applied, you receive a diplomatic message.
+                            The race name in that message links directly to their row in the Diplomacy screen.
                         </p>
                         <h4>First Contact &amp; Defaults</h4>
                         <p>
-                            When you make first contact with a race, the game creates a specific diplomacy row for that race using your current default standing.
-                            After that, changing the default does not retroactively change existing race-specific entries.
+                            Your default standing is used for races you have not dealt with before.
+                            Once a race has its own row, you can manage that relationship separately.
                         </p>
                         <p>
                             Each empire keeps its own standings. Your setting toward another race can differ from their setting toward you.
@@ -41,7 +48,7 @@
                         <h4>Effect on Combat Initiation</h4>
                         <p>
                             When fleets from two races meet, the game compares both standings and rolls for combat.
-                            Any encounter involving <strong>Hostile</strong> is guaranteed to escalate into combat.
+                            <strong>Hostile</strong> against another hostile or cold stance always turns violent, and hostile contacts against more trusting stances are still very likely to do so.
                         </p>
                         <table class="detail-table">
                             <thead>
@@ -55,13 +62,16 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr><th>Hostile</th><td>100%</td><td>100%</td><td>100%</td><td>100%</td><td>100%</td></tr>
+                                <tr><th>Hostile</th><td>100%</td><td>100%</td><td>98%</td><td>95%</td><td>90%</td></tr>
                                 <tr><th>Cold</th><td>100%</td><td>70%</td><td>50%</td><td>30%</td><td>8%</td></tr>
-                                <tr><th>Neutral</th><td>100%</td><td>50%</td><td>30%</td><td>8%</td><td>1%</td></tr>
-                                <tr><th>Warm</th><td>100%</td><td>30%</td><td>8%</td><td>1%</td><td>0%</td></tr>
-                                <tr><th>Allied</th><td>100%</td><td>8%</td><td>1%</td><td>0%</td><td>0%</td></tr>
+                                <tr><th>Neutral</th><td>98%</td><td>50%</td><td>30%</td><td>8%</td><td>1%</td></tr>
+                                <tr><th>Warm</th><td>95%</td><td>30%</td><td>8%</td><td>1%</td><td>0%</td></tr>
+                                <tr><th>Allied</th><td>90%</td><td>8%</td><td>1%</td><td>0%</td><td>0%</td></tr>
                             </tbody>
                         </table>
+                        <p>
+                            Some race traits can bias the final outcome away from the table value, making hostile encounters slightly more or less likely than the baseline shown here.
+                        </p>
                         <h4>Readiness Advantage</h4>
                         <p>
                             If combat starts between mismatched standings, the more hostile side gains a readiness advantage and the less hostile side suffers a matching disadvantage.
@@ -72,8 +82,9 @@
                         </p>
                         <h4>Current Limits</h4>
                         <p>
-                            Diplomacy currently affects whether a fleet encounter turns into combat and gives the more hostile side an edge when it does.
-                            It does not yet change trade, scanner sharing, movement rights, or other strategic systems.
+                            Current diplomacy effects include encounter combat initiation, readiness advantage in mismatched contacts, colony defense behavior,
+                            allied repair/refuel support, transfer hostility behavior, and allied intel/scanner sharing.
+                            Trade treaties, movement-right treaties, and granular per-permission controls are not yet available.
                         </p>
                         </section>
                         <div class="panel-footer">

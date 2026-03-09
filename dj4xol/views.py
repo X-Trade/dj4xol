@@ -45,6 +45,7 @@ from .research import (
 from .diplomacy import (
     STANCE_CHOICES,
     build_pending_stance_map,
+    combat_chance_modifier_percent,
     combat_chance_percent,
     encountered_players,
     has_encountered_player,
@@ -2445,11 +2446,14 @@ def diplomacy(request, game_short_id):
     if selected_player:
         their_stance = stance_towards(selected_player, player)
         our_stance = own_stance_map.get(selected_player.id, pending_default_stance)
+        combat_chance_base = combat_chance_percent(our_stance, their_stance)
+        combat_modifier = combat_chance_modifier_percent(player, selected_player)
         detail = {
             'name': _player_display_name(selected_player),
             'their_stance': stance_label(their_stance),
             'our_stance': stance_label(our_stance),
-            'combat_chance': combat_chance_percent(our_stance, their_stance),
+            'combat_chance_base': combat_chance_base,
+            'combat_modifier': '%+d%%' % combat_modifier,
             'our_stance_raw': our_stance,
             'effects': stance_effect_items(our_stance),
             'is_default': False,
