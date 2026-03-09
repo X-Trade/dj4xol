@@ -170,18 +170,26 @@ body.map-dragging * {
     }
 
     .column-right {
-        display: contents;
+        grid-column: 2 / 4;
+        grid-row: 1;
+        display: grid !important;
+        grid-template-columns: minmax(324px, 1fr) minmax(324px, 1fr);
+        grid-template-areas: "detail orders";
+        column-gap: 10px;
+        min-width: 0;
+        max-width: none;
+        overflow: visible;
     }
 
-    .column-detail {
-        grid-column: 2;
+    .column-right > .column-detail {
+        grid-area: detail;
         grid-row: 1;
         min-width: 324px;
         max-width: none;
     }
 
-    .column-orders {
-        grid-column: 3;
+    .column-right > .column-orders {
+        grid-area: orders;
         grid-row: 1;
         min-width: 324px;
         max-width: none;
