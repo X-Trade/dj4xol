@@ -225,7 +225,7 @@
     luck_multiplier: 1.2
     has_advanced_stargates: True
     political_stability: 1.1
-    starting_planets: 2
+    starting_colonies: 2
     starting_planet_has_stargate: True
     manufacturing_multiplier: 0.9
     research_multiplier: 1.1
@@ -263,7 +263,7 @@
     has_bombs: False
     luck_multiplier: 1.2
     research_multiplier: 0.8
-    starting_planets: 2
+    starting_colonies: 2
     economy_offset: 1
     ground_force_multiplier: 0.8
     defence_multiplier: 0.8

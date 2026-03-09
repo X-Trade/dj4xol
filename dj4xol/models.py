@@ -532,7 +532,7 @@ class ServerRaceType(models.Model):
     name = models.CharField(max_length=16)
     enabled = models.BooleanField(default=True)
     description = models.TextField()
-    starting_planets = models.IntegerField(default=1)
+    starting_colonies = models.IntegerField(default=1)
     starting_planet_has_stargate = models.BooleanField(default=False)
     population_growth_multiplier = models.FloatField(default=1.0)
     population_growth_uses_resources = models.BooleanField(default=False)

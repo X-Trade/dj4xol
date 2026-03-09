@@ -100,6 +100,102 @@ class testGameFactory(TestCase):
         player = gf.join_player(self.accounts[0], self.races[0])
         self.assertEqual(player.homeworld.colonists, 5000)
 
+    def test_join_player_splits_starting_population_across_starting_colonies(self):
+        self.race_type.starting_colonies = 2
+        self.race_type.save(update_fields=['starting_colonies'])
+        self.races[0].starting_colonists = 5
+        self.races[0].save(update_fields=['starting_colonists'])
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(10)
+        gf.save()
+
+        player = gf.join_player(self.accounts[0], self.races[0])
+        owned_stars = list(player.stars.order_by('id'))
+        self.assertEqual(len(owned_stars), 2)
+        self.assertEqual(sum(star.colonists for star in owned_stars), 5000)
+        self.assertEqual(sorted(star.colonists for star in owned_stars), [2500, 2500])
+        secondary = [star for star in owned_stars if star.id != player.homeworld_id][0]
+        self.assertLessEqual(gf._distance(player.homeworld, secondary), 30.0)
+
+    def test_join_player_splits_mines_and_factories_with_homeworld_remainder(self):
+        self.race_type.starting_colonies = 2
+        self.race_type.save(update_fields=['starting_colonies'])
+        self.races[0].starting_mines = 5
+        self.races[0].starting_factories = 3
+        self.races[0].save(update_fields=['starting_mines', 'starting_factories'])
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(10)
+        gf.save()
+
+        player = gf.join_player(self.accounts[0], self.races[0])
+        owned_stars = list(player.stars.order_by('id'))
+        self.assertEqual(len(owned_stars), 2)
+        homeworld = player.homeworld
+        secondary = [star for star in owned_stars if star.id != homeworld.id][0]
+        self.assertEqual(homeworld.mines, 3)
+        self.assertEqual(secondary.mines, 2)
+        self.assertEqual(homeworld.factories, 2)
+        self.assertEqual(secondary.factories, 1)
+        self.assertEqual(homeworld.labs, self.races[0].starting_labs)
+        self.assertEqual(homeworld.shipyards, self.races[0].starting_shipyards)
+        self.assertEqual(secondary.labs, 0)
+        self.assertEqual(secondary.shipyards, 0)
+
+    def test_join_player_creates_secondary_starting_colony_when_needed(self):
+        self.race_type.starting_colonies = 2
+        self.race_type.save(update_fields=['starting_colonies'])
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(1)
+        gf.save()
+
+        player = gf.join_player(self.accounts[0], self.races[0])
+        owned_stars = list(player.stars.order_by('id'))
+        self.assertEqual(len(owned_stars), 2)
+        self.assertEqual(gf.game.stars.count(), 2)
+        secondary = [star for star in owned_stars if star.id != player.homeworld_id][0]
+        self.assertLessEqual(gf._distance(player.homeworld, secondary), 30.0)
+        self.assertNotEqual(
+            (secondary.gravity, secondary.temperature, secondary.radiation),
+            (
+                player.gravity_center,
+                player.temperature_center,
+                player.radiation_center,
+            ),
+        )
+
+    def test_join_player_uses_stacked_secondary_colony_only_as_fallback(self):
+        self.race_type.starting_colonies = 2
+        self.race_type.save(update_fields=['starting_colonies'])
+        gf = GameFactory()
+        gf.set_map_size(200, 200)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(30, systems=True)
+        gf.save()
+
+        stars_by_coord = {}
+        for star in gf.game.stars.all():
+            stars_by_coord.setdefault((star.x, star.y), []).append(star)
+        stacked_group = next(group for group in stars_by_coord.values() if len(group) > 1)
+        chosen_homeworld = stacked_group[0]
+        for idx, star in enumerate(gf.game.stars.exclude(id__in=[s.id for s in stacked_group]).order_by('id')):
+            star.x = 150 + idx
+            star.y = 150
+            star.save(update_fields=['x', 'y'])
+
+        with patch.object(gf, '_find_homeworld_star', return_value=chosen_homeworld):
+            player = gf.join_player(self.accounts[0], self.races[0])
+
+        owned_stars = list(player.stars.order_by('id'))
+        self.assertEqual(len(owned_stars), 2)
+        secondary = [star for star in owned_stars if star.id != player.homeworld_id][0]
+        self.assertEqual((secondary.x, secondary.y), (player.homeworld.x, player.homeworld.y))
+
     def test_leftover_points_for_research_do_not_increase_homeworld_minerals(self):
         self.races[0].leftover_points = 20.0
         self.races[0].spend_leftover_points_on_research = True

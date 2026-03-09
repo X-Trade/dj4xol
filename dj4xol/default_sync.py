@@ -109,6 +109,18 @@ def _upsert_server_race_type(ServerRaceType, pk, fields):
         if column in table_columns and column not in persisted_fields:
             persisted_fields[column] = value
 
+    if 'starting_planets' in table_columns and 'starting_planets' not in persisted_fields:
+        if 'starting_colonies' in fields:
+            persisted_fields['starting_planets'] = fields['starting_colonies']
+        else:
+            persisted_fields['starting_planets'] = 1
+    if (
+        'starting_colonies' in table_columns and
+        'starting_planets' in fields and
+        'starting_colonies' not in persisted_fields
+    ):
+        persisted_fields['starting_colonies'] = fields['starting_planets']
+
     if exists:
         update_columns = [column for column in persisted_fields.keys() if column != 'code']
         if not update_columns:

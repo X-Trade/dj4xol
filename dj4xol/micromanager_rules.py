@@ -34,10 +34,26 @@ ADMINISTRATION_LEVEL_PARAM_KEYS = (
     'colony_micromanager_tier',
 )
 
-FILLER_ORDER_TYPES = (
+BASIC_MANAGED_ORDER_TYPES = (
+    'BUILD_MINE',
     'BUILD_FACTORY',
-    'BUILD_LAB',
     'BUILD_DEFENSE',
+)
+SUPPORT_MANAGED_ORDER_TYPES = (
+    'BUILD_MINE',
+    'BUILD_FACTORY',
+    'BUILD_DEFENSE',
+    'BUILD_LAB',
+    'BUILD_SHIPYARD',
+)
+LEVEL_ONE_FILLER_ORDER_TYPES = (
+    'BUILD_FACTORY',
+    'BUILD_DEFENSE',
+)
+LEVEL_TWO_FILLER_ORDER_TYPES = (
+    'BUILD_FACTORY',
+    'BUILD_DEFENSE',
+    'BUILD_LAB',
 )
 
 
@@ -261,6 +277,36 @@ def administration_level_from_params(params):
     return 0
 
 
+def get_micromanager_managed_order_types(tier):
+    """Return infrastructure order types managed at the given tier."""
+    if int(tier or 0) >= TIER_SUPPORT:
+        return SUPPORT_MANAGED_ORDER_TYPES
+    if int(tier or 0) >= TIER_BASIC:
+        return BASIC_MANAGED_ORDER_TYPES
+    return ()
+
+
+def _has_resource_surplus_for_order(star, cost_map, order_type, reserve_factor=2):
+    """Return True when the colony can cover queue demand with headroom."""
+    if not cost_map:
+        return False
+    cost = cost_map.get(order_type, {})
+    bp_needed = (
+        int(getattr(star, 'queue_bp', 0) or 0) +
+        max(0, int(cost.get('bp', 0) or 0)) * int(reserve_factor or 0)
+    )
+    if bp_needed > calculate_available_buildpoints(star):
+        return False
+    for key in ALL_RESOURCE_KEYS:
+        demand = (
+            int(getattr(star, 'queue_%s' % key, 0) or 0) +
+            max(0, int(cost.get(key, 0) or 0)) * int(reserve_factor or 0)
+        )
+        if demand > int(getattr(star, '%s_inventory' % key, 0) or 0):
+            return False
+    return True
+
+
 def get_micromanager_candidate_orders(
     player,
     star,
@@ -268,6 +314,7 @@ def get_micromanager_candidate_orders(
     fleets_in_orbit=0,
     terraform_available=False,
     terraform_used=False,
+    cost_map=None,
 ):
     """Return candidate automatic production orders in priority order."""
     if int(tier or 0) <= 0:
@@ -283,8 +330,33 @@ def get_micromanager_candidate_orders(
     mine_room = current_mines < max_mines
     needs_jobs = current_jobs < thresholds['target_jobs']
     queue_pressure = {'mines': False, 'factories': False}
+    filler_order_types = LEVEL_ONE_FILLER_ORDER_TYPES
     if int(tier or 0) >= TIER_SUPPORT:
         queue_pressure = _queue_throughput_pressure(star)
+        filler_order_types = LEVEL_TWO_FILLER_ORDER_TYPES
+    level_one_support_candidates = []
+    if (
+        int(tier or 0) == TIER_BASIC and
+        current_jobs >= thresholds['min_jobs']
+    ):
+        if (
+            int(getattr(star, 'labs', 0) or 0) <= 0 and
+            _can_add_jobs_without_breaking_limit(player, star, 'BUILD_LAB') and
+            _has_resource_surplus_for_order(star, cost_map, 'BUILD_LAB')
+        ):
+            level_one_support_candidates.append('BUILD_LAB')
+        if (
+            int(getattr(star, 'shipyards', 0) or 0) <= 0 and
+            _can_add_jobs_without_breaking_limit(
+                player, star, 'BUILD_SHIPYARD'
+            ) and
+            _has_resource_surplus_for_order(
+                star,
+                cost_map,
+                'BUILD_SHIPYARD',
+            )
+        ):
+            level_one_support_candidates.append('BUILD_SHIPYARD')
 
     if needs_jobs:
         # Bootstrap economic base before considering other priorities.
@@ -312,9 +384,8 @@ def get_micromanager_candidate_orders(
                     )
                 ):
                     candidates.append('BUILD_SHIPYARD')
-                candidates.extend(FILLER_ORDER_TYPES)
-            else:
-                candidates.append('BUILD_FACTORY')
+            candidates.extend(filler_order_types)
+            candidates.extend(level_one_support_candidates)
     else:
         if queue_pressure.get('mines') and mine_room:
             candidates.append('BUILD_MINE')
@@ -326,6 +397,7 @@ def get_micromanager_candidate_orders(
             _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD')
         ):
             candidates.append('BUILD_SHIPYARD')
+        candidates.extend(level_one_support_candidates)
 
     if (
         int(tier or 0) >= TIER_TERRAFORM and
@@ -464,6 +536,7 @@ def plan_micromanager_orders(
             fleets_in_orbit=fleets_in_orbit,
             terraform_available=terraform_available,
             terraform_used=terraform_used,
+            cost_map=cost_map,
         )
         if not candidates:
             break

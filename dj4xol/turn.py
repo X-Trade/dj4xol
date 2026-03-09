@@ -1,5 +1,5 @@
 from datetime import timedelta
-from math import atan2, ceil, cos, degrees, log2, pi, sin
+from math import atan2, ceil, cos, degrees, log2, pi, sin, sqrt
 from numpy import array as nparray, linalg
 from django.db import models
 from django.utils import timezone
@@ -112,6 +112,7 @@ from .micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
     REMOVE_ADMINISTRATION_ORDER_TYPE,
     compress_micromanager_order_runs,
+    get_micromanager_managed_order_types,
     remaining_queue_requirements,
     plan_micromanager_orders,
 )
@@ -3959,15 +3960,28 @@ class GameTurn():
         invaders = invader_colonists_kt * 1000
         defenders = star.colonists
 
+        attacker_ground_force_multiplier = (
+            attacker_race.ground_force_multiplier
+            if attacker_race.ground_force_multiplier is not None
+            else 1.0
+        )
+        defender_ground_force_multiplier = (
+            defender_race.ground_force_multiplier
+            if defender_race and defender_race.ground_force_multiplier is not None
+            else 1.0
+        )
+        attacker_ground_readiness = sqrt(attacker_readiness)
+        defender_ground_readiness = sqrt(defender_readiness)
+
         attacker_force = (
             invaders *
-            (attacker_race.ground_force_multiplier or 1.0) *
-            attacker_readiness
+            attacker_ground_force_multiplier *
+            attacker_ground_readiness
         )
         defender_force = (
             defenders *
-            (defender_race.ground_force_multiplier if defender_race else 1.0) *
-            defender_readiness
+            defender_ground_force_multiplier *
+            defender_ground_readiness
         )
 
         attacker_won = attacker_force > defender_force
@@ -3975,7 +3989,10 @@ class GameTurn():
             attacker_won = False
 
         if attacker_won:
-            remaining_invaders = int((attacker_force - defender_force) / (attacker_race.ground_force_multiplier or 1.0))
+            remaining_invaders = int(
+                (attacker_force - defender_force) /
+                (attacker_ground_force_multiplier * attacker_ground_readiness)
+            )
             attacker_losses = invaders - remaining_invaders
             defender_losses = defenders
             star.colonists = max(0, remaining_invaders)
@@ -3988,7 +4005,13 @@ class GameTurn():
                     location=(star.x, star.y),
                 )
         else:
-            remaining_defenders = int((defender_force - attacker_force) / (defender_race.ground_force_multiplier if defender_race else 1.0))
+            if defender_ground_force_multiplier > 0 and defender_ground_readiness > 0:
+                remaining_defenders = int(
+                    (defender_force - attacker_force) /
+                    (defender_ground_force_multiplier * defender_ground_readiness)
+                )
+            else:
+                remaining_defenders = 0
             defender_losses = defenders - remaining_defenders
             attacker_losses = invaders
             star.colonists = max(0, remaining_defenders)
@@ -6379,6 +6402,31 @@ class GameTurn():
         for order in changed:
             order.save(update_fields=['position'])
 
+    def _convert_repeat_player_infrastructure_orders_to_micromanager(
+        self,
+        star,
+        tier,
+    ):
+        """Hand repeat infrastructure orders to tier-2+ Administration."""
+        managed_types = set(get_micromanager_managed_order_types(tier))
+        if (
+            int(tier or 0) < 2 or
+            not managed_types
+        ):
+            return
+
+        for order in star.production_orders.filter(
+            added_by_micromanager=False,
+            repeat=True,
+        ).order_by('position', 'id'):
+            if order.order_type not in managed_types:
+                continue
+            if self._order_has_progress(order):
+                continue
+            order.added_by_micromanager = True
+            order.repeat = False
+            order.save(update_fields=['added_by_micromanager', 'repeat'])
+
     def _refresh_administration_production_queue(self, star):
         """Refresh zero-progress Micromanager queue items for one colony."""
         from .models import ProductionOrder
@@ -6396,6 +6444,14 @@ class GameTurn():
                 order.delete()
             self._resequence_production_orders(star)
             return
+
+        self._convert_repeat_player_infrastructure_orders_to_micromanager(
+            star,
+            tier,
+        )
+        micromanager_orders = list(star.production_orders.filter(
+            added_by_micromanager=True
+        ).order_by('position', 'id'))
 
         preserved = []
         editable = []

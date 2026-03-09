@@ -5431,9 +5431,101 @@ class TestFleetTransferOrders(TestCase):
         self.assertEqual(star.ironium_inventory, 150)
         self.assertEqual(fleet.ironium_inventory, 50)
 
-    def test_invasion_readiness_bias_favors_more_hostile_attacker(self):
-        from ..models import FleetOrders
+    def test_invasion_attacker_ground_force_multiplier_can_flip_outcome(self):
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
+        if defender is None:
+            other_user = User.objects.create_user('inv_ground_att', 'inv_ground_att@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(game=game, account=other_account, race_type=attacker.race_type)
 
+        attacker_type = ServerRaceType.objects.create(
+            code='GFIA',
+            name='Ground Force Invader',
+            description='Attacker with stronger invasion troops.',
+            ground_force_multiplier=1.5,
+        )
+        defender_type = ServerRaceType.objects.create(
+            code='GFID',
+            name='Ground Force Defender',
+            description='Defender with standard ground troops.',
+            ground_force_multiplier=1.0,
+        )
+        attacker.race_type = attacker_type
+        defender.race_type = defender_type
+        attacker.save(update_fields=['race_type'])
+        defender.save(update_fields=['race_type'])
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 5000
+        star.defenses = 0
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Ground Force Invader',
+            x=star.x,
+            y=star.y,
+            colonists=4,
+            integrity=100,
+            ship_count=1,
+        )
+        GameTurn(game)._handle_invasion(fleet, star, 4)
+        star.refresh_from_db()
+        self.assertEqual(star.player, attacker)
+        self.assertEqual(star.colonists, 666)
+
+    def test_invasion_defender_ground_force_multiplier_can_hold_colony(self):
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
+        if defender is None:
+            other_user = User.objects.create_user('inv_ground_def', 'inv_ground_def@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(game=game, account=other_account, race_type=attacker.race_type)
+
+        attacker_type = ServerRaceType.objects.create(
+            code='GFD1',
+            name='Light Infantry',
+            description='Attacker with standard ground troops.',
+            ground_force_multiplier=1.0,
+        )
+        defender_type = ServerRaceType.objects.create(
+            code='GFD2',
+            name='Heavy Infantry',
+            description='Defender with stronger ground troops.',
+            ground_force_multiplier=2.0,
+        )
+        attacker.race_type = attacker_type
+        defender.race_type = defender_type
+        attacker.save(update_fields=['race_type'])
+        defender.save(update_fields=['race_type'])
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 4000
+        star.defenses = 0
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Ground Force Invader',
+            x=star.x,
+            y=star.y,
+            colonists=6,
+            integrity=100,
+            ship_count=1,
+        )
+        GameTurn(game)._handle_invasion(fleet, star, 6)
+        star.refresh_from_db()
+        self.assertEqual(star.player, defender)
+        self.assertEqual(star.colonists, 1000)
+
+    def test_invasion_diplomatic_readiness_softly_biases_ground_force_comparison(self):
         game = default_game(stars=2)
         attacker = game.players.first()
         defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
@@ -5465,23 +5557,14 @@ class TestFleetTransferOrders(TestCase):
             name='Readiness Invader',
             x=star.x,
             y=star.y,
-            colonists=5,
+            colonists=4,
             integrity=100,
             ship_count=1,
         )
-        FleetOrders.objects.create(
-            game=game,
-            fleet=fleet,
-            order_type='TRANSFER',
-            transfer_type='UNLOAD',
-            target_star=star,
-            transfer_colonists=5,
-        )
-
-        GameTurn(game).generate_turn()
+        GameTurn(game)._handle_invasion(fleet, star, 4)
         star.refresh_from_db()
         self.assertEqual(star.player, attacker)
-        self.assertGreater(star.colonists, 0)
+        self.assertEqual(star.colonists, 726)
 
     def test_hostile_orbit_hazard_allied_stance_blocks_strikes(self):
         game = default_game(stars=2)

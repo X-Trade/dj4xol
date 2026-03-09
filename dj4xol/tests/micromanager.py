@@ -201,6 +201,9 @@ class AdministrationAutomationTest(TestCase):
         self.star.colonists = 20_000
         self.star.mines = 0
         self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
         self.star.ironium_inventory = 500
         self.star.boranium_inventory = 0
         self.star.germanium_inventory = 0
@@ -257,6 +260,9 @@ class AdministrationAutomationTest(TestCase):
         self.star.labs = 0
         self.star.defenses = 0
         self.star.shipyards = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
         self.star.ironium_yield = 0
         self.star.boranium_yield = 0
         self.star.germanium_yield = 0
@@ -269,6 +275,94 @@ class AdministrationAutomationTest(TestCase):
         self.assertGreaterEqual(len(candidates), 1)
         self.assertEqual(candidates[0], 'BUILD_FACTORY')
         self.assertNotEqual(candidates[0], 'BUILD_SHIPYARD')
+
+    def test_level_one_can_manage_defenses_but_not_labs_or_shipyards(self):
+        self._create_administration_tech(1, 1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 10
+        self.star.factories = 10
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            1,
+            fleets_in_orbit=3,
+        )
+
+        self.assertIn('BUILD_DEFENSE', candidates)
+        self.assertNotIn('BUILD_LAB', candidates)
+        self.assertNotIn('BUILD_SHIPYARD', candidates)
+
+    def test_level_one_can_seed_one_lab_and_shipyard_with_clear_surplus(self):
+        self._create_administration_tech(1, 1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 20
+        self.star.factories = 30
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 2_000
+        self.star.boranium_inventory = 2_000
+        self.star.germanium_inventory = 2_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            1,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertIn('BUILD_LAB', candidates)
+        self.assertIn('BUILD_SHIPYARD', candidates)
+
+    def test_level_one_does_not_seed_lab_or_shipyard_without_surplus(self):
+        self._create_administration_tech(1, 1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 20
+        self.star.factories = 30
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 100
+        self.star.boranium_inventory = 10
+        self.star.germanium_inventory = 10
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            1,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertNotIn('BUILD_LAB', candidates)
+        self.assertNotIn('BUILD_SHIPYARD', candidates)
 
     def test_level_two_prioritises_factory_when_queue_bp_exceeds_one_year(self):
         self._create_administration_tech(2, 2)
@@ -354,6 +448,9 @@ class AdministrationAutomationTest(TestCase):
         self.star.labs = 0
         self.star.defenses = 0
         self.star.shipyards = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
         self.star.ironium_yield = 0
         self.star.boranium_yield = 0
         self.star.germanium_yield = 0
@@ -381,6 +478,9 @@ class AdministrationAutomationTest(TestCase):
         self.star.labs = 0
         self.star.defenses = 0
         self.star.shipyards = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
         self.star.ironium_yield = 0
         self.star.boranium_yield = 0
         self.star.germanium_yield = 0
@@ -396,6 +496,80 @@ class AdministrationAutomationTest(TestCase):
         self.assertEqual(first.id, second.id)
         self.assertEqual(second.order_type, 'BUILD_FACTORY')
         self.assertGreater(second.quantity, 1)
+
+    def test_level_two_converts_repeat_shipyard_order_to_auto_and_reduces_it(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 20
+        self.star.factories = 20
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 5_000
+        self.star.boranium_inventory = 5_000
+        self.star.germanium_inventory = 5_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        self.player.fleets.all().delete()
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Orbit One',
+            x=self.star.x,
+            y=self.star.y,
+        )
+        order = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_SHIPYARD',
+            position=1,
+            quantity=4,
+            repeat=True,
+        )
+
+        GameTurn(self.game)._refresh_administration_production_queue(self.star)
+        order.refresh_from_db()
+
+        self.assertTrue(order.added_by_micromanager)
+        self.assertFalse(order.repeat)
+        self.assertEqual(order.order_type, 'BUILD_SHIPYARD')
+        self.assertEqual(order.quantity, 1)
+
+    def test_level_two_can_delete_unstarted_repeat_player_infrastructure(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 20_000
+        self.star.mines = 10
+        self.star.factories = 10
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 5_000
+        self.star.boranium_inventory = 5_000
+        self.star.germanium_inventory = 5_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_LAB',
+            position=1,
+            quantity=3,
+            repeat=True,
+        )
+
+        GameTurn(self.game)._refresh_administration_production_queue(self.star)
+
+        self.assertFalse(self.star.production_orders.exists())
 
     def test_detail_builder_marks_micromanager_orders_and_disables_admin_repeat(self):
         self._create_administration_tech(1, 1)
