@@ -1500,6 +1500,8 @@ class TestDetailPanelReportTiers(TestCase):
                 'factories_bp': 12,
                 'labs': 2,
                 'labs_rp': 8,
+                'basic_scanner_range': 6,
+                'advanced_scanner_range': 2,
                 'defenses': 1,
                 'defenses_tooltip': None,
                 'shipyards': 1,
@@ -1510,6 +1512,8 @@ class TestDetailPanelReportTiers(TestCase):
         )
         response = self._get_detail_response(self.star)
         self.assertContains(response, 'data-section="infrastructure"')
+        self.assertContains(response, 'Scanners')
+        self.assertContains(response, '6ly/2ly')
 
     def test_unowned_star_with_leftover_infrastructure_shows_abandoned_owner(self):
         self.star.player = None

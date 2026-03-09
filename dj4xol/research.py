@@ -1158,12 +1158,41 @@ def _select_scanner_ranges(unlocked, tech_type):
     return max(0, basic), max(0, advanced)
 
 
+def _player_scan_multiplier(player):
+    if not player:
+        return 1.0
+    race_type = getattr(player, 'race_type', None)
+    raw = getattr(race_type, 'scan_multiplier', 1.0)
+    if raw is None:
+        return 1.0
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _scale_scanner_range(value, multiplier):
+    try:
+        base = max(0, int(value or 0))
+    except (TypeError, ValueError):
+        base = 0
+    if base <= 0:
+        return 0
+    return max(0, int(round(float(base) * float(multiplier))))
+
+
 def get_player_colony_scanner_ranges(player):
     """Return scanner ranges sourced from INFRASTRUCTURE tech."""
     unlocked = list(get_player_unlocked_technologies(player))
     if not unlocked:
         return 0, 0
-    return _select_scanner_ranges(unlocked, 'INFRASTRUCTURE')
+    basic, advanced = _select_scanner_ranges(unlocked, 'INFRASTRUCTURE')
+    multiplier = _player_scan_multiplier(player)
+    basic = _scale_scanner_range(basic, multiplier)
+    advanced = _scale_scanner_range(advanced, multiplier)
+    if advanced > basic:
+        basic = advanced
+    return basic, advanced
 
 
 def get_player_tech_effects(player):
@@ -1220,15 +1249,18 @@ def get_player_tech_effects(player):
         tech = selected[1]
         params = _safe_params(tech)
         if tech_type == 'SCANNER':
+            multiplier = _player_scan_multiplier(player)
             try:
-                effects['basic_scanner_range'] = max(
-                    0, int(params.get('basic_scanner_range') or 0)
+                effects['basic_scanner_range'] = _scale_scanner_range(
+                    params.get('basic_scanner_range'),
+                    multiplier,
                 )
             except (TypeError, ValueError):
                 effects['basic_scanner_range'] = 0
             try:
-                effects['advanced_scanner_range'] = max(
-                    0, int(params.get('advanced_scanner_range') or 0)
+                effects['advanced_scanner_range'] = _scale_scanner_range(
+                    params.get('advanced_scanner_range'),
+                    multiplier,
                 )
             except (TypeError, ValueError):
                 effects['advanced_scanner_range'] = 0
