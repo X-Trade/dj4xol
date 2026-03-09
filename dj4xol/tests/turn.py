@@ -10238,6 +10238,112 @@ class TestBombardmentOrders(TestCase):
         self.assertFalse(FleetOrders.objects.filter(id=bomb_order.id).exists())
         self.assertEqual((fleet.x, fleet.y), (star.x + 1, star.y))
 
+    def test_bombardment_multiplier_scales_colony_damage(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_mult_def')
+        attacker_type = ServerRaceType.objects.create(
+            code='BMB2',
+            name='Heavy Bombers',
+            description='Bombardment specialists.',
+            bombardment_multiplier=2.0,
+        )
+        attacker.race_type = attacker_type
+        attacker.save(update_fields=['race_type'])
+
+        star = Star.objects.create(
+            game=game,
+            name='Bomb Target High',
+            x=99,
+            y=99,
+            player=defender,
+            colonists=50_000,
+            defenses=20,
+            mines=20,
+            factories=20,
+            labs=20,
+            shipyards=20,
+        )
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Heavy Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='CONVENTIONAL',
+        )
+        FleetOrders.objects.create(game=game, fleet=fleet, order_type='BOMB', target_star=star)
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=5):
+            GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+        star.refresh_from_db()
+        self.assertLessEqual(star.defenses, 10)
+        self.assertLessEqual(star.colonists, 40_000)
+        self.assertLessEqual(star.mines, 10)
+        self.assertLessEqual(star.factories, 10)
+        self.assertLessEqual(star.labs, 10)
+        self.assertLessEqual(star.shipyards, 10)
+
+    def test_bombardment_multiplier_can_reduce_colony_damage(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_mult_low_def')
+        attacker_type = ServerRaceType.objects.create(
+            code='BMBL',
+            name='Light Bombers',
+            description='Reduced bombardment output.',
+            bombardment_multiplier=0.5,
+        )
+        attacker.race_type = attacker_type
+        attacker.save(update_fields=['race_type'])
+
+        star = Star.objects.create(
+            game=game,
+            name='Bomb Target Low',
+            x=98,
+            y=98,
+            player=defender,
+            colonists=50_000,
+            defenses=20,
+            mines=20,
+            factories=20,
+            labs=20,
+            shipyards=20,
+        )
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Light Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='CONVENTIONAL',
+        )
+        FleetOrders.objects.create(game=game, fleet=fleet, order_type='BOMB', target_star=star)
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=6):
+            GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+        star.refresh_from_db()
+        self.assertEqual(star.defenses, 17)
+        self.assertEqual(star.colonists, 47_000)
+        self.assertEqual(star.mines, 17)
+        self.assertEqual(star.factories, 17)
+        self.assertEqual(star.labs, 17)
+        self.assertEqual(star.shipyards, 17)
+
     def test_bomb_order_once_completes_and_allows_passthrough(self):
         from ..models import FleetOrders
 

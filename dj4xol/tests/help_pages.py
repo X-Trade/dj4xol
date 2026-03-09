@@ -20,12 +20,19 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'Colony Management Basics')
         self.assertContains(response, 'Mining, Salvage &amp; Asteroids')
         self.assertContains(response, 'Colony Calculator')
+        self.assertContains(response, 'Race Type Browser')
         self.assertContains(response, 'Technology Directory')
         self.assertContains(response, 'Fleet Composition')
         self.assertContains(response, 'Research &amp; Labs')
         self.assertContains(response, 'Space Combat')
         self.assertContains(response, 'Diplomacy')
         self.assertContains(response, 'Invasion')
+
+        content = response.content.decode('utf-8')
+        self.assertLess(
+            content.index('Race Type Browser'),
+            content.index('Technology Directory'),
+        )
 
     def test_help_exploration_renders(self):
         response = self.client.get(reverse('dj4xol:help_exploration'))

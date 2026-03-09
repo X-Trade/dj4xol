@@ -975,6 +975,21 @@ class TestRaceTypeHelpView(TestCase):
             '%s?race_type=%s' % (reverse('dj4xol:create_race'), self.race_type.code),
         )
 
+    def test_help_race_types_without_return_to_shows_back_to_help_only(self):
+        response = self.client.get(
+            reverse('dj4xol:help_race_types'),
+            {'race_type': self.race_type.code},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            '%s' % reverse('dj4xol:help_index'),
+        )
+        self.assertContains(response, 'Back to Help')
+        self.assertNotContains(response, 'Use This Type')
+        self.assertNotContains(response, 'Back to Race Creation')
+
     def test_help_race_types_orders_choices_by_display_order_then_name(self):
         later = ServerRaceType.objects.create(
             code='ZZZZ',

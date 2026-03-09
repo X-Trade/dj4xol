@@ -4728,6 +4728,15 @@ class GameTurn():
         }
         effective_defenses = max(0.0, float(calculate_effective_defenses(star)))
         luck_multiplier = float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0)
+        raw_bombardment_multiplier = getattr(
+            fleet.player.race_type,
+            'bombardment_multiplier',
+            1.0,
+        )
+        if raw_bombardment_multiplier is None:
+            bombardment_multiplier = 1.0
+        else:
+            bombardment_multiplier = float(raw_bombardment_multiplier)
         damage_k = bombardment_damage_k(
             fleet.ship_count,
             fleet.offense_level,
@@ -4735,6 +4744,7 @@ class GameTurn():
             luck_multiplier,
             bomb_type,
         )
+        damage_k = max(0, int(round(damage_k * bombardment_multiplier)))
 
         defenses_lost = min(pre['defenses'], damage_k)
         colonists_lost = min(pre['colonists'], damage_k * 1000)
