@@ -1934,11 +1934,14 @@ class GameTurn():
                 }
                 return data
             if report_tier == 'basic' and not getattr(self.game, 'no_scanners', False):
+                salvage_type = obj.salvage_type
+                if salvage_type == 'ANCIENT_DEBRIS':
+                    salvage_type = None
                 data = {
                     'name': format_basic_hidden_salvage_name(obj),
                     'x': obj.x,
                     'y': obj.y,
-                    'salvage_type': obj.salvage_type,
+                    'salvage_type': salvage_type,
                     'total_minerals': obj.total_minerals,
                     'report_tier': report_tier,
                 }

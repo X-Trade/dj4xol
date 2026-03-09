@@ -1097,7 +1097,9 @@ class PlayCommandTest(TestCase):
             self.player1.short_id,
             input_values=['/detail %s' % salvage.short_id, '/exit'],
         )
-        self.assertIn('salvage_type: ANCIENT_DEBRIS', output)
+        self.assertNotIn('salvage_type: ANCIENT_DEBRIS', output)
+        self.assertIn('salvage_type: null', output)
+        self.assertIn('salvage_type_display: ???', output)
         self.assertIn('total: 20', output)
         self.assertIn('thumbnail_blurred: true', output)
         self.assertNotIn('Ironium', output)

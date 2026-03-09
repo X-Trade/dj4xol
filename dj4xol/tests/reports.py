@@ -1118,6 +1118,7 @@ class ScannerReportTest(TestCase):
             game=self.game,
             x=fleet.x + 2,
             y=fleet.y,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
             ironium_inventory=10,
             boranium_inventory=5,
             germanium_inventory=2,
@@ -1144,9 +1145,13 @@ class ScannerReportTest(TestCase):
             target_id=anomaly.id,
         )
         self.assertEqual(salvage_report.get_report_data().get('report_tier'), 'advanced')
+        self.assertEqual(
+            salvage_report.get_report_data().get('salvage_type'),
+            Salvage.TYPE_ANCIENT_DEBRIS,
+        )
         self.assertEqual(anomaly_report.get_report_data().get('report_tier'), 'advanced')
 
-    def test_basic_scanner_reports_salvage_total_and_anomaly_type(self):
+    def test_basic_scanner_reports_ancient_debris_total_without_type_and_anomaly_type(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=0, x=20, y=20)
         salvage = Salvage.objects.create(
             game=self.game,
@@ -1187,7 +1192,7 @@ class ScannerReportTest(TestCase):
             salvage_data.get('name'),
             format_basic_hidden_salvage_name(salvage)
         )
-        self.assertEqual(salvage_data.get('salvage_type'), Salvage.TYPE_ANCIENT_DEBRIS)
+        self.assertIsNone(salvage_data.get('salvage_type'))
         self.assertEqual(salvage_data.get('total_minerals'), salvage.total_minerals)
         self.assertNotIn('ironium_inventory', salvage_data)
         self.assertEqual(anomaly_data.get('report_tier'), 'basic')
