@@ -5279,6 +5279,291 @@ class TestFleetTransferOrders(TestCase):
         tech_integrity = _run_invasion(with_colony_tech=True)
         self.assertLess(tech_integrity, base_integrity)
 
+    def test_transfer_raid_allied_stance_skips_defense_and_success_roll(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
+        if defender is None:
+            other_user = User.objects.create_user('raid_allied_def', 'raid_allied_def@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(game=game, account=other_account, race_type=attacker.race_type)
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.ironium_inventory = 200
+        star.save(update_fields=['player', 'ironium_inventory'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Allied Raider',
+            x=star.x,
+            y=star.y,
+            cargo_capacity=200,
+            integrity=100,
+            ship_count=1,
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_star=star,
+            transfer_ironium=50,
+        )
+
+        PlayerDiplomaticStance.objects.create(
+            player=defender,
+            target_player=attacker,
+            stance='ALLIED',
+        )
+
+        turn = GameTurn(game)
+        with patch.object(GameTurn, '_resolve_transfer_raid_defense_fire') as defense_fire, \
+             patch.object(GameTurn, '_transfer_raid_successful') as success_roll:
+            result = turn._execute_transfer_order(fleet, order)
+
+        self.assertEqual(result, 'executed')
+        defense_fire.assert_not_called()
+        success_roll.assert_not_called()
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertEqual(star.ironium_inventory, 150)
+        self.assertEqual(fleet.ironium_inventory, 50)
+
+    def test_invasion_readiness_bias_favors_more_hostile_attacker(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
+        if defender is None:
+            other_user = User.objects.create_user('inv_readiness_def', 'inv_readiness_def@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(game=game, account=other_account, race_type=attacker.race_type)
+
+        PlayerDiplomaticStance.objects.create(
+            player=attacker,
+            target_player=defender,
+            stance='HOSTILE',
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=defender,
+            target_player=attacker,
+            stance='ALLIED',
+        )
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 5000
+        star.defenses = 0
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Readiness Invader',
+            x=star.x,
+            y=star.y,
+            colonists=5,
+            integrity=100,
+            ship_count=1,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='UNLOAD',
+            target_star=star,
+            transfer_colonists=5,
+        )
+
+        GameTurn(game).generate_turn()
+        star.refresh_from_db()
+        self.assertEqual(star.player, attacker)
+        self.assertGreater(star.colonists, 0)
+
+    def test_hostile_orbit_hazard_allied_stance_blocks_strikes(self):
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
+        if defender is None:
+            other_user = User.objects.create_user('orb_allied_def', 'orb_allied_def@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(game=game, account=other_account, race_type=attacker.race_type)
+
+        PlayerDiplomaticStance.objects.create(
+            player=defender,
+            target_player=attacker,
+            stance='ALLIED',
+        )
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10000
+        star.defenses = 12
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='No-Strike Raider',
+            x=star.x,
+            y=star.y,
+            integrity=100,
+            ship_count=2,
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=True):
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 100)
+
+    def test_shipyard_repairs_prioritize_owner_before_allied_visitors(self):
+        game = default_game(stars=2)
+        owner = game.players.first()
+        visitor = Player.objects.filter(game=game).exclude(id=owner.id).first()
+        if visitor is None:
+            other_user = User.objects.create_user('repair_visit_1', 'repair_visit_1@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            visitor = Player.objects.create(game=game, account=other_account, race_type=owner.race_type)
+
+        PlayerDiplomaticStance.objects.create(
+            player=owner,
+            target_player=visitor,
+            stance='ALLIED',
+        )
+
+        star = owner.homeworld
+        star.shipyards = 1
+        star.save(update_fields=['shipyards'])
+
+        owner_fleet = Fleet.objects.create(
+            game=game, player=owner, name='Owner Repair', x=star.x, y=star.y, ship_count=1, integrity=0
+        )
+        visitor_fleet = Fleet.objects.create(
+            game=game, player=visitor, name='Visitor Repair', x=star.x, y=star.y, ship_count=1, integrity=0
+        )
+
+        GameTurn(game)._repair_fleets_at_star(star, 1)
+        owner_fleet.refresh_from_db()
+        visitor_fleet.refresh_from_db()
+
+        self.assertGreater(owner_fleet.integrity, 0)
+        self.assertEqual(visitor_fleet.integrity, 0)
+
+    def test_shipyard_repairs_scale_for_visitor_stance(self):
+        def _run_for_stance(stance):
+            game = default_game(stars=2)
+            owner = game.players.first()
+            visitor = Player.objects.filter(game=game).exclude(id=owner.id).first()
+            if visitor is None:
+                other_user = User.objects.create_user(
+                    'repair_scale_%s' % stance.lower(),
+                    'repair_scale_%s@test.com' % stance.lower(),
+                    'pass'
+                )
+                other_account = Account.objects.create(django_user=other_user)
+                visitor = Player.objects.create(game=game, account=other_account, race_type=owner.race_type)
+
+            PlayerDiplomaticStance.objects.create(
+                player=owner,
+                target_player=visitor,
+                stance=stance,
+            )
+
+            star = owner.homeworld
+            star.shipyards = 4
+            star.save(update_fields=['shipyards'])
+            visitor_fleet = Fleet.objects.create(
+                game=game,
+                player=visitor,
+                name='Scale %s' % stance,
+                x=star.x,
+                y=star.y,
+                ship_count=4,
+                integrity=0,
+            )
+
+            GameTurn(game)._repair_fleets_at_star(star, 4)
+            visitor_fleet.refresh_from_db()
+            return visitor_fleet.integrity
+
+        self.assertEqual(_run_for_stance('ALLIED'), 100)
+        self.assertEqual(_run_for_stance('WARM'), 50)
+        self.assertEqual(_run_for_stance('NEUTRAL'), 25)
+
+    def test_shipyard_refuels_scale_for_visitor_stance(self):
+        def _run_for_stance(stance):
+            game = default_game(stars=2)
+            owner = game.players.first()
+            visitor = Player.objects.filter(game=game).exclude(id=owner.id).first()
+            if visitor is None:
+                other_user = User.objects.create_user(
+                    'refuel_scale_%s' % stance.lower(),
+                    'refuel_scale_%s@test.com' % stance.lower(),
+                    'pass'
+                )
+                other_account = Account.objects.create(django_user=other_user)
+                visitor = Player.objects.create(game=game, account=other_account, race_type=owner.race_type)
+
+            PlayerDiplomaticStance.objects.create(
+                player=owner,
+                target_player=visitor,
+                stance=stance,
+            )
+
+            star = owner.homeworld
+            star.shipyards = 4
+            star.save(update_fields=['shipyards'])
+            visitor_fleet = Fleet.objects.create(
+                game=game,
+                player=visitor,
+                name='Refuel %s' % stance,
+                x=star.x,
+                y=star.y,
+                ship_count=4,
+                integrity=100,
+                fuel=0.0,
+                max_fuel=100.0,
+            )
+
+            GameTurn(game)._repair_fleets_at_star(star, 4)
+            visitor_fleet.refresh_from_db()
+            return float(visitor_fleet.fuel)
+
+        self.assertAlmostEqual(_run_for_stance('ALLIED'), 100.0, places=4)
+        self.assertAlmostEqual(_run_for_stance('WARM'), 50.0, places=4)
+        self.assertAlmostEqual(_run_for_stance('NEUTRAL'), 25.0, places=4)
+
+    def test_shipyard_service_capacity_is_per_ship_and_combines_refuel_and_repair(self):
+        game = default_game(stars=2)
+        owner = game.players.first()
+        star = owner.homeworld
+        star.shipyards = 1
+        star.save(update_fields=['shipyards'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=owner,
+            name='Dual Service',
+            x=star.x,
+            y=star.y,
+            ship_count=2,
+            integrity=0,
+            fuel=0.0,
+            max_fuel=100.0,
+        )
+
+        GameTurn(game)._repair_fleets_at_star(star, 1)
+        fleet.refresh_from_db()
+
+        self.assertEqual(fleet.integrity, 50)
+        self.assertAlmostEqual(fleet.fuel, 50.0, places=4)
+
     def test_hostile_orbit_can_take_defense_hazard_damage(self):
         game = default_game(stars=2)
         attacker = game.players.first()

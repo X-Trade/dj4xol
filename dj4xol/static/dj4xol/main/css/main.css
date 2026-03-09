@@ -116,6 +116,8 @@ body.map-dragging * {
     flex-direction: column;
     min-height: 0;
     flex: 1 1 auto;
+    container-type: inline-size;
+    container-name: detail-column;
 }
 
 /* Collapse column when panel inside is closed */
@@ -130,6 +132,8 @@ body.map-dragging * {
     min-height: 40vh;
     flex: 1 1 0;
     overflow: hidden;
+    container-type: inline-size;
+    container-name: orders-column;
 }
 
 /* Collapse column when panel inside is closed */
@@ -1608,6 +1612,27 @@ body.order-params-overlay-open {
 
 .panel .order-params label {
     margin: 4px 0;
+}
+
+@container detail-column (min-width: 546px) {
+    .env-label {
+        width: 200px;
+        min-width: 200px;
+        max-width: 200px;
+        flex: 0 0 200px;
+    }
+
+    .detail-label {
+        width: 200px;
+    }
+}
+
+@container orders-column (min-width: 546px) {
+    .order-param-row > label {
+        flex: 0 0 200px;
+        width: 200px;
+        min-width: 200px;
+    }
 }
 
 /* Destination display */

@@ -38,6 +38,142 @@ COMBINED_SCORE_COMBAT_CHANCES = {
 }
 DEFAULT_STANCE = STANCE_NEUTRAL
 
+PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE = 'orbital_defense_chance_scale'
+PERMISSION_SHIPYARD_REPAIR_RATE = 'shipyard_repair_rate'
+PERMISSION_ALLOW_TRANSFER_RAID_DEFENSE = 'allow_transfer_raid_defense'
+PERMISSION_ALLOW_TRANSFER_RAID_ROLL = 'allow_transfer_raid_roll'
+PERMISSION_SHARE_INTEL = 'share_intel'
+PERMISSION_SHARE_SCANNERS = 'share_scanners'
+
+def _self_combat_percent(stance):
+    stance = (stance or DEFAULT_STANCE).upper()
+    if stance not in STANCE_SCORES:
+        stance = DEFAULT_STANCE
+    if stance == STANCE_HOSTILE:
+        return 100
+    score = STANCE_SCORES[stance] + STANCE_SCORES[stance]
+    return COMBINED_SCORE_COMBAT_CHANCES.get(score, 0)
+
+
+_STANCE_SELF_COMBAT_PERCENT = {
+    STANCE_HOSTILE: _self_combat_percent(STANCE_HOSTILE),
+    STANCE_COLD: _self_combat_percent(STANCE_COLD),
+    STANCE_NEUTRAL: _self_combat_percent(STANCE_NEUTRAL),
+    STANCE_WARM: _self_combat_percent(STANCE_WARM),
+    STANCE_ALLIED: _self_combat_percent(STANCE_ALLIED),
+}
+
+STANCE_PERMISSION_PROFILES = {
+    STANCE_HOSTILE: {
+        PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE: 1.0,
+        PERMISSION_SHIPYARD_REPAIR_RATE: 0.0,
+        PERMISSION_ALLOW_TRANSFER_RAID_DEFENSE: True,
+        PERMISSION_ALLOW_TRANSFER_RAID_ROLL: True,
+        PERMISSION_SHARE_INTEL: False,
+        PERMISSION_SHARE_SCANNERS: False,
+    },
+    STANCE_COLD: {
+        PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE: _STANCE_SELF_COMBAT_PERCENT[STANCE_COLD] / 100.0,
+        PERMISSION_SHIPYARD_REPAIR_RATE: 0.0,
+        PERMISSION_ALLOW_TRANSFER_RAID_DEFENSE: True,
+        PERMISSION_ALLOW_TRANSFER_RAID_ROLL: True,
+        PERMISSION_SHARE_INTEL: False,
+        PERMISSION_SHARE_SCANNERS: False,
+    },
+    STANCE_NEUTRAL: {
+        PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE: _STANCE_SELF_COMBAT_PERCENT[STANCE_NEUTRAL] / 100.0,
+        PERMISSION_SHIPYARD_REPAIR_RATE: 0.25,
+        PERMISSION_ALLOW_TRANSFER_RAID_DEFENSE: True,
+        PERMISSION_ALLOW_TRANSFER_RAID_ROLL: True,
+        PERMISSION_SHARE_INTEL: False,
+        PERMISSION_SHARE_SCANNERS: False,
+    },
+    STANCE_WARM: {
+        PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE: _STANCE_SELF_COMBAT_PERCENT[STANCE_WARM] / 100.0,
+        PERMISSION_SHIPYARD_REPAIR_RATE: 0.5,
+        PERMISSION_ALLOW_TRANSFER_RAID_DEFENSE: True,
+        PERMISSION_ALLOW_TRANSFER_RAID_ROLL: True,
+        PERMISSION_SHARE_INTEL: False,
+        PERMISSION_SHARE_SCANNERS: False,
+    },
+    STANCE_ALLIED: {
+        PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE: 0.0,
+        PERMISSION_SHIPYARD_REPAIR_RATE: 1.0,
+        PERMISSION_ALLOW_TRANSFER_RAID_DEFENSE: False,
+        PERMISSION_ALLOW_TRANSFER_RAID_ROLL: False,
+        PERMISSION_SHARE_INTEL: True,
+        PERMISSION_SHARE_SCANNERS: True,
+    },
+}
+
+STANCE_EFFECT_ITEMS = {
+    STANCE_HOSTILE: [
+        {
+            'name': 'Defences',
+            'summary': 'On Alert',
+            'description': 'Colony defenses respond at maximum readiness.',
+        },
+    ],
+    STANCE_COLD: [
+        {
+            'name': 'Defences',
+            'summary': 'Vigilant',
+            'description': 'Colony defenses stay on a high-alert footing.',
+        },
+    ],
+    STANCE_NEUTRAL: [
+        {
+            'name': 'Defences',
+            'summary': 'On Guard',
+            'description': 'Colony defenses remain active and cautious.',
+        },
+        {
+            'name': 'Shipyards',
+            'summary': '25% Repair',
+            'description': 'Visiting fleets repair at 25% of normal rate.',
+        },
+    ],
+    STANCE_WARM: [
+        {
+            'name': 'Defences',
+            'summary': 'Lowered',
+            'description': 'Colony defenses are reduced for friendly traffic.',
+        },
+        {
+            'name': 'Shipyards',
+            'summary': '50% Repair',
+            'description': 'Visiting fleets repair at 50% of normal rate.',
+        },
+    ],
+    STANCE_ALLIED: [
+        {
+            'name': 'Defences',
+            'summary': 'At Ease',
+            'description': 'Colony defenses stand down for allied fleets.',
+        },
+        {
+            'name': 'Shipyards',
+            'summary': 'Full Repair',
+            'description': 'Visiting fleets repair at full rate after your fleets.',
+        },
+        {
+            'name': 'Resource Access',
+            'summary': 'Full Access',
+            'description': 'Resource transfers proceed without defensive resistance.',
+        },
+        {
+            'name': 'Intel',
+            'summary': 'Shared',
+            'description': 'Shares fleet/colony positions and advanced intel.',
+        },
+        {
+            'name': 'Scanners',
+            'summary': 'Shared',
+            'description': 'Scanner coverage contributes to allied sensor range.',
+        },
+    ],
+}
+
 
 def normalise_stance(value):
     value = (value or DEFAULT_STANCE).upper()
@@ -69,6 +205,21 @@ def player_default_stance(player):
     return normalise_stance(getattr(player, 'default_diplomatic_stance', DEFAULT_STANCE))
 
 
+def stance_permission_profile(stance):
+    return STANCE_PERMISSION_PROFILES[normalise_stance(stance)]
+
+
+def stance_permission_value(stance, permission_key, default=None):
+    profile = stance_permission_profile(stance)
+    if permission_key in profile:
+        return profile[permission_key]
+    return default
+
+
+def stance_effect_items(stance):
+    return STANCE_EFFECT_ITEMS.get(normalise_stance(stance), [])
+
+
 def build_stance_map(player):
     if not player:
         return {}
@@ -83,6 +234,23 @@ def stance_towards(player, other_player, stance_map=None):
         return player_default_stance(player) if player else DEFAULT_STANCE
     stance_map = stance_map if stance_map is not None else build_stance_map(player)
     return normalise_stance(stance_map.get(other_player.id, player_default_stance(player)))
+
+
+def player_permission_value(player, other_player, permission_key, default=None, stance_map=None):
+    stance = stance_towards(player, other_player, stance_map=stance_map)
+    return stance_permission_value(stance, permission_key, default=default)
+
+
+def player_grants_permission(player, other_player, permission_key, stance_map=None):
+    return bool(
+        player_permission_value(
+            player,
+            other_player,
+            permission_key,
+            default=False,
+            stance_map=stance_map,
+        )
+    )
 
 
 def encountered_players(player):
@@ -119,6 +287,33 @@ def encountered_players(player):
         .order_by('name', 'id')
     )
     return others
+
+
+def has_encountered_player(player, other_player):
+    """Return True when player has discovered other_player via diplomacy/report state."""
+    if not player or not other_player:
+        return False
+    if player.id == other_player.id:
+        return True
+    if player.game_id != other_player.game_id:
+        return False
+    if PlayerDiplomaticStance.objects.filter(
+        player=player,
+        target_player=other_player,
+    ).exists():
+        return True
+    reports = Report.objects.filter(
+        player=player,
+        target_type__in=['star', 'fleet'],
+    ).order_by('id')
+    for report in reports:
+        try:
+            data = report.get_report_data()
+        except Exception:
+            continue
+        if data.get('player_name') == other_player.name:
+            return True
+    return False
 
 
 def update_player_stances(player, default_stance, stance_by_target_short_id):

@@ -259,10 +259,18 @@ class StarMap():
             self.player is not None and s.player == self.player
             for s in stars
         )
+        has_allied = any(
+            s.player is not None
+            and s.player != self.player
+            and self._can_reveal_star_owner(s)
+            and self._is_allied_owner(s.player)
+            for s in stars
+        )
         has_enemy = any(
             s.player is not None
             and s.player != self.player
             and self._can_reveal_star_owner(s)
+            and not self._is_allied_owner(s.player)
             for s in stars
         )
 
@@ -270,10 +278,23 @@ class StarMap():
             return "mapstar-mixed"  # Yellow - mix of ours and enemy
         elif has_owned:
             return "mapstar-owned"  # Green - all ours (or ours + unowned)
+        elif has_allied and has_enemy:
+            return "mapstar-mixed"  # Yellow - mix of allied and enemy
+        elif has_allied:
+            return "mapstar-allied"  # Dim green - allied intel ownership
         elif has_enemy:
             return "mapstar-enemy"  # Red - all enemy (or enemy + unowned)
         else:
             return "mapstar"  # White - all unowned
+
+    def _is_allied_owner(self, owner):
+        if not self.player or not owner:
+            return False
+        if owner == self.player:
+            return False
+        from .diplomacy import PERMISSION_SHARE_INTEL, player_grants_permission
+
+        return player_grants_permission(owner, self.player, PERMISSION_SHARE_INTEL)
 
     def resolve_html_class(self, object):
         """Resolve the HTML class for an object"""
@@ -293,9 +314,14 @@ class StarMap():
         if isinstance(object, Star) and not self._can_reveal_star_owner(object):
             class_additional = ""
         elif object.player is None:
-            class_additional = ""
+            if isinstance(object, Fleet):
+                class_additional = "-unowned"
+            else:
+                class_additional = ""
         elif self.player is not None and object.player == self.player:
             class_additional = "-owned"
+        elif self._is_allied_owner(object.player):
+            class_additional = "-allied"
         elif object.player is not None:
             class_additional = "-enemy"
         else:
@@ -408,6 +434,8 @@ class StarMap():
             return True
         if star.player == self.player:
             return True
+        if self._is_allied_owner(star.player):
+            return True
         tier = self.star_report_tiers.get(star.id)
         if tier is None:
             return False
@@ -417,6 +445,8 @@ class StarMap():
         """Get CSS class for satellite star based on ownership."""
         if self.player is not None and star.player == self.player:
             return "mapstar-satellite-owned"
+        elif self._is_allied_owner(star.player):
+            return "mapstar-satellite-allied"
         elif star.player is not None and self._can_reveal_star_owner(star):
             return "mapstar-satellite-enemy"
         else:
@@ -457,6 +487,8 @@ class StarMap():
         if getattr(self.game, 'no_scanners', False):
             return fleet.name
         if fleet.player_id == self.player.id:
+            return fleet.name
+        if self._is_allied_owner(fleet.player):
             return fleet.name
         tier = self.fleet_report_tiers.get(fleet.id)
         if tier in ('advanced', 'encounter'):

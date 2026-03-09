@@ -52,10 +52,17 @@ from .messages import (
 )
 import random
 from .diplomacy import (
+    PERMISSION_ALLOW_TRANSFER_RAID_DEFENSE,
+    PERMISSION_ALLOW_TRANSFER_RAID_ROLL,
+    PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE,
+    PERMISSION_SHARE_INTEL,
+    PERMISSION_SHIPYARD_REPAIR_RATE,
     build_stance_map,
     combat_chance_percent,
     combat_readiness_multiplier,
     ensure_contact_stance_entry,
+    player_grants_permission,
+    player_permission_value,
     stance_towards,
 )
 
@@ -435,6 +442,7 @@ class GameTurn():
 
     def _process_year(self):
         """Process a single year of game time."""
+        self._scanner_sources_by_player_id = {}
         self.move_comets()
         self.move_wormholes()
         self.decay_anomalies()
@@ -457,6 +465,7 @@ class GameTurn():
         self.check_join_deadline()
         self.generate_scanner_reports()
         self.generate_reports()
+        self.generate_shared_intel_reports()
         self.game.year += 1
 
     @staticmethod
@@ -1496,6 +1505,51 @@ class GameTurn():
         for fleet in Fleet.objects.filter(game=self.game, player__isnull=False, player__defeated=False):
             self._generate_reports_for_fleet(fleet)
 
+    def generate_shared_intel_reports(self):
+        """Push advanced fleet/colony intel to allies that are granted sharing."""
+        from .models import Fleet, Player, Star
+
+        players = list(Player.objects.filter(game=self.game, defeated=False))
+        if len(players) < 2:
+            return
+
+        fleets_by_player = {
+            player.id: list(Fleet.objects.filter(game=self.game, player=player))
+            for player in players
+        }
+        stars_by_player = {
+            player.id: list(Star.objects.filter(game=self.game, player=player))
+            for player in players
+        }
+
+        for viewer in players:
+            for grantor in players:
+                if viewer.id == grantor.id:
+                    continue
+                if not player_grants_permission(
+                    grantor,
+                    viewer,
+                    PERMISSION_SHARE_INTEL,
+                    stance_map=self._stance_map_for_player(grantor),
+                ):
+                    continue
+                for star in stars_by_player.get(grantor.id, []):
+                    self._create_or_update_report(
+                        viewer,
+                        'star',
+                        star,
+                        self.game.year,
+                        report_tier='advanced',
+                    )
+                for fleet in fleets_by_player.get(grantor.id, []):
+                    self._create_or_update_report(
+                        viewer,
+                        'fleet',
+                        fleet,
+                        self.game.year,
+                        report_tier='advanced',
+                    )
+
     def generate_scanner_reports(self):
         """Generate scanner-based reports for stars and fleets within sensor range."""
         from .models import Star, Fleet, Salvage, Anomaly
@@ -1891,12 +1945,12 @@ class GameTurn():
                 'heading': heading,
             }
             if report_tier == 'ownership':
-                data['player_name'] = obj.owner_display_name
+                data['player_name'] = obj.player.name if obj.player else 'Abandoned'
                 return data
             if report_tier == 'basic':
                 return data
             data.update({
-                'player_name': obj.owner_display_name,
+                'player_name': obj.player.name if obj.player else 'Abandoned',
                 'ship_count': obj.ship_count,
                 'integrity': obj.integrity,
             })
@@ -2028,15 +2082,13 @@ class GameTurn():
         """Return True if player has any advanced scanners at the location."""
         if not player:
             return False
-        from .models import Fleet
-
-        return Fleet.objects.filter(
-            game=self.game,
-            player=player,
-            x=x,
-            y=y,
-            advanced_scanner_range__gt=0,
-        ).exists()
+        if getattr(self.game, 'no_scanners', False):
+            return False
+        sources = self._scanner_sources_by_player_id.get(player.id)
+        if sources is None:
+            sources = get_scanner_sources_for_player(self.game, player)
+            self._scanner_sources_by_player_id[player.id] = sources
+        return position_in_scanner_range(x, y, sources, range_key='advanced')
 
     def check_quorum(self):
         """Check if all players have turned in. Returns True if quorum met."""
@@ -2071,29 +2123,11 @@ class GameTurn():
             # Reset yearly motion snapshot; movement handlers set this when travel occurs.
             fleet.travel_warp = 0
             if fleet.id in self._locked_fleet_ids_for_year:
-                self._refuel_fleet_if_in_friendly_shipyard_orbit(fleet)
                 fleet.save()
                 continue
             result = self.move_fleet(fleet)
             if result is not None:
-                self._refuel_fleet_if_in_friendly_shipyard_orbit(result)
                 result.save()
-
-    def _refuel_fleet_if_in_friendly_shipyard_orbit(self, fleet):
-        """Refuel fleets that end the turn in orbit of a friendly shipyard colony."""
-        from .models import Star
-
-        if fleet.player is None:
-            return
-        can_refuel = Star.objects.filter(
-            game=self.game,
-            x=fleet.x,
-            y=fleet.y,
-            player=fleet.player,
-            shipyards__gt=0,
-        ).exists()
-        if can_refuel:
-            fleet.fuel = fleet.max_fuel
 
     def check_lost_fleets(self):
         """Remove fleets that have moved beyond map boundaries."""
@@ -3842,6 +3876,8 @@ class GameTurn():
         defender = star.player
         defender_race = defender.race_type if defender else None
         attacker_race = attacker.race_type
+        attacker_readiness = self._combat_readiness_multiplier(attacker, defender)
+        defender_readiness = self._combat_readiness_multiplier(defender, attacker)
 
         fleet_losses_desc = "no fleet losses"
         effective_defenses = calculate_effective_defenses(star)
@@ -3849,9 +3885,10 @@ class GameTurn():
             defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
             attacker_strength = calculate_fleet_strength(
                 fleet,
-                defender_defence_mult
+                defender_defence_mult,
+                attack_roll_scale=attacker_readiness,
             )
-            defender_strength = normalize_ship_count(effective_defenses)
+            defender_strength = normalize_ship_count(effective_defenses) * defender_readiness
             strength_by_player = {
                 attacker: attacker_strength,
                 defender: defender_strength,
@@ -3891,8 +3928,16 @@ class GameTurn():
         invaders = invader_colonists_kt * 1000
         defenders = star.colonists
 
-        attacker_force = invaders * (attacker_race.ground_force_multiplier or 1.0)
-        defender_force = defenders * (defender_race.ground_force_multiplier if defender_race else 1.0)
+        attacker_force = (
+            invaders *
+            (attacker_race.ground_force_multiplier or 1.0) *
+            attacker_readiness
+        )
+        defender_force = (
+            defenders *
+            (defender_race.ground_force_multiplier if defender_race else 1.0) *
+            defender_readiness
+        )
 
         attacker_won = attacker_force > defender_force
         if attacker_force == defender_force:
@@ -4001,6 +4046,20 @@ class GameTurn():
             min_chance=ORBITAL_DEFENSE_HAZARD_MIN_CHANCE,
             max_chance=ORBITAL_DEFENSE_HAZARD_MAX_CHANCE,
         )
+        stance_scale = player_permission_value(
+            defender,
+            attacker,
+            PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE,
+            default=1.0,
+            stance_map=self._stance_map_for_player(defender),
+        )
+        try:
+            chance *= max(0.0, float(stance_scale))
+        except (TypeError, ValueError):
+            chance *= 1.0
+        chance = max(0.0, min(1.0, chance))
+        if chance <= 0.0:
+            return
         if not roll_chance(chance):
             return
 
@@ -4141,19 +4200,42 @@ class GameTurn():
                 return
 
             if star.player and star.player != fleet.player:
-                defense_fire = self._resolve_transfer_raid_defense_fire(star, fleet)
+                defender = star.player
+                attacker = fleet.player
+                defender_stance_map = self._stance_map_for_player(defender)
+                allow_defense = player_grants_permission(
+                    defender,
+                    attacker,
+                    PERMISSION_ALLOW_TRANSFER_RAID_DEFENSE,
+                    stance_map=defender_stance_map,
+                )
+                allow_roll = player_grants_permission(
+                    defender,
+                    attacker,
+                    PERMISSION_ALLOW_TRANSFER_RAID_ROLL,
+                    stance_map=defender_stance_map,
+                )
+
+                defense_fire = {
+                    'destroyed': False,
+                    'integrity_lost': 0,
+                    'ships_lost': 0,
+                    'defense_mult': 1.0,
+                }
+                if allow_defense:
+                    defense_fire = self._resolve_transfer_raid_defense_fire(star, fleet)
                 if defense_fire.get('destroyed'):
                     damage_pct = 100
                     resource_desc = self._build_transfer_raid_resource_desc(fleet, order)
                     self._create_transfer_raid_messages(
-                        fleet.player, star.player, fleet, star, resource_desc, damage_pct
+                        attacker, defender, fleet, star, resource_desc, damage_pct
                     )
                     return 'fleet_destroyed'
-                if not self._transfer_raid_successful(star, fleet, defense_fire):
+                if allow_roll and not self._transfer_raid_successful(star, fleet, defense_fire):
                     damage_pct = max(0, int(defense_fire.get('integrity_lost', 0) or 0))
                     resource_desc = self._build_transfer_raid_resource_desc(fleet, order)
                     self._create_transfer_raid_messages(
-                        fleet.player, star.player, fleet, star, resource_desc, damage_pct
+                        attacker, defender, fleet, star, resource_desc, damage_pct
                     )
                     return
 
@@ -6352,64 +6434,151 @@ class GameTurn():
         for order in editable[len(planned_runs):]:
             order.delete()
 
-    def _repair_fleets_at_star(self, star, available_shipyards):
-        """Repair damaged fleets orbiting a star using available shipyards.
+    def _fleet_service_requirements(self, fleet):
+        """Return per-fleet service demand in shipyard-units (repair/refuel)."""
+        ship_count = max(1, int(getattr(fleet, 'ship_count', 1) or 1))
+        integrity = int(getattr(fleet, 'integrity', 0) or 0)
+        missing_integrity_pct = max(0, 100 - integrity)
+        repair_units_needed = (float(missing_integrity_pct) * float(ship_count)) / 100.0
 
-        Each available shipyard repairs one ship's share of integrity per year.
-        Repair is distributed across all damaged friendly fleets at the location.
-        """
+        max_fuel = float(getattr(fleet, 'max_fuel', 0.0) or 0.0)
+        fuel = float(getattr(fleet, 'fuel', 0.0) or 0.0)
+        if max_fuel <= 0.0:
+            fuel_missing = 0.0
+            refuel_units_needed = 0.0
+        else:
+            fuel_missing = max(0.0, max_fuel - fuel)
+            refuel_units_needed = (
+                (fuel_missing / max_fuel) * float(ship_count) if fuel_missing > 0.0 else 0.0
+            )
+
+        service_units_needed = max(repair_units_needed, refuel_units_needed)
+        return {
+            'ship_count': ship_count,
+            'missing_integrity_pct': missing_integrity_pct,
+            'repair_units_needed': repair_units_needed,
+            'fuel': fuel,
+            'max_fuel': max_fuel,
+            'fuel_missing': fuel_missing,
+            'refuel_units_needed': refuel_units_needed,
+            'service_units_needed': service_units_needed,
+        }
+
+    def _service_fleet_with_shipyards(
+        self,
+        fleet,
+        remaining_shipyards,
+        service_rate,
+        star,
+    ):
+        """Apply shipyard repair/refuel service to one fleet and return remaining pool."""
+        if remaining_shipyards <= 0:
+            return 0.0
+        if not fleet or fleet.player is None:
+            return remaining_shipyards
+        try:
+            rate = max(0.0, float(service_rate))
+        except (TypeError, ValueError):
+            rate = 0.0
+        if rate <= 0.0:
+            return remaining_shipyards
+
+        req = self._fleet_service_requirements(fleet)
+        service_units_needed = float(req['service_units_needed'])
+        if service_units_needed <= 0.0:
+            return remaining_shipyards
+
+        max_service_units = float(remaining_shipyards) * rate
+        service_units = min(service_units_needed, max_service_units)
+        if service_units <= 0.0:
+            return remaining_shipyards
+
+        service_fraction = max(0.0, min(1.0, service_units / service_units_needed))
+        old_integrity = int(fleet.integrity or 0)
+        if req['missing_integrity_pct'] > 0:
+            integrity_gain = int(float(req['missing_integrity_pct']) * service_fraction)
+            if integrity_gain <= 0 and service_fraction > 0.0:
+                integrity_gain = 1
+            integrity_gain = min(int(req['missing_integrity_pct']), integrity_gain)
+            fleet.integrity = min(100, old_integrity + integrity_gain)
+
+        old_fuel = float(fleet.fuel or 0.0)
+        if req['fuel_missing'] > 0.0:
+            fuel_gain = float(req['fuel_missing']) * service_fraction
+            if fuel_gain > 0.0:
+                fleet.fuel = min(
+                    float(req['max_fuel']),
+                    old_fuel + fuel_gain,
+                )
+
+        update_fields = []
+        if int(fleet.integrity or 0) != old_integrity:
+            update_fields.append('integrity')
+        if float(fleet.fuel or 0.0) != old_fuel:
+            update_fields.append('fuel')
+        if update_fields:
+            fleet.save(update_fields=update_fields)
+
+        if int(fleet.integrity or 0) > old_integrity:
+            factory = FleetRepairedMessageFactory(
+                self.game, fleet.player, fleet,
+                old_integrity, fleet.integrity, star
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
+        real_shipyards_spent = service_units / rate
+        return max(0.0, float(remaining_shipyards) - real_shipyards_spent)
+
+    def _repair_fleets_at_star(self, star, available_shipyards):
+        """Service fleets at a colony, applying diplomacy-based visitor rates."""
         from .models import Fleet
 
-        if available_shipyards <= 0:
+        if available_shipyards <= 0 or not star or not star.player:
             return
 
-        # Find player's damaged fleets at star location
-        damaged_fleets = Fleet.objects.filter(
+        remaining_shipyards = float(available_shipyards)
+        owner = star.player
+        owner_stance_map = self._stance_map_for_player(owner)
+
+        owner_fleets = list(Fleet.objects.filter(
             game=self.game,
-            player=star.player,
+            player=owner,
             x=star.x,
             y=star.y,
-            integrity__lt=100
-        )
+        ).order_by('id'))
+        for fleet in owner_fleets:
+            if remaining_shipyards <= 0:
+                return
+            remaining_shipyards = self._service_fleet_with_shipyards(
+                fleet,
+                remaining_shipyards,
+                1.0,
+                star,
+            )
 
-        if not damaged_fleets.exists():
-            return
-
-        # Calculate total ships needing repair
-        total_damaged_ships = sum(f.ship_count for f in damaged_fleets)
-        if total_damaged_ships == 0:
-            return
-
-        # Each shipyard can repair one ship's worth of integrity per turn
-        repair_pool = available_shipyards  # Number of "ship repairs" available
-
-        for fleet in damaged_fleets:
-            if repair_pool <= 0:
+        visitor_fleets = list(Fleet.objects.filter(
+            game=self.game,
+            x=star.x,
+            y=star.y,
+        ).exclude(player=owner).exclude(player__isnull=True).exclude(player__defeated=True).order_by('id'))
+        for fleet in visitor_fleets:
+            if remaining_shipyards <= 0:
                 break
-
-            # Calculate fleet's share of repairs based on ship count
-            fleet_repair_share = min(fleet.ship_count, repair_pool)
-            repair_pool -= fleet_repair_share
-
-            # Each ship repaired restores (100 / ship_count)% integrity
-            # E.g., 5-ship fleet with 1 shipyard = 20% integrity restored
-            integrity_gain = (fleet_repair_share * 100) // fleet.ship_count
-            # Cap at missing integrity (can't repair past 100%)
-            integrity_gain = min(integrity_gain, 100 - fleet.integrity)
-
-            if integrity_gain > 0:
-                old_integrity = fleet.integrity
-                fleet.integrity = min(100, fleet.integrity + integrity_gain)
-                fleet.save()
-
-                # Create repair message
-                factory = FleetRepairedMessageFactory(
-                    self.game, star.player, fleet,
-                    old_integrity, fleet.integrity, star
-                )
-                msg = factory.new_message()
-                msg.year = self.game.year
-                msg.save()
+            service_rate = player_permission_value(
+                owner,
+                fleet.player,
+                PERMISSION_SHIPYARD_REPAIR_RATE,
+                default=0.0,
+                stance_map=owner_stance_map,
+            )
+            remaining_shipyards = self._service_fleet_with_shipyards(
+                fleet,
+                remaining_shipyards,
+                service_rate,
+                star,
+            )
 
     def research(self):
         """Process one year of research progression for each player."""

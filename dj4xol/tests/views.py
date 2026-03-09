@@ -1703,6 +1703,8 @@ class TestDiplomacyView(TestCase):
         self.assertContains(response, other_player.name)
         self.assertContains(response, 'Encounter Combat')
         self.assertNotContains(response, 'Update Standing')
+        self.assertContains(response, 'Current Effects')
+        self.assertNotContains(response, 'Effects They Grant')
 
     def test_diplomacy_post_updates_default_and_specific_stance(self):
         game = default_game(stars=5, fleets=0)
@@ -1809,6 +1811,86 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '>Give Fleet<')
         self.assertNotContains(response, '>Transfer Fleet<')
+
+    def test_give_recipients_only_include_discovered_players(self):
+        from ..objectdetails import DetailBuilder
+
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('give_recipient_other', 'gro@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='GRO')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Hidden Race',
+            plural_name='Hidden Races',
+            race_type=race_type,
+        )
+
+        detail = DetailBuilder(
+            game,
+            x=fleet.x,
+            y=fleet.y,
+            selected=fleet.short_id,
+            player=player,
+        ).build_detail()
+        recipient_values = [row['value'] for row in detail.get('transfer_recipients', [])]
+        self.assertNotIn(other_player.short_id, recipient_values)
+
+        PlayerDiplomaticStance.objects.create(
+            player=player,
+            target_player=other_player,
+            stance='HOSTILE',
+        )
+        detail = DetailBuilder(
+            game,
+            x=fleet.x,
+            y=fleet.y,
+            selected=fleet.short_id,
+            player=player,
+        ).build_detail()
+        recipient_values = [row['value'] for row in detail.get('transfer_recipients', [])]
+        self.assertIn(other_player.short_id, recipient_values)
+
+    def test_add_give_order_rejects_undiscovered_player(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('give_post_other', 'gpo@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='GPO')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Undiscovered Race',
+            plural_name='Undiscovered Races',
+            race_type=race_type,
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'GIVE',
+                'transfer_player': other_player.short_id,
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            FleetOrders.objects.filter(
+                fleet=fleet,
+                order_type='GIVE',
+                transfer_player=other_player,
+            ).exists()
+        )
 
     def test_add_fleet_order_redirect_suppresses_auto_locate(self):
         game = default_game(stars=5, fleets=1)

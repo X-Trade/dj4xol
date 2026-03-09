@@ -28,6 +28,11 @@
 
 .diplomacy-name {
     min-width: 0;
+    display: block;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .diplomacy-control {
@@ -49,6 +54,22 @@
     margin: 0;
 }
 
+.diplomacy-effects-table {
+    display: grid;
+    gap: 6px;
+}
+
+.diplomacy-effects-row {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) minmax(0, 1.5fr);
+    gap: 10px;
+    align-items: baseline;
+}
+
+.diplomacy-effects-name {
+    font-weight: bold;
+}
+
 @media (max-width: 900px) {
     .diplomacy-headings,
     .diplomacy-row {
@@ -58,5 +79,10 @@
 
     .diplomacy-heading {
         font-size: 0.82em;
+    }
+
+    .diplomacy-effects-row {
+        grid-template-columns: minmax(120px, 1fr) minmax(0, 1.35fr);
+        gap: 8px;
     }
 }
