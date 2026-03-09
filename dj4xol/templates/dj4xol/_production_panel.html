@@ -80,7 +80,7 @@
                 <button type="submit" class="order-add-btn">+</button>
             </div>
         </form>
-        <div class="order-params order-params--costs order-params--columns" id="production-costs-panel">
+        <div class="order-params order-params--costs order-params--columns is-empty" id="production-costs-panel">
             <div class="order-param-empty">Select a production item to view costs.</div>
             <div class="detail-row cost-row" data-cost-key="ironium">
                 <span class="env-label">Ironium</span>
@@ -215,6 +215,7 @@ function hideTooltip() {
     function updateCosts() {
         var option = select.options[select.selectedIndex];
         if (!option || !option.value) {
+            panel.classList.add('is-empty');
             if (emptyRow) {
                 emptyRow.style.display = 'block';
             }
@@ -223,6 +224,7 @@ function hideTooltip() {
             });
             return;
         }
+        panel.classList.remove('is-empty');
         if (emptyRow) {
             emptyRow.style.display = 'none';
         }

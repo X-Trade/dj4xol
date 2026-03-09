@@ -241,6 +241,34 @@ body {
     margin-right: 0;
 }
 
+.lcars .panel-header-button {
+    background: #9999cc;
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    width: 24px;
+    height: 18px;
+}
+
+.lcars .panel-header-button:hover {
+    background: #ccccff;
+}
+
+.lcars .order-params-popout-toggle {
+    background: #cc99cc;
+    color: #000;
+    border: none;
+    border-radius: 0;
+    top: 0;
+    right: 0;
+    width: 24px;
+    height: 18px;
+}
+
+.lcars .order-params-popout-toggle:hover {
+    background: #e0b6e0;
+}
+
 .panel-toggle::before {
     width: 12px;
     height: 2px;
@@ -644,9 +672,13 @@ input:focus {
     background: #000 !important;
     border: 3px solid #9999cc;
     border-radius: 0 0 0 15px;
-    padding: 10px 4px 10px 10px;
+    padding: 24px 4px 10px 10px;
     position: relative;
     border-style: none none solid none;
+}
+
+.lcars .order-type-row:has(+ .order-params) {
+    margin-bottom: 8px;
 }
 
 .transfer-slider-note {
@@ -660,19 +692,27 @@ input:focus {
 
 .panel .order-params::before {
     content: 'Parameters';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     display: block;
+    height: 18px;
     background: linear-gradient(to right,
-        #9999cc 0%, #9999cc calc(100% - 24px),
-        #000 calc(100% - 24px), #000 calc(100% - 20px),
-        #cc99cc calc(100% - 20px), #cc99cc 100%);
+        #9999cc 0%, #9999cc calc(100% - 28px),
+        #000 calc(100% - 28px), #000 calc(100% - 24px),
+        #cc99cc calc(100% - 24px), #cc99cc 100%);
     color: #000;
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 1px;
     font-size: 0.8em;
-    padding: 2px 8px;
-    margin: -10px -10px 10px -10px;
+    line-height: 18px;
+    padding: 0 32px 0 10px;
+    box-sizing: border-box;
+    margin: 0;
     border-radius: 0;
+    border: none;
 }
 
 .panel .order-params--costs::before {
@@ -682,6 +722,10 @@ input:focus {
 .panel .order-params--costs,
 .order-params--costs {
     border-style: hidden hidden solid hidden;
+}
+
+.lcars #production-costs-panel {
+    padding-top: 20px;
 }
 
 .panel-content .order-params--costs {
@@ -718,6 +762,115 @@ input:focus {
     color: #ff9966;
     width: 100%;
     min-width: 0;
+}
+
+.lcars .order-params-popout-toggle {
+    top: 0;
+    right: 0;
+    width: 24px;
+    height: 18px;
+    background: #cc99cc;
+    color: #000;
+    border: none;
+    border-radius: 0;
+}
+
+.lcars .order-params-popout-toggle:hover {
+    background: #e0b6e0;
+}
+
+.lcars .order-params-overlay-shell {
+    background: #000;
+    border: none;
+    border-radius: 24px 24px 0 24px;
+    box-shadow: none;
+    padding-bottom: 0;
+}
+
+.lcars .order-params-overlay-header {
+    background: linear-gradient(to right,
+        #cc6633 0%, #cc6633 calc(100% - 44px),
+        #000 calc(100% - 44px), #000 calc(100% - 40px),
+        #9999cc calc(100% - 40px), #9999cc 100%);
+    color: #000;
+    border-bottom: none;
+    padding: 8px 0 8px 16px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    overflow: clip;
+}
+
+.lcars .order-params-overlay-actions {
+    gap: 0;
+    align-self: stretch;
+}
+
+.lcars .order-params-overlay-add,
+.lcars .order-params-overlay-close {
+    background: #9999cc;
+    color: #000;
+    border: none;
+    border-radius: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    align-self: stretch;
+    height: auto;
+    min-height: 100%;
+}
+
+.lcars .order-params-overlay-add {
+    min-width: 58px;
+    padding: 0 12px;
+    background: #cc99cc;
+    height: 200%;
+    margin-top: -10px;
+    margin-bottom: -10px;
+    border-color: #000000;
+    border-width: 0 3px 0 3px;
+    border-style: solid;
+}
+
+.lcars .order-params-overlay-add:hover {
+    background: #e0b6e0;
+}
+
+.lcars .order-params-overlay-close {
+    width: 40px;
+    min-width: 40px;
+    background: #9999cc;
+    height: 200%;
+    margin-top: -10px;
+    margin-bottom: -10px;
+}
+
+.lcars .order-params-overlay-close:hover {
+    background: #ccccff;
+}
+
+.lcars .order-params-overlay-body {
+    padding: 4px 0 0 0;
+}
+
+.lcars .order-params-overlay-body .order-form {
+    background: #0a0a14;
+    border: 3px solid #cc6633;
+    border-top: none;
+    border-radius: 0 0 0 25px;
+    padding: 12px 10px 10px 10px;
+}
+
+.lcars .order-params-overlay-body .order-form--overlay .order-params {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+}
+
+.lcars .order-params-overlay-body .order-form--overlay .order-params::before {
+    content: none !important;
+    display: none !important;
 }
 
 /* order details input form */

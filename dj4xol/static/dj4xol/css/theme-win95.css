@@ -222,6 +222,43 @@ body {
     border-radius: 0;
 }
 
+.win95 .panel-header-button,
+.win95 .order-params-overlay-close {
+    background: #c0c0c0;
+    color: #000;
+    border: none;
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+}
+
+.win95 .order-params-popout-toggle {
+    background: #c0c0c0;
+    color: #000;
+    border: none;
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+    top: 1px;
+    right: 1px;
+    width: 16px;
+    height: 16px;
+}
+
+.win95 .order-params-overlay-shell {
+    border-radius: 0;
+}
+
+.win95 .order-params-overlay-header {
+    background: linear-gradient(to right, #000080, #1084d0);
+    color: #fff;
+    border-bottom: none;
+    padding: 4px 6px;
+    font-size: 11px;
+}
+
+.win95 .order-params-overlay-add {
+    color: #000;
+}
+
 .panel-toggle::before {
     width: 8px;
     height: 2px;
@@ -678,9 +715,25 @@ input:focus {
     background: #c0c0c0;
     border: none;
     border-radius: 0;
-    padding: 6px;
+    padding: 24px 6px 6px 6px;
     box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
                 inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+.win95 .order-params::before {
+    background: linear-gradient(to right, #000080, #1084d0);
+    border-bottom: none;
+    color: #ffffff;
+    font-size: 11px;
+    border-top-right-radius: 0;
+    line-height: 18px;
+    padding: 0 20px 0 6px;
+    box-sizing: border-box;
+    height: 18px;
+}
+
+.win95 #production-costs-panel {
+    padding-top: 20px;
 }
 
 .order-params label {

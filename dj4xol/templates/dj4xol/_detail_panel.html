@@ -294,15 +294,16 @@
     {% endif %}
     {% endif %}{# end detail.unexplored else #}
     </section>
-    {% if enable_debug_actions and not detail.unexplored and player.account.django_user.is_superuser %}
+    {% if enable_debug_actions and not detail.unexplored and player.account.django_user.is_superuser or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_star or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_fleet or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_salvage or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_anomaly %}
     <div class="debug-actions panel-footer">
+        {% if not detail.unexplored and player.account.django_user.is_superuser %}
         {% if detail.is_star %}
         <form method="post" action="{% url 'dj4xol:debug_colonize' game.short_id detail.star_short_id %}" style="display:inline">
             {% csrf_token %}
             {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
             {% if selection.y %}<input type="hidden" name="y" value="{{ selection.y }}">{% endif %}
             {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
-            <button type="submit">Debug: Colonize (1000)</button>
+            <button type="submit">Colonize (1000)</button>
         </form>
         {% endif %}
         {% if selection.x and selection.y %}
@@ -311,7 +312,7 @@
             <input type="hidden" name="x" value="{{ selection.x }}">
             <input type="hidden" name="y" value="{{ selection.y }}">
             {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
-            <button type="submit">Debug: Create Fleet</button>
+            <button type="submit">Create Fleet</button>
         </form>
         {% endif %}
         {% if detail.is_fleet and detail.fleet_short_id %}
@@ -320,23 +321,19 @@
             {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
             {% if selection.y %}<input type="hidden" name="y" value="{{ selection.y }}">{% endif %}
             {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
-            <button type="submit">Debug: Create Anomaly</button>
+            <button type="submit">Create Anomaly</button>
         </form>
         {% endif %}
-    </div>
-    {% endif %}
-    {% if enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id %}
-    {% if detail.is_star or detail.is_fleet or detail.is_salvage or detail.is_anomaly %}
-    <div class="debug-actions panel-footer">
+        {% endif %}
+        {% if enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_star or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_fleet or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_salvage or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_anomaly %}
         <form method="post" action="{% url 'dj4xol:admin_generate_report' game.short_id detail.selected_id %}" style="display:inline">
             {% csrf_token %}
             {% if selection.x %}<input type="hidden" name="x" value="{{ selection.x }}">{% endif %}
             {% if selection.y %}<input type="hidden" name="y" value="{{ selection.y }}">{% endif %}
             {% if selection.sel %}<input type="hidden" name="sel" value="{{ selection.sel }}">{% endif %}
-            <button type="submit">Debug: Generate Report</button>
+            <button type="submit">Generate Report</button>
         </form>
-    </div>
-    {% endif %}
+        {% endif %}
     {% endif %}
 </div>
 </div>

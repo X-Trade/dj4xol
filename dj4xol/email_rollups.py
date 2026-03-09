@@ -93,6 +93,61 @@ def send_game_invite_email(game, recipient_email, inviter_name=None, dry_run=Fal
     return True
 
 
+def _account_display_name(account):
+    if not account:
+        return 'unknown'
+    alias = getattr(account, 'alias', '') or ''
+    if alias:
+        return alias
+    django_user = getattr(account, 'django_user', None)
+    return getattr(django_user, 'username', '') or 'unknown'
+
+
+def send_game_join_email(game, owner_account, joining_account, via_invitation=False, dry_run=False, stdout=None):
+    if not _email_enabled():
+        if stdout:
+            stdout.write('Email disabled; skipping join email.')
+        return False
+    if not owner_account or not getattr(owner_account, 'email', ''):
+        return False
+    if not getattr(owner_account, 'email_game_updates', False):
+        return False
+    if owner_account == joining_account:
+        return False
+
+    base_url = _get_server_url()
+    from_email = _get_from_email()
+    join_source = 'invitation' if via_invitation else 'public joinability'
+    subject = f'DJ4XOL: {_account_display_name(joining_account)} joined {game.name}'
+    body = render_to_string('dj4xol/email/game_joined.txt', {
+        'game': game,
+        'owner_account': owner_account,
+        'joining_account': joining_account,
+        'join_source': join_source,
+        'game_url': _game_url(game, base_url),
+        'server_url': base_url,
+        'unsubscribe_url': _unsubscribe_url(owner_account, base_url),
+    })
+
+    if dry_run:
+        if stdout:
+            stdout.write(f'[DRY RUN] Would send join email to {owner_account.email}')
+        return False
+
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=from_email,
+            recipient_list=[owner_account.email],
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception('Failed to send join email for game %s', getattr(game, 'id', None))
+        return False
+    return True
+
+
 def send_generic_test_email_for_account(account, dry_run=False, stdout=None):
     """Send a plain-text test email to confirm backend delivery works."""
     if not _email_enabled():
