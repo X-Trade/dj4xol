@@ -9,6 +9,7 @@ from .models import (
 from . import mineral_rules
 from .research import get_player_tech_effects
 from .fleet_thumbnails import choose_fleet_thumbnail
+from .colony_rules import habitability_proportion
 import random
 import math
 
@@ -19,6 +20,7 @@ TURN_INTERVALS = {
 }
 
 SECRET_RESOURCE_HOMEWORLD_BUFFER = 25
+STARTING_COLONY_RADIUS = 30.0
 
 class GameFactory():
     """A factory class to draft and initialise game instances.
@@ -709,6 +711,187 @@ class GameFactory():
         """Minimum distance between homeworlds: 250ly or 25% of shortest dimension."""
         return min(250, min(self.game.map_size_x, self.game.map_size_y) * 0.25)
 
+    def _game_has_systems(self):
+        stars = list(self.game.stars.all()) if self.game.pk else list(self.stars)
+        seen = set()
+        for star in stars:
+            coord = (int(star.x), int(star.y))
+            if coord in seen:
+                return True
+            seen.add(coord)
+        return False
+
+    def _split_starting_colonists(self, player, colony_count):
+        total = max(0, int(player.starting_colonists or 20)) * 1000
+        count = max(1, int(colony_count or 1))
+        base = total // count
+        remainder = total % count
+        return [base + (1 if idx < remainder else 0) for idx in range(count)]
+
+    def _split_starting_integer(self, total, colony_count):
+        total = max(0, int(total or 0))
+        count = max(1, int(colony_count or 1))
+        base = total // count
+        remainder = total % count
+        return [base + (1 if idx < remainder else 0) for idx in range(count)]
+
+    def _star_habitability_score_for_player(self, player, star):
+        proportions = []
+        for env in ['gravity', 'temperature', 'radiation']:
+            proportions.append(max(0.0, habitability_proportion(
+                player.hab_min(env),
+                player.hab_max(env),
+                getattr(player, '%s_center' % env),
+                getattr(star, env),
+            )))
+        return sum(proportions) / 3.0
+
+    def _is_perfect_for_player(self, player, star):
+        return (
+            abs(float(star.gravity) - float(player.gravity_center)) < 1e-9 and
+            abs(float(star.temperature) - float(player.temperature_center)) < 1e-9 and
+            abs(float(star.radiation) - float(player.radiation_center)) < 1e-9
+        )
+
+    def _find_secondary_starting_colony_candidates(self, player, homeworld, available_stars):
+        candidates = [
+            star for star in available_stars
+            if star.id != homeworld.id and self._distance(star, homeworld) <= STARTING_COLONY_RADIUS
+        ]
+        if not candidates:
+            return []
+        non_stacked = [
+            star for star in candidates
+            if (int(star.x), int(star.y)) != (int(homeworld.x), int(homeworld.y))
+        ]
+        if non_stacked:
+            candidates = non_stacked
+        less_habitable = [
+            star for star in candidates if not self._is_perfect_for_player(player, star)
+        ]
+        if less_habitable:
+            candidates = less_habitable
+        return sorted(
+            candidates,
+            key=lambda star: (
+                -self._star_habitability_score_for_player(player, star),
+                self._distance(star, homeworld),
+                int(star.id.int),
+            ),
+        )
+
+    def _secondary_colony_env_value(self, player, env):
+        center = float(getattr(player, '%s_center' % env))
+        minimum = float(player.hab_min(env))
+        maximum = float(player.hab_max(env))
+        width = max(0.0, maximum - minimum)
+        preferred_step = max(0.05, min(0.25, width / 4.0 if width > 0 else 0.05))
+        candidates = [center + preferred_step, center - preferred_step]
+        for value in candidates:
+            if minimum <= value <= maximum and abs(value - center) > 1e-9:
+                return value
+        fallback = center + 0.05 if center <= 1.95 else center - 0.05
+        return max(0.0, min(2.0, fallback))
+
+    def _create_secondary_starting_colony_star(self, player, homeworld):
+        occupied = {
+            (int(star.x), int(star.y))
+            for star in self.game.stars.all()
+        }
+        x = y = None
+        for _ in range(200):
+            dx = random.randint(-int(STARTING_COLONY_RADIUS), int(STARTING_COLONY_RADIUS))
+            dy = random.randint(-int(STARTING_COLONY_RADIUS), int(STARTING_COLONY_RADIUS))
+            if dx == 0 and dy == 0:
+                continue
+            if (dx * dx) + (dy * dy) > (STARTING_COLONY_RADIUS * STARTING_COLONY_RADIUS):
+                continue
+            candidate_x = max(0, min(int(self.game.map_size_x), int(homeworld.x) + dx))
+            candidate_y = max(0, min(int(self.game.map_size_y), int(homeworld.y) + dy))
+            if (candidate_x, candidate_y) in occupied:
+                continue
+            x = candidate_x
+            y = candidate_y
+            break
+        if x is None or y is None:
+            x = int(homeworld.x)
+            y = int(homeworld.y)
+
+        star = Star(
+            game=self.game,
+            name=self.starnamer.get_unique(),
+            x=x,
+            y=y,
+            gravity=self._secondary_colony_env_value(player, 'gravity'),
+            temperature=self._secondary_colony_env_value(player, 'temperature'),
+            radiation=self._secondary_colony_env_value(player, 'radiation'),
+        )
+        used_short_ids = self._collect_existing_short_ids()
+        self._assign_short_ids([star], used_short_ids)
+        star.save()
+        return star
+
+    def _assign_starting_colony_to_player(
+        self,
+        player,
+        star,
+        colonists,
+        mines=0,
+        factories=0,
+        is_homeworld=False,
+    ):
+        star.player = player
+        star.colonists = max(0, int(colonists or 0))
+        star.mines = max(0, int(mines or 0))
+        star.factories = max(0, int(factories or 0))
+        if is_homeworld:
+            # Set environmentals to player's ideal (center) values
+            star.gravity = player.gravity_center
+            star.temperature = player.temperature_center
+            star.radiation = player.radiation_center
+            # Transpose homeworld yields from 0-100 into 50-100.
+            star.ironium_yield = int(star.ironium_yield / 2.0 + 50)
+            star.boranium_yield = int(star.boranium_yield / 2.0 + 50)
+            star.germanium_yield = int(star.germanium_yield / 2.0 + 50)
+            # Apply remaining starting infrastructure
+            star.labs = max(0, int(player.starting_labs or 0))
+            star.shipyards = max(0, int(player.starting_shipyards or 0))
+            # Ensure homeworld has minimum surface minerals (1000kt each)
+            star.ironium_inventory = max(1000, star.ironium_inventory)
+            star.boranium_inventory = max(1000, star.boranium_inventory)
+            star.germanium_inventory = max(1000, star.germanium_inventory)
+            # Apply leftover points to surface minerals (10kt per point) unless routed to research.
+            if (player.leftover_points and player.leftover_points > 0 and
+                    not player.spend_leftover_points_on_research):
+                total_kt = int(player.leftover_points * 10)
+                if total_kt > 0:
+                    weights = [
+                        max(1, star.ironium_yield),
+                        max(1, star.boranium_yield),
+                        max(1, star.germanium_yield),
+                    ]
+                    total_weight = sum(weights)
+                    base_alloc = [
+                        int(total_kt * weights[0] / total_weight),
+                        int(total_kt * weights[1] / total_weight),
+                        int(total_kt * weights[2] / total_weight),
+                    ]
+                    remainder = total_kt - sum(base_alloc)
+                    for _ in range(remainder):
+                        pick = random.choices([0, 1, 2], weights=weights, k=1)[0]
+                        base_alloc[pick] += 1
+                    star.ironium_inventory += base_alloc[0]
+                    star.boranium_inventory += base_alloc[1]
+                    star.germanium_inventory += base_alloc[2]
+            # Override star name if player has a homeworld name set
+            if player.homeworld_name:
+                star.name = player.homeworld_name
+        star.save()
+        if is_homeworld:
+            player.homeworld = star
+            player.save(update_fields=['homeworld'])
+        return star
+
     def _find_homeworld_star(self, available_stars):
         """Find a suitable star for a homeworld, respecting minimum distance from others."""
         if self.game.pk:
@@ -757,54 +940,12 @@ class GameFactory():
         Sets star environmentals to player's habitable centers and optionally renames.
         Transposes resource yields from 0-100% into 50-100%, and ensures
         surface minerals are at least 1000kt."""
-        star.player = player
-        star.colonists = int(player.starting_colonists or 20) * 1000
-        # Set environmentals to player's ideal (center) values
-        star.gravity = player.gravity_center
-        star.temperature = player.temperature_center
-        star.radiation = player.radiation_center
-        # Transpose homeworld yields from 0-100 into 50-100.
-        star.ironium_yield = int(star.ironium_yield / 2.0 + 50)
-        star.boranium_yield = int(star.boranium_yield / 2.0 + 50)
-        star.germanium_yield = int(star.germanium_yield / 2.0 + 50)
-        # Apply starting infrastructure
-        star.mines = max(0, int(player.starting_mines or 0))
-        star.factories = max(0, int(player.starting_factories or 0))
-        star.labs = max(0, int(player.starting_labs or 0))
-        star.shipyards = max(0, int(player.starting_shipyards or 0))
-        # Ensure homeworld has minimum surface minerals (1000kt each)
-        star.ironium_inventory = max(1000, star.ironium_inventory)
-        star.boranium_inventory = max(1000, star.boranium_inventory)
-        star.germanium_inventory = max(1000, star.germanium_inventory)
-        # Apply leftover points to surface minerals (10kt per point) unless routed to research.
-        if (player.leftover_points and player.leftover_points > 0 and
-                not player.spend_leftover_points_on_research):
-            total_kt = int(player.leftover_points * 10)
-            if total_kt > 0:
-                weights = [
-                    max(1, star.ironium_yield),
-                    max(1, star.boranium_yield),
-                    max(1, star.germanium_yield),
-                ]
-                total_weight = sum(weights)
-                base_alloc = [
-                    int(total_kt * weights[0] / total_weight),
-                    int(total_kt * weights[1] / total_weight),
-                    int(total_kt * weights[2] / total_weight),
-                ]
-                remainder = total_kt - sum(base_alloc)
-                for _ in range(remainder):
-                    pick = random.choices([0, 1, 2], weights=weights, k=1)[0]
-                    base_alloc[pick] += 1
-                star.ironium_inventory += base_alloc[0]
-                star.boranium_inventory += base_alloc[1]
-                star.germanium_inventory += base_alloc[2]
-        # Override star name if player has a homeworld name set
-        if player.homeworld_name:
-            star.name = player.homeworld_name
-        star.save()
-        player.homeworld = star
-        player.save()
+        self._assign_starting_colony_to_player(
+            player,
+            star,
+            int(player.starting_colonists or 20) * 1000,
+            is_homeworld=True,
+        )
         return player
 
     def _resolve_starting_tech_level(self, race):
@@ -872,7 +1013,43 @@ class GameFactory():
         player.leftover_points = float(race.leftover_points or 0.0) + float(refunded_points)
         player.copy_habitability_from(race)
         player.save()
-        self._assign_homeworld_to_player(player, self._find_homeworld_star(available_stars))
+        starting_colony_count = max(
+            1,
+            int(getattr(race.race_type, 'starting_colonies', 1) or 1),
+        )
+        colonist_allocations = self._split_starting_colonists(player, starting_colony_count)
+        mine_allocations = self._split_starting_integer(player.starting_mines, starting_colony_count)
+        factory_allocations = self._split_starting_integer(player.starting_factories, starting_colony_count)
+        homeworld = self._find_homeworld_star(available_stars)
+        self._assign_starting_colony_to_player(
+            player,
+            homeworld,
+            colonist_allocations[0],
+            mines=mine_allocations[0],
+            factories=factory_allocations[0],
+            is_homeworld=True,
+        )
+        remaining = max(0, starting_colony_count - 1)
+        if remaining:
+            available_secondary = list(self.game.stars.filter(player=None))
+            secondary_candidates = self._find_secondary_starting_colony_candidates(
+                player,
+                homeworld,
+                available_secondary,
+            )
+            secondary_stars = list(secondary_candidates[:remaining])
+            while len(secondary_stars) < remaining:
+                created_star = self._create_secondary_starting_colony_star(player, homeworld)
+                secondary_stars.append(created_star)
+            for idx, (star, colonists) in enumerate(zip(secondary_stars, colonist_allocations[1:]), start=1):
+                self._assign_starting_colony_to_player(
+                    player,
+                    star,
+                    colonists,
+                    mines=mine_allocations[idx],
+                    factories=factory_allocations[idx],
+                    is_homeworld=False,
+                )
         self._apply_starting_research_level(player)
         self._create_starting_fleets(player)
         return player

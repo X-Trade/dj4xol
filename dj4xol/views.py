@@ -94,7 +94,7 @@ RACE_TYPE_PERCENT_FIELDS = [
     ('cargo_multiplier', 'Cargo'),
 ]
 RACE_TYPE_INTEGER_FIELDS = [
-    ('starting_planets', 'Starting Planets', 1),
+    ('starting_colonies', 'Starting Colonies', 1),
     ('starting_economy', 'Starting Economy', 2),
     ('economy_offset', 'Economy Offset', 0),
 ]
