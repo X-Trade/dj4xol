@@ -262,6 +262,12 @@
                     </span>
                 </span>
             </div>
+            {% if detail.infrastructure.Scanners %}
+            <div class="detail-row">
+                <span class="env-label">Scanners</span>
+                <span class="detail-value">{{ detail.infrastructure.Scanners }}</span>
+            </div>
+            {% endif %}
             <div class="detail-row">
                 <span class="env-label">Defenses</span>
                 <span class="detail-value">

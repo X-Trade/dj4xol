@@ -101,6 +101,7 @@ from .colony_rules import (
 from .research import (
     process_player_research_for_year,
     get_player_administration_profile,
+    get_player_colony_scanner_ranges,
     get_player_tech_effects,
     get_player_colony_defense_level,
     apply_research_bonus_rp,
@@ -1941,6 +1942,12 @@ class GameTurn():
                 'resource_z_inventory': obj.resource_z_inventory,
             })
             if report_tier == 'encounter':
+                scanner_basic = 0
+                scanner_advanced = 0
+                if obj.player:
+                    scanner_basic, scanner_advanced = get_player_colony_scanner_ranges(
+                        obj.player
+                    )
                 jobs = ((obj.mines + obj.factories + obj.labs + obj.defenses) * COLONISTS_PER_JOB
                         + obj.shipyards * COLONISTS_PER_SHIPYARD)
                 employment = calculate_employment_percent(obj)
@@ -1951,6 +1958,8 @@ class GameTurn():
                     'factories_bp': calculate_available_buildpoints(obj),
                     'labs': obj.labs,
                     'labs_rp': calculate_available_researchpoints(obj),
+                    'basic_scanner_range': scanner_basic,
+                    'advanced_scanner_range': scanner_advanced,
                     'defenses': obj.defenses,
                     'defenses_tooltip': None,
                     'shipyards': obj.shipyards,

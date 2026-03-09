@@ -545,6 +545,58 @@ class ResearchTurnTest(TestCase):
         self.assertAlmostEqual(effects['offense_level'], 1.0, places=4)
         self.assertAlmostEqual(effects['defense_level'], 0.0, places=4)
 
+    def test_scan_multiplier_scales_fleet_scanner_ranges(self):
+        self._reset_research_catalog()
+        scanner = ResearchCategory.objects.create(
+            code='SCN1', name='Scanners', enabled=True
+        )
+        Technology.objects.create(
+            category=scanner,
+            level=1,
+            name='Survey Net',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 6, "advanced_scanner_range": 3}',
+            enabled=True,
+        )
+
+        self.player.race_type.scan_multiplier = 1.5
+        self.player.race_type.save(update_fields=['scan_multiplier'])
+
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 1.0
+            row.save(update_fields=['current_level'])
+
+        effects = get_player_tech_effects(self.player)
+        self.assertEqual(effects['basic_scanner_range'], 9)
+        self.assertEqual(effects['advanced_scanner_range'], 4)
+
+    def test_scan_multiplier_scales_colony_scanner_ranges(self):
+        self._reset_research_catalog()
+        infra = ResearchCategory.objects.create(
+            code='INFS', name='Infrastructure Scanners', enabled=True
+        )
+        Technology.objects.create(
+            category=infra,
+            level=1,
+            name='Orbital Sensor Grid',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"basic_scanner_range": 5, "advanced_scanner_range": 2}',
+            enabled=True,
+        )
+
+        self.player.race_type.scan_multiplier = 0.5
+        self.player.race_type.save(update_fields=['scan_multiplier'])
+
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 1.0
+            row.save(update_fields=['current_level'])
+
+        basic, advanced = get_player_colony_scanner_ranges(self.player)
+        self.assertEqual(basic, 2)
+        self.assertEqual(advanced, 1)
+
     def test_scanner_effects_use_latest_scanner_tech(self):
         self._reset_research_catalog()
         electronics = ResearchCategory.objects.create(

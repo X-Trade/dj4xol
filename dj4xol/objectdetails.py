@@ -28,6 +28,7 @@ from dj4xol.salvage_thumbnails import (
 from dj4xol.research import (
     get_player_administration_profile,
     get_player_colony_defense_level,
+    get_player_colony_scanner_ranges,
     get_player_production_costs,
     get_player_terraforming_profile,
     format_terraform_order_label,
@@ -479,12 +480,19 @@ class DetailBuilder():
                 'mines', 'factories', 'factories_bp', 'labs', 'labs_rp',
                 'defenses', 'shipyards',
             ]):
+                scanner_display = None
+                if 'basic_scanner_range' in data or 'advanced_scanner_range' in data:
+                    scanner_display = self._format_scanner_range(
+                        data.get('basic_scanner_range', 0),
+                        data.get('advanced_scanner_range', 0),
+                    )
                 detail['infrastructure'] = {
                     'Mines': data.get('mines'),
                     'Factories': data.get('factories'),
                     'FactoriesBP': data.get('factories_bp'),
                     'Labs': data.get('labs'),
                     'LabsRP': data.get('labs_rp'),
+                    'Scanners': scanner_display,
                     'Defenses': data.get('defenses'),
                     'DefensesTooltip': data.get('defenses_tooltip'),
                     'Shipyards': data.get('shipyards'),
@@ -1365,6 +1373,7 @@ class DetailBuilder():
                     + self.selected_obj.shipyards * COLONISTS_PER_SHIPYARD)
             employment = calculate_employment_percent(self.selected_obj)
             defenses_tooltip = None
+            scanner_display = None
             administration_level = 0
             if is_owned:
                 colony_defense_level = get_player_colony_defense_level(self.player)
@@ -1393,6 +1402,12 @@ class DetailBuilder():
                 if abs(race_multiplier - 1.0) >= 1e-9:
                     percent = int(round((race_multiplier - 1.0) * 100.0))
                     defenses_tooltip = f"{defenses_tooltip} ({percent:+d}%)"
+                basic_scan, advanced_scan = get_player_colony_scanner_ranges(self.player)
+                scanner_display = self._format_scanner_range(
+                    basic_scan,
+                    advanced_scan,
+                    self._race_multiplier_percent_suffix(self.player, 'scan_multiplier'),
+                )
             infrastructure = {
                 'Mines': self.selected_obj.mines,
                 'Factories': self.selected_obj.factories,
@@ -1400,6 +1415,7 @@ class DetailBuilder():
                 'FactoriesTooltip': self._build_factories_tooltip(self.selected_obj),
                 'Labs': self.selected_obj.labs,
                 'LabsRP': calculate_available_researchpoints(self.selected_obj),
+                'Scanners': scanner_display,
                 'Defenses': self.selected_obj.defenses,
                 'DefensesTooltip': defenses_tooltip,
                 'Shipyards': self.selected_obj.shipyards,
@@ -1702,6 +1718,10 @@ class DetailBuilder():
             bool(self.selected_obj.has_wormhole_drive),
             getattr(self.selected_obj, 'basic_scanner_range', 0),
             getattr(self.selected_obj, 'advanced_scanner_range', 0),
+            scanner_suffix=self._race_multiplier_percent_suffix(
+                self.selected_obj.player if self.selected_obj.player == self.player else None,
+                'scan_multiplier',
+            ),
             include_scanners=include_scanners,
         )
 
@@ -1741,6 +1761,7 @@ class DetailBuilder():
         has_wormhole_drive,
         basic_scanner_range,
         advanced_scanner_range,
+        scanner_suffix='',
         include_scanners=False,
     ):
         """Build list of capability label/value pairs."""
@@ -1771,7 +1792,11 @@ class DetailBuilder():
                 'value': 'Yes',
             })
         if include_scanners:
-            scanner_display = self._format_scanner_range(basic_scanner_range, advanced_scanner_range)
+            scanner_display = self._format_scanner_range(
+                basic_scanner_range,
+                advanced_scanner_range,
+                scanner_suffix,
+            )
             if scanner_display:
                 capabilities.append({
                     'label': 'Scanner Range',
@@ -1779,7 +1804,7 @@ class DetailBuilder():
                 })
         return capabilities or None
 
-    def _format_scanner_range(self, basic, advanced):
+    def _format_scanner_range(self, basic, advanced, suffix=''):
         """Format scanner range display or return None when no scanners are present."""
         try:
             basic_val = int(basic or 0)
@@ -1791,7 +1816,24 @@ class DetailBuilder():
             advanced_val = 0
         if basic_val <= 0 and advanced_val <= 0:
             return None
-        return f'{basic_val}ly/{advanced_val}ly'
+        suffix = str(suffix or '')
+        return f'{basic_val}ly/{advanced_val}ly{suffix}'
+
+    def _race_multiplier_percent_suffix(self, player, attr_name):
+        if not player:
+            return ''
+        race_type = getattr(player, 'race_type', None)
+        raw = getattr(race_type, attr_name, 1.0)
+        if raw is None:
+            return ''
+        try:
+            multiplier = float(raw)
+        except (TypeError, ValueError):
+            return ''
+        if abs(multiplier - 1.0) < 1e-9:
+            return ''
+        percent = int(round((multiplier - 1.0) * 100.0))
+        return f' ({percent:+d}%)'
 
     def build_fleet_inventory(self, allow_foreign=False):
         """Build fleet cargo inventory data for progress bar display."""

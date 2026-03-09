@@ -4302,10 +4302,36 @@ class TestFleetCargo(TestCase):
         self.assertEqual(inventory['germanium']['amount'], 150)
         self.assertEqual(inventory['germanium']['percent'], 15.0)  # 150/1000 = 15%
         self.assertEqual(inventory['germanium']['display'], '150kt')
-
         self.assertEqual(inventory['colonists']['amount'], 50)
         self.assertEqual(inventory['colonists']['percent'], 5.0)  # 50/1000 = 5%
         self.assertEqual(inventory['colonists']['display'], '50k')
+
+    def test_owned_fleet_scanner_range_shows_race_scan_multiplier_suffix(self):
+        game = default_game(stars=2)
+        player = game.players.first()
+        player.race_type.scan_multiplier = 1.2
+        player.race_type.save(update_fields=['scan_multiplier'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Scanner Fleet',
+            x=10,
+            y=10,
+            ship_count=1,
+            integrity=100,
+            max_safe_warp=5,
+            basic_scanner_range=6,
+            advanced_scanner_range=2,
+        )
+
+        detail_builder = DetailBuilder(game, x=10, y=10, selected=fleet.short_id.lower(), player=player)
+        details = detail_builder.build_detail()
+
+        self.assertIn(
+            {'label': 'Scanner Range', 'value': '6ly/2ly (+20%)'},
+            details['fleet_capabilities'],
+        )
 
     def test_object_details_fleet_composition_includes_tech_modifiers(self):
         from ..objectdetails import DetailBuilder
@@ -6071,6 +6097,110 @@ class TestFleetTransferOrders(TestCase):
             game, x=star.x, y=star.y, selected=star.short_id, player=player
         ).build_detail()
         self.assertEqual(detail['infrastructure']['DefensesTooltip'], '12(+0) (+20%)')
+
+    def test_owned_star_scanners_show_race_scan_multiplier_suffix(self):
+        from ..objectdetails import DetailBuilder
+        from ..models import ResearchCategory, Technology
+        from ..research import ensure_player_research_rows
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        player.race_type.scan_multiplier = 1.2
+        player.race_type.save(update_fields=['scan_multiplier'])
+        star = player.homeworld
+
+        Technology.objects.all().delete()
+        ResearchCategory.objects.all().delete()
+        category = ResearchCategory.objects.create(
+            code='TEST_SCAN_INFRA',
+            name='Test Scanner Infrastructure',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=category,
+            level=1,
+            name='Orbital Sensor Grid',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"basic_scanner_range": 5, "advanced_scanner_range": 2}',
+            enabled=True,
+        )
+        for row in ensure_player_research_rows(player):
+            row.current_level = 1.0
+            row.save(update_fields=['current_level'])
+
+        detail = DetailBuilder(
+            game, x=star.x, y=star.y, selected=star.short_id, player=player
+        ).build_detail()
+        self.assertEqual(detail['infrastructure']['Scanners'], '6ly/2ly (+20%)')
+
+    def test_foreign_star_encounter_report_shows_scanners_without_trait_suffix(self):
+        from ..objectdetails import DetailBuilder
+        from ..models import Report, ResearchCategory, Technology
+        from ..research import ensure_player_research_rows
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        other_user = User.objects.create_user('star_scan_enemy', 'star_scan_enemy@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            race_type=player.race_type,
+        )
+        other_player.race_type.scan_multiplier = 1.2
+        other_player.race_type.save(update_fields=['scan_multiplier'])
+
+        Technology.objects.all().delete()
+        ResearchCategory.objects.all().delete()
+        category = ResearchCategory.objects.create(
+            code='TEST_SCAN_FOREIGN_INFRA',
+            name='Foreign Scanner Infrastructure',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=category,
+            level=1,
+            name='Orbital Sensor Grid',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"basic_scanner_range": 5, "advanced_scanner_range": 2}',
+            enabled=True,
+        )
+        for row in ensure_player_research_rows(other_player):
+            row.current_level = 1.0
+            row.save(update_fields=['current_level'])
+
+        star = game.stars.exclude(pk=player.homeworld.pk).first()
+        star.player = other_player
+        star.mines = 1
+        star.factories = 1
+        star.labs = 1
+        star.defenses = 1
+        star.shipyards = 1
+        star.save(update_fields=['player', 'mines', 'factories', 'labs', 'defenses', 'shipyards'])
+
+        turn = GameTurn(game)
+        report = Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=star.id,
+            cached_report='{}',
+        )
+        report.set_report_data(
+            turn._build_report_data(player, star, 'star', report_tier='encounter')
+        )
+        report.save(update_fields=['cached_report'])
+
+        self.assertIn('basic_scanner_range', report.get_report_data())
+        self.assertIn('advanced_scanner_range', report.get_report_data())
+
+        detail_builder = DetailBuilder(
+            game, x=star.x, y=star.y, selected=star.short_id, player=player
+        )
+        detail_builder.selected_obj = star
+        detail = detail_builder._build_detail_from_report(game.year)
+        self.assertEqual(detail['infrastructure']['Scanners'], '6ly/2ly')
 
     def test_new_fleet_gets_thumbnail_path(self):
         game = default_game(stars=2)
