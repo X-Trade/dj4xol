@@ -32,6 +32,9 @@
         <th>{{ form.race_type.label_tag }}</th>
         <td>
             {{ form.race_type }}
+            {% if race_type_browser_url %}
+            <a class="action-link" href="{{ race_type_browser_url }}">Browse</a>
+            {% endif %}
             {{ form.race_type.errors }}
         </td>
         <td class="hint">&nbsp;</td>

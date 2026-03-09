@@ -1,0 +1,120 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Race Types</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index single-panel-page">
+        <div class="title-bar">
+            <span class="title">Race Types</span>
+            <span class="tagline">Browse Type Effects</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_index' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-race-types">
+                    <h2><span>Race Type Effects</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                            <form method="get" class="inline-form">
+                                {% if return_to %}
+                                <input type="hidden" name="return_to" value="{{ return_to }}">
+                                {% endif %}
+                                <div class="detail-row">
+                                    <span class="env-label">Race Type</span>
+                                    <span class="detail-value">
+                                        <select name="race_type" onchange="this.form.submit();">
+                                            {% for race_type in race_types %}
+                                            <option value="{{ race_type.code }}"{% if selected_race_type and selected_race_type.code == race_type.code %} selected{% endif %}>{{ race_type.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </span>
+                                </div>
+                            </form>
+                            {% if selected_race_type %}
+                            <div class="research-detail-kv">
+                                <div class="detail-row">
+                                    <span class="env-label">Name</span>
+                                    <span class="detail-value">{{ selected_race_type.name }}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="env-label">Description</span>
+                                    <span class="detail-value">{{ selected_race_type.description|default:"No description." }}</span>
+                                </div>
+                            </div>
+                            <hr class="detail-divider">
+                            {% if effect_rows %}
+                            <table class="detail-table">
+                                <thead>
+                                    <tr class="detail-table-section">
+                                        <th>Effect</th>
+                                        <th>Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in effect_rows %}
+                                    <tr>
+                                        <td>{{ row.name }}</td>
+                                        <td>{{ row.value }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% else %}
+                            <p>No non-default effects are defined for this race type.</p>
+                            {% endif %}
+                            {% endif %}
+                        </section>
+                        <div class="panel-footer">
+                            {% if use_type_url %}
+                            <a class="action-link" href="{{ use_type_url }}">Use This Type</a>
+                            {% endif %}
+                            {% if return_url_name %}
+                            <a class="action-link" href="{% url return_url_name %}">{{ return_label }}</a>
+                            {% else %}
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+    </body>
+</html>

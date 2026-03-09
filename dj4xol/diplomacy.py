@@ -207,31 +207,31 @@ def combat_chance_percent(stance_a, stance_b):
     return COMBINED_SCORE_COMBAT_CHANCES.get(score, 0)
 
 
-def player_persuasion_multiplier(player):
+def player_diplomacy_multiplier(player):
     if not player:
         return 1.0
     race_type = getattr(player, 'race_type', None)
     try:
-        value = float(getattr(race_type, 'persuasion_multiplier', 1.0))
+        value = float(getattr(race_type, 'diplomacy_multiplier', 1.0))
     except (TypeError, ValueError):
         value = 1.0
     return max(0.01, value)
 
 
-def combined_persuasion_chance_scale(player_a, player_b):
-    persuasion_a = player_persuasion_multiplier(player_a)
-    persuasion_b = player_persuasion_multiplier(player_b)
-    return 1.0 / sqrt(persuasion_a * persuasion_b)
+def combined_diplomacy_chance_scale(player_a, player_b):
+    diplomacy_a = player_diplomacy_multiplier(player_a)
+    diplomacy_b = player_diplomacy_multiplier(player_b)
+    return 1.0 / sqrt(diplomacy_a * diplomacy_b)
 
 
-def combat_chance_with_persuasion_percent(stance_a, stance_b, player_a, player_b):
+def combat_chance_with_diplomacy_percent(stance_a, stance_b, player_a, player_b):
     base_chance = float(combat_chance_percent(stance_a, stance_b))
-    scaled = base_chance * combined_persuasion_chance_scale(player_a, player_b)
+    scaled = base_chance * combined_diplomacy_chance_scale(player_a, player_b)
     return max(0, min(100, int(round(scaled))))
 
 
 def combat_chance_modifier_percent(player_a, player_b):
-    modifier = combined_persuasion_chance_scale(player_a, player_b) - 1.0
+    modifier = combined_diplomacy_chance_scale(player_a, player_b) - 1.0
     return int(round(modifier * 100.0))
 
 

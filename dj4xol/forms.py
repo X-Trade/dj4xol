@@ -96,9 +96,15 @@ class ServerRaceForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         show_public = bool(kwargs.pop('show_public', False))
+        selected_race_type = kwargs.pop('selected_race_type', None)
         super().__init__(*args, **kwargs)
         max_level = get_global_research_max_level()
-        self.fields['race_type'].queryset = ServerRaceType.objects.filter(enabled=True)
+        self.fields['race_type'].queryset = (
+            ServerRaceType.objects.filter(enabled=True).order_by('display_order', 'name', 'code')
+        )
+        self.fields['race_type'].empty_label = None
+        if selected_race_type and not self.is_bound:
+            self.fields['race_type'].initial = selected_race_type
         self.fields['description'].required = False
         if not show_public and 'public' in self.fields:
             self.fields.pop('public')

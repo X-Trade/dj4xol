@@ -57,7 +57,7 @@
                         </div>
                         <div class="detail-row">
                             <span class="env-label">RP/Year</span>
-                            <span class="detail-value">{{ budget.generated_rp|floatformat:0 }}</span>
+                            <span class="detail-value">{{ budget.yearly_generated_rp|floatformat:0 }}{% if budget.research_multiplier_display %} ({{ budget.research_multiplier_display }}){% endif %}</span>
                         </div>
                         {% if budget.converted_rp %}
                         <div class="detail-row">

@@ -27,7 +27,7 @@
 }
 
 .diplomacy-name {
-    min-width: 0;
+    min-width: 100px;
     display: block;
     max-width: 120px;
     overflow: hidden;
