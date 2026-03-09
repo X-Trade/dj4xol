@@ -46,6 +46,8 @@ from .diplomacy import (
     STANCE_CHOICES,
     combat_chance_percent,
     encountered_players,
+    has_encountered_player,
+    stance_effect_items,
     stance_label,
     stance_towards,
     update_player_stances,
@@ -1369,17 +1371,30 @@ def add_fleet_order(request, game_short_id):
         order.repeat = False
         transfer_player_short_id = (request.POST.get('transfer_player', '') or '').strip().lower()
         if transfer_player_short_id:
-            order.transfer_player = Player.objects.get(
+            target_player = Player.objects.filter(
                 short_id=transfer_player_short_id,
                 game=game,
                 defeated=False,
-            )
-            if order.transfer_player_id == player.id:
+            ).first()
+            if not target_player:
                 return _redirect_preserving_selection(
                     request,
                     game,
                     suppress_autolocate=True,
                 )
+            if target_player.id == player.id:
+                return _redirect_preserving_selection(
+                    request,
+                    game,
+                    suppress_autolocate=True,
+                )
+            if not has_encountered_player(player, target_player):
+                return _redirect_preserving_selection(
+                    request,
+                    game,
+                    suppress_autolocate=True,
+                )
+            order.transfer_player = target_player
 
     elif order_type == 'COLONISE':
         # Colonise orders always have repeat=False (fleet is destroyed)
@@ -2371,6 +2386,10 @@ def diplomacy(request, game_short_id):
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
 
+    def _player_display_name(p):
+        alias = p.account.alias if getattr(p, 'account', None) else 'Unknown'
+        return '%s (%s)' % (p.name, alias)
+
     contact_players = encountered_players(player)
     selected_target = request.POST.get('target') or request.GET.get('target') or 'default'
 
@@ -2420,18 +2439,23 @@ def diplomacy(request, game_short_id):
         their_stance = stance_towards(selected_player, player)
         our_stance = own_stance_map.get(selected_player.id, stance_towards(player, selected_player))
         detail = {
-            'name': selected_player.name,
+            'name': _player_display_name(selected_player),
             'their_stance': stance_label(their_stance),
             'our_stance': stance_label(our_stance),
             'combat_chance': combat_chance_percent(our_stance, their_stance),
+            'our_stance_raw': our_stance,
+            'effects': stance_effect_items(our_stance),
             'is_default': False,
         }
     else:
+        default_stance = getattr(player, 'default_diplomatic_stance', 'NEUTRAL')
         detail = {
             'name': 'Default Stance',
             'their_stance': None,
-            'our_stance': stance_label(player.default_diplomatic_stance),
+            'our_stance': stance_label(default_stance),
+            'our_stance_raw': default_stance,
             'combat_chance': None,
+            'effects': stance_effect_items(default_stance),
             'is_default': True,
         }
 

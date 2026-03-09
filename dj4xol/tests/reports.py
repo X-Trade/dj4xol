@@ -4,7 +4,8 @@ import json
 from django.test import TestCase
 from django.contrib.auth.models import User
 from ..models import (
-    Account, Star, Fleet, FleetOrders, Salvage, Report, Anomaly, GameMessage
+    Account, Star, Fleet, FleetOrders, Salvage, Report, Anomaly, GameMessage,
+    PlayerDiplomaticStance,
 )
 from ..factory import GameFactory
 from ..objectdetails import DetailBuilder
@@ -1112,6 +1113,81 @@ class ScannerReportTest(TestCase):
         self.assertNotIn('has_bombs', data)
         self.assertNotIn('offense_modifier', data)
 
+    def test_allied_scanner_sharing_generates_reports_for_recipient(self):
+        scanner = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Shared Scanner',
+            x=70,
+            y=70,
+            basic_scanner_range=6,
+            advanced_scanner_range=0,
+        )
+        star = self.game.stars.exclude(player=self.player1).exclude(player=self.player2).first()
+        if star is None:
+            star = self.game.stars.exclude(id=self.player1.homeworld_id).first()
+        star.x = scanner.x + 4
+        star.y = scanner.y
+        star.save(update_fields=['x', 'y'])
+
+        PlayerDiplomaticStance.objects.create(
+            player=self.player2,
+            target_player=self.player1,
+            stance='ALLIED',
+        )
+
+        GameTurn(self.game).generate_scanner_reports()
+
+        report = Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=star.id,
+        ).first()
+        self.assertIsNotNone(report)
+        self.assertEqual(report.get_report_data().get('report_tier'), 'basic')
+
+    def test_allied_intel_sharing_creates_advanced_fleet_and_colony_reports(self):
+        shared_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Shared Intel Fleet',
+            x=61,
+            y=62,
+            ship_count=3,
+            integrity=77,
+        )
+        shared_star = self.player2.homeworld
+
+        PlayerDiplomaticStance.objects.create(
+            player=self.player2,
+            target_player=self.player1,
+            stance='ALLIED',
+        )
+
+        turn = GameTurn(self.game)
+        turn.generate_shared_intel_reports()
+
+        fleet_report = Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=shared_fleet.id,
+        ).first()
+        self.assertIsNotNone(fleet_report)
+        self.assertEqual(fleet_report.get_report_data().get('report_tier'), 'advanced')
+        self.assertEqual(fleet_report.get_report_data().get('player_name'), self.player2.name)
+
+        star_report = Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=shared_star.id,
+        ).first()
+        self.assertIsNotNone(star_report)
+        self.assertEqual(star_report.get_report_data().get('report_tier'), 'advanced')
+        self.assertEqual(star_report.get_report_data().get('player_name'), self.player2.name)
+
     def test_advanced_scanner_reports_salvage_and_anomaly(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=6, x=20, y=20)
         salvage = Salvage.objects.create(
@@ -1597,7 +1673,10 @@ class NoScannerReportTierTest(TestCase):
 
         self.assertEqual(detail.get('report_tier'), 'basic')
         self.assertEqual(detail.get('name'), 'Vector Ghost')
-        self.assertEqual(detail.get('player'), self.player2.name)
+        self.assertEqual(
+            detail.get('player'),
+            '%s (%s)' % (self.player2.name, self.player2.account.alias),
+        )
         self.assertTrue(detail.get('owner_known'))
 
     def test_no_scanners_basic_visit_records_anomaly_type(self):

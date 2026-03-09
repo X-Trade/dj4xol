@@ -775,7 +775,8 @@ class Fleet(AbstractMapObject):
     @property
     def owner_display_name(self):
         if self.player_id:
-            return self.player.name
+            alias = self.player.account.alias if getattr(self.player, 'account', None) else 'Unknown'
+            return '%s (%s)' % (self.player.name, alias)
         return "Abandoned"
 
     @property

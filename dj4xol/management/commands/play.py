@@ -39,6 +39,7 @@ from dj4xol.research import (
     set_singular_allocation,
     update_player_allocations,
 )
+from dj4xol.diplomacy import has_encountered_player
 from dj4xol.turn import GameTurn
 
 try:  # Enables terminal history/editing for input() on supported platforms.
@@ -1452,6 +1453,8 @@ class Command(BaseCommand):
                 raise CommandError("Unknown player target: %s" % token)
             if player and target.id == player.id:
                 raise CommandError("Cannot transfer a fleet to your own player.")
+            if player and not has_encountered_player(player, target):
+                raise CommandError("Can only transfer a fleet to a discovered race.")
             return target
         target = Player.objects.filter(
             game=game,
@@ -1463,6 +1466,8 @@ class Command(BaseCommand):
             raise CommandError("Unknown player target: %s" % token)
         if player and target.id == player.id:
             raise CommandError("Cannot transfer a fleet to your own player.")
+        if player and not has_encountered_player(player, target):
+            raise CommandError("Can only transfer a fleet to a discovered race.")
         return target
 
     def _parse_coords_token(self, token):

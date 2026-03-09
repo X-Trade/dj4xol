@@ -47,7 +47,7 @@
         <div class="research-columns diplomacy-columns">
             <div class="research-left diplomacy-left">
                 <div class="panel no-transition open" data-panel="stances">
-                    <h2><span>Diplomatic Standing</span><span class="panel-toggle"></span></h2>
+                    <h2><span>Diplomatic Stance</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack research-panel-body">
                         <form method="post" class="panel-scrollable-list diplomacy-form" id="diplomacy-form">
                             {% csrf_token %}
@@ -60,7 +60,7 @@
                             </div>
                             {% for row in rows %}
                             <div class="allocation-row diplomacy-row">
-                                <a href="?target={{ row.short_id }}" class="allocation-name diplomacy-name{% if row.selected %} selected{% endif %}">{{ row.name }}</a>
+                                <a href="?target={{ row.short_id }}" class="allocation-name diplomacy-name{% if row.selected %} selected{% endif %}" title="{{ row.name }}">{{ row.name }}</a>
                                 <div class="allocation-control diplomacy-control">
                                     {% for value, label in stance_choices %}
                                     <label class="diplomacy-radio">
@@ -112,11 +112,18 @@
                             <hr class="detail-divider">
                             <h4>Current Effects</h4>
                             {% if detail.is_default %}
-                            <p>This is the default standing applied when you first make contact with an unknown race, and it remains in effect unless you later set a specific override.</p>
+                            <p>This is the default standing used when you first encounter unknown races, and it remains in effect unless you set a specific override.</p>
                             {% else %}
-                            <p>When your fleets encounter {{ detail.name }}, combat rolls are based on both sides' current standings.</p>
-                            <p>Additional diplomacy benefits and penalties will be listed here in a later update.</p>
+                            <p>Encounters with {{ detail.name }} are shaped by both sides' current standing.</p>
                             {% endif %}
+                            <div class="diplomacy-effects-table">
+                                {% for item in detail.effects %}
+                                <div class="diplomacy-effects-row">
+                                    <span class="diplomacy-effects-name" title="{{ item.description }}">{{ item.name }}</span>
+                                    <span class="diplomacy-effects-summary" title="{{ item.description }}">{{ item.summary }}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
                         </section>
                     </div>
                 </div>

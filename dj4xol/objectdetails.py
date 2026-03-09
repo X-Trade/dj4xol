@@ -393,7 +393,7 @@ class DetailBuilder():
         )
         data = report.get_report_data()
         report_tier = data.get('report_tier')
-        report_owner_name = data.get('player_name')
+        report_owner_name = self._format_report_owner_display(data.get('player_name'))
         if target_type == 'fleet' and report_tier in ('ownership', 'advanced', 'encounter'):
             report_owner_name = report_owner_name or 'Abandoned'
 
@@ -1108,6 +1108,20 @@ class DetailBuilder():
             return 'Abandoned'
         return None
 
+    def _format_report_owner_display(self, player_name):
+        """Format report owner as 'Race (Account)' when possible."""
+        if not player_name:
+            return None
+        if player_name == 'Abandoned':
+            return player_name
+        if ' (' in player_name and player_name.endswith(')'):
+            return player_name
+        player = self.game.players.select_related('account').filter(name=player_name).order_by('id').first()
+        if not player:
+            return player_name
+        alias = player.account.alias if player.account else 'Unknown'
+        return '%s (%s)' % (player.name, alias)
+
     @staticmethod
     def _star_has_leftover_infrastructure(star):
         if not star:
@@ -1586,12 +1600,16 @@ class DetailBuilder():
             return []
         if not self.player or self.selected_obj.player != self.player:
             return []
+        from dj4xol.diplomacy import has_encountered_player
+
         recipients = [{
             'value': '',
             'label': 'Abandoned',
         }]
         others = self.game.players.exclude(id=self.player.id).exclude(defeated=True).order_by('name', 'id')
         for other in others:
+            if not has_encountered_player(self.player, other):
+                continue
             alias = other.account.alias if getattr(other, 'account', None) else 'Unknown'
             recipients.append({
                 'value': other.short_id,

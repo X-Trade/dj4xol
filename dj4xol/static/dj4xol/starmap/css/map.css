@@ -214,6 +214,23 @@ body.lcars .maparea a.mapstar-name {
     z-index: 3;
 }
 
+.mapstar-allied {
+    height: 5px;
+    width: 5px;
+    background-color: rgb(96, 128, 0);
+    box-shadow: inset 0px 0px 3px rgb(128, 160, 24);
+    border-radius: 50%;
+    position: absolute;
+}
+.mapfleet-allied {
+    height: 3.5px;
+    width: 3.5px;
+    border: solid rgb(96, 128, 0);
+    border-width: 0 3px 3px 0;
+    position: absolute;
+    z-index: 3;
+}
+
 .mapstar-enemy {
     height: 5px;
     width: 5px;
@@ -229,6 +246,16 @@ body.lcars .maparea a.mapstar-name {
     border-width: 0 3px 3px 0;
     position: absolute;
     z-index: 3;
+}
+
+.mapfleet-unowned {
+    height: 3.5px;
+    width: 3.5px;
+    border: solid #888;
+    border-width: 0 3px 3px 0;
+    position: absolute;
+    z-index: 3;
+    opacity: 0.55;
 }
 
 .mapsalvage {
@@ -560,6 +587,15 @@ body.lcars .maparea a.mapstar-name {
     z-index: 1;
 }
 
+.mapstar-satellite-allied {
+    height: 2px;
+    width: 2px;
+    background-color: rgb(96, 128, 0);
+    border-radius: 50%;
+    position: absolute;
+    z-index: 1;
+}
+
 .mapstar-satellite-enemy {
     height: 2px;
     width: 2px;
@@ -572,7 +608,6 @@ body.lcars .maparea a.mapstar-name {
 /* Exploration state visibility */
 .mapstar-explored {
     opacity: 1;
-    filter: brightness(1.35);
 }
 
 .mapstar-unexplored {
@@ -585,7 +620,6 @@ body.lcars .maparea a.mapstar-name {
 .maparea a:focus .mapstar-explored,
 .maparea a:active .mapstar-explored {
     opacity: 1 !important;
-    filter: brightness(1.35) !important;
 }
 
 .maparea a:hover .mapstar-unexplored,

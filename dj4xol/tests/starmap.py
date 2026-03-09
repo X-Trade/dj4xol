@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from ..factory import GameFactory
-from ..models import Account, Report, Anomaly, Fleet, Salvage
+from ..models import Account, Report, Anomaly, Fleet, Salvage, PlayerDiplomaticStance
 from ..starmap import StarMap
 from ._util import default_game, get_default_race
 
@@ -335,3 +335,63 @@ class TestStarMap(TestCase):
         starmap = StarMap(game, player)
         html = starmap.render_map()
         self.assertIn(f'data-object-id="{salvage.short_id}"', html)
+
+    def test_allied_intel_sharing_makes_enemy_fleet_visible(self):
+        user1 = User.objects.create_user('share_map_1', 'sm1@test.com', 'pass')
+        account1 = Account.objects.create(django_user=user1)
+        user2 = User.objects.create_user('share_map_2', 'sm2@test.com', 'pass')
+        account2 = Account.objects.create(django_user=user2)
+
+        factory = GameFactory()
+        factory.set_map_size(100, 100)
+        factory.set_owner(account1)
+        factory.create_stars(12)
+        game = factory.save()
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+
+        player1 = factory.join_player(account1, get_default_race())
+        player2 = factory.join_player(account2, get_default_race())
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name='Hidden Scout',
+            x=88,
+            y=88,
+            basic_scanner_range=0,
+            advanced_scanner_range=0,
+        )
+
+        starmap = StarMap(game, player1)
+        html = starmap.render_map()
+        self.assertNotIn(f'data-object-id="{enemy_fleet.short_id}"', html)
+
+        PlayerDiplomaticStance.objects.create(
+            player=player2,
+            target_player=player1,
+            stance='ALLIED',
+        )
+
+        starmap = StarMap(game, player1)
+        html = starmap.render_map()
+        self.assertIn(f'data-object-id="{enemy_fleet.short_id}"', html)
+        self.assertIn('mapfleet-allied', html)
+
+        allied_star = player2.homeworld
+        html_with_star = starmap.render_star(allied_star)
+        self.assertIn('mapstar-allied', html_with_star)
+
+    def test_unowned_fleet_uses_unexplored_grey_style(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        derelict = Fleet.objects.create(
+            game=game,
+            player=None,
+            name='Derelict',
+            x=45,
+            y=45,
+        )
+
+        starmap = StarMap(game, player)
+        html = starmap.render_fleet(derelict)
+        self.assertIn('mapfleet-unowned', html)

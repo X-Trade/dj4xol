@@ -15,6 +15,7 @@ from ..models import (
     Fleet,
     FleetOrders,
     GameMessage,
+    PlayerDiplomaticStance,
     PlayerNote,
     PlayerResearch,
     ProductionOrder,
@@ -386,6 +387,11 @@ class PlayCommandTest(TestCase):
 
     def test_orders_add_give_and_abandon(self):
         fleet = self.player1.fleets.order_by('id').first()
+        PlayerDiplomaticStance.objects.create(
+            player=self.player1,
+            target_player=self.player2,
+            stance='HOSTILE',
+        )
 
         self._run_play(
             self.game.short_id,
@@ -407,6 +413,23 @@ class PlayCommandTest(TestCase):
         self.assertEqual(orders[1].order_type, 'GIVE')
         self.assertIsNone(orders[1].transfer_player_id)
         self.assertFalse(orders[1].repeat)
+
+    def test_orders_add_give_blocks_undiscovered_player(self):
+        fleet = self.player1.fleets.order_by('id').first()
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add GIVE %s' % (fleet.short_id, self.player2.short_id),
+                '/exit',
+            ],
+        )
+
+        self.assertIn('Can only transfer a fleet to a discovered race.', output)
+        self.assertEqual(fleet.orders.count(), 0)
 
     def test_orders_add_transfer_executes_secret_resources(self):
         fleets = list(self.player1.fleets.order_by('id'))
