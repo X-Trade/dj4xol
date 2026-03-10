@@ -5422,14 +5422,39 @@ class GameTurn():
             (source_fleet.overmax_fuel_penalty * source_fleet.ship_count) +
             (target_fleet.overmax_fuel_penalty * target_fleet.ship_count)
         ) / float(total_ships)
-        bottleneck_wormhole_fuel_per_ly = max(
-            float(source_fleet.wormhole_fuel_per_ly or 5.0),
-            float(target_fleet.wormhole_fuel_per_ly or 5.0),
+        source_has_wormhole_drive = bool(source_fleet.has_wormhole_drive)
+        target_has_wormhole_drive = bool(target_fleet.has_wormhole_drive)
+        merged_has_wormhole_drive = bool(
+            source_has_wormhole_drive or target_has_wormhole_drive
         )
-        worst_wormhole_destruction = max(
-            float(source_fleet.wormhole_destruction_chance or 0.0),
-            float(target_fleet.wormhole_destruction_chance or 0.0),
+        merged_wormhole_fuel_per_ly = float(
+            target_fleet.wormhole_fuel_per_ly or 5.0
         )
+        merged_wormhole_destruction = float(
+            target_fleet.wormhole_destruction_chance or 0.0
+        )
+        if source_has_wormhole_drive and target_has_wormhole_drive:
+            merged_wormhole_fuel_per_ly = (
+                (float(source_fleet.wormhole_fuel_per_ly or 5.0) * source_fleet.ship_count) +
+                (float(target_fleet.wormhole_fuel_per_ly or 5.0) * target_fleet.ship_count)
+            ) / float(total_ships)
+            merged_wormhole_destruction = (
+                (
+                    float(source_fleet.wormhole_destruction_chance or 0.0) *
+                    source_fleet.ship_count
+                ) +
+                (
+                    float(target_fleet.wormhole_destruction_chance or 0.0) *
+                    target_fleet.ship_count
+                )
+            ) / float(total_ships)
+        elif source_has_wormhole_drive:
+            merged_wormhole_fuel_per_ly = float(
+                source_fleet.wormhole_fuel_per_ly or 5.0
+            )
+            merged_wormhole_destruction = float(
+                source_fleet.wormhole_destruction_chance or 0.0
+            )
 
         # Merge attributes into target fleet
         target_fleet.ship_count = total_ships
@@ -5442,8 +5467,8 @@ class GameTurn():
         )
         target_fleet.fuel_efficiency = weighted_fuel_efficiency
         target_fleet.overmax_fuel_penalty = weighted_overmax_fuel_penalty
-        target_fleet.wormhole_fuel_per_ly = bottleneck_wormhole_fuel_per_ly
-        target_fleet.wormhole_destruction_chance = worst_wormhole_destruction
+        target_fleet.wormhole_fuel_per_ly = merged_wormhole_fuel_per_ly
+        target_fleet.wormhole_destruction_chance = merged_wormhole_destruction
         target_fleet.offense_level = merged_offense_level
         target_fleet.defense_level = merged_defense_level
         target_fleet.integrity = avg_integrity
@@ -5461,9 +5486,7 @@ class GameTurn():
         target_fleet.has_fuel_factory = bool(
             source_fleet.has_fuel_factory or target_fleet.has_fuel_factory
         )
-        target_fleet.has_wormhole_drive = bool(
-            source_fleet.has_wormhole_drive or target_fleet.has_wormhole_drive
-        )
+        target_fleet.has_wormhole_drive = merged_has_wormhole_drive
 
         # Transfer cargo (may exceed capacity - intentional for merge)
         target_fleet.ironium_inventory += source_fleet.ironium_inventory
