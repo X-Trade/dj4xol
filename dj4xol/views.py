@@ -60,6 +60,7 @@ from .technology_thumbnails import (
     get_technology_thumbnail_path,
     get_technology_thumbnail_paths,
 )
+from .technology_gate_rules import describe_race_type_requirement
 from .ship_thumbnail_catalog import SHIP_THUMBNAILS_BY_CLASS
 from .starmap import StarMap
 from .factory import GameFactory
@@ -2098,6 +2099,7 @@ def _format_tech_param_key(key):
         'defense_level': 'Defense Level',
         'colony_defense_level': 'Colony Defense Level',
         'terraforming_rate': 'Terraforming Rate',
+        'race_type': 'Race Type',
     }
     return labels.get(key, key.replace('_', ' ').title())
 
@@ -2129,6 +2131,8 @@ def _format_tech_param_value(key, value):
             return '{}%'.format(int(round(float(value) * 100.0)))
         except (TypeError, ValueError):
             return value
+    if key == 'race_type':
+        return describe_race_type_requirement(value)
     return value
 
 

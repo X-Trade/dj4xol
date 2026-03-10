@@ -181,3 +181,24 @@ class HelpPagesTest(TestCase):
         categories = {c.id: c for c in response.context['categories']}
         self.assertEqual(categories[energy.id].tech_count, 2)
         self.assertEqual(categories[materials.id].tech_count, 1)
+
+    def test_help_technology_shows_race_type_requirement_in_english(self):
+        energy = ResearchCategory.objects.create(
+            code='ENERGATE',
+            name='Energy',
+            display_order=10,
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=energy,
+            level=2,
+            name='War Shield',
+            tech_type='SHIELD',
+            params_json='{"defense_level": 1.0, "race_type": "not JOAT"}',
+            enabled=True,
+        )
+
+        response = self.client.get(reverse('dj4xol:help_technology'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Race Type')
+        self.assertContains(response, 'Is not JOAT')

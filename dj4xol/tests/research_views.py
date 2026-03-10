@@ -168,3 +168,71 @@ class ResearchViewTest(TestCase):
         self.assertContains(response, 'Energy Shield I')
         self.assertContains(response, 'Current shield envelope.')
         self.assertContains(response, 'Energy Shield II')
+
+    def test_research_detail_hides_race_gated_technology(self):
+        Technology.objects.create(
+            category=self.energy,
+            level=1,
+            name='Open Shield',
+            tech_type='SHIELD',
+            description='Visible to everyone.',
+            params_json='{"shield_level": 1}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=self.energy,
+            level=2,
+            name='War Shield',
+            tech_type='SHIELD',
+            description='Restricted shield.',
+            params_json='{"shield_level": 2, "race_type": "is WAR"}',
+            enabled=True,
+        )
+        ensure_player_research_rows(self.player)
+        row = PlayerResearch.objects.get(player=self.player, category=self.energy)
+        row.current_level = 1.0
+        row.save(update_fields=['current_level'])
+
+        response = self.client.get(
+            reverse('dj4xol:research', args=[self.game.short_id]),
+            {'category': self.energy.id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Open Shield')
+        self.assertNotContains(response, 'War Shield')
+
+    def test_research_detail_still_advances_when_next_item_is_race_gated(self):
+        Technology.objects.create(
+            category=self.energy,
+            level=1,
+            name='Open Shield',
+            tech_type='SHIELD',
+            description='Visible to everyone.',
+            params_json='{"shield_level": 1}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=self.energy,
+            level=2,
+            name='War Shield',
+            tech_type='SHIELD',
+            description='Restricted shield.',
+            params_json='{"shield_level": 2, "race_type": "is WAR"}',
+            enabled=True,
+        )
+        ensure_player_research_rows(self.player)
+        row = PlayerResearch.objects.get(player=self.player, category=self.energy)
+        row.current_level = 1.0
+        row.save(update_fields=['current_level'])
+
+        response = self.client.get(
+            reverse('dj4xol:research', args=[self.game.short_id]),
+            {'category': self.energy.id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Next Level')
+        self.assertContains(response, 'L2')
+        self.assertContains(
+            response,
+            'No technology items defined for the next level in this category.',
+        )

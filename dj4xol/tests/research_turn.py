@@ -11,6 +11,7 @@ from ..models import (
 from ..research import (
     build_research_budget,
     ensure_player_research_rows,
+    get_player_unlocked_technologies,
     get_player_tech_effects,
     get_player_colony_defense_level,
     get_player_colony_scanner_ranges,
@@ -654,6 +655,68 @@ class ResearchTurnTest(TestCase):
         basic, advanced = get_player_colony_scanner_ranges(self.player)
         self.assertEqual(basic, 70)
         self.assertEqual(advanced, 18)
+
+    def test_get_player_tech_effects_ignores_race_gated_technology(self):
+        self._reset_research_catalog()
+        energy = ResearchCategory.objects.create(
+            code='GATE_PROP', name='Gated Propulsion', enabled=True
+        )
+        Technology.objects.create(
+            category=energy,
+            level=1,
+            name='Open Warp',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 3}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=energy,
+            level=2,
+            name='War Warp',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 9, "race_type": "is WAR"}',
+            enabled=True,
+        )
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 2.0
+            row.save(update_fields=['current_level'])
+
+        unlocked = get_player_unlocked_technologies(self.player)
+        self.assertNotIn('War Warp', [tech.name for tech in unlocked])
+
+        effects = get_player_tech_effects(self.player)
+        self.assertEqual(effects['max_warp_speed'], 3)
+
+    def test_colony_scanner_ranges_ignore_race_gated_technology(self):
+        self._reset_research_catalog()
+        construction = ResearchCategory.objects.create(
+            code='GATE_SCAN', name='Gated Scanner Construction', enabled=True
+        )
+        Technology.objects.create(
+            category=construction,
+            level=1,
+            name='Open Colony Scanner',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"basic_scanner_range": 20, "advanced_scanner_range": 5}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=construction,
+            level=2,
+            name='War Colony Scanner',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"basic_scanner_range": 70, "advanced_scanner_range": 20, "race_type": "is WAR"}',
+            enabled=True,
+        )
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 2.0
+            row.save(update_fields=['current_level'])
+
+        basic, advanced = get_player_colony_scanner_ranges(self.player)
+        self.assertEqual(basic, 20)
+        self.assertEqual(advanced, 5)
 
     def test_colony_defense_uses_latest_unlocked_technology(self):
         energy = ResearchCategory.objects.create(

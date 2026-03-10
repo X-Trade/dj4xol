@@ -34,6 +34,10 @@ from .technology_thumbnails import (
     get_technology_thumbnail_paths,
 )
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
+from .technology_gate_rules import (
+    describe_race_type_requirement,
+    race_type_requirement_matches,
+)
 
 TECH_PARAM_LABELS = {
     'max_warp_speed': 'Maximum Warp',
@@ -51,6 +55,7 @@ TECH_PARAM_LABELS = {
     'advanced_scanner_range': 'Advanced Scanner Range',
     'terraforming_rate': 'Terraforming Rate',
     'administration_level': 'Administration Level',
+    'race_type': 'Race Type',
 }
 
 TERRAFORM_ORDER_LABELS = {
@@ -134,6 +139,8 @@ def _format_param_value(key, value):
             return '{}'.format(int(value))
         except (TypeError, ValueError):
             return value
+    if key == 'race_type':
+        return describe_race_type_requirement(value)
     return value
 
 
@@ -146,6 +153,18 @@ def _should_show_param(key, value):
     if key == 'production_cost_overrides':
         return False
     return True
+
+
+def technology_is_available_for_player(tech, player):
+    """Return True when a player can access a technology."""
+    if tech is None:
+        return False
+    params = _safe_params(tech)
+    expression = params.get('race_type')
+    if expression in (None, ''):
+        return True
+    race_type = getattr(player, 'race_type', None) if player else None
+    return race_type_requirement_matches(expression, race_type)
 
 
 def format_terraform_order_label(order_type, rate_percent=None):
@@ -1124,7 +1143,10 @@ def get_player_unlocked_technologies(player):
     }
     unlocked = []
     for tech in Technology.objects.select_related('category').filter(enabled=True):
-        if level_by_cat.get(tech.category_id, 0.0) >= tech.level:
+        if (
+            level_by_cat.get(tech.category_id, 0.0) >= tech.level and
+            technology_is_available_for_player(tech, player)
+        ):
             unlocked.append(tech)
     return unlocked
 
@@ -1457,9 +1479,7 @@ def process_player_research_for_year(player):
     eligible_stars = _eligible_research_stars(player)
 
     allocations = allocate_rp_integer(total_rp, [row.allocation_percent for row in rows])
-    max_level_by_category = _max_level_by_category(
-        [row.category_id for row in rows]
-    )
+    max_level_by_category = _max_level_by_category([row.category_id for row in rows])
     level_map = {row.category_id: int(row.current_level or 0) for row in rows}
 
     _allocate_mineral_progress(rows, eligible_stars, max_level_by_category)
@@ -1515,9 +1535,7 @@ def apply_research_bonus_rp(player, category_id, bonus_rp):
         return None
 
     eligible_stars = _eligible_research_stars(player)
-    max_level = _max_level_by_category([row.category_id]).get(
-        row.category_id, int(row.current_level)
-    )
+    max_level = _max_level_by_category([row.category_id]).get(row.category_id, int(row.current_level))
     level_map = {item.category_id: int(item.current_level or 0) for item in rows}
     old_level, new_level = _advance_research_row_with_requirements(
         row=row,
@@ -1582,9 +1600,7 @@ def build_research_screen_data(player, selected_category_id=None):
         for key in SECRET_RESOURCE_KEYS
     }
     level_map = {row.category_id: int(row.current_level or 0) for row in rows}
-    max_level_by_category = _max_level_by_category(
-        [row.category_id for row in rows]
-    )
+    max_level_by_category = _max_level_by_category([row.category_id for row in rows])
     if selected is not None:
         for row in rows:
             if row.category_id == selected.id:
@@ -1594,7 +1610,7 @@ def build_research_screen_data(player, selected_category_id=None):
         current_level_number = selected_level
         selected_max_level = max_level_by_category.get(selected.id, selected_level)
         selected_is_maxed = bool(
-            selected_research and selected_max_level > 0 and selected_level >= selected_max_level
+            selected_research and selected_level >= selected_max_level
         )
         next_level = selected_level + 1 if selected_research else 1
         if selected_is_maxed:
@@ -1674,6 +1690,8 @@ def build_research_screen_data(player, selected_category_id=None):
                 level=selected_level
             ).order_by('display_order', 'name')
             for item in items:
+                if not technology_is_available_for_player(item, player):
+                    continue
                 recently_unlocked_items.append(
                     _build_research_tech_item(item, resource_labels)
                 )
@@ -1685,6 +1703,8 @@ def build_research_screen_data(player, selected_category_id=None):
                 level=next_level
             ).order_by('display_order', 'name')
             for item in items:
+                if not technology_is_available_for_player(item, player):
+                    continue
                 next_level_items.append(
                     _build_research_tech_item(item, resource_labels)
                 )
@@ -1692,7 +1712,7 @@ def build_research_screen_data(player, selected_category_id=None):
     for row in rows:
         row_max_level = max_level_by_category.get(row.category_id, int(row.current_level))
         row_next_level = int(row.current_level) + 1
-        if row_max_level > 0 and int(row.current_level) >= row_max_level:
+        if int(row.current_level) >= row_max_level:
             row.next_level_cost = 0
             row.progress_percent = 100
         else:

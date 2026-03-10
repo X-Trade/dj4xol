@@ -5,9 +5,8 @@ from django.db import migrations
 
 
 def sync_bomb_and_propulsion_levels_from_defaults(apps, schema_editor):
-    from dj4xol.default_sync import sync_factory_defaults
-
-    sync_factory_defaults(force=True)
+    # Superseded by later canonical defaults sync migrations.
+    return
 
 
 class Migration(migrations.Migration):
