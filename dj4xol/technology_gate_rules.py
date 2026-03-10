@@ -2,6 +2,13 @@
 
 
 COMPARISON_OPERATORS = ('=', '==', '!=', '>', '<', '>=', '<=')
+FIELD_LABEL_OVERRIDES = {
+    'has_advanced_remoteminers': 'advanced remote miners',
+    'has_advanced_stargates': 'advanced stargates',
+    'has_generalised_research': 'generalised research',
+    'has_superweapon': 'superweapon',
+    'starting_planet_has_stargate': 'starting planet has stargate',
+}
 
 
 def _tokenise(expression):
@@ -88,6 +95,9 @@ def parse_race_type_requirement(expression):
 
 def _humanise_field_name(field):
     text = str(field or '').strip()
+    override = FIELD_LABEL_OVERRIDES.get(text)
+    if override:
+        return override[:1].upper() + override[1:]
     if text.startswith('has_'):
         text = text[4:]
     text = text.replace('_', ' ')

@@ -4,10 +4,11 @@ from __future__ import unicode_literals
 from django.db import migrations
 
 
-def cap_wormhole_drive_mk3_at_level26(apps, schema_editor):
-    from dj4xol.default_sync import sync_factory_defaults
-
-    sync_factory_defaults(force=True)
+def retired_fixture_sync_noop(apps, schema_editor):
+    # Retired fixture sync. Fresh installs should only execute the newest
+    # canonical defaults sync migration to avoid replaying modern fixtures
+    # against historical schemas.
+    return None
 
 
 class Migration(migrations.Migration):
@@ -18,7 +19,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(
-            cap_wormhole_drive_mk3_at_level26,
+            retired_fixture_sync_noop,
             migrations.RunPython.noop,
         ),
     ]

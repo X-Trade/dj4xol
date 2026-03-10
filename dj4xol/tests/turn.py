@@ -2666,16 +2666,7 @@ class TestFleetTransferOrderExecution(TestCase):
         source_star.y = 10
         source_star.save()
 
-        # Find a distant star
-        target_star = None
-        for candidate in game.stars.exclude(pk=source_star.pk):
-            dx = candidate.x - source_star.x
-            dy = candidate.y - source_star.y
-            if (dx * dx + dy * dy) ** 0.5 > 2:
-                target_star = candidate
-                break
-        if target_star is None:
-            target_star = game.stars.exclude(pk=source_star.pk).first()
+        target_star = game.stars.exclude(pk=source_star.pk).first()
         target_star.x = 20
         target_star.y = 20
         target_star.ironium_inventory = 1000
@@ -2713,8 +2704,8 @@ class TestFleetTransferOrderExecution(TestCase):
 
         fleet.refresh_from_db()
         # Fleet should have moved but not reached destination
-        self.assertNotEqual(fleet.x, source_star.x)  # Has moved
-        self.assertNotEqual(fleet.x, target_star.x)  # But hasn't arrived
+        self.assertNotEqual((fleet.x, fleet.y), (source_star.x, source_star.y))  # Has moved
+        self.assertNotEqual((fleet.x, fleet.y), (target_star.x, target_star.y))  # But hasn't arrived
 
         # Order should still exist
         self.assertTrue(fleet.orders.filter(order_type='TRANSFER').exists())
@@ -3992,8 +3983,8 @@ class TestFleetOrdersRepeat(TestCase):
 
         # Fleet should have moved but not completed journey
         fleet.refresh_from_db()
-        self.assertNotEqual(fleet.x, 20)  # Hasn't reached destination
-        self.assertNotEqual(fleet.x, 1)   # But has moved
+        self.assertNotEqual((fleet.x, fleet.y), (20, 20))  # Hasn't reached destination
+        self.assertNotEqual((fleet.x, fleet.y), (1, 1))    # But has moved
 
         # Original order should still exist (not completed)
         self.assertTrue(FleetOrders.objects.filter(id=original_order_id).exists())

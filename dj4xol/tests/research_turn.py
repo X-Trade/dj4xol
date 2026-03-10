@@ -37,6 +37,13 @@ class ResearchTurnTest(TestCase):
         Technology.objects.all().delete()
         ResearchCategory.objects.all().delete()
 
+    def _unlock_all_research_for_player(self, player=None, level=26.0):
+        player = player or self.player
+        rows = ensure_player_research_rows(player)
+        for row in rows:
+            row.current_level = level
+            row.save(update_fields=['current_level'])
+
     def test_build_lab_production_order(self):
         self.star.labs = 0
         self.star.factories = 10
@@ -93,6 +100,45 @@ class ResearchTurnTest(TestCase):
         row.refresh_from_db()
         self.assertGreaterEqual(row.current_level, 1.0)
         self.assertGreaterEqual(int(row.stored_rp), 0)
+
+    def test_warmonger_race_type_blocks_selected_hulls_and_smart_bombs(self):
+        from ..models import ServerRaceType
+
+        self.player.race_type = ServerRaceType.objects.get(code='WAR')
+        self.player.save(update_fields=['race_type'])
+        self._unlock_all_research_for_player()
+
+        unlocked_names = {tech.name for tech in get_player_unlocked_technologies(self.player)}
+
+        self.assertNotIn('Frigate Hull', unlocked_names)
+        self.assertNotIn('Freighter Hull', unlocked_names)
+        self.assertNotIn('Tanker Hull', unlocked_names)
+        self.assertNotIn('Smart Bombs', unlocked_names)
+
+    def test_scientists_can_unlock_prototype_wormhole_drive(self):
+        from ..models import ServerRaceType
+
+        self.player.race_type = ServerRaceType.objects.get(code='SCI')
+        self.player.save(update_fields=['race_type'])
+        self._unlock_all_research_for_player()
+
+        unlocked_names = {tech.name for tech in get_player_unlocked_technologies(self.player)}
+
+        self.assertIn('Prototype Wormhole Drive', unlocked_names)
+
+    def test_advanced_remote_miners_require_race_trait(self):
+        from ..models import ServerRaceType
+
+        self._unlock_all_research_for_player()
+
+        effects = get_player_tech_effects(self.player)
+        self.assertEqual(effects['has_miners'], 'MEDIUM')
+
+        self.player.race_type = ServerRaceType.objects.get(code='MECH')
+        self.player.save(update_fields=['race_type'])
+
+        effects = get_player_tech_effects(self.player)
+        self.assertEqual(effects['has_miners'], 'LARGE')
 
     def test_research_mineral_progress_persists(self):
         self._reset_research_catalog()
