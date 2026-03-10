@@ -1435,7 +1435,7 @@
     name: 'Scanner Array V'
     description: 'Distributed arrays produce wide-area coverage and improved fidelity.'
     tech_type: 'SCANNER'
-    params_json: '{"basic_scanner_range": 50, "advanced_scanner_range": 15}'
+    params_json: '{"basic_scanner_range": 40, "advanced_scanner_range": 15}'
     display_order: 280
     enabled: True
 
@@ -1565,7 +1565,7 @@
     name: 'Colony Scanner Array I'
     description: 'Ground-based arrays extend local detection coverage.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 7, "advanced_scanner_range": 0}'
+    params_json: '{"basic_scanner_range": 5, "advanced_scanner_range": 0}'
     display_order: 330
     enabled: True
 
@@ -1578,7 +1578,7 @@
     name: 'Colony Scanner Array II'
     description: 'Expanded baselines improve colony sensor reach.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 14, "advanced_scanner_range": 0}'
+    params_json: '{"basic_scanner_range": 15, "advanced_scanner_range": 0}'
     display_order: 335
     enabled: True
 
@@ -1591,7 +1591,7 @@
     name: 'Colony Scanner Array III'
     description: 'Deep-space arrays improve colony detection coverage.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 28, "advanced_scanner_range": 0}'
+    params_json: '{"basic_scanner_range": 30, "advanced_scanner_range": 0}'
     display_order: 340
     enabled: True
 
@@ -1604,7 +1604,7 @@
     name: 'Colony Scanner Array IV'
     description: 'Multi-band sensors enable early advanced detection.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 35, "advanced_scanner_range": 4}'
+    params_json: '{"basic_scanner_range": 35, "advanced_scanner_range": 5}'
     display_order: 345
     enabled: True
 
@@ -1617,7 +1617,7 @@
     name: 'Colony Scanner Array V'
     description: 'Distributed colony sensors expand range and resolution.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 12}'
+    params_json: '{"basic_scanner_range": 50, "advanced_scanner_range": 10}'
     display_order: 350
     enabled: True
 
@@ -1630,7 +1630,7 @@
     name: 'Colony Scanner Array VI'
     description: 'High-gain receivers improve colony signal capture.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 98, "advanced_scanner_range": 12}'
+    params_json: '{"basic_scanner_range": 70, "advanced_scanner_range": 15}'
     display_order: 355
     enabled: True
 
@@ -1656,7 +1656,7 @@
     name: 'Colony Scanner Array VIII'
     description: 'Echo analysis sharpens colony sensor resolution.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 84, "advanced_scanner_range": 24}'
+    params_json: '{"basic_scanner_range": 85, "advanced_scanner_range": 25}'
     display_order: 365
     enabled: True
 
@@ -1669,7 +1669,7 @@
     name: 'Colony Scanner Array IX'
     description: 'Interlinked arrays extend colony detection reach.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 98, "advanced_scanner_range": 32}'
+    params_json: '{"basic_scanner_range": 100, "advanced_scanner_range": 30}'
     display_order: 370
     enabled: True
 
@@ -1695,7 +1695,7 @@
     name: 'Colony Scanner Array XI'
     description: 'Trans-spatial processing extends colony reach.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"basic_scanner_range": 168, "advanced_scanner_range": 40}'
+    params_json: '{"basic_scanner_range": 170, "advanced_scanner_range": 40}'
     display_order: 380
     enabled: True
 

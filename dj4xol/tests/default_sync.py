@@ -63,6 +63,27 @@ class DefaultSyncTest(TestCase):
         )
         self.assertEqual(targeting_computer.category.code, 'ELECTRONICS')
         self.assertEqual(targeting_computer.level, 5)
+        scanner_v = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000704'
+        )
+        self.assertEqual(
+            json.loads(scanner_v.params_json),
+            {'basic_scanner_range': 40, 'advanced_scanner_range': 15},
+        )
+        colony_scanner_v = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000724'
+        )
+        self.assertEqual(
+            json.loads(colony_scanner_v.params_json),
+            {'basic_scanner_range': 50, 'advanced_scanner_range': 10},
+        )
+        colony_scanner_vi = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000725'
+        )
+        self.assertEqual(
+            json.loads(colony_scanner_vi.params_json),
+            {'basic_scanner_range': 70, 'advanced_scanner_range': 15},
+        )
         planetary_disruptors = Technology.objects.get(
             id='00000000-0000-0000-0000-000000000403'
         )
