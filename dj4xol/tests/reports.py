@@ -1002,6 +1002,7 @@ class ScannerReportTest(TestCase):
             integrity=77,
             heading=123.4,
             travel_warp=6,
+            warp_advantage=0.9,
         )
 
         GameTurn(self.game).generate_scanner_reports()
@@ -1016,6 +1017,7 @@ class ScannerReportTest(TestCase):
         self.assertEqual(data.get('name'), format_basic_unknown_fleet_name(enemy_fleet))
         self.assertNotEqual(data.get('name'), enemy_fleet.name)
         self.assertEqual(data.get('travel_warp'), 6)
+        self.assertAlmostEqual(float(data.get('warp_advantage')), 0.9, places=2)
         self.assertAlmostEqual(float(data.get('heading')), 123.4, places=1)
         self.assertNotIn('ship_count', data)
         self.assertNotIn('integrity', data)

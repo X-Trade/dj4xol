@@ -1878,7 +1878,7 @@ class GameTurn():
                 self._mark_secret_resource_discovered(player, key, star=None, fleet=fleet)
 
     def _fleet_motion_snapshot(self, fleet):
-        """Return (travel_warp, heading_degrees) for fleet report snapshots."""
+        """Return (travel_warp, warp_advantage, heading_degrees) for fleet reports."""
         if not hasattr(self, '_fleet_motion_cache'):
             self._fleet_motion_cache = {}
         cached = self._fleet_motion_cache.get(fleet.id)
@@ -1896,7 +1896,12 @@ class GameTurn():
         except (TypeError, ValueError):
             travel_warp = 0
 
-        snapshot = (travel_warp, heading)
+        try:
+            warp_advantage = float(getattr(fleet, 'warp_advantage', 0.0) or 0.0)
+        except (TypeError, ValueError):
+            warp_advantage = 0.0
+
+        snapshot = (travel_warp, warp_advantage, heading)
         self._fleet_motion_cache[fleet.id] = snapshot
         return snapshot
 
@@ -1968,7 +1973,7 @@ class GameTurn():
                 })
             return base
         elif target_type == 'fleet':
-            travel_warp, heading = self._fleet_motion_snapshot(obj)
+            travel_warp, warp_advantage, heading = self._fleet_motion_snapshot(obj)
             data = {
                 'name': (
                     format_basic_unknown_fleet_name(obj)
@@ -1978,6 +1983,7 @@ class GameTurn():
                 'y': obj.y,
                 'report_tier': report_tier,
                 'travel_warp': travel_warp,
+                'warp_advantage': warp_advantage,
                 'heading': heading,
             }
             if report_tier == 'ownership':
@@ -2973,8 +2979,7 @@ class GameTurn():
             target_obj = None
             target_position = None
 
-        speed_multiplier = self._get_warp_speed_multiplier()
-        effective_warp_speed = warp_speed * speed_multiplier
+        effective_warp_speed = self._effective_movement_speed(fleet, warp_speed)
 
         if is_intercept and target_position is not None:
             live_distance = linalg.norm(
@@ -3026,9 +3031,12 @@ class GameTurn():
         else:
             # Fleet moves toward destination but doesn't reach it
             normalised_vector = vector / distance
-            new_position = position + (normalised_vector * effective_warp_speed)
-            new_x = int(new_position[0])
-            new_y = int(new_position[1])
+            step_vector = normalised_vector * effective_warp_speed
+            seed_key = str(getattr(fleet, 'short_id', None) or getattr(fleet, 'id', ''))
+            step_x = self._quantized_axis_step(step_vector[0], seed_key, 'x')
+            step_y = self._quantized_axis_step(step_vector[1], seed_key, 'y')
+            new_x = fleet.x + step_x
+            new_y = fleet.y + step_y
             # Ensure progress even with low warp + diagonal movement
             if new_x == fleet.x and new_y == fleet.y:
                 step_x = 0 if vector[0] == 0 else (1 if vector[0] > 0 else -1)
@@ -3307,11 +3315,14 @@ class GameTurn():
     def _predict_comet_intercept_destination(self, interceptor, order, comet):
         """Lead comet intercept point based on interceptor speed and comet heading."""
         warp_speed = max(1, int(getattr(order, 'warpfactor', 1) or 1))
+        intercept_speed = max(
+            1.0, float(self._effective_movement_speed(interceptor, warp_speed))
+        )
         ix, iy = int(interceptor.x), int(interceptor.y)
         px, py = int(comet.x), int(comet.y)
         for _ in range(4):
             distance = linalg.norm(nparray([px, py]) - nparray([ix, iy]))
-            years = max(0, int(ceil(distance / float(warp_speed))))
+            years = max(0, int(ceil(distance / intercept_speed)))
             projected_x, projected_y = self._predict_comet_position(comet, years)
             if (projected_x, projected_y) == (px, py):
                 break
@@ -3354,10 +3365,13 @@ class GameTurn():
 
         Uses a small tolerance before ceil-rounding to avoid near-miss jitter.
         """
-        if warp_speed <= 0:
+        try:
+            speed = float(warp_speed or 0.0)
+        except (TypeError, ValueError):
+            speed = 0.0
+        if speed <= 0:
             return False
-        rounded_distance = ceil(max(0.0, float(distance) - 0.35))
-        return rounded_distance <= int(warp_speed)
+        return max(0.0, float(distance) - 0.35) <= speed
 
     def _get_warp_speed_multiplier(self):
         try:
@@ -3365,6 +3379,27 @@ class GameTurn():
         except (TypeError, ValueError):
             value = 1.0
         return max(0.1, value)
+
+    def _fleet_warp_advantage(self, fleet, base_warp=0):
+        """Return additive warp advantage for standard movement speeds."""
+        try:
+            base = int(base_warp or 0)
+        except (TypeError, ValueError):
+            base = 0
+        if base <= 0 or base == WORMHOLE_WARPFACTOR:
+            return 0.0
+        try:
+            return float(getattr(fleet, 'warp_advantage', 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _effective_movement_speed(self, fleet, warp_speed):
+        """Return effective yearly movement speed after global and fleet modifiers."""
+        speed_multiplier = self._get_warp_speed_multiplier()
+        base_speed = max(0.0, float(warp_speed or 0.0) * speed_multiplier)
+        if int(warp_speed or 0) == WORMHOLE_WARPFACTOR:
+            return base_speed
+        return max(0.0, base_speed + self._fleet_warp_advantage(fleet, warp_speed))
 
     def _get_fleet_current_speed(self, fleet):
         """Return fleet's current movement speed based on its orders."""
@@ -3383,7 +3418,7 @@ class GameTurn():
             warp_speed = max(0, int(order.warpfactor or 0))
             if warp_speed == WORMHOLE_WARPFACTOR and bool(getattr(fleet, 'has_wormhole_drive', False)):
                 return warp_speed
-            return warp_speed * self._get_warp_speed_multiplier()
+            return self._effective_movement_speed(fleet, warp_speed)
         return 0
 
     def _check_warp_damage(self, fleet, warp_speed, order):
@@ -5422,6 +5457,10 @@ class GameTurn():
             (source_fleet.overmax_fuel_penalty * source_fleet.ship_count) +
             (target_fleet.overmax_fuel_penalty * target_fleet.ship_count)
         ) / float(total_ships)
+        weighted_warp_advantage = (
+            (float(source_fleet.warp_advantage or 0.0) * source_fleet.ship_count) +
+            (float(target_fleet.warp_advantage or 0.0) * target_fleet.ship_count)
+        ) / float(total_ships)
         source_has_wormhole_drive = bool(source_fleet.has_wormhole_drive)
         target_has_wormhole_drive = bool(target_fleet.has_wormhole_drive)
         merged_has_wormhole_drive = bool(
@@ -5467,6 +5506,7 @@ class GameTurn():
         )
         target_fleet.fuel_efficiency = weighted_fuel_efficiency
         target_fleet.overmax_fuel_penalty = weighted_overmax_fuel_penalty
+        target_fleet.warp_advantage = weighted_warp_advantage
         target_fleet.wormhole_fuel_per_ly = merged_wormhole_fuel_per_ly
         target_fleet.wormhole_destruction_chance = merged_wormhole_destruction
         target_fleet.offense_level = merged_offense_level
@@ -6279,6 +6319,7 @@ class GameTurn():
             max_safe_warp=tech_effects['max_warp_speed'],
             fuel_efficiency=tech_effects.get('fuel_efficiency', 1.0),
             overmax_fuel_penalty=tech_effects.get('overmax_fuel_penalty', 1.0),
+            warp_advantage=getattr(player.race_type, 'warp_advantage', 0.0) or 0.0,
             wormhole_fuel_per_ly=tech_effects.get('wormhole_fuel_per_ly', 5.0),
             wormhole_destruction_chance=tech_effects.get('wormhole_destruction_chance', 0.0),
             offense_level=tech_effects['offense_level'],

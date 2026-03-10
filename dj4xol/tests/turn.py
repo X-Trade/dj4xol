@@ -38,6 +38,24 @@ from django.contrib.auth.models import User
 import random
 
 
+def _pin_test_star(star, game, x=64, y=64):
+    x = min(int(game.map_size_x) - 2, int(x))
+    y = min(int(game.map_size_y) - 2, int(y))
+    for conflict in Star.objects.filter(game=game, x=x, y=y).exclude(id=star.id).order_by('id'):
+        for idx in range(5, min(int(game.map_size_x), int(game.map_size_y)), 5):
+            if idx == x and idx == y:
+                continue
+            if not Star.objects.filter(game=game, x=idx, y=idx).exclude(id=conflict.id).exists():
+                conflict.x = idx
+                conflict.y = idx
+                conflict.save(update_fields=['x', 'y'])
+                break
+    star.x = x
+    star.y = y
+    star.save(update_fields=['x', 'y'])
+    return x, y
+
+
 class TestGameTurn(TestCase):
     def test_generate_turn(self):
         game = default_game()
@@ -4255,7 +4273,8 @@ class TestFleetCargo(TestCase):
             ironium_inventory=500,
             boranium_inventory=300,
             germanium_inventory=150,
-            colonists=50
+            colonists=50,
+            warp_advantage=0.9,
         )
 
         # Build details for the fleet (note: process_selected converts to lowercase)
@@ -4282,7 +4301,7 @@ class TestFleetCargo(TestCase):
         self.assertEqual(cargo_info['defense_modifier'], '+0')
         self.assertIsNotNone(details['fleet_capabilities'])
         self.assertIn(
-            {'label': 'Max Warp', 'value': '2'},
+            {'label': 'Max Warp', 'value': '2 +0.9'},
             details['fleet_capabilities'],
         )
 
@@ -7420,11 +7439,11 @@ class TestFleetColoniseOrders(TestCase):
         fleet = game.fleets.first()
         fleet_id = fleet.id
         target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+        target_x, target_y = _pin_test_star(target_star, game)
 
-        # Position fleet a short distance from target (within map, no move order to get there)
-        # Use small offset to stay within map bounds
-        fleet.x = max(0, min(target_star.x + 10, game.map_size_x - 1))
-        fleet.y = target_star.y
+        # Position fleet a short distance from target without landing on it.
+        fleet.x = target_x + 10
+        fleet.y = target_y
         fleet.colonists = 10  # Has colonists
         fleet.save()
 
@@ -7493,10 +7512,11 @@ class TestFleetColoniseOrders(TestCase):
         fleet = game.fleets.first()
         fleet_id = fleet.id
         target_star = game.stars.exclude(pk=player.homeworld.pk).first()
+        target_x, target_y = _pin_test_star(target_star, game)
 
         # Position fleet close to target (will reach in one turn)
-        fleet.x = target_star.x - 5
-        fleet.y = target_star.y
+        fleet.x = target_x - 5
+        fleet.y = target_y
         fleet.ironium_inventory = 50
         fleet.colonists = 1
         fleet.dry_mass = 0
@@ -8689,9 +8709,13 @@ class TestFleetFuel(TestCase):
             x=star.x, y=star.y, has_wormhole_drive=True, max_safe_warp=5,
             fuel=20.0, max_fuel=20.0
         )
+        star_x, star_y = _pin_test_star(star, game)
+        fleet.x = star_x
+        fleet.y = star_y
+        fleet.save(update_fields=['x', 'y'])
         FleetOrders.objects.create(
             game=game, fleet=fleet, order_type='MOVE',
-            x=star.x + 10, y=star.y, warpfactor=14
+            x=star_x + 10, y=star_y, warpfactor=14
         )
 
         GameTurn(game).generate_turn()
@@ -9173,9 +9197,13 @@ class TestMergeFleet(TestCase):
             game=game, player=player1, name="My Fleet",
             x=star.x, y=star.y
         )
+        star_x, star_y = _pin_test_star(star, game)
+        fleet1.x = star_x
+        fleet1.y = star_y
+        fleet1.save(update_fields=['x', 'y'])
         fleet2 = Fleet.objects.create(
             game=game, player=player2, name="Enemy Fleet",
-            x=min(star.x + 1, game.map_size_x - 1), y=star.y
+            x=star_x + 1, y=star_y
         )
 
         # Try to merge with enemy fleet (should be invalid)
@@ -10308,7 +10336,7 @@ class TestBombardmentOrders(TestCase):
         star.colonists = 10_000
         star.defenses = 0
         star.save(update_fields=['player', 'colonists', 'defenses'])
-        target_x, target_y = star.x, star.y
+        target_x, target_y = _pin_test_star(star, game)
 
         bomber = Fleet.objects.create(
             game=game,
@@ -10339,8 +10367,8 @@ class TestBombardmentOrders(TestCase):
             game=game,
             player=attacker,
             name='Remote Miner',
-            x=max(0, target_x - 10),
-            y=max(0, target_y - 10),
+            x=target_x - 10,
+            y=target_y - 10,
             ship_count=1,
             has_miners='SMALL',
         )
@@ -10409,13 +10437,14 @@ class TestBombardmentOrders(TestCase):
         star.colonists = 500_000
         star.defenses = 5
         star.save(update_fields=['player', 'colonists', 'defenses'])
+        star_x, star_y = _pin_test_star(star, game)
 
         fleet = Fleet.objects.create(
             game=game,
             player=attacker,
             name='Defense Breaker',
-            x=star.x,
-            y=star.y,
+            x=star_x,
+            y=star_y,
             ship_count=10,
             has_bombs='CONVENTIONAL',
         )
@@ -10426,8 +10455,9 @@ class TestBombardmentOrders(TestCase):
             target_star=star,
             bomb_until='DEFENSES_ZERO',
         )
+        next_x = star_x + 1
         FleetOrders.objects.create(
-            game=game, fleet=fleet, order_type='MOVE', x=star.x + 1, y=star.y, warpfactor=1
+            game=game, fleet=fleet, order_type='MOVE', x=next_x, y=star_y, warpfactor=1
         )
 
         with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
@@ -10440,7 +10470,7 @@ class TestBombardmentOrders(TestCase):
         self.assertEqual(star.defenses, 0)
         self.assertGreater(star.colonists, 0)
         self.assertFalse(FleetOrders.objects.filter(id=bomb_order.id).exists())
-        self.assertEqual((fleet.x, fleet.y), (star.x + 1, star.y))
+        self.assertEqual((fleet.x, fleet.y), (next_x, star_y))
 
     def test_bombardment_multiplier_scales_colony_damage(self):
         from ..models import FleetOrders
@@ -10559,13 +10589,14 @@ class TestBombardmentOrders(TestCase):
         star.colonists = 100_000
         star.defenses = 10
         star.save(update_fields=['player', 'colonists', 'defenses'])
+        star_x, star_y = _pin_test_star(star, game)
 
         fleet = Fleet.objects.create(
             game=game,
             player=attacker,
             name='Continuous Bomber',
-            x=star.x,
-            y=star.y,
+            x=star_x,
+            y=star_y,
             ship_count=10,
             has_bombs='CONVENTIONAL',
         )
@@ -10576,8 +10607,9 @@ class TestBombardmentOrders(TestCase):
             target_star=star,
             bomb_until='ONCE',
         )
+        next_x = star_x + 1
         FleetOrders.objects.create(
-            game=game, fleet=fleet, order_type='MOVE', x=star.x + 1, y=star.y, warpfactor=1
+            game=game, fleet=fleet, order_type='MOVE', x=next_x, y=star_y, warpfactor=1
         )
 
         with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
@@ -10587,7 +10619,7 @@ class TestBombardmentOrders(TestCase):
 
         fleet.refresh_from_db()
         self.assertFalse(FleetOrders.objects.filter(id=bomb_order.id).exists())
-        self.assertEqual((fleet.x, fleet.y), (star.x + 1, star.y))
+        self.assertEqual((fleet.x, fleet.y), (next_x, star_y))
 
     def test_bombardment_sends_defender_loss_message(self):
         from ..models import FleetOrders
@@ -10649,13 +10681,14 @@ class TestRemoteMineOrders(TestCase):
             'ironium_yield', 'boranium_yield', 'germanium_yield',
             'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
         ])
+        star_x, star_y = _pin_test_star(star, game)
 
         fleet = Fleet.objects.create(
             game=game,
             player=player,
             name='Remote Miner',
-            x=star.x,
-            y=star.y,
+            x=star_x,
+            y=star_y,
             ship_count=1,
             has_miners='SMALL',
             cargo_capacity=20,
@@ -10666,13 +10699,14 @@ class TestRemoteMineOrders(TestCase):
         mine_order = FleetOrders.objects.create(
             game=game, fleet=fleet, order_type='REMOTEMINE', target_star=star, repeat=True
         )
+        next_x = star_x + 1
         FleetOrders.objects.create(
-            game=game, fleet=fleet, order_type='MOVE', x=star.x + 1, y=star.y, warpfactor=1
+            game=game, fleet=fleet, order_type='MOVE', x=next_x, y=star_y, warpfactor=1
         )
 
         GameTurn(game).generate_turn()
         fleet.refresh_from_db()
-        self.assertEqual((fleet.x, fleet.y), (star.x, star.y))
+        self.assertEqual((fleet.x, fleet.y), (star_x, star_y))
         self.assertEqual(fleet.ironium_inventory, 10)
         self.assertTrue(FleetOrders.objects.filter(id=mine_order.id).exists())
 
@@ -10680,7 +10714,7 @@ class TestRemoteMineOrders(TestCase):
         fleet.refresh_from_db()
         self.assertEqual(fleet.ironium_inventory, 20)
         self.assertFalse(FleetOrders.objects.filter(id=mine_order.id).exists())
-        self.assertEqual((fleet.x, fleet.y), (star.x + 1, star.y))
+        self.assertEqual((fleet.x, fleet.y), (next_x, star_y))
 
     def test_remote_mine_single_cycle_completion_allows_passthrough(self):
         from ..models import FleetOrders
@@ -10700,13 +10734,14 @@ class TestRemoteMineOrders(TestCase):
             'ironium_yield', 'boranium_yield', 'germanium_yield',
             'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
         ])
+        star_x, star_y = _pin_test_star(star, game)
 
         fleet = Fleet.objects.create(
             game=game,
             player=player,
             name='Cycle Miner',
-            x=star.x,
-            y=star.y,
+            x=star_x,
+            y=star_y,
             ship_count=1,
             has_miners='SMALL',
             cargo_capacity=50,
@@ -10719,15 +10754,16 @@ class TestRemoteMineOrders(TestCase):
             target_star=star,
             mine_until_full=False,
         )
+        next_x = star_x + 1
         FleetOrders.objects.create(
-            game=game, fleet=fleet, order_type='MOVE', x=star.x + 1, y=star.y, warpfactor=1
+            game=game, fleet=fleet, order_type='MOVE', x=next_x, y=star_y, warpfactor=1
         )
 
         GameTurn(game).generate_turn()
         fleet.refresh_from_db()
         self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
         self.assertEqual(fleet.ironium_inventory, 10)
-        self.assertEqual((fleet.x, fleet.y), (star.x + 1, star.y))
+        self.assertEqual((fleet.x, fleet.y), (next_x, star_y))
 
     def test_remote_mine_size_and_ship_count_multiplier(self):
         from ..models import FleetOrders
@@ -11155,3 +11191,44 @@ class TestHomeworldLossAndDerelicts(TestCase):
         turn = GameTurn(game)
         turn._move_toward_destination(fleet, order)
         self.assertEqual((fleet.x, fleet.y), (9, 0))
+
+    def test_warp_advantage_adds_fractional_speed_to_distance(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.x = 0
+        fleet.y = 0
+        fleet.warp_advantage = 0.9
+        fleet.save(update_fields=['x', 'y', 'warp_advantage'])
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            warpfactor=5,
+            target_kind='SPACE',
+            x=30,
+            y=0,
+        )
+        turn = GameTurn(game)
+        turn._move_toward_destination(fleet, order)
+        expected_step = turn._quantized_axis_step(5.9, fleet.short_id, 'x')
+        self.assertEqual(fleet.x, expected_step)
+        self.assertEqual(fleet.y, 0)
+
+    def test_get_fleet_current_speed_uses_warp_advantage(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.warp_advantage = 0.9
+        fleet.save(update_fields=['warp_advantage'])
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            warpfactor=5,
+            target_kind='SPACE',
+            x=fleet.x + 20,
+            y=fleet.y,
+        )
+        speed = GameTurn(game)._get_fleet_current_speed(fleet)
+        self.assertAlmostEqual(speed, 5.9, places=2)

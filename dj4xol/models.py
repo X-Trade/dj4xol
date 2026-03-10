@@ -547,7 +547,7 @@ class ServerRaceType(models.Model):
     trade_multiplier = models.FloatField(default=1.0)
     scan_multiplier = models.FloatField(default=1.0)
     shield_multiplier = models.FloatField(default=1.0)
-    warp_multiplier = models.FloatField(default=1.0)
+    warp_advantage = models.FloatField(default=0.0)
     stealth_multiplier = models.FloatField(default=1.0)
     terraforming_multiplier = models.FloatField(default=1.0)
     political_stability = models.FloatField(default=1.0)
@@ -709,6 +709,7 @@ class Fleet(AbstractMapObject):
     max_fuel = models.FloatField(default=50.0)  # Maximum fuel in mg
     fuel_efficiency = models.FloatField(default=1.0)  # Per-fleet fuel efficiency multiplier
     overmax_fuel_penalty = models.FloatField(default=1.0)  # Exponential burn multiplier above safe warp
+    warp_advantage = models.FloatField(default=0.0)
     wormhole_fuel_per_ly = models.FloatField(default=5.0)
     wormhole_destruction_chance = models.FloatField(default=0.10)
     offense_level = models.FloatField(default=0.0)
