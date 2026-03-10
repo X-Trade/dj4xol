@@ -436,7 +436,7 @@
   fields:
     short_id: "tech00000106"
     category: 1
-    level: 8
+    level: 9
     name: 'Interstellar Ram Scoops'
     description: 'Fuel-scoop geometry stabilizes long-range high-warp transits.'
     tech_type: 'PROPULSION'
@@ -449,7 +449,7 @@
   fields:
     short_id: "tech00000107"
     category: 1
-    level: 9
+    level: 10
     name: 'Inertial Shear Dampers'
     description: 'Reinforced dampers keep hull stress within tolerances at extreme cruise warp.'
     tech_type: 'PROPULSION'
@@ -462,7 +462,7 @@
   fields:
     short_id: "tech00000108"
     category: 4
-    level: 12
+    level: 13
     name: 'Null-Phase Transit Geometry'
     description: 'Phase-shaped transit envelopes permit stable Warp 10 cruise envelopes.'
     tech_type: 'PROPULSION'
@@ -475,7 +475,7 @@
   fields:
     short_id: "tech00000109"
     category: 1
-    level: 14
+    level: 15
     name: 'Inertial Minimizer'
     description: 'High-precision inertial damping lowers frame stress and maintains reliable Warp 10 transit.'
     tech_type: 'PROPULSION'
@@ -488,7 +488,7 @@
   fields:
     short_id: "tech00000110"
     category: 1
-    level: 16
+    level: 17
     name: 'Shield-Drain Overdrive Injectors'
     description: 'Emergency overdrive unlocks Warp 11 but bleeds defensive shielding under sustained operation.'
     tech_type: 'PROPULSION'
@@ -501,7 +501,7 @@
   fields:
     short_id: "tech00000114"
     category: 4
-    level: 17
+    level: 18
     name: 'Prototype Wormhole Drive'
     description: 'A fragile transdimensional drive core with extreme instability.'
     tech_type: 'PROPULSION'
@@ -514,7 +514,7 @@
   fields:
     short_id: "tech00000111"
     category: 4
-    level: 18
+    level: 19
     name: 'Wormhole Drive'
     description: 'A transdimensional jump system that enables risky wormhole traversal modes.'
     tech_type: 'PROPULSION'
@@ -527,7 +527,7 @@
   fields:
     short_id: "tech00000112"
     category: 4
-    level: 22
+    level: 23
     name: 'Advanced Wormhole Drive'
     description: 'A refined transdimensional drive with improved cruising efficiency and safer conventional warp handling.'
     tech_type: 'PROPULSION'
@@ -1353,7 +1353,7 @@
   fields:
     short_id: "tech00000604"
     category: 2
-    level: 10
+    level: 12
     name: 'Smart Bombs'
     description: 'Guided bombardment payloads focused on defenses and population centers.'
     tech_type: 'BOMB'
@@ -1366,7 +1366,7 @@
   fields:
     short_id: "tech00000605"
     category: 4
-    level: 19
+    level: 21
     name: 'Nova Bombs'
     description: 'Unstable stellar-devastation weapons with catastrophic potential.'
     tech_type: 'BOMB'
