@@ -1,11 +1,11 @@
 ============= MAIN TODO =============
+1. Population/Habitability algorithm rebalancing
 2. Mine fields
 6. fuel factory
 7. fleet-to-fleet Refuelling
 8. Ship Design (Basic)
 9. Instant merge/split fleets (dedicated interactive screen)
 10. Custom server help pages (wiki/cms)
-11. Diplomacy/Trade
 12. Trade Contracts/Negotiation
 13. Ship Design (Advanced)
 14. LLM/AI integration
