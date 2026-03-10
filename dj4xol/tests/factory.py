@@ -183,9 +183,19 @@ class testGameFactory(TestCase):
             stars_by_coord.setdefault((star.x, star.y), []).append(star)
         stacked_group = next(group for group in stars_by_coord.values() if len(group) > 1)
         chosen_homeworld = stacked_group[0]
-        for idx, star in enumerate(gf.game.stars.exclude(id__in=[s.id for s in stacked_group]).order_by('id')):
-            star.x = 150 + idx
-            star.y = 150
+        for idx, star in enumerate(
+            gf.game.stars.exclude(id__in=[s.id for s in stacked_group]).order_by('id')
+        ):
+            # Move all non-stacked stars to the far edge opposite the chosen homeworld
+            # so no non-stacked candidate can remain within STARTING_COLONY_RADIUS.
+            if chosen_homeworld.x >= (gf.game.map_size_x // 2):
+                star.x = max(0, min(20, idx))
+            else:
+                star.x = min(int(gf.game.map_size_x), int(gf.game.map_size_x) - idx)
+            if chosen_homeworld.y >= (gf.game.map_size_y // 2):
+                star.y = max(0, min(20, idx))
+            else:
+                star.y = min(int(gf.game.map_size_y), int(gf.game.map_size_y) - idx)
             star.save(update_fields=['x', 'y'])
 
         with patch.object(gf, '_find_homeworld_star', return_value=chosen_homeworld):
@@ -350,6 +360,8 @@ class testGameFactory(TestCase):
         self.assertEqual(levels, {2.0})
 
     def test_starting_fleets_follow_player_starting_tech_effects(self):
+        self.race_type.warp_advantage = 0.6
+        self.race_type.save(update_fields=['warp_advantage'])
         category, _ = ResearchCategory.objects.get_or_create(
             code='TEST_HULL',
             defaults={'name': 'Test Hull', 'description': 'Test hull tech'}
@@ -410,6 +422,7 @@ class testGameFactory(TestCase):
         self.assertEqual(fleet.max_safe_warp, effects['max_warp_speed'])
         self.assertAlmostEqual(fleet.fuel_efficiency, effects['fuel_efficiency'], places=4)
         self.assertAlmostEqual(fleet.overmax_fuel_penalty, effects['overmax_fuel_penalty'], places=4)
+        self.assertAlmostEqual(fleet.warp_advantage, 0.6, places=4)
         self.assertAlmostEqual(fleet.offense_level, effects['offense_level'], places=4)
         self.assertAlmostEqual(fleet.defense_level, effects['defense_level'], places=4)
         self.assertEqual(fleet.basic_scanner_range, effects['basic_scanner_range'])

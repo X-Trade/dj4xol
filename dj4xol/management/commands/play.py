@@ -2101,7 +2101,16 @@ class Command(BaseCommand):
         """Apply CLI-friendly numeric formatting to detail payload."""
         if detail.get("travel_warp") is not None:
             try:
-                detail["travel_warp"] = int(detail.get("travel_warp"))
+                travel_warp = float(detail.get("travel_warp"))
+                if abs(travel_warp - round(travel_warp)) < 1e-9:
+                    detail["travel_warp"] = int(round(travel_warp))
+                else:
+                    detail["travel_warp"] = round(travel_warp, 2)
+            except (TypeError, ValueError):
+                pass
+        if detail.get("warp_advantage") is not None:
+            try:
+                detail["warp_advantage"] = round(float(detail.get("warp_advantage")), 2)
             except (TypeError, ValueError):
                 pass
         if detail.get("heading") is not None:

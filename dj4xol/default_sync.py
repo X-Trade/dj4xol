@@ -120,6 +120,16 @@ def _upsert_server_race_type(ServerRaceType, pk, fields):
         'starting_colonies' not in persisted_fields
     ):
         persisted_fields['starting_colonies'] = fields['starting_planets']
+    if 'warp_multiplier' in table_columns and 'warp_multiplier' not in persisted_fields:
+        if 'warp_advantage' in fields:
+            persisted_fields['warp_multiplier'] = float(fields['warp_advantage']) + 1.0
+        else:
+            persisted_fields['warp_multiplier'] = 1.0
+    if 'warp_advantage' in table_columns and 'warp_advantage' not in persisted_fields:
+        if 'warp_multiplier' in fields:
+            persisted_fields['warp_advantage'] = float(fields['warp_multiplier']) - 1.0
+        else:
+            persisted_fields['warp_advantage'] = 0.0
 
     if exists:
         update_columns = [column for column in persisted_fields.keys() if column != 'code']

@@ -85,7 +85,6 @@ RACE_TYPE_PERCENT_FIELDS = [
     ('diplomacy_multiplier', 'Diplomacy'),
     ('scan_multiplier', 'Scanners'),
     ('shield_multiplier', 'Shields'),
-    ('warp_multiplier', 'Warp'),
     ('stealth_multiplier', 'Stealth'),
     ('terraforming_multiplier', 'Terraforming'),
     ('political_stability', 'Political Stability'),
@@ -93,6 +92,9 @@ RACE_TYPE_PERCENT_FIELDS = [
     ('research_multiplier', 'Research'),
     ('initiative_multiplier', 'Initiative'),
     ('cargo_multiplier', 'Cargo'),
+]
+RACE_TYPE_ADDITIVE_FIELDS = [
+    ('warp_advantage', 'Warp Advantage'),
 ]
 RACE_TYPE_INTEGER_FIELDS = [
     ('starting_colonies', 'Starting Colonies', 1),
@@ -152,6 +154,14 @@ def _race_type_detail_rows(race_type):
         if value != active_value:
             continue
         rows.append({'name': label, 'value': 'Yes'})
+    for field_name, label in RACE_TYPE_ADDITIVE_FIELDS:
+        try:
+            value = float(getattr(race_type, field_name, 0.0) or 0.0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if abs(value) < 1e-9:
+            continue
+        rows.append({'name': label, 'value': '%+g' % value})
     return rows
 
 

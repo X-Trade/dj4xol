@@ -7,6 +7,7 @@ from dj4xol.scanners import (
 )
 from dj4xol.turn import (
     KT_PER_MINE,
+    WORMHOLE_WARPFACTOR,
     apply_population_change,
     format_basic_hidden_salvage_name,
     format_basic_unknown_fleet_name,
@@ -230,6 +231,10 @@ class DetailBuilder():
                          self._fleet_travel_warp(self.selected_obj)
                          if isinstance(self.selected_obj, Fleet) else None
                      ),
+                     'warp_advantage': (
+                         self._fleet_warp_advantage(self.selected_obj)
+                         if isinstance(self.selected_obj, Fleet) else None
+                     ),
                      'position_status': 'current',
                      'last_known_position': None,
                      'last_known_report_year': None,
@@ -309,6 +314,9 @@ class DetailBuilder():
             ),
             'travel_warp': (
                 self._fleet_travel_warp(obj) if isinstance(obj, Fleet) else None
+            ),
+            'warp_advantage': (
+                self._fleet_warp_advantage(obj) if isinstance(obj, Fleet) else None
             ),
             'position_status': 'current',
             'last_known_position': None,
@@ -431,6 +439,7 @@ class DetailBuilder():
             'thumbnail_blurred': report_tier == 'basic',
             'heading': None,
             'travel_warp': None,
+            'warp_advantage': None,
             'position_status': 'report',
             'last_known_position': None,
             'last_known_report_year': None,
@@ -523,14 +532,22 @@ class DetailBuilder():
                 detail['is_last_known'] = True
             if data.get('heading') is not None:
                 detail['heading'] = data.get('heading')
+            if data.get('warp_advantage') is not None:
+                detail['warp_advantage'] = self._fleet_warp_advantage_from_data(
+                    data.get('warp_advantage')
+                )
             if data.get('travel_warp') is not None:
-                detail['travel_warp'] = data.get('travel_warp')
+                detail['travel_warp'] = self._effective_travel_warp(
+                    data.get('travel_warp'),
+                    detail.get('warp_advantage'),
+                )
             if not stale_fleet_report:
                 # Fleet is currently visible: always show live positional/motion state.
                 detail['x'] = self.selected_obj.x
                 detail['y'] = self.selected_obj.y
                 detail['heading'] = self.selected_obj.heading
                 detail['travel_warp'] = self._fleet_travel_warp(self.selected_obj)
+                detail['warp_advantage'] = self._fleet_warp_advantage(self.selected_obj)
             if self._should_show_live_fleet_identity(self.selected_obj, data):
                 detail['name'] = self.selected_obj.name
                 detail['player'] = self.selected_obj.owner_display_name
@@ -549,6 +566,7 @@ class DetailBuilder():
                 if data.get('report_tier') == 'encounter':
                     detail['fleet_capabilities'] = self._build_fleet_capabilities(
                         data.get('max_safe_warp'),
+                        data.get('warp_advantage'),
                         data.get('has_bombs'),
                         data.get('has_miners'),
                         bool(data.get('has_fuel_factory')),
@@ -622,7 +640,7 @@ class DetailBuilder():
         speed = None
         if travel_warp is not None:
             try:
-                speed = int(travel_warp)
+                speed = float(travel_warp)
             except (TypeError, ValueError):
                 speed = None
 
@@ -635,12 +653,12 @@ class DetailBuilder():
             except (TypeError, ValueError):
                 return summary
 
-        if speed <= 0:
+        if speed <= 0.0:
             if self._has_star_at_position(x, y):
                 return 'In orbit'
             return 'Stopped'
 
-        summary = 'Travelling at Warp %d' % speed
+        summary = 'Travelling at Warp %s' % self._format_warp_value(speed)
         if heading is None:
             return summary
         try:
@@ -927,9 +945,59 @@ class DetailBuilder():
         if not fleet or not isinstance(fleet, Fleet):
             return None
         try:
-            return max(0, int(getattr(fleet, 'travel_warp', 0) or 0))
+            return self._effective_travel_warp(
+                getattr(fleet, 'travel_warp', 0),
+                getattr(fleet, 'warp_advantage', 0.0),
+            )
         except (TypeError, ValueError):
             return 0
+
+    def _fleet_warp_advantage(self, fleet):
+        """Return stored per-fleet warp advantage."""
+        if not fleet or not isinstance(fleet, Fleet):
+            return 0.0
+        return self._fleet_warp_advantage_from_data(getattr(fleet, 'warp_advantage', 0.0))
+
+    @staticmethod
+    def _fleet_warp_advantage_from_data(value):
+        try:
+            return float(value or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _effective_travel_warp(self, base_warp, warp_advantage):
+        """Return displayed travel warp, including fleet warp advantage."""
+        try:
+            speed = max(0, int(base_warp or 0))
+        except (TypeError, ValueError):
+            return 0
+        if speed <= 0 or speed == WORMHOLE_WARPFACTOR:
+            return speed
+        effective = max(0.0, float(speed) + self._fleet_warp_advantage_from_data(warp_advantage))
+        if abs(effective - round(effective)) < 1e-9:
+            return int(round(effective))
+        return effective
+
+    @staticmethod
+    def _format_warp_value(value):
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return 'Unknown'
+        if abs(numeric - round(numeric)) < 1e-9:
+            return str(int(round(numeric)))
+        formatted = '%.2f' % numeric
+        return formatted.rstrip('0').rstrip('.')
+
+    def _format_signed_warp_advantage(self, value):
+        try:
+            numeric = float(value or 0.0)
+        except (TypeError, ValueError):
+            return ''
+        if abs(numeric) < 1e-9:
+            return ''
+        sign = '+' if numeric > 0 else '-'
+        return '%s%s' % (sign, self._format_warp_value(abs(numeric)))
 
     def _has_advanced_scanner_coverage(self, x, y):
         """Return True when player has advanced scanner visibility at location."""
@@ -1712,6 +1780,7 @@ class DetailBuilder():
             return None
         return self._build_fleet_capabilities(
             getattr(self.selected_obj, 'max_safe_warp', None),
+            getattr(self.selected_obj, 'warp_advantage', 0.0),
             self.selected_obj.has_bombs,
             self.selected_obj.has_miners,
             bool(self.selected_obj.has_fuel_factory),
@@ -1755,6 +1824,7 @@ class DetailBuilder():
     def _build_fleet_capabilities(
         self,
         max_safe_warp,
+        warp_advantage,
         bombs,
         miners,
         has_fuel_factory,
@@ -1767,9 +1837,19 @@ class DetailBuilder():
         """Build list of capability label/value pairs."""
         capabilities = []
         if max_safe_warp is not None:
+            max_warp_value = str(max_safe_warp)
+            try:
+                positive_advantage = max(0.0, float(warp_advantage or 0.0))
+            except (TypeError, ValueError):
+                positive_advantage = 0.0
+            if positive_advantage > 0.0:
+                max_warp_value = '%s %s' % (
+                    max_warp_value,
+                    self._format_signed_warp_advantage(positive_advantage),
+                )
             capabilities.append({
                 'label': 'Max Warp',
-                'value': str(max_safe_warp),
+                'value': max_warp_value,
             })
         if bombs:
             capabilities.append({

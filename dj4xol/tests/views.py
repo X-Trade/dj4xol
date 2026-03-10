@@ -634,6 +634,25 @@ class TestGameDetailRendering(TestCase):
         self.assertNotContains(response, 'Travelling at:')
         self.assertNotContains(response, 'Heading:')
 
+    def test_fleet_detail_moving_summary_shows_warp_advantage(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        fleet.travel_warp = 5
+        fleet.warp_advantage = 0.9
+        fleet.heading = 247.5
+        fleet.save(update_fields=['travel_warp', 'warp_advantage', 'heading'])
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Travelling at Warp 5.9 | Heading ')
+
     def test_star_detail_factories_tooltip_shows_manufacturing_multiplier(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
