@@ -33,7 +33,7 @@ class DefaultSyncTest(TestCase):
             id='00000000-0000-0000-0000-000000000111'
         )
         self.assertEqual(wormhole.category.code, 'METAPHYSICS')
-        self.assertEqual(wormhole.level, 18)
+        self.assertEqual(wormhole.level, 19)
         self.assertEqual(
             json.loads(wormhole.params_json).get('wormhole_fuel_per_ly'), 5.0
         )
@@ -41,7 +41,7 @@ class DefaultSyncTest(TestCase):
             id='00000000-0000-0000-0000-000000000112'
         )
         self.assertEqual(advanced_wormhole.category.code, 'METAPHYSICS')
-        self.assertEqual(advanced_wormhole.level, 22)
+        self.assertEqual(advanced_wormhole.level, 23)
         self.assertEqual(
             json.loads(advanced_wormhole.params_json).get('wormhole_fuel_per_ly'), 4.0
         )
@@ -84,6 +84,26 @@ class DefaultSyncTest(TestCase):
             json.loads(colony_scanner_vi.params_json),
             {'basic_scanner_range': 70, 'advanced_scanner_range': 15},
         )
+        smart_bombs = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000604'
+        )
+        self.assertEqual(smart_bombs.level, 12)
+        nova_bombs = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000605'
+        )
+        self.assertEqual(nova_bombs.level, 21)
+        warp_8 = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000106'
+        )
+        self.assertEqual(warp_8.level, 9)
+        warp_9 = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000107'
+        )
+        self.assertEqual(warp_9.level, 10)
+        warp_10 = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000108'
+        )
+        self.assertEqual(warp_10.level, 13)
         planetary_disruptors = Technology.objects.get(
             id='00000000-0000-0000-0000-000000000403'
         )
