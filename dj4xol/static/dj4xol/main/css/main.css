@@ -159,7 +159,7 @@ body.map-dragging * {
 
 /* Panel minimum heights */
 .panel {
-    min-height: 145px;
+    min-height: 64px;
 }
 
 .panel:not(.open) {
