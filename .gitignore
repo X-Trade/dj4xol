@@ -2,7 +2,10 @@
 __pycache__/
 *.py[codz]
 *$py.class
+
+# custom stuff
 *.swp
+*.old
 
 # Distribution / packaging
 .Python

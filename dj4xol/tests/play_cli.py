@@ -1609,6 +1609,100 @@ class PlayCommandTest(TestCase):
             if row.category_id != category.id:
                 self.assertEqual(int(round(row.allocation_percent)), 0)
 
+    def test_diplomacy_overview_command_outputs_default_and_contacts(self):
+        self.player1.pending_default_diplomatic_stance = 'COLD'
+        self.player1.save(update_fields=['pending_default_diplomatic_stance'])
+        PlayerDiplomaticStance.objects.create(
+            player=self.player1,
+            target_player=self.player2,
+            stance='NEUTRAL',
+            pending_stance='WARM',
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/diplomacy', '/exit'],
+        )
+        self.assertIn('default:', output)
+        self.assertIn('our_stance: Cold', output)
+        self.assertIn('contacts:', output)
+        self.assertIn('%s:' % self.player2.short_id, output)
+        self.assertIn('display_name: %s (P2)' % self.player2.name, output)
+        self.assertIn('our_stance: Warm', output)
+        self.assertIn('encounter_combat_percent', output)
+
+    def test_diplomacy_detail_command_outputs_target_detail(self):
+        PlayerDiplomaticStance.objects.create(
+            player=self.player1,
+            target_player=self.player2,
+            stance='NEUTRAL',
+            pending_stance='ALLIED',
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player2,
+            target_player=self.player1,
+            stance='COLD',
+            pending_stance='COLD',
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/diplomacy %s' % self.player2.short_id, '/exit'],
+        )
+        self.assertIn('%s:' % self.player2.short_id, output)
+        self.assertIn('display_name: %s (P2)' % self.player2.name, output)
+        self.assertIn('our_stance: Allied', output)
+        self.assertIn('their_stance: Cold', output)
+        self.assertIn('encounter_combat_base_percent', output)
+        self.assertIn('Resource Access', output)
+
+    def test_diplomacy_set_stance_by_short_id_updates_pending_only(self):
+        row = PlayerDiplomaticStance.objects.create(
+            player=self.player1,
+            target_player=self.player2,
+            stance='NEUTRAL',
+            pending_stance='NEUTRAL',
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/diplomacy %s 4' % self.player2.short_id, '/exit'],
+        )
+        row.refresh_from_db()
+        self.assertEqual(row.stance, 'NEUTRAL')
+        self.assertEqual(row.pending_stance, 'WARM')
+        self.assertIn('our_stance: Warm', output)
+
+    def test_diplomacy_set_stance_by_exact_player_name_updates_pending(self):
+        self.player2.name = 'Beta'
+        self.player2.save(update_fields=['name'])
+        row = PlayerDiplomaticStance.objects.create(
+            player=self.player1,
+            target_player=self.player2,
+            stance='NEUTRAL',
+            pending_stance='NEUTRAL',
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/diplomacy "%s" allied' % self.player2.name, '/exit'],
+        )
+        row.refresh_from_db()
+        self.assertEqual(row.pending_stance, 'ALLIED')
+        self.assertIn('our_stance: Allied', output)
+
     def test_one_shot_command_runs_and_exits_without_prompt(self):
         output = self._run_play(
             self.game.short_id,
