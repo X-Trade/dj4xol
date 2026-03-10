@@ -8963,6 +8963,80 @@ class TestMergeFleet(TestCase):
         self.assertAlmostEqual(fleet2.fuel, 37.5, places=4)
         self.assertAlmostEqual(fleet2.max_fuel, 100.0, places=4)
 
+    def test_merge_fleet_copies_wormhole_stats_from_only_drive_fleet(self):
+        """A single wormhole-capable source fleet should carry its stats across."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y, ship_count=2,
+            has_wormhole_drive=True,
+            wormhole_fuel_per_ly=4.0,
+            wormhole_destruction_chance=0.05,
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x, y=star.y, ship_count=3,
+            has_wormhole_drive=False,
+            wormhole_fuel_per_ly=5.0,
+            wormhole_destruction_chance=0.0,
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet2.refresh_from_db()
+        self.assertTrue(fleet2.has_wormhole_drive)
+        self.assertAlmostEqual(fleet2.wormhole_fuel_per_ly, 4.0, places=4)
+        self.assertAlmostEqual(
+            fleet2.wormhole_destruction_chance, 0.05, places=4
+        )
+
+    def test_merge_fleet_averages_wormhole_stats_when_both_have_drives(self):
+        """Two wormhole-capable fleets should average wormhole performance."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        fleet1 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 1",
+            x=star.x, y=star.y, ship_count=2,
+            has_wormhole_drive=True,
+            wormhole_fuel_per_ly=5.0,
+            wormhole_destruction_chance=0.50,
+        )
+        fleet2 = Fleet.objects.create(
+            game=game, player=player, name="Fleet 2",
+            x=star.x, y=star.y, ship_count=3,
+            has_wormhole_drive=True,
+            wormhole_fuel_per_ly=3.0,
+            wormhole_destruction_chance=0.10,
+        )
+
+        FleetOrders.objects.create(
+            game=game, fleet=fleet1, order_type='MERGE',
+            target_fleet=fleet2
+        )
+
+        GameTurn(game).generate_turn()
+
+        fleet2.refresh_from_db()
+        self.assertTrue(fleet2.has_wormhole_drive)
+        self.assertAlmostEqual(fleet2.wormhole_fuel_per_ly, 3.8, places=4)
+        self.assertAlmostEqual(
+            fleet2.wormhole_destruction_chance, 0.26, places=4
+        )
+
     def test_merge_fleet_orders_redirected(self):
         """Orders targeting source fleet are updated to target merged fleet."""
         from ..models import FleetOrders
