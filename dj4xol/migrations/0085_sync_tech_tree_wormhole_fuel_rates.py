@@ -21,41 +21,8 @@ def _load_defaults_rows():
 
 
 def sync_tech_tree_wormhole_fuel_rates(apps, schema_editor):
-    ResearchCategory = apps.get_model('dj4xol', 'ResearchCategory')
-    Technology = apps.get_model('dj4xol', 'Technology')
-    category_fields = {field.name for field in ResearchCategory._meta.fields}
-
-    rows = _load_defaults_rows()
-
-    for row in rows:
-        if row.get('model') != 'dj4xol.ResearchCategory':
-            continue
-        fields = dict(row.get('fields') or {})
-        fields = {
-            key: value
-            for key, value in fields.items()
-            if key in category_fields
-        }
-        pk = row.get('pk')
-        if pk is None:
-            continue
-        ResearchCategory.objects.update_or_create(id=int(pk), defaults=fields)
-
-    for row in rows:
-        if row.get('model') != 'dj4xol.Technology':
-            continue
-        fields = dict(row.get('fields') or {})
-        pk = row.get('pk')
-        if not pk:
-            continue
-
-        if 'category' in fields and 'category_id' not in fields:
-            fields['category_id'] = fields.pop('category')
-
-        Technology.objects.update_or_create(
-            id=uuid.UUID(str(pk)),
-            defaults=fields,
-        )
+    # Superseded by later canonical defaults sync migrations.
+    return
 
 
 class Migration(migrations.Migration):

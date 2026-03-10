@@ -62,6 +62,7 @@ A Django-based 4X space strategy game inspired by Stars!
 
 - Until version `1.0`, expect regular technology-tree churn. When fixture-backed research categories, technologies, or research prerequisites change in `dj4xol/fixtures/defaults.yaml`, also add a technology synchronization migration so `migrate` brings existing databases forward.
 - Prefer the existing reusable sync helper in `dj4xol/default_sync.py`: `sync_factory_defaults(force=True)`, wrapped in a migration `RunPython` function, rather than copying another one-off fixture sync implementation unless there is a migration-safety reason to do otherwise.
+- When a newer fixture-sync migration fully supersedes older technology/defaults resync migrations, no-op the older resync bodies instead of replaying current fixtures through historical schemas on every fresh install. Keep the migration nodes for graph stability, but only the latest canonical defaults sync should actually load `defaults.yaml`; older code checkouts already provide the correct historical migration behavior for that revision.
 
 ## Research Stage Bands
 

@@ -40,6 +40,23 @@ from dj4xol.research import (
     update_player_allocations,
 )
 from dj4xol.diplomacy import has_encountered_player
+from dj4xol.diplomacy import (
+    STANCE_ALLIED,
+    STANCE_COLD,
+    STANCE_HOSTILE,
+    STANCE_NEUTRAL,
+    STANCE_WARM,
+    build_pending_stance_map,
+    combat_chance_modifier_percent,
+    combat_chance_percent,
+    combat_chance_with_diplomacy_percent,
+    encountered_players,
+    player_pending_default_stance,
+    stance_effect_items,
+    stance_label,
+    stance_towards,
+    update_player_stances,
+)
 from dj4xol.turn import GameTurn
 
 try:  # Enables terminal history/editing for input() on supported platforms.
@@ -214,6 +231,9 @@ class Command(BaseCommand):
             return
         if raw.startswith("/research"):
             self._handle_research_command(raw, player)
+            return
+        if raw.startswith("/diplomacy"):
+            self._handle_diplomacy_command(raw, player)
             return
         if raw.startswith("/detail"):
             self._handle_detail_command(raw, player)
@@ -519,6 +539,16 @@ class Command(BaseCommand):
                     "With CODE and PERCENT: set allocation and rebalance.",
                 ],
             },
+            "diplomacy": {
+                "summary": "/diplomacy               YAML diplomacy summary or target detail.",
+                "lines": [
+                    "/diplomacy",
+                    'Usage: /diplomacy [default|player_short_id|"Exact Player Name"] [1|2|3|4|5|hostile|cold|neutral|warm|allied]',
+                    "Without arguments: show default stance and encountered races.",
+                    "With a target: show diplomacy detail for that race.",
+                    "With a target and stance: queue a stance change for next turn.",
+                ],
+            },
             "detail": {
                 "summary": "/detail <object_id>      YAML detail panel data as visible to this player.",
                 "lines": [
@@ -568,7 +598,7 @@ class Command(BaseCommand):
                 if name in (
                     "help", "colonies", "fleets", "stars", "status", "reports",
                     "anomalies", "salvage", "rename", "notes", "orders",
-                    "research", "detail", "messages", "done", "quit",
+                    "research", "diplomacy", "detail", "messages", "done", "quit",
                 )
             ]
             lines.append("Type /help <command> or /<command> help for details.")
@@ -1691,6 +1721,45 @@ class Command(BaseCommand):
 
         self.stdout.write("Usage: /research [CODE [PERCENT]]")
 
+    def _handle_diplomacy_command(self, raw, player):
+        try:
+            parts = shlex.split(raw)
+        except ValueError as exc:
+            self.stdout.write("Invalid command syntax: %s" % exc)
+            return
+
+        if len(parts) == 1:
+            self._print_yaml(self._diplomacy_overview_summary(player))
+            return
+
+        try:
+            target = self._resolve_diplomacy_target_token(player, parts[1])
+        except CommandError as exc:
+            self.stdout.write(str(exc))
+            return
+
+        if len(parts) == 2:
+            self._print_yaml(self._diplomacy_target_summary(player, target))
+            return
+
+        if len(parts) == 3:
+            if player.turned_in:
+                self.stdout.write("Diplomatic stances are locked after turn-in.")
+                return
+            try:
+                stance_value = self._parse_diplomacy_stance_token(parts[2])
+            except CommandError as exc:
+                self.stdout.write(str(exc))
+                return
+            self._set_diplomacy_stance(player, target, stance_value)
+            self._print_yaml(self._diplomacy_target_summary(player, target))
+            return
+
+        self.stdout.write(
+            'Usage: /diplomacy [default|player_short_id|"Exact Player Name"] '
+            '[1|2|3|4|5|hostile|cold|neutral|warm|allied]'
+        )
+
     def _research_overview_summary(self, player):
         rows = ensure_player_research_rows(player)
         budget = build_research_budget(player)
@@ -1746,6 +1815,136 @@ class Command(BaseCommand):
             "upcoming_technologies": upcoming,
         }
         return {category.code: payload}
+
+    def _player_display_name(self, other):
+        alias = other.account.alias if getattr(other, "account", None) else "Unknown"
+        return "%s (%s)" % (other.name, alias)
+
+    def _diplomacy_overview_summary(self, player):
+        default_stance = player_pending_default_stance(player)
+        pending_map = build_pending_stance_map(player)
+        contacts = {}
+        for other in encountered_players(player):
+            our_stance = pending_map.get(other.id, default_stance)
+            their_stance = stance_towards(other, player)
+            contacts[other.short_id] = {
+                "name": other.name,
+                "display_name": self._player_display_name(other),
+                "our_stance": stance_label(our_stance),
+                "our_stance_raw": our_stance,
+                "their_stance": stance_label(their_stance),
+                "their_stance_raw": their_stance,
+                "encounter_combat_percent": combat_chance_with_diplomacy_percent(
+                    our_stance, their_stance, player, other
+                ),
+                "encounter_combat_modifier_percent": "%+d%%" % (
+                    combat_chance_modifier_percent(player, other)
+                ),
+            }
+        return {
+            "default": {
+                "our_stance": stance_label(default_stance),
+                "our_stance_raw": default_stance,
+            },
+            "contacts": contacts,
+        }
+
+    def _diplomacy_target_summary(self, player, target):
+        default_stance = player_pending_default_stance(player)
+        if target == "default":
+            payload = {
+                "name": "Default Stance",
+                "our_stance": stance_label(default_stance),
+                "our_stance_raw": default_stance,
+                "effects": list(stance_effect_items(default_stance)),
+                "is_default": True,
+            }
+            return {"default": payload}
+
+        pending_map = build_pending_stance_map(player)
+        our_stance = pending_map.get(target.id, default_stance)
+        their_stance = stance_towards(target, player)
+        payload = {
+            "name": target.name,
+            "display_name": self._player_display_name(target),
+            "our_stance": stance_label(our_stance),
+            "our_stance_raw": our_stance,
+            "their_stance": stance_label(their_stance),
+            "their_stance_raw": their_stance,
+            "encounter_combat_base_percent": combat_chance_percent(our_stance, their_stance),
+            "encounter_combat_modifier_percent": "%+d%%" % (
+                combat_chance_modifier_percent(player, target)
+            ),
+            "encounter_combat_percent": combat_chance_with_diplomacy_percent(
+                our_stance, their_stance, player, target
+            ),
+            "effects": list(stance_effect_items(our_stance)),
+            "is_default": False,
+        }
+        return {target.short_id: payload}
+
+    def _resolve_diplomacy_target_token(self, player, token):
+        token = (token or "").strip()
+        lowered = token.lower()
+        if lowered == "default":
+            return "default"
+        if not token:
+            raise CommandError("Unknown diplomacy target: %s" % token)
+        if self.SHORT_ID_RE.match(lowered):
+            target = Player.objects.filter(
+                game=player.game,
+                short_id=lowered,
+                defeated=False,
+            ).first()
+            if target is None:
+                raise CommandError("Unknown diplomacy target: %s" % token)
+            if target.id == player.id:
+                raise CommandError("Cannot set diplomacy toward yourself.")
+            if not has_encountered_player(player, target):
+                raise CommandError("Can only set diplomacy toward a discovered race.")
+            return target
+        target_qs = Player.objects.filter(
+            game=player.game,
+            name__iexact=token,
+            defeated=False,
+        ).order_by("name", "id")
+        target = self._resolve_single_named_match(list(target_qs), token)
+        if target is None:
+            raise CommandError("Unknown diplomacy target: %s" % token)
+        if target.id == player.id:
+            raise CommandError("Cannot set diplomacy toward yourself.")
+        if not has_encountered_player(player, target):
+            raise CommandError("Can only set diplomacy toward a discovered race.")
+        return target
+
+    def _parse_diplomacy_stance_token(self, token):
+        value = (token or "").strip().lower()
+        mapping = {
+            "1": STANCE_HOSTILE,
+            "hostile": STANCE_HOSTILE,
+            "2": STANCE_COLD,
+            "cold": STANCE_COLD,
+            "3": STANCE_NEUTRAL,
+            "neutral": STANCE_NEUTRAL,
+            "4": STANCE_WARM,
+            "warm": STANCE_WARM,
+            "5": STANCE_ALLIED,
+            "allied": STANCE_ALLIED,
+        }
+        stance_value = mapping.get(value)
+        if stance_value is None:
+            raise CommandError("Invalid diplomacy stance: %s" % token)
+        return stance_value
+
+    def _set_diplomacy_stance(self, player, target, stance_value):
+        if target == "default":
+            update_player_stances(player, stance_value, {})
+            return
+        update_player_stances(
+            player,
+            player_pending_default_stance(player),
+            {target.short_id: stance_value},
+        )
 
     def _set_research_allocation(self, player, category, requested_pct):
         rows = ensure_player_research_rows(player)
