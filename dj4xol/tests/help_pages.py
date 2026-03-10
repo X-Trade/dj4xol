@@ -202,3 +202,23 @@ class HelpPagesTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Race Type')
         self.assertContains(response, 'Is not JOAT')
+
+    def test_help_technology_humanises_trait_requirement_names(self):
+        energy = ResearchCategory.objects.create(
+            code='ENERTRAIT',
+            name='Energy',
+            display_order=10,
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=energy,
+            level=2,
+            name='Trait Gate',
+            tech_type='OTHER',
+            params_json='{"race_type": "has has_advanced_remoteminers"}',
+            enabled=True,
+        )
+
+        response = self.client.get(reverse('dj4xol:help_technology'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Has advanced remote miners')

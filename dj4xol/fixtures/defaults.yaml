@@ -505,7 +505,7 @@
     name: 'Prototype Wormhole Drive'
     description: 'A fragile transdimensional drive core with extreme instability.'
     tech_type: 'PROPULSION'
-    params_json: '{"max_warp_speed": 4, "defense_level": -1.8, "fuel_efficiency": 0.50, "overmax_fuel_penalty": 2.00, "has_wormhole_drive": true, "wormhole_fuel_per_ly": 6.0, "wormhole_destruction_chance": 0.50}'
+    params_json: '{"max_warp_speed": 4, "defense_level": -1.8, "fuel_efficiency": 0.50, "overmax_fuel_penalty": 2.00, "has_wormhole_drive": true, "wormhole_fuel_per_ly": 6.0, "wormhole_destruction_chance": 0.50, "race_type": "SCI"}'
     display_order: 51
     enabled: True
 
@@ -1240,7 +1240,7 @@
     name: 'Frigate Hull'
     description: 'Standard escort hull with stronger armor and internal bulkheads.'
     tech_type: 'HULL'
-    params_json: '{"max_cargo_capacity": 200, "max_fuel": 100, "hull_thumbnail_class": "frigate", "defense_level": 0.1}'
+    params_json: '{"max_cargo_capacity": 200, "max_fuel": 100, "hull_thumbnail_class": "frigate", "defense_level": 0.1, "race_type": "not WAR"}'
     display_order: 220
     enabled: True
 
@@ -1253,7 +1253,7 @@
     name: 'Freighter Hull'
     description: 'Bulk cargo frame with expanded holds and reinforced fuel tanks.'
     tech_type: 'HULL'
-    params_json: '{"max_cargo_capacity": 400, "max_fuel": 200, "hull_thumbnail_class": "freighter", "defense_level": 0.2}'
+    params_json: '{"max_cargo_capacity": 400, "max_fuel": 200, "hull_thumbnail_class": "freighter", "defense_level": 0.2, "race_type": "not WAR"}'
     display_order: 225
     enabled: True
 
@@ -1266,7 +1266,7 @@
     name: 'Tanker Hull'
     description: 'Long range transport.'
     tech_type: 'HULL'
-    params_json: '{"max_cargo_capacity": 400, "max_fuel": 800, "hull_thumbnail_class": "tanker", "defense_level": -0.1}'
+    params_json: '{"max_cargo_capacity": 400, "max_fuel": 800, "hull_thumbnail_class": "tanker", "defense_level": -0.1, "race_type": "not WAR"}'
     display_order: 230
     enabled: True
 
@@ -1331,7 +1331,7 @@
     name: 'Advanced Remote Miners'
     description: 'Heavy industrial remote mining complexes for deep-field extraction.'
     tech_type: 'MECHANICAL'
-    params_json: '{"has_miners": "LARGE"}'
+    params_json: '{"has_miners": "LARGE", "race_type": "has has_advanced_remoteminers"}'
     display_order: 247
     enabled: True
 
@@ -1357,7 +1357,7 @@
     name: 'Smart Bombs'
     description: 'Guided bombardment payloads focused on defenses and population centers.'
     tech_type: 'BOMB'
-    params_json: '{"has_bombs": "SMART"}'
+    params_json: '{"has_bombs": "SMART", "race_type": "not WAR"}'
     display_order: 249
     enabled: True
 

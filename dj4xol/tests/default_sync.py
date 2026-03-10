@@ -88,10 +88,26 @@ class DefaultSyncTest(TestCase):
             id='00000000-0000-0000-0000-000000000604'
         )
         self.assertEqual(smart_bombs.level, 12)
+        self.assertEqual(
+            json.loads(smart_bombs.params_json).get('race_type'), 'not WAR'
+        )
         nova_bombs = Technology.objects.get(
             id='00000000-0000-0000-0000-000000000605'
         )
         self.assertEqual(nova_bombs.level, 21)
+        prototype_wormhole = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000114'
+        )
+        self.assertEqual(
+            json.loads(prototype_wormhole.params_json).get('race_type'), 'SCI'
+        )
+        advanced_remote_miners = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000602'
+        )
+        self.assertEqual(
+            json.loads(advanced_remote_miners.params_json).get('race_type'),
+            'has has_advanced_remoteminers',
+        )
         warp_8 = Technology.objects.get(
             id='00000000-0000-0000-0000-000000000106'
         )
