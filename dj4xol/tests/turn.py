@@ -7,6 +7,7 @@ from ..turn import (
     NOVA_BLACK_HOLE_SPAWN_CHANCE,
     NOVA_STAR_DESTRUCTION_CHANCE,
     YIELD_DEPLETION_RATE,
+    apply_population_change,
     calculate_fleet_defense_multiplier,
     calculate_fleet_strength,
 )
@@ -14,6 +15,7 @@ from ..objectdetails import DetailBuilder
 from ..colony_rules import (
     habitability_proportion,
     calculate_growth_factor,
+    calculate_habitability_factor,
     capacity_modifier,
     effective_capacity,
     BILLION,
@@ -31,7 +33,7 @@ from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Sal
 from ..factory import GameFactory
 from ..research import ensure_player_research_rows
 from ..chance_rules import transfer_raid_success_chance
-from ..hazard_rules import DANGER_HIGH, DANGER_LOW, DANGER_MEDIUM
+from ..hazard_rules import DANGER_HIGH, DANGER_LOW, DANGER_MEDIUM, DANGER_NONE
 from django.test import TestCase
 from ._util import default_game, get_default_race, get_default_race_type
 from unittest.mock import patch, PropertyMock
@@ -339,6 +341,45 @@ class TestEffectiveCapacity(TestCase):
         cap = effective_capacity(player, star)
         self.assertEqual(cap, 1_000_000)
 
+    def test_ignored_environment_counts_as_fully_habitable(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        star = player.homeworld
+        star.base_capacity = 10000
+        star.gravity = player.gravity_center
+        star.temperature = player.temperature_center
+        star.radiation = player.radiation_center
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.defenses = 0
+        star.shipyards = 0
+        baseline_factor = calculate_habitability_factor(player, star)
+
+        star.gravity = 2.0
+        player.race_type.ignores_gravity = True
+        player.race_type.save(update_fields=['ignores_gravity'])
+
+        self.assertAlmostEqual(calculate_habitability_factor(player, star), baseline_factor)
+        self.assertEqual(effective_capacity(player, star), 10_000_000_000)
+
+    def test_population_cap_multiplier_scales_capacity(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        star = player.homeworld
+        star.base_capacity = 10000
+        star.gravity = player.gravity_center
+        star.temperature = player.temperature_center
+        star.radiation = player.radiation_center
+
+        player.race_type.population_cap_multiplier = 50
+        player.race_type.save(update_fields=['population_cap_multiplier'])
+        self.assertEqual(effective_capacity(player, star), 500_000_000_000)
+
+        player.race_type.population_cap_multiplier = 1000
+        player.race_type.save(update_fields=['population_cap_multiplier'])
+        self.assertEqual(effective_capacity(player, star), 10_000_000_000_000)
+
 
 class TestPopulationGrowth(TestCase):
     def test_growth_on_perfect_homeworld(self):
@@ -382,6 +423,67 @@ class TestPopulationGrowth(TestCase):
         GameTurn(game).generate_turn()
         homeworld.refresh_from_db()
         self.assertLess(homeworld.colonists, 1000)
+
+    def test_growth_uses_ironium_before_two_thousand_births(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        player.race_type.population_growth_uses_resources = True
+        player.race_type.save(update_fields=['population_growth_uses_resources'])
+
+        homeworld.gravity = player.gravity_center
+        homeworld.temperature = player.temperature_center
+        homeworld.radiation = player.radiation_center
+        homeworld.colonists = 15000
+        homeworld.mines = 0
+        homeworld.factories = 0
+        homeworld.labs = 0
+        homeworld.defenses = 0
+        homeworld.shipyards = 0
+        factor = calculate_growth_factor(player, homeworld)
+        self.assertGreater(apply_population_change(homeworld.colonists, factor) - homeworld.colonists, 1000)
+
+        homeworld.ironium_inventory = 1
+        homeworld.boranium_inventory = 5000
+        homeworld.save()
+
+        GameTurn(game).population_growth()
+        homeworld.refresh_from_db()
+
+        self.assertEqual(homeworld.colonists, 16000)
+        self.assertEqual(homeworld.ironium_inventory, 0)
+        self.assertEqual(homeworld.boranium_inventory, 5000)
+
+    def test_growth_uses_ironium_and_boranium_after_two_thousand_births(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        player.race_type.population_growth_uses_resources = True
+        player.race_type.save(update_fields=['population_growth_uses_resources'])
+
+        homeworld.gravity = player.gravity_center
+        homeworld.temperature = player.temperature_center
+        homeworld.radiation = player.radiation_center
+        homeworld.colonists = 50000
+        homeworld.mines = 0
+        homeworld.factories = 0
+        homeworld.labs = 0
+        homeworld.defenses = 0
+        homeworld.shipyards = 0
+        factor = calculate_growth_factor(player, homeworld)
+        baseline_growth = apply_population_change(homeworld.colonists, factor) - homeworld.colonists
+        self.assertGreater(baseline_growth, 2000)
+
+        homeworld.ironium_inventory = 3
+        homeworld.boranium_inventory = 1
+        homeworld.save()
+
+        GameTurn(game).population_growth()
+        homeworld.refresh_from_db()
+
+        self.assertEqual(homeworld.colonists, 50000 + baseline_growth)
+        self.assertEqual(homeworld.ironium_inventory, 0)
+        self.assertEqual(homeworld.boranium_inventory, 0)
 
     def test_population_growth_multiplier_can_suppress_decline(self):
         game = default_game(stars=5)
@@ -1915,7 +2017,8 @@ class TestAnomalyInteractions(TestCase):
         a.wormhole_pair = b
         a.save(update_fields=['wormhole_pair'])
 
-        with patch('dj4xol.turn.random.random', side_effect=[1.0, 0.0]), \
+        with patch('dj4xol.turn.anomaly_danger_level', return_value=DANGER_MEDIUM), \
+             patch('dj4xol.turn.random.random', side_effect=[1.0, 0.0]), \
              patch('dj4xol.turn.random.randint', return_value=25), \
              patch('dj4xol.turn.random.shuffle', lambda vals: None):
             GameTurn(game).anomaly_interactions()
@@ -1993,7 +2096,8 @@ class TestAnomalyInteractions(TestCase):
         a.wormhole_pair = b
         a.save(update_fields=['wormhole_pair'])
 
-        with patch('dj4xol.turn.random.random', return_value=0.0):
+        with patch('dj4xol.turn.anomaly_danger_level', return_value=DANGER_MEDIUM), \
+             patch('dj4xol.turn.random.random', return_value=0.0):
             GameTurn(game).anomaly_interactions()
 
         self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
@@ -2044,6 +2148,94 @@ class TestAnomalyInteractions(TestCase):
             GameTurn(game).anomaly_interactions()
 
         self.assertTrue(Fleet.objects.filter(id=fleet.id).exists())
+
+    def test_wormhole_none_danger_disables_transit_hazards(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Gentle Transit',
+            x=14,
+            y=14,
+            integrity=100,
+        )
+        a = Anomaly.objects.create(
+            game=game,
+            x=14,
+            y=14,
+            name='WH-Safe-A',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=0,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=34,
+            y=34,
+            name='WH-Safe-B',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=0,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+
+        with patch('dj4xol.turn.anomaly_danger_level', return_value=DANGER_NONE), \
+             patch('dj4xol.turn.random.random', side_effect=[0.0, 0.0]):
+            GameTurn(game)._apply_wormhole_interaction(fleet, a)
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 100)
+        self.assertNotEqual((fleet.x, fleet.y), (14, 14))
+        self.assertTrue(Fleet.objects.filter(id=fleet.id).exists())
+
+    def test_wormhole_low_danger_softens_low_stability_transit_risk(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        game.stars.all().delete()
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Softened Transit',
+            x=17,
+            y=17,
+            integrity=100,
+        )
+        a = Anomaly.objects.create(
+            game=game,
+            x=17,
+            y=17,
+            name='WH-Soft-A',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=0,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=37,
+            y=37,
+            name='WH-Soft-B',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=0,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+
+        with patch('dj4xol.turn.anomaly_danger_level', return_value=DANGER_LOW), \
+             patch('dj4xol.turn.random.random', side_effect=[0.2, 1.0]):
+            GameTurn(game)._apply_wormhole_interaction(fleet, a)
+
+        self.assertTrue(Fleet.objects.filter(id=fleet.id).exists())
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 100)
+        self.assertNotEqual((fleet.x, fleet.y), (17, 17))
 
     def test_wormhole_endpoint_extinction_transforms_pair_or_deletes(self):
         game = default_game()

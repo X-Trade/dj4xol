@@ -114,6 +114,8 @@ from .colony_rules import (
     calculate_habitability_factor,
     calculate_growth_factor,
     calculate_effective_defenses,
+    limit_population_growth_by_surface_resources,
+    population_growth_uses_surface_resources,
     OVERMINING_DEPLETION_MULTIPLIER,
 )
 from .research import (
@@ -1491,10 +1493,12 @@ class GameTurn():
         )
 
         stability = self._anomaly_stability(endpoint)
+        danger_level = anomaly_danger_level(endpoint)
+        danger_mult = damage_intensity_multiplier(danger_level, stability)
         if stability < 30:
             destruction_chance = (
                 (30.0 - float(stability)) / 30.0
-            ) * float(WORMHOLE_INSTANT_DESTRUCTION_MAX_CHANCE)
+            ) * float(WORMHOLE_INSTANT_DESTRUCTION_MAX_CHANCE) * float(danger_mult)
             if random.random() < destruction_chance:
                 fleet_name = fleet.name
                 player = fleet.player
@@ -1507,11 +1511,18 @@ class GameTurn():
                 return
 
         instability = self._anomaly_instability_ratio(endpoint)
-        damage_chance = max(0.0, min(1.0, instability))
+        damage_chance = max(0.0, min(1.0, float(instability) * float(danger_mult)))
         took_damage = False
         damage = 0
         if random.random() < damage_chance:
-            max_damage = max(1, int(round(float(WORMHOLE_DAMAGE_MAX) * instability)))
+            max_damage = max(
+                1,
+                int(round(
+                    float(WORMHOLE_DAMAGE_MAX) *
+                    float(instability) *
+                    float(danger_mult)
+                )),
+            )
             damage = random.randint(1, max_damage)
             fleet.integrity = max(0, int(fleet.integrity or 0) - int(damage))
             took_damage = damage > 0
@@ -6043,6 +6054,17 @@ class GameTurn():
                 raw_multiplier
             )
             star.colonists = apply_population_change(star.colonists, factor)
+            if (
+                factor > 0 and
+                population_growth_uses_surface_resources(player)
+            ):
+                proposed_growth = max(0, star.colonists - old_pop)
+                limited_growth, ironium_cost, boranium_cost = (
+                    limit_population_growth_by_surface_resources(star, proposed_growth)
+                )
+                star.colonists = old_pop + limited_growth
+                star.ironium_inventory = max(0, int(star.ironium_inventory or 0) - ironium_cost)
+                star.boranium_inventory = max(0, int(star.boranium_inventory or 0) - boranium_cost)
             change = star.colonists - old_pop
 
             if change < 0 and star.colonists > 0:

@@ -9,7 +9,10 @@ from .models import (
 from . import mineral_rules
 from .research import get_player_tech_effects
 from .fleet_thumbnails import choose_fleet_thumbnail
-from .colony_rules import habitability_proportion
+from .colony_rules import (
+    environment_matches_player_preference,
+    habitability_value_for_environment,
+)
 import random
 import math
 
@@ -738,19 +741,16 @@ class GameFactory():
     def _star_habitability_score_for_player(self, player, star):
         proportions = []
         for env in ['gravity', 'temperature', 'radiation']:
-            proportions.append(max(0.0, habitability_proportion(
-                player.hab_min(env),
-                player.hab_max(env),
-                getattr(player, '%s_center' % env),
-                getattr(star, env),
-            )))
+            proportions.append(max(
+                0.0,
+                habitability_value_for_environment(player, env, getattr(star, env)),
+            ))
         return sum(proportions) / 3.0
 
     def _is_perfect_for_player(self, player, star):
-        return (
-            abs(float(star.gravity) - float(player.gravity_center)) < 1e-9 and
-            abs(float(star.temperature) - float(player.temperature_center)) < 1e-9 and
-            abs(float(star.radiation) - float(player.radiation_center)) < 1e-9
+        return all(
+            environment_matches_player_preference(player, env, getattr(star, env))
+            for env in ['gravity', 'temperature', 'radiation']
         )
 
     def _find_secondary_starting_colony_candidates(self, player, homeworld, available_stars):

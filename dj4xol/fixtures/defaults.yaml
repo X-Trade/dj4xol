@@ -166,8 +166,9 @@
     has_terraforming: True
     has_metalurgy: False
     is_mechanical: True
-    population_growth_multiplier: 1.2
+    population_growth_multiplier: 0.8
     population_growth_uses_resources: True
+    population_cap_multiplier: 50
     diplomacy_multiplier: 0.5
     defence_multiplier: 0.6
     trade_multiplier: 0.5
@@ -189,6 +190,7 @@
     ignores_radiation: True
     ignores_gravity: True
     ignores_temperature: True
+    population_cap_multiplier: 1000
     has_terraforming: False
     has_stealth: True
     stealth_multiplier: 1.6
@@ -220,7 +222,8 @@
   fields:
     code: 'EXPL'
     name: 'Explorers'
-    ignores_radiation: True
+    ignores_radiation: False
+    ignores_temperature: True
     warp_advantage: 0.6
     shield_multiplier: 1.1
     combat_multiplier: 0.8
@@ -306,6 +309,7 @@
     shield_multiplier: 0.9
     has_metalurgy: False
     ignores_radiation: True
+    population_cap_multiplier: 100
     initiative_multiplier: 0.8
 
 - model: dj4xol.ResearchCategory
@@ -1061,6 +1065,7 @@
     enabled: True
 
 - model: dj4xol.ResearchLevelPrerequisite
+  pk: 1
   fields:
     category: 5
     level: 6

@@ -96,7 +96,7 @@
             {% for key, data in detail.environmentals.items %}
             <div class="env-row">
                 <span class="env-label">{{ key }}</span>
-                <div class="env-bar" {% if data.hab_center_percent %}style="background: linear-gradient(to right, #400000 0%, #400000 {{ data.hab_min_percent }}%, #00ff00 {{ data.hab_center_percent }}%, #400000 {{ data.hab_max_percent }}%, #400000 100%);"{% endif %}>
+                <div class="env-bar" {% if data.bar_style %}style="{{ data.bar_style }}"{% endif %}>
                     <div class="env-marker {% if data.is_habitable %}habitable{% else %}uninhabitable{% endif %}" style="left: {{ data.percent }}%;"></div>
                 </div>
                 <span class="env-value">{{ data.display }}</span>

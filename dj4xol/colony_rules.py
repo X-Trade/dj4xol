@@ -17,6 +17,13 @@ KT_PER_MINE = 10  # Each mine extracts this many kt of minerals per turn
 YIELD_DEPLETION_RATE = 0.0001  # 0.01% per kt
 OVERMINING_DEPLETION_MULTIPLIER = 1.0
 HOMEWORLD_MIN_YIELD = 30  # Homeworld yields never drop below this percentage
+ENVIRONMENT_IGNORE_FIELDS = {
+    'gravity': 'ignores_gravity',
+    'temperature': 'ignores_temperature',
+    'radiation': 'ignores_radiation',
+}
+DEFAULT_POPULATION_CAP_MULTIPLIER = 1
+RESOURCE_LIMIT_GROWTH_STAGE_ONE_MAX = 2000
 
 
 def capacity_modifier(population, soft_cap):
@@ -35,6 +42,98 @@ def capacity_modifier(population, soft_cap):
     return -math.tanh((population - soft_cap) / scale)
 
 
+def player_ignores_environment(player, env):
+    race_type = getattr(player, 'race_type', None)
+    if race_type is None:
+        return False
+    return bool(getattr(race_type, ENVIRONMENT_IGNORE_FIELDS.get(env, ''), False))
+
+
+def player_population_cap_multiplier(player):
+    race_type = getattr(player, 'race_type', None)
+    if race_type is None:
+        return float(DEFAULT_POPULATION_CAP_MULTIPLIER)
+    raw_value = getattr(
+        race_type,
+        'population_cap_multiplier',
+        DEFAULT_POPULATION_CAP_MULTIPLIER,
+    )
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError):
+        value = float(DEFAULT_POPULATION_CAP_MULTIPLIER)
+    return max(0.0, value)
+
+
+def habitability_value_for_environment(player, env, value):
+    if player_ignores_environment(player, env):
+        return 1.0
+    return habitability_proportion(
+        player.hab_min(env),
+        player.hab_max(env),
+        getattr(player, f'{env}_center'),
+        value,
+    )
+
+
+def environment_matches_player_preference(player, env, value):
+    if player_ignores_environment(player, env):
+        return True
+    return abs(float(value) - float(getattr(player, f'{env}_center'))) < 1e-9
+
+
+def population_growth_uses_surface_resources(player):
+    race_type = getattr(player, 'race_type', None)
+    if race_type is None:
+        return False
+    return bool(getattr(race_type, 'population_growth_uses_resources', False))
+
+
+def limit_population_growth_by_surface_resources(star, proposed_growth):
+    """Limit positive population growth by surface ironium/boranium availability.
+
+    Rules:
+    - The first 2000 added colonists require 1kt ironium per 1000 colonists.
+    - Additional colonists require 1kt ironium and 1kt boranium per 2000 colonists.
+    """
+    growth = max(0, int(proposed_growth or 0))
+    if growth <= 0:
+        return 0, 0, 0
+
+    available_ironium = max(0, int(getattr(star, 'ironium_inventory', 0) or 0))
+    available_boranium = max(0, int(getattr(star, 'boranium_inventory', 0) or 0))
+
+    stage_one_requested = min(growth, RESOURCE_LIMIT_GROWTH_STAGE_ONE_MAX)
+    stage_one_growth = min(stage_one_requested, available_ironium * 1000)
+    ironium_cost = 0
+    if stage_one_growth > 0:
+        ironium_cost = min(
+            available_ironium,
+            int(math.ceil(float(stage_one_growth) / 1000.0)),
+        )
+    boranium_cost = 0
+
+    remaining_growth = growth - stage_one_requested
+    if remaining_growth <= 0 or stage_one_growth < stage_one_requested:
+        return stage_one_growth, ironium_cost, boranium_cost
+
+    available_ironium -= ironium_cost
+    mixed_growth = min(remaining_growth, available_ironium * 2000, available_boranium * 2000)
+    if mixed_growth <= 0:
+        return stage_one_growth, ironium_cost, boranium_cost
+
+    mixed_cost = min(
+        available_ironium,
+        available_boranium,
+        int(math.ceil(float(mixed_growth) / 2000.0)),
+    )
+    return (
+        stage_one_growth + mixed_growth,
+        ironium_cost + mixed_cost,
+        mixed_cost,
+    )
+
+
 def effective_capacity(player, star):
     """Calculate effective carrying capacity for a star based on habitability.
 
@@ -44,17 +143,12 @@ def effective_capacity(player, star):
     """
     hab_factor = 0
     for env in ['gravity', 'temperature', 'radiation']:
-        proportion = habitability_proportion(
-            player.hab_min(env),
-            player.hab_max(env),
-            getattr(player, f'{env}_center'),
-            getattr(star, env)
-        )
+        proportion = habitability_value_for_environment(player, env, getattr(star, env))
         hab_factor += max(0, proportion)
     hab_factor = hab_factor / 3.0
 
     # base_capacity is in millions, convert to actual colonists
-    base = star.base_capacity * MILLION
+    base = star.base_capacity * MILLION * player_population_cap_multiplier(player)
     if hab_factor <= 0:
         return MILLION  # Minimum 1m capacity
     scaled = hab_factor ** CAPACITY_HAB_EXPONENT
@@ -243,12 +337,7 @@ def calculate_habitability_factor(player, star):
     """
     factor = 0
     for env in ['gravity', 'temperature', 'radiation']:
-        factor += habitability_proportion(
-            player.hab_min(env),
-            player.hab_max(env),
-            getattr(player, f'{env}_center'),
-            getattr(star, env)
-        )
+        factor += habitability_value_for_environment(player, env, getattr(star, env))
     # Add economy factor before averaging
     factor += calculate_economy_factor(star)
     # Average using the original /3 divisor (economy is a bonus)
