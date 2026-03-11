@@ -897,6 +897,35 @@ class PlayCommandTest(TestCase):
         self.assertIn('visibility: visible', output)
         self.assertNotIn('stability_pct: 44', output)
 
+    def test_anomalies_command_shows_danger_when_known(self):
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=self.player1.homeworld.x,
+            y=self.player1.homeworld.y,
+            name='Known Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=77,
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year,
+            target_type='anomaly',
+            target_id=anomaly.id,
+            cached_report='{"name": "%s", "x": %s, "y": %s, "anomaly_type": "%s", "stability": %s, "heading": 0.0, "danger_level": "HIGH", "report_tier": "advanced"}'
+            % (anomaly.name, anomaly.x, anomaly.y, anomaly.anomaly_type, anomaly.stability),
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/anomalies', '/exit'],
+        )
+        self.assertIn('%s:' % anomaly.short_id, output)
+        self.assertIn('danger:', output)
+
     def test_salvage_command_lists_known_current_salvage(self):
         salvage = Salvage.objects.create(
             game=self.game,
@@ -933,6 +962,37 @@ class PlayCommandTest(TestCase):
         self.assertIn('visibility: current', output)
         self.assertIn('total_minerals_kt: 23', output)
         self.assertNotIn('total_minerals_kt: 100', output)
+
+    def test_salvage_command_shows_danger_when_known(self):
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=self.player1.homeworld.x,
+            y=self.player1.homeworld.y,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            danger_level='HIGH',
+            ironium_inventory=11,
+            boranium_inventory=7,
+            germanium_inventory=5,
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year,
+            target_type='salvage',
+            target_id=salvage.id,
+            cached_report='{"name": "%s", "x": %s, "y": %s, "salvage_type": "%s", "total_minerals": %s, "danger_level": "HIGH", "report_tier": "advanced"}'
+            % (salvage.name, salvage.x, salvage.y, salvage.salvage_type, salvage.total_minerals),
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/salvage', '/exit'],
+        )
+        self.assertIn('%s:' % salvage.short_id, output)
+        self.assertIn('danger: High', output)
 
     def test_salvage_command_lists_visible_salvage_without_report_in_no_scanners_game(self):
         self.game.no_scanners = True

@@ -1,8 +1,11 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from ..models import (
     Fleet,
     FleetOrders,
+    GameMessage,
     PlayerTechnologyGrant,
     ProductionOrder,
     ResearchCategory,
@@ -18,6 +21,7 @@ from ..research import (
     get_player_colony_scanner_ranges,
     get_level_requirement,
 )
+from ..diplomatic_contracts import grant_player_technology
 from ..turn import (
     GameTurn,
     MERGE_COMBAT_RETENTION,
@@ -565,6 +569,51 @@ class ResearchTurnTest(TestCase):
         self.assertAlmostEqual(new_fleet.wormhole_fuel_per_ly, 2.5, places=4)
         self.assertGreaterEqual(new_fleet.defense_level, 0.4)
         self.assertIn('/freighter/', new_fleet.thumbnail_path)
+
+    def test_granted_technology_can_trigger_reverse_engineering_bonus_rp(self):
+        tech = Technology.objects.filter(enabled=True, level__gte=3).select_related('category').order_by('level', 'id').first()
+        self.assertIsNotNone(tech)
+        rows = ensure_player_research_rows(self.player)
+        row = next(item for item in rows if item.category_id == tech.category_id)
+        row.current_level = max(0, int(tech.level) - 3)
+        row.stored_rp = 0
+        row.save(update_fields=['current_level', 'stored_rp'])
+
+        with patch('dj4xol.diplomatic_contracts.random.randint', return_value=1), \
+             patch('dj4xol.diplomatic_contracts.random.uniform', return_value=0.2):
+            grant_player_technology(self.player, tech, year=self.game.year)
+
+        row.refresh_from_db()
+        self.assertTrue(PlayerTechnologyGrant.objects.filter(player=self.player, technology=tech).exists())
+        self.assertGreater(int(row.stored_rp or 0), 0)
+        self.assertTrue(GameMessage.objects.filter(
+            game=self.game,
+            player=self.player,
+            category='RESEARCH',
+            message__icontains='Reverse engineering',
+        ).exists())
+
+    def test_granted_technology_can_trigger_reverse_engineering_level_jump(self):
+        tech = Technology.objects.filter(enabled=True, level__gte=4).select_related('category').order_by('level', 'id').first()
+        self.assertIsNotNone(tech)
+        rows = ensure_player_research_rows(self.player)
+        row = next(item for item in rows if item.category_id == tech.category_id)
+        start_level = max(0, int(tech.level) - 3)
+        row.current_level = start_level
+        row.save(update_fields=['current_level'])
+
+        with patch('dj4xol.diplomatic_contracts.random.randint', side_effect=[2, 2]):
+            grant_player_technology(self.player, tech, year=self.game.year)
+
+        row.refresh_from_db()
+        self.assertEqual(int(row.current_level or 0), min(int(tech.level), start_level + 2))
+        messages = list(GameMessage.objects.filter(
+            game=self.game,
+            player=self.player,
+            category='RESEARCH',
+            message__icontains='Reverse engineering',
+        ).values_list('message', flat=True))
+        self.assertTrue(any('advanced' in str(message).lower() for message in messages))
 
     def test_merge_preserves_proportional_combat_with_tradeoff(self):
         fleet_a = Fleet.objects.create(

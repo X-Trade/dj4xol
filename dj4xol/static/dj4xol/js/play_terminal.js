@@ -302,6 +302,15 @@
             closeOverlay();
             return;
         }
+        if (lowered === '/clear') {
+            state.blocks = [];
+            persistState();
+            renderBlocks('auto');
+            if (state.isOpen) {
+                setPromptValue('');
+            }
+            return;
+        }
         state.busy = true;
         rememberCommand(command);
 
@@ -322,6 +331,9 @@
             })
             .then(function(result) {
                 var payload = result.data || {};
+                if (payload.clear_output) {
+                    state.blocks = [];
+                }
                 appendCommandBlock(command, payload.lines || [], !payload.ok);
                 if (payload.ok && payload.mutated) {
                     state.dirty = true;

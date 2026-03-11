@@ -601,6 +601,7 @@ class Salvage(AbstractMapObject):
         choices=TYPE_CHOICES,
         default=TYPE_SALVAGE,
     )
+    danger_level = models.CharField(max_length=12, blank=True, default='')
     ironium_inventory = models.IntegerField(default=0)
     boranium_inventory = models.IntegerField(default=0)
     germanium_inventory = models.IntegerField(default=0)

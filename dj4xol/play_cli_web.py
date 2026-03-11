@@ -46,6 +46,14 @@ def execute_browser_command(game, player, raw_command):
             "close_overlay": True,
             "mutated": False,
         }
+    if raw_command == "/clear":
+        return {
+            "ok": True,
+            "lines": [],
+            "close_overlay": False,
+            "mutated": False,
+            "clear_output": True,
+        }
     if not _is_allowed_browser_command(raw_command):
         return {
             "ok": False,
@@ -123,6 +131,7 @@ def _is_allowed_browser_command(raw_command):
         "/salvage",
         "/exit",
         "/quit",
+        "/clear",
     ):
         return len(parts) == 1
     if command == "/fleets":
@@ -140,6 +149,8 @@ def _is_allowed_browser_command(raw_command):
             return True
         return False
     if command == "/research":
+        return len(parts) in (1, 2, 3)
+    if command == "/diplomacy":
         return len(parts) in (1, 2, 3)
     if command == "/rename":
         return len(parts) >= 3
@@ -182,6 +193,8 @@ def _is_mutating_browser_command(parts):
             not _is_browser_help_command(parts)
         )
     if command == "/research":
+        return len(parts) == 3
+    if command == "/diplomacy":
         return len(parts) == 3
     return False
 

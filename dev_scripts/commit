@@ -22,16 +22,19 @@ from pathlib import Path
 
 VERSION_RE = re.compile(r"^APP_VERSION\s*=\s*['\"](\d+)\.(\d+)\.(\d+)['\"]\s*$", re.MULTILINE)
 FIRST_VERSION_SECTION_RE = re.compile(
-    r"(?P<header>^\s*<h4><span class=\"env-label\">v(?P<version>\d+\.\d+\.\d+)</span></h4>\n"
-    r"^\s*<ul class=\"game-list\">\n)"
+    r"(?P<indent>^[ \t]*)<h4><span class=\"env-label\">v(?P<version>\d+\.\d+\.\d+)</span></h4>\n"
+    r"(?:^[ \t]*\n)*"
+    r"^[ \t]*<ul class=\"game-list\">\n"
     r"(?P<items>.*?)"
-    r"(?P<footer>^\s*</ul>\n)",
+    r"(?:^[ \t]*\n)*"
+    r"^[ \t]*</ul>\n?",
     re.MULTILINE | re.DOTALL,
 )
 FIRST_VERSION_HEADER_RE = re.compile(
     r"^(?P<indent>\s*)<h4><span class=\"env-label\">v\d+\.\d+\.\d+</span></h4>\n",
     re.MULTILINE,
 )
+LIST_ITEM_RE = re.compile(r"^\s*(<li>.*?</li>)\s*$", re.MULTILINE)
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 
@@ -94,13 +97,6 @@ def write_version(version_path: Path, content: str, new_version: str) -> None:
     version_path.write_text(new_content, encoding="utf-8")
 
 
-def _li_indent(items_block: str, default: str) -> str:
-    match = re.search(r"^(\s*)<li>", items_block, re.MULTILINE)
-    if match:
-        return match.group(1)
-    return default + "    "
-
-
 def normalize_message_item(raw: str) -> str:
     cleaned = str(raw or "").strip()
     cleaned = cleaned.strip(string.whitespace + string.punctuation)
@@ -112,46 +108,54 @@ def normalize_message_item(raw: str) -> str:
     return cleaned
 
 
+def _extract_list_items(items_block: str) -> list[str]:
+    return [match.group(1).strip() for match in LIST_ITEM_RE.finditer(items_block)]
+
+
+def _format_version_section(indent: str, version: str, items: list[str]) -> str:
+    item_lines = "".join(f"{indent}    {item}\n" for item in items)
+    return (
+        f"{indent}<h4><span class=\"env-label\">v{version}</span></h4>\n"
+        f"{indent}<ul class=\"game-list\">\n"
+        f"{item_lines}"
+        f"{indent}</ul>\n"
+    )
+
+
+def normalize_changelog_markup(content: str) -> str:
+    def replace_section(match: re.Match[str]) -> str:
+        indent = match.group("indent")
+        version = match.group("version")
+        items = _extract_list_items(match.group("items"))
+        return _format_version_section(indent, version, items)
+
+    normalized = FIRST_VERSION_SECTION_RE.sub(replace_section, content)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    return normalized
+
+
 def update_changelog(changelog_path: Path, messages: list[str], version: str, start_new_version: bool) -> None:
     content = changelog_path.read_text(encoding="utf-8")
     escaped_messages = [html.escape(message, quote=False) for message in messages]
+    rendered_items = [f"<li>{escaped_message}</li>" for escaped_message in escaped_messages]
 
     if start_new_version:
         header_match = FIRST_VERSION_HEADER_RE.search(content)
         if not header_match:
             raise ValueError(f"Could not find first version header in {changelog_path}")
         indent = header_match.group("indent")
-        item_lines = "".join(
-            f"{indent}    <li>{escaped_message}</li>\n"
-            for escaped_message in escaped_messages
-        )
-        new_section = (
-            f"{indent}<h4><span class=\"env-label\">v{version}</span></h4>\n"
-            f"{indent}<ul class=\"game-list\">\n"
-            f"{item_lines}"
-            f"{indent}</ul>\n"
-        )
+        new_section = _format_version_section(indent, version, rendered_items)
         content = content[:header_match.start()] + new_section + content[header_match.start():]
     else:
         section_match = FIRST_VERSION_SECTION_RE.search(content)
         if not section_match:
             raise ValueError(f"Could not find first version section in {changelog_path}")
-        header = section_match.group("header")
-        items = section_match.group("items")
-        footer = section_match.group("footer")
-        header_indent = re.match(r"^(\s*)", header).group(1)  # type: ignore[union-attr]
-        li_indent = _li_indent(items, header_indent)
-        new_items_block = "".join(
-            f"{li_indent}<li>{escaped_message}</li>\n"
-            for escaped_message in escaped_messages
-        )
-        new_items = new_items_block + items
-        replacement = header + new_items + footer
+        indent = section_match.group("indent")
+        existing_items = _extract_list_items(section_match.group("items"))
+        replacement = _format_version_section(indent, section_match.group("version"), rendered_items + existing_items)
         content = content[:section_match.start()] + replacement + content[section_match.end():]
 
-    # Keep formatting stable and prevent accumulating blank lines between sections.
-    content = re.sub(r"\n{3,}", "\n\n", content)
-
+    content = normalize_changelog_markup(content)
     changelog_path.write_text(content, encoding="utf-8")
 
 
