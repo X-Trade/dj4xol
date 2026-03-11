@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.utils.html import strip_tags
 
 from .models import Account, EmailRollupLog, ServerSettings
+from .diplomatic_contracts import build_incoming_contract_alert_entries
 
 logger = logging.getLogger(__name__)
 
@@ -224,16 +225,24 @@ def _build_rollup_entries(account, base_url):
             any_new_turn = True
 
     for player in players:
+        alert_messages = [
+            {
+                'year': entry['year'],
+                'priority': True,
+                'text': entry['text'],
+            }
+            for entry in build_incoming_contract_alert_entries(player)
+        ]
         qs = player.messages.filter(
             models.Q(priority=True) | models.Q(category__in=ROLLUP_CATEGORIES)
         ).order_by('-priority', '-year', '-id')
         if player.last_seen_year is not None:
             qs = qs.filter(year__gt=player.last_seen_year)
         messages = list(qs)
-        if not messages:
+        if not messages and not alert_messages:
             continue
 
-        entry_messages = [
+        entry_messages = alert_messages + [
             {
                 'year': msg.year,
                 'priority': bool(msg.priority),

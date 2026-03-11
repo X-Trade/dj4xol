@@ -1336,6 +1336,263 @@ class Technology(UUIDMixin):
         return '%s L%s: %s' % (self.category.name, self.level, self.name)
 
 
+class DiplomaticContract(AbstractGameObject):
+    TEMPERATURE_PROPOSE = 'PROPOSE'
+    TEMPERATURE_REQUEST = 'REQUEST'
+    TEMPERATURE_DEMAND = 'DEMAND'
+    TEMPERATURE_CHOICES = [
+        (TEMPERATURE_PROPOSE, 'Propose'),
+        (TEMPERATURE_REQUEST, 'Request'),
+        (TEMPERATURE_DEMAND, 'Demand'),
+    ]
+
+    STATUS_DRAFT = 'DRAFT'
+    STATUS_SENT = 'SENT'
+    STATUS_ACCEPTED = 'ACCEPTED'
+    STATUS_FULFILLED = 'FULFILLED'
+    STATUS_DECLINED = 'DECLINED'
+    STATUS_COUNTERED = 'COUNTERED'
+    STATUS_EXPIRED = 'EXPIRED'
+    STATUS_REVOKED = 'REVOKED'
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, 'Draft'),
+        (STATUS_SENT, 'Sent'),
+        (STATUS_ACCEPTED, 'Accepted'),
+        (STATUS_FULFILLED, 'Fulfilled'),
+        (STATUS_DECLINED, 'Declined'),
+        (STATUS_COUNTERED, 'Countered'),
+        (STATUS_EXPIRED, 'Expired'),
+        (STATUS_REVOKED, 'Revoked'),
+    ]
+
+    CONDITION_EXCHANGE = 'EXCHANGE'
+    CONDITION_OR_ELSE = 'OR_ELSE'
+    CONDITION_CHOICES = [
+        (CONDITION_EXCHANGE, 'In Exchange For'),
+        (CONDITION_OR_ELSE, 'Or Else'),
+    ]
+
+    CLAUSE_NOTHING = 'NOTHING'
+    CLAUSE_TECHNOLOGY = 'TECHNOLOGY'
+    CLAUSE_STANCE = 'STANCE'
+    CLAUSE_RESOURCE_TO_WORLD = 'RESOURCE_TO_WORLD'
+    CLAUSE_RESOURCE_ON_GIVEN_FLEET = 'RESOURCE_ON_GIVEN_FLEET'
+    CLAUSE_FLEET_BY_SHIP_COUNT = 'FLEET_BY_SHIP_COUNT'
+    CLAUSE_SPECIFIC_FLEET = 'SPECIFIC_FLEET'
+    CLAUSE_CHOICES = [
+        (CLAUSE_NOTHING, 'Nothing'),
+        (CLAUSE_TECHNOLOGY, 'Technology'),
+        (CLAUSE_STANCE, 'Stance'),
+        (CLAUSE_RESOURCE_TO_WORLD, 'Resources To World'),
+        (CLAUSE_RESOURCE_ON_GIVEN_FLEET, 'Resources On Given Fleet'),
+        (CLAUSE_FLEET_BY_SHIP_COUNT, 'Fleet By Ship Count'),
+        (CLAUSE_SPECIFIC_FLEET, 'Specific Fleet'),
+    ]
+
+    sender = models.ForeignKey(
+        Player,
+        related_name='sent_diplomatic_contracts',
+        on_delete=models.CASCADE,
+    )
+    recipient = models.ForeignKey(
+        Player,
+        related_name='received_diplomatic_contracts',
+        on_delete=models.CASCADE,
+    )
+    countered_from = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        related_name='counter_offers',
+        on_delete=models.SET_NULL,
+    )
+    temperature = models.CharField(
+        max_length=8,
+        choices=TEMPERATURE_CHOICES,
+        default=TEMPERATURE_PROPOSE,
+    )
+    offer_condition_type = models.CharField(
+        max_length=16,
+        choices=CONDITION_CHOICES,
+        default=CONDITION_EXCHANGE,
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default=STATUS_DRAFT,
+    )
+    sent_year = models.IntegerField(default=0)
+    accepted_year = models.IntegerField(null=True, blank=True)
+    handled_year = models.IntegerField(null=True, blank=True)
+    fulfilled_year = models.IntegerField(null=True, blank=True)
+    expires_year = models.IntegerField(default=0)
+    extend_on_accept_years = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    request_clause_type = models.CharField(
+        max_length=24,
+        choices=CLAUSE_CHOICES,
+        default=CLAUSE_NOTHING,
+    )
+    request_technology = models.ForeignKey(
+        'Technology',
+        null=True,
+        blank=True,
+        related_name='+',
+        on_delete=models.SET_NULL,
+    )
+    request_stance = models.CharField(
+        max_length=8,
+        choices=Player.STANCE_CHOICES,
+        blank=True,
+        default='',
+    )
+    request_ship_count = models.IntegerField(default=0)
+    request_ironium = models.IntegerField(default=0)
+    request_boranium = models.IntegerField(default=0)
+    request_germanium = models.IntegerField(default=0)
+    request_resource_x = models.IntegerField(default=0)
+    request_resource_y = models.IntegerField(default=0)
+    request_resource_z = models.IntegerField(default=0)
+    request_colonists = models.IntegerField(default=0)
+    request_suggested_star = models.ForeignKey(
+        Star,
+        null=True,
+        blank=True,
+        related_name='+',
+        on_delete=models.SET_NULL,
+    )
+
+    offer_clause_type = models.CharField(
+        max_length=24,
+        choices=CLAUSE_CHOICES,
+        default=CLAUSE_NOTHING,
+    )
+    offer_technology = models.ForeignKey(
+        'Technology',
+        null=True,
+        blank=True,
+        related_name='+',
+        on_delete=models.SET_NULL,
+    )
+    offer_stance = models.CharField(
+        max_length=8,
+        choices=Player.STANCE_CHOICES,
+        blank=True,
+        default='',
+    )
+    offer_fleet = models.ForeignKey(
+        Fleet,
+        null=True,
+        blank=True,
+        related_name='+',
+        on_delete=models.SET_NULL,
+    )
+
+    progress_ironium = models.IntegerField(default=0)
+    progress_boranium = models.IntegerField(default=0)
+    progress_germanium = models.IntegerField(default=0)
+    progress_resource_x = models.IntegerField(default=0)
+    progress_resource_y = models.IntegerField(default=0)
+    progress_resource_z = models.IntegerField(default=0)
+    progress_colonists = models.IntegerField(default=0)
+    progress_ship_count = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['-created_at']
+        unique_together = [['game', 'short_id']]
+
+    def clean(self):
+        super(DiplomaticContract, self).clean()
+        if self.sender_id and self.recipient_id:
+            if self.sender_id == self.recipient_id:
+                raise ValidationError('Diplomatic requests cannot target the same player.')
+            if self.sender.game_id != self.recipient.game_id or self.sender.game_id != self.game_id:
+                raise ValidationError('Diplomatic requests must remain within one game.')
+        if self.request_suggested_star_id and self.request_suggested_star.game_id != self.game_id:
+            raise ValidationError('Suggested destination star must belong to this game.')
+        if (
+            self.request_suggested_star_id and self.sender_id and
+            self.request_suggested_star.player_id != self.sender_id
+        ):
+            raise ValidationError('Suggested destination star must belong to the sending player.')
+        if self.offer_fleet_id and self.offer_fleet.game_id != self.game_id:
+            raise ValidationError('Offered fleet must belong to this game.')
+        if (
+            self.offer_fleet_id and self.sender_id and
+            self.offer_fleet.player_id != self.sender_id
+        ):
+            raise ValidationError('Offered fleet must belong to the sending player.')
+
+    @property
+    def is_handled(self):
+        return self.status in (
+            self.STATUS_ACCEPTED,
+            self.STATUS_FULFILLED,
+            self.STATUS_DECLINED,
+            self.STATUS_COUNTERED,
+            self.STATUS_EXPIRED,
+            self.STATUS_REVOKED,
+        )
+
+    @property
+    def is_unanswered(self):
+        return self.status == self.STATUS_SENT
+
+    def __str__(self):
+        return '%s -> %s (%s)' % (
+            getattr(self.sender, 'name', 'Unknown'),
+            getattr(self.recipient, 'name', 'Unknown'),
+            self.status,
+        )
+
+
+class PlayerTechnologyGrant(models.Model):
+    player = models.ForeignKey(
+        Player,
+        related_name='technology_grants',
+        on_delete=models.CASCADE,
+    )
+    technology = models.ForeignKey(
+        Technology,
+        related_name='player_grants',
+        on_delete=models.CASCADE,
+    )
+    source_contract = models.ForeignKey(
+        DiplomaticContract,
+        null=True,
+        blank=True,
+        related_name='technology_grants',
+        on_delete=models.SET_NULL,
+    )
+    granted_by_player = models.ForeignKey(
+        Player,
+        null=True,
+        blank=True,
+        related_name='technology_grants_given',
+        on_delete=models.SET_NULL,
+    )
+    granted_year = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [['player', 'technology']]
+        ordering = ['technology__category', 'technology__level', 'technology__name']
+
+    def clean(self):
+        super(PlayerTechnologyGrant, self).clean()
+        if self.source_contract_id and self.player_id:
+            if self.source_contract.game_id != self.player.game_id:
+                raise ValidationError('Technology grants must stay within the same game.')
+
+    def __str__(self):
+        return '%s granted %s' % (
+            getattr(self.player, 'name', 'Unknown'),
+            getattr(self.technology, 'name', 'Unknown technology'),
+        )
+
+
 class HullDesign(models.Model):
     """Staff-authored hull blueprint prototype (no gameplay integration yet)."""
     name = models.CharField(max_length=64, unique=True)

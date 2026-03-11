@@ -12,6 +12,7 @@ from ..factory import GameFactory
 from ..models import (
     Account,
     Anomaly,
+    DiplomaticContract,
     Fleet,
     FleetOrders,
     GameMessage,
@@ -1409,6 +1410,58 @@ class PlayCommandTest(TestCase):
         self.assertNotIn('\nmessages:\n', output)
         self.assertIn('Priority combat alert', output)
         self.assertNotIn('General note', output)
+
+    def test_messages_command_includes_incoming_contract_alerts(self):
+        DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.player2,
+            recipient=self.player1,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=self.game.year,
+            expires_year=self.game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='WARM',
+            offer_clause_type='NOTHING',
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/messages priority=1 category=DIPLOMATIC limit=5', '/exit'],
+        )
+
+        self.assertIn('Diplomatic request:', output)
+        self.assertIn('Expires Year %s' % (self.game.year + 24), output)
+
+    def test_messages_command_includes_unfulfilled_accepted_request_alerts(self):
+        DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.player1,
+            recipient=self.player2,
+            temperature='REQUEST',
+            status='ACCEPTED',
+            sent_year=self.game.year,
+            accepted_year=self.game.year,
+            expires_year=self.game.year + 24,
+            request_clause_type='RESOURCE_TO_WORLD',
+            request_ironium=25,
+            offer_clause_type='NOTHING',
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/messages priority=1 category=DIPLOMATIC limit=5', '/exit'],
+        )
+
+        self.assertIn('Awaiting from', output)
+        self.assertIn('25kt Ironium', output)
+        self.assertIn('Complete by Year %s' % (self.game.year + 24), output)
 
     def test_messages_command_defaults_match_game_panel_filter(self):
         self.player1.messages_seen_year = self.game.year - 1

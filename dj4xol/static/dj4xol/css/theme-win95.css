@@ -826,6 +826,14 @@ input[type="range"]::-webkit-slider-thumb {
     color: #800000;
 }
 
+.message.diplomatic-priority {
+    background: #d8d8ff;
+}
+
+.message.diplomatic-priority .message-text {
+    color: #1b2b6b;
+}
+
 /* Detail panel */
 .win95 .detail-header {
     margin: 2px 0;

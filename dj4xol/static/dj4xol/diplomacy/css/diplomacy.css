@@ -70,6 +70,205 @@
     font-weight: bold;
 }
 
+.diplomacy-contract-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.diplomacy-contract {
+    --diplomacy-contract-status-colour: rgba(128, 128, 128, 0.65);
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    border-left: 4px solid var(--diplomacy-contract-status-colour);
+    padding: 10px;
+}
+
+.diplomacy-contract.selected {
+    border-color: rgba(96, 96, 192, 0.8);
+}
+
+.diplomacy-contract-summary {
+    margin-bottom: 6px;
+}
+
+.diplomacy-contract-meta,
+.diplomacy-contract-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+.diplomacy-contract-meta {
+    font-size: 0.92em;
+    opacity: 0.9;
+}
+
+.diplomacy-contract-status-label {
+    font-weight: 600;
+}
+
+.diplomacy-contract-status-value {
+    color: var(--diplomacy-contract-status-colour);
+}
+
+.diplomacy-contract-status-accepted {
+    --diplomacy-contract-status-colour: #72b772;
+}
+
+.diplomacy-contract-status-fulfilled {
+    --diplomacy-contract-status-colour: #3f8a3f;
+}
+
+.diplomacy-contract-status-countered {
+    --diplomacy-contract-status-colour: #c9812d;
+}
+
+.diplomacy-contract-status-declined,
+.diplomacy-contract-status-expired {
+    --diplomacy-contract-status-colour: var(--status-negative, #a94442);
+}
+
+.diplomacy-contract-progress {
+    margin: 6px 0;
+    font-size: 0.92em;
+}
+
+.diplomacy-compose-form {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.diplomacy-compose-narrative {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 12px;
+    min-height: 84px;
+    overflow: visible;
+    line-height: 1.5;
+}
+
+.diplomacy-compose-narrative.panel-scrollable-list {
+    max-height: none;
+    overflow: visible;
+    padding-right: 12px;
+}
+
+.diplomacy-compose-timing {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 12px;
+    overflow: visible;
+}
+
+.diplomacy-compose-timing.panel-scrollable-list {
+    max-height: none;
+    overflow: visible;
+    padding-right: 12px;
+}
+
+.diplomacy-compose-timing input {
+    width: 72px;
+    font: inherit;
+}
+
+.compose-token,
+.compose-token-static,
+.compose-detail-block {
+    min-height: 30px;
+}
+
+.compose-token,
+.compose-detail-block {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+}
+
+.compose-token {
+    font: inherit;
+}
+
+.compose-token-static {
+    display: inline-flex;
+    align-items: center;
+    font-weight: 600;
+}
+
+.compose-detail-block {
+    display: none;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.compose-token select,
+.compose-detail-block select,
+.compose-detail-block input,
+.diplomacy-compose-narrative > select {
+    max-width: 100%;
+}
+
+.compose-detail-block select,
+.compose-detail-block input,
+.diplomacy-compose-narrative > select {
+    font: inherit;
+}
+
+.compose-request-resources {
+    gap: 8px;
+}
+
+.compose-resource-frag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.compose-resource-frag input,
+.compose-request-ship-count input {
+    width: 72px;
+}
+
+.lcars .compose-resource-frag input,
+.lcars .compose-request-ship-count input {
+    width: 92px;
+}
+
+.compose-request-technology select,
+.compose-offer-technology select {
+    min-width: 220px;
+}
+
+.compose-request-suggested-star select,
+.compose-offer-fleet select {
+    min-width: 180px;
+}
+
+.diplomacy-compose-form .detail-row {
+    gap: 12px;
+}
+
+.diplomacy-compose-warning,
+.diplomacy-compose-notice {
+    margin: 8px 0;
+}
+
+.diplomacy-compose-inline-warning {
+    color: #b03030;
+    font-weight: 600;
+}
+
+.diplomacy-compose-toggle {
+    margin-top: 12px;
+}
+
 @media (max-width: 900px) {
     .diplomacy-headings,
     .diplomacy-row {
@@ -84,5 +283,40 @@
     .diplomacy-effects-row {
         grid-template-columns: minmax(120px, 1fr) minmax(0, 1.35fr);
         gap: 8px;
+    }
+
+    .diplomacy-contract-meta,
+    .diplomacy-contract-actions {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .diplomacy-compose-narrative {
+        padding: 8px 10px;
+        gap: 6px;
+    }
+
+    .diplomacy-compose-timing {
+        padding: 8px 10px;
+        gap: 6px;
+    }
+
+    .compose-request-technology select,
+    .compose-offer-technology select,
+    .compose-request-suggested-star select,
+    .compose-offer-fleet select {
+        min-width: 0;
+        width: min(100%, 280px);
+    }
+
+    .compose-resource-frag input,
+    .compose-request-ship-count input,
+    .diplomacy-compose-timing input {
+        width: 64px;
+    }
+
+    .lcars .compose-resource-frag input,
+    .lcars .compose-request-ship-count input {
+        width: 80px;
     }
 }

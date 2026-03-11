@@ -3,6 +3,7 @@ from django.test import TestCase
 from ..models import (
     Fleet,
     FleetOrders,
+    PlayerTechnologyGrant,
     ProductionOrder,
     ResearchCategory,
     ResearchLevelRequirement,
@@ -405,6 +406,164 @@ class ResearchTurnTest(TestCase):
         self.assertLessEqual(new_fleet.overmax_fuel_penalty, 1.0)
         self.assertAlmostEqual(new_fleet.wormhole_fuel_per_ly, 4.5, places=4)
         self.assertGreaterEqual(new_fleet.defense_level, 0.2)
+        self.assertIn('/freighter/', new_fleet.thumbnail_path)
+
+    def test_get_player_tech_effects_include_granted_technology(self):
+        self._reset_research_catalog()
+        propulsion = ResearchCategory.objects.create(
+            code='GIVE_PROP', name='Granted Propulsion', enabled=True
+        )
+        construction = ResearchCategory.objects.create(
+            code='GIVE_HULL', name='Granted Hulls', enabled=True
+        )
+        Technology.objects.create(
+            category=propulsion,
+            level=1,
+            name='Warp 3',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 3}',
+            enabled=True,
+        )
+        granted_warp = Technology.objects.create(
+            category=propulsion,
+            level=8,
+            name='War Warp Gift',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 8, "wormhole_fuel_per_ly": 3.5, "race_type": "is WAR"}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=construction,
+            level=1,
+            name='Scout Hull',
+            tech_type='HULL',
+            params_json='{"max_cargo_capacity": 50, "max_fuel": 25, "hull_thumbnail_class": "scout"}',
+            enabled=True,
+        )
+        granted_hull = Technology.objects.create(
+            category=construction,
+            level=8,
+            name='War Freighter Gift',
+            tech_type='HULL',
+            params_json='{"max_cargo_capacity": 500, "max_fuel": 220, "hull_thumbnail_class": "freighter"}',
+            enabled=True,
+        )
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 0.0
+            row.save(update_fields=['current_level'])
+
+        PlayerTechnologyGrant.objects.create(
+            player=self.player,
+            technology=granted_warp,
+            granted_by_player=self.player,
+            granted_year=self.game.year,
+        )
+        PlayerTechnologyGrant.objects.create(
+            player=self.player,
+            technology=granted_hull,
+            granted_by_player=self.player,
+            granted_year=self.game.year,
+        )
+
+        unlocked_names = {tech.name for tech in get_player_unlocked_technologies(self.player)}
+        self.assertIn('War Warp Gift', unlocked_names)
+        self.assertIn('War Freighter Gift', unlocked_names)
+
+        effects = get_player_tech_effects(self.player)
+        self.assertEqual(effects['max_warp_speed'], 8)
+        self.assertAlmostEqual(effects['wormhole_fuel_per_ly'], 3.5, places=4)
+        self.assertEqual(effects['max_cargo_capacity'], 500)
+        self.assertEqual(effects['max_fuel'], 220)
+        self.assertEqual(effects['hull_thumbnail_class'], 'freighter')
+
+    def test_new_fleet_uses_granted_technology(self):
+        self._reset_research_catalog()
+        propulsion = ResearchCategory.objects.create(
+            code='GIVE_BUILD_PROP', name='Granted Build Propulsion', enabled=True
+        )
+        construction = ResearchCategory.objects.create(
+            code='GIVE_BUILD_HULL', name='Granted Build Hulls', enabled=True
+        )
+        Technology.objects.create(
+            category=propulsion,
+            level=1,
+            name='Warp 4',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 4, "fuel_efficiency": 1.0, "overmax_fuel_penalty": 1.0}',
+            enabled=True,
+        )
+        granted_warp = Technology.objects.create(
+            category=propulsion,
+            level=9,
+            name='Prototype Gift Drive',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 9, "fuel_efficiency": 1.3, "overmax_fuel_penalty": 0.7, "wormhole_fuel_per_ly": 2.5, "race_type": "is SCI"}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=construction,
+            level=1,
+            name='Scout Hull',
+            tech_type='HULL',
+            params_json='{"max_cargo_capacity": 60, "max_fuel": 30, "hull_thumbnail_class": "scout"}',
+            enabled=True,
+        )
+        granted_hull = Technology.objects.create(
+            category=construction,
+            level=9,
+            name='Freighter Gift Hull',
+            tech_type='HULL',
+            params_json='{"max_cargo_capacity": 450, "max_fuel": 210, "hull_thumbnail_class": "freighter", "defense_level": 0.4}',
+            enabled=True,
+        )
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 0.0
+            row.save(update_fields=['current_level'])
+
+        PlayerTechnologyGrant.objects.create(
+            player=self.player,
+            technology=granted_warp,
+            granted_by_player=self.player,
+            granted_year=self.game.year,
+        )
+        PlayerTechnologyGrant.objects.create(
+            player=self.player,
+            technology=granted_hull,
+            granted_by_player=self.player,
+            granted_year=self.game.year,
+        )
+
+        existing_ids = set(Fleet.objects.filter(player=self.player).values_list('id', flat=True))
+        self.star.mines = 0
+        self.star.defenses = 0
+        self.star.labs = 0
+        self.star.shipyards = 1
+        self.star.factories = 100
+        self.star.colonists = 200000
+        self.star.ironium_inventory = 1000
+        self.star.boranium_inventory = 1000
+        self.star.germanium_inventory = 1000
+        self.star.save()
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FLEET',
+            quantity=1,
+        )
+        GameTurn(self.game).production()
+        new_fleet = Fleet.objects.filter(player=self.player).exclude(id__in=existing_ids).first()
+        self.assertIsNotNone(new_fleet)
+        self.assertGreaterEqual(new_fleet.max_safe_warp, 9)
+        self.assertGreaterEqual(new_fleet.cargo_capacity, 450)
+        self.assertEqual(new_fleet.fuel, 210.0)
+        self.assertEqual(new_fleet.max_fuel, 210.0)
+        self.assertGreaterEqual(new_fleet.fuel_efficiency, 1.3)
+        self.assertLessEqual(new_fleet.overmax_fuel_penalty, 0.7)
+        self.assertAlmostEqual(new_fleet.wormhole_fuel_per_ly, 2.5, places=4)
+        self.assertGreaterEqual(new_fleet.defense_level, 0.4)
         self.assertIn('/freighter/', new_fleet.thumbnail_path)
 
     def test_merge_preserves_proportional_combat_with_tradeoff(self):

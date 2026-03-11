@@ -967,6 +967,14 @@ input[type="range"]::-webkit-slider-thumb {
     color: #cc6633;
 }
 
+.panel .messages-scroll .message.diplomatic-priority {
+    background: none;
+}
+
+.panel .messages-scroll .message.diplomatic-priority .message-text {
+    color: #9999ff;
+}
+
 /* Detail panel */
 .panel #detail {
     background: none;

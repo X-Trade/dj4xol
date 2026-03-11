@@ -22,7 +22,7 @@ from .models import (
     Game, Player, ServerSettings, ServerRace, ServerRaceType, Account, GameInvitation, Fleet,
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology,
     ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
-    Spectator, profanity_filter_settings, server_setting_enabled,
+    Spectator, profanity_filter_settings, server_setting_enabled, DiplomaticContract,
 )
 from .email_rollups import (
     send_message_rollup_for_account,
@@ -40,20 +40,36 @@ from .research import (
     build_research_screen_data, update_player_allocations, set_even_allocations,
     set_singular_allocation, get_global_research_max_level,
     get_starting_tech_balance_costs, build_production_cost_entries,
-    get_player_available_production_orders,
+    get_player_available_production_orders, get_player_unlocked_technologies,
 )
 from .diplomacy import (
     STANCE_CHOICES,
+    STANCE_COLD,
+    STANCE_HOSTILE,
     build_pending_stance_map,
     combat_chance_modifier_percent,
     combat_chance_percent,
     encountered_players,
     has_encountered_player,
+    normalise_stance,
     player_pending_default_stance,
     stance_effect_items,
     stance_label,
     stance_towards,
     update_player_stances,
+)
+from .diplomatic_contracts import (
+    accept_contract,
+    build_player_message_feed,
+    decline_contract,
+    diplomatic_actions_locked,
+    ensure_specific_fleet_report,
+    format_contract_statement,
+    format_contract_summary,
+    mark_countered,
+    pair_contracts,
+    resource_label_for_player,
+    revoke_contract,
 )
 from .technology_thumbnails import (
     get_technology_thumbnail_initial_index,
@@ -869,10 +885,7 @@ def starmap(request, game_short_id):
     # Get messages for this player, priority first then most recent
     # Filter to messages since messages_seen_year (or all if never seen)
     if player:
-        messages_qs = player.messages.order_by('-priority', '-year', '-id')
-        if player.messages_seen_year is not None:
-            messages_qs = messages_qs.filter(year__gte=player.messages_seen_year)
-        messages = messages_qs[:1000]
+        messages = build_player_message_feed(player, limit=1000, include_seen_filter=True)
         # Update last_seen_year for next turn generation
         player.last_seen_year = game.year
         player.save(update_fields=['last_seen_year'])
@@ -2524,34 +2537,382 @@ def research(request, game_short_id):
     })
 
 
+def _diplomacy_redirect_url(game_short_id, target=None, extra=None):
+    params = {}
+    if target:
+        params['target'] = target
+    if extra:
+        params.update(extra)
+    base = reverse('dj4xol:diplomacy', kwargs={'game_short_id': game_short_id})
+    if not params:
+        return base
+    return '%s?%s' % (base, urlencode(params))
+
+
+def _diplomacy_known_resource_choices(player):
+    keys = ['ironium', 'boranium', 'germanium', 'colonists']
+    for key in SECRET_RESOURCE_KEYS:
+        if bool(getattr(player, 'discovered_%s' % key, False)):
+            keys.append(key)
+    return [(key, resource_label_for_player(player, key)) for key in keys]
+
+
+def _diplomacy_request_clause_choices():
+    return [
+        (DiplomaticContract.CLAUSE_NOTHING, 'do nothing'),
+        (DiplomaticContract.CLAUSE_TECHNOLOGY, 'grant us technology'),
+        (DiplomaticContract.CLAUSE_STANCE, 'set their stance to'),
+        (DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD, 'deliver'),
+        (DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET, 'give us a fleet carrying'),
+        (DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT, 'give us a fleet of'),
+    ]
+
+
+def _diplomacy_offer_clause_choices():
+    return [
+        (DiplomaticContract.CLAUSE_NOTHING, 'do nothing'),
+        (DiplomaticContract.CLAUSE_TECHNOLOGY, 'grant them technology'),
+        (DiplomaticContract.CLAUSE_STANCE, 'set our stance to'),
+        (DiplomaticContract.CLAUSE_SPECIFIC_FLEET, 'give them'),
+    ]
+
+
+def _diplomacy_offer_condition_choices():
+    return [
+        (DiplomaticContract.CONDITION_EXCHANGE, 'in exchange'),
+        (DiplomaticContract.CONDITION_OR_ELSE, 'or else'),
+    ]
+
+
+def _diplomacy_contract_progress(contract, viewer):
+    if contract.request_clause_type in (
+        DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
+        DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET,
+    ):
+        parts = []
+        for key in ('ironium', 'boranium', 'germanium', 'resource_x', 'resource_y', 'resource_z', 'colonists'):
+            required = int(getattr(contract, 'request_%s' % key, 0) or 0)
+            if required <= 0:
+                continue
+            delivered = int(getattr(contract, 'progress_%s' % key, 0) or 0)
+            label = resource_label_for_player(viewer, key)
+            unit = 'kt'
+            parts.append('%s/%s%s %s' % (delivered, required, unit, label))
+        return ', '.join(parts)
+    if contract.request_clause_type == DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT:
+        return '%s/%s ships' % (
+            int(getattr(contract, 'progress_ship_count', 0) or 0),
+            int(getattr(contract, 'request_ship_count', 0) or 0),
+        )
+    return ''
+
+
+def _diplomacy_player_display_name(player_obj):
+    alias = getattr(getattr(player_obj, 'account', None), 'alias', None) or 'Unknown'
+    return '%s (%s)' % (player_obj.name, alias)
+
+
+def _diplomacy_group_technologies(technologies):
+    tech_type_labels = dict(Technology.TECH_TYPE_CHOICES)
+    groups = []
+    grouped = {}
+    for technology in technologies:
+        key = technology.tech_type or 'OTHER'
+        grouped.setdefault(key, []).append(technology)
+    for tech_type, label in Technology.TECH_TYPE_CHOICES:
+        techs = grouped.get(tech_type, [])
+        if techs:
+            groups.append({
+                'label': label,
+                'items': sorted(techs, key=lambda tech: (tech.level, tech.category.name, tech.display_order, tech.name)),
+            })
+    return groups
+
+
+def _diplomacy_build_compose_state(player, selected_player, request_obj=None, counter_contract=None):
+    state = {
+        'temperature': DiplomaticContract.TEMPERATURE_PROPOSE,
+        'offer_condition_type': DiplomaticContract.CONDITION_EXCHANGE,
+        'request_clause_type': DiplomaticContract.CLAUSE_NOTHING,
+        'offer_clause_type': DiplomaticContract.CLAUSE_NOTHING,
+        'request_technology': '',
+        'offer_technology': '',
+        'request_stance': 'NEUTRAL',
+        'offer_stance': 'NEUTRAL',
+        'request_ship_count': '',
+        'offer_fleet': '',
+        'request_suggested_star': '',
+        'deadline_years': '24',
+        'extend_on_accept_years': '0',
+        'resources': {
+            'ironium': '',
+            'boranium': '',
+            'germanium': '',
+            'resource_x': '',
+            'resource_y': '',
+            'resource_z': '',
+            'colonists': '',
+        },
+    }
+    if counter_contract is not None:
+        state['temperature'] = counter_contract.temperature
+        state['offer_condition_type'] = counter_contract.offer_condition_type
+    if request_obj is not None and request_obj.method == 'POST':
+        state['temperature'] = request_obj.POST.get('temperature', state['temperature'])
+        state['offer_condition_type'] = request_obj.POST.get('offer_condition_type', state['offer_condition_type'])
+        state['request_clause_type'] = request_obj.POST.get('request_clause_type', state['request_clause_type'])
+        state['offer_clause_type'] = request_obj.POST.get('offer_clause_type', state['offer_clause_type'])
+        state['request_technology'] = request_obj.POST.get('request_technology', '')
+        state['offer_technology'] = request_obj.POST.get('offer_technology', '')
+        state['request_stance'] = request_obj.POST.get('request_stance', state['request_stance'])
+        state['offer_stance'] = request_obj.POST.get('offer_stance', state['offer_stance'])
+        state['request_ship_count'] = request_obj.POST.get('request_ship_count', '')
+        state['offer_fleet'] = request_obj.POST.get('offer_fleet', '')
+        state['request_suggested_star'] = request_obj.POST.get('request_suggested_star', '')
+        state['deadline_years'] = request_obj.POST.get('deadline_years', state['deadline_years'])
+        state['extend_on_accept_years'] = request_obj.POST.get('extend_on_accept_years', state['extend_on_accept_years'])
+        for key in state['resources']:
+            state['resources'][key] = request_obj.POST.get('request_%s' % key, '')
+    return state
+
+
+def _diplomacy_parse_contract(player, target_player, post_data, available_offer_techs,
+                               available_request_techs, counter_from=None):
+    errors = []
+    temperature = post_data.get('temperature', DiplomaticContract.TEMPERATURE_PROPOSE)
+    valid_temperatures = {choice[0] for choice in DiplomaticContract.TEMPERATURE_CHOICES}
+    if temperature not in valid_temperatures:
+        temperature = DiplomaticContract.TEMPERATURE_PROPOSE
+
+    def parse_int(name, default=0):
+        raw = (post_data.get(name) or '').strip()
+        if raw == '':
+            return default
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            errors.append('%s must be a whole number.' % name.replace('_', ' ').title())
+            return default
+        if value < 0:
+            errors.append('%s must not be negative.' % name.replace('_', ' ').title())
+            return default
+        return value
+
+    contract = DiplomaticContract(
+        game=player.game,
+        sender=player,
+        recipient=target_player,
+        status=DiplomaticContract.STATUS_SENT,
+        sent_year=player.game.year,
+        temperature=temperature,
+        countered_from=counter_from,
+    )
+    offer_condition_type = post_data.get('offer_condition_type', DiplomaticContract.CONDITION_EXCHANGE)
+    valid_offer_conditions = {choice[0] for choice in DiplomaticContract.CONDITION_CHOICES}
+    if offer_condition_type not in valid_offer_conditions:
+        offer_condition_type = DiplomaticContract.CONDITION_EXCHANGE
+    contract.offer_condition_type = offer_condition_type
+
+    deadline_years = max(1, parse_int('deadline_years', 24))
+    contract.expires_year = int(player.game.year or 0) + deadline_years
+    contract.extend_on_accept_years = parse_int('extend_on_accept_years', 0)
+
+    request_clause = post_data.get('request_clause_type', DiplomaticContract.CLAUSE_NOTHING)
+    request_clause_values = {value for value, _label in _diplomacy_request_clause_choices()}
+    if request_clause not in request_clause_values:
+        request_clause = DiplomaticContract.CLAUSE_NOTHING
+    contract.request_clause_type = request_clause
+
+    offer_clause = post_data.get('offer_clause_type', DiplomaticContract.CLAUSE_NOTHING)
+    offer_clause_values = {value for value, _label in _diplomacy_offer_clause_choices()}
+    if offer_clause not in offer_clause_values:
+        offer_clause = DiplomaticContract.CLAUSE_NOTHING
+    contract.offer_clause_type = offer_clause
+
+    if request_clause == DiplomaticContract.CLAUSE_TECHNOLOGY:
+        request_tech_id = post_data.get('request_technology')
+        if not request_tech_id:
+            errors.append('Requested technology is required.')
+        elif request_tech_id not in available_request_techs:
+            errors.append('Requested technology is not available for this negotiation.')
+        else:
+            contract.request_technology = available_request_techs[request_tech_id]
+    elif request_clause == DiplomaticContract.CLAUSE_STANCE:
+        contract.request_stance = normalise_stance(post_data.get('request_stance'))
+    elif request_clause == DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT:
+        contract.request_ship_count = max(1, parse_int('request_ship_count', 0))
+        if contract.request_ship_count <= 0:
+            errors.append('Requested fleet ship count must be at least 1.')
+    elif request_clause in (
+        DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
+        DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET,
+    ):
+        resource_total = 0
+        for key in ('ironium', 'boranium', 'germanium', 'resource_x', 'resource_y', 'resource_z', 'colonists'):
+            value = parse_int('request_%s' % key, 0)
+            if key in SECRET_RESOURCE_KEYS and not bool(getattr(player, 'discovered_%s' % key, False)):
+                value = 0
+            setattr(contract, 'request_%s' % key, value)
+            resource_total += value
+        if resource_total <= 0:
+            errors.append('Requested resources must include at least one positive quantity.')
+        if (
+            request_clause == DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD and
+            int(getattr(contract, 'request_colonists', 0) or 0) > 0
+        ):
+            errors.append('Colonists must currently be requested on a transferred fleet, not by direct world delivery.')
+        if request_clause == DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD:
+            suggested_star_id = post_data.get('request_suggested_star')
+            if suggested_star_id:
+                contract.request_suggested_star = player.stars.filter(id=suggested_star_id).first()
+                if contract.request_suggested_star is None:
+                    errors.append('Suggested destination must be one of your colonies.')
+
+    if offer_clause == DiplomaticContract.CLAUSE_TECHNOLOGY:
+        offer_tech_id = post_data.get('offer_technology')
+        if not offer_tech_id:
+            errors.append('Offered technology is required.')
+        elif offer_tech_id not in available_offer_techs:
+            errors.append('You cannot offer a technology you do not currently have.')
+        else:
+            contract.offer_technology = available_offer_techs[offer_tech_id]
+    elif offer_clause == DiplomaticContract.CLAUSE_STANCE:
+        contract.offer_stance = normalise_stance(post_data.get('offer_stance'))
+    elif offer_clause == DiplomaticContract.CLAUSE_SPECIFIC_FLEET:
+        offer_fleet_id = post_data.get('offer_fleet')
+        if not offer_fleet_id:
+            errors.append('Offered fleet is required.')
+        else:
+            contract.offer_fleet = player.fleets.filter(id=offer_fleet_id).first()
+            if contract.offer_fleet is None:
+                errors.append('Offered fleet must be one of your current fleets.')
+
+    if (
+        contract.offer_condition_type == DiplomaticContract.CONDITION_OR_ELSE and
+        contract.request_clause_type == DiplomaticContract.CLAUSE_NOTHING
+    ):
+        errors.append('An "or else" consequence must be paired with something they owe.')
+
+    if (
+        contract.request_clause_type == DiplomaticContract.CLAUSE_NOTHING and
+        contract.offer_clause_type == DiplomaticContract.CLAUSE_NOTHING
+    ):
+        errors.append('A contract must include at least one clause.')
+
+    if not errors:
+        try:
+            contract.full_clean()
+        except ValidationError as exc:
+            for values in exc.message_dict.values():
+                errors.extend(values)
+    return contract, errors
+
+
 @player_only_view()
 def diplomacy(request, game_short_id):
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
-
-    def _player_display_name(p):
-        alias = p.account.alias if getattr(p, 'account', None) else 'Unknown'
-        return '%s (%s)' % (p.name, alias)
-
+    if player is None:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Only joined players can use diplomacy.'
+        })
     contact_players = encountered_players(player)
     selected_target = request.POST.get('target') or request.GET.get('target') or 'default'
+    selected_contract_short_id = request.POST.get('contract_id') or request.GET.get('contract')
+    compose_requested = (request.POST.get('action') == 'send_contract') or (request.GET.get('compose') == '1')
+    counter_short_id = request.POST.get('counter_from') or request.GET.get('counter')
+    contract_errors = []
+    contract_notice = ''
 
-    if request.method == 'POST' and not player.turned_in:
-        stance_updates = {}
-        for other in contact_players:
-            key = 'stance_%s' % other.short_id
-            if key in request.POST:
-                stance_updates[other.short_id] = request.POST.get(key)
-        update_player_stances(
-            player,
-            request.POST.get('stance_default'),
-            stance_updates,
+    selected_player = None
+    if selected_target and selected_target != 'default':
+        selected_player = next(
+            (other for other in contact_players if other.short_id == selected_target),
+            None,
         )
-        url = reverse('dj4xol:diplomacy', kwargs={'game_short_id': game.short_id})
-        if selected_target:
-            url = '%s?%s' % (url, urlencode({'target': selected_target}))
-        return redirect(url)
+    if selected_target != 'default' and selected_player is None:
+        selected_target = 'default'
+
+    locked, lock_reason = diplomatic_actions_locked(player)
+
+    if request.method == 'POST':
+        action = request.POST.get('action') or 'stances'
+        if action == 'stances':
+            if locked:
+                contract_errors.append(lock_reason)
+            else:
+                stance_updates = {}
+                for other in contact_players:
+                    key = 'stance_%s' % other.short_id
+                    if key in request.POST:
+                        stance_updates[other.short_id] = request.POST.get(key)
+                update_player_stances(
+                    player,
+                    request.POST.get('stance_default'),
+                    stance_updates,
+                )
+                return redirect(_diplomacy_redirect_url(game.short_id, target=selected_target))
+        elif action in ('accept_contract', 'decline_contract', 'revoke_contract'):
+            contract = DiplomaticContract.objects.filter(
+                game=game,
+                short_id=request.POST.get('contract_id'),
+            ).select_related('sender', 'recipient').first()
+            if action == 'accept_contract':
+                ok, result = accept_contract(contract, player)
+            elif action == 'decline_contract':
+                ok, result = decline_contract(contract, player)
+            else:
+                ok, result = revoke_contract(contract, player)
+            if ok:
+                return redirect(_diplomacy_redirect_url(game.short_id, target=selected_target))
+            contract_errors.append(result)
+        elif action == 'send_contract':
+            compose_requested = True
+            if selected_player is None:
+                contract_errors.append('Select a discovered race before drafting a negotiation.')
+            elif locked:
+                contract_errors.append(lock_reason)
+            else:
+                counter_contract = None
+                if counter_short_id:
+                    counter_contract = DiplomaticContract.objects.filter(
+                        game=game,
+                        short_id=counter_short_id,
+                    ).select_related('sender', 'recipient').first()
+                    if counter_contract is None:
+                        contract_errors.append('Countered contract not found.')
+                    elif counter_contract.recipient_id != player.id or counter_contract.sender_id != selected_player.id:
+                        contract_errors.append('You can only counter an incoming contract from the selected race.')
+                available_offer_techs = {
+                    str(tech.id): tech for tech in get_player_unlocked_technologies(player)
+                }
+                available_request_techs = {
+                    str(tech.id): tech for tech in get_player_unlocked_technologies(selected_player)
+                } if selected_player is not None else {}
+                if not contract_errors:
+                    contract, parse_errors = _diplomacy_parse_contract(
+                        player,
+                        selected_player,
+                        request.POST,
+                        available_offer_techs,
+                        available_request_techs,
+                        counter_from=counter_contract,
+                    )
+                    contract_errors.extend(parse_errors)
+                    if not contract_errors:
+                        contract.save()
+                        if contract.offer_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_FLEET:
+                            ensure_specific_fleet_report(contract)
+                        if counter_contract is not None:
+                            mark_countered(counter_contract, contract)
+                        return redirect(
+                            _diplomacy_redirect_url(
+                                game.short_id,
+                                target=selected_target,
+                                extra={'contract': contract.short_id},
+                            )
+                        )
 
     pending_default_stance = player_pending_default_stance(player)
     pending_stance_map = build_pending_stance_map(player)
@@ -2575,14 +2936,43 @@ def diplomacy(request, game_short_id):
             'is_default': False,
         })
 
-    selected_player = None
-    if selected_target and selected_target != 'default':
-        selected_player = next(
-            (other for other in contact_players if other.short_id == selected_target),
-            None,
-        )
-    if selected_target != 'default' and selected_player is None:
-        selected_target = 'default'
+    contract_rows = []
+    counter_contract = None
+    if selected_player is not None:
+        if counter_short_id:
+            counter_contract = DiplomaticContract.objects.filter(
+                game=game,
+                short_id=counter_short_id,
+                sender=selected_player,
+                recipient=player,
+            ).first()
+            if counter_contract is not None:
+                compose_requested = True
+        for contract in pair_contracts(player, selected_player):
+            if contract.offer_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_FLEET and contract.recipient_id == player.id:
+                ensure_specific_fleet_report(contract)
+            progress = _diplomacy_contract_progress(contract, player)
+            contract_rows.append({
+                'short_id': contract.short_id,
+                'summary_html': format_contract_statement(
+                    contract,
+                    viewer=player,
+                    include_links=True,
+                    include_sender_account=False,
+                    emphasize_actions=True,
+                ),
+                'status': contract.get_status_display(),
+                'status_raw': contract.status,
+                'expires_year': int(contract.expires_year or 0),
+                'progress': progress,
+                'is_incoming': contract.recipient_id == player.id,
+                'is_outgoing': contract.sender_id == player.id,
+                'selected': selected_contract_short_id == contract.short_id,
+                'can_accept': (contract.recipient_id == player.id and contract.status == DiplomaticContract.STATUS_SENT and not locked),
+                'can_decline': (contract.recipient_id == player.id and contract.status == DiplomaticContract.STATUS_SENT and not locked),
+                'can_counter': (contract.recipient_id == player.id and contract.status == DiplomaticContract.STATUS_SENT and not locked),
+                'can_revoke': (contract.sender_id == player.id and contract.status == DiplomaticContract.STATUS_SENT and not locked),
+            })
 
     if selected_player:
         their_stance = stance_towards(selected_player, player)
@@ -2590,7 +2980,7 @@ def diplomacy(request, game_short_id):
         combat_chance_base = combat_chance_percent(our_stance, their_stance)
         combat_modifier = combat_chance_modifier_percent(player, selected_player)
         detail = {
-            'name': _player_display_name(selected_player),
+            'name': _diplomacy_player_display_name(selected_player),
             'their_stance': stance_label(their_stance),
             'our_stance': stance_label(our_stance),
             'combat_chance_base': combat_chance_base,
@@ -2598,6 +2988,7 @@ def diplomacy(request, game_short_id):
             'our_stance_raw': our_stance,
             'effects': stance_effect_items(our_stance),
             'is_default': False,
+            'delivery_warning': our_stance in (STANCE_HOSTILE, STANCE_COLD),
         }
     else:
         detail = {
@@ -2608,7 +2999,31 @@ def diplomacy(request, game_short_id):
             'combat_chance': None,
             'effects': stance_effect_items(pending_default_stance),
             'is_default': True,
+            'delivery_warning': False,
         }
+
+    compose_state = _diplomacy_build_compose_state(
+        player,
+        selected_player,
+        request_obj=request if compose_requested or request.method == 'POST' else None,
+        counter_contract=counter_contract,
+    )
+    offer_clause_choices = _diplomacy_offer_clause_choices()
+    resource_choices = _diplomacy_known_resource_choices(player)
+    resource_rows = [
+        {
+            'key': key,
+            'label': label,
+            'value': compose_state.get('resources', {}).get(key, ''),
+        }
+        for key, label in resource_choices
+    ]
+    offer_technologies = get_player_unlocked_technologies(player) if player else []
+    request_technologies = get_player_unlocked_technologies(selected_player) if selected_player else []
+    offer_technology_groups = _diplomacy_group_technologies(offer_technologies)
+    request_technology_groups = _diplomacy_group_technologies(request_technologies)
+    fleet_choices = list(player.fleets.order_by('name', 'id')) if player else []
+    colony_choices = list(player.stars.order_by('id')) if player else []
 
     return render(request, 'dj4xol/diplomacy.html', {
         'game': game,
@@ -2619,6 +3034,27 @@ def diplomacy(request, game_short_id):
         'detail': detail,
         'stance_choices': STANCE_CHOICES,
         'user_theme': account.theme if account else 'classic',
+        'contracts': contract_rows,
+        'compose_open': bool(compose_requested and selected_player is not None),
+        'compose_state': compose_state,
+        'compose_errors': contract_errors,
+        'compose_notice': contract_notice,
+        'temperature_choices': DiplomaticContract.TEMPERATURE_CHOICES,
+        'offer_condition_choices': _diplomacy_offer_condition_choices(),
+        'request_clause_choices': _diplomacy_request_clause_choices(),
+        'offer_clause_choices': offer_clause_choices,
+        'request_technology_groups': request_technology_groups,
+        'offer_technology_groups': offer_technology_groups,
+        'fleet_choices': fleet_choices,
+        'colony_choices': colony_choices,
+        'resource_rows': resource_rows,
+        'diplomacy_locked': locked,
+        'diplomacy_lock_reason': lock_reason,
+        'counter_contract': counter_contract,
+        'counter_contract_summary': (
+            format_contract_summary(counter_contract, viewer=player, include_links=False)
+            if counter_contract is not None else ''
+        ),
     })
 
 
