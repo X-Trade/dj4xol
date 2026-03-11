@@ -288,6 +288,17 @@
                                             <option value="{{ fleet.id }}"{% if compose_state.offer_fleet == fleet.id|stringformat:'s' %} selected{% endif %}>{{ fleet.name }}</option>
                                             {% endfor %}
                                         </select>
+                                        <label class="compose-inline-checkbox" for="offer_fleet_include_report">
+                                            <input
+                                                id="offer_fleet_include_report"
+                                                type="checkbox"
+                                                name="offer_fleet_include_report"
+                                                value="1"
+                                                {% if compose_state.offer_fleet_include_report %}checked{% endif %}
+                                                {% if diplomacy_locked %} disabled{% endif %}
+                                            >
+                                            include report on fleet
+                                        </label>
                                     </span>
                                     <span class="compose-token compose-token-static">.</span>
                                 </div>

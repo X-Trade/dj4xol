@@ -943,18 +943,17 @@ class GameTurn():
                 deficit = int(min_defense_for_survival) - defense_level
                 destruction_chance = min(1.0, max(0.0, deficit / float(min_defense_for_survival)))
                 if roll_chance(destruction_chance):
-                    fleet_name = fleet.name
                     player = fleet.player
                     fleet.delete()
                     if destruction_templates:
                         template = random.choice(destruction_templates)
                         text = template.format(
                             salvage=format_map_object(salvage),
-                            fleet=fleet_name,
+                            fleet=fleet.name,
                         )
                     else:
                         text = "%s was destroyed while exploring %s." % (
-                            fleet_name, format_map_object(salvage)
+                            fleet.name, format_map_object(salvage)
                         )
                     self._create_salvage_hazard_message(
                         player, text, priority=destruction_priority
@@ -963,18 +962,17 @@ class GameTurn():
 
         if int(fleet.integrity or 0) <= damage:
             if allow_destroy:
-                fleet_name = fleet.name
                 player = fleet.player
                 fleet.delete()
                 if destruction_templates:
                     template = random.choice(destruction_templates)
                     text = template.format(
                         salvage=format_map_object(salvage),
-                        fleet=fleet_name,
+                        fleet=fleet.name,
                     )
                 else:
                     text = "%s was destroyed while exploring %s." % (
-                        fleet_name, format_map_object(salvage)
+                        fleet.name, format_map_object(salvage)
                     )
                 self._create_salvage_hazard_message(
                     player, text, priority=destruction_priority
@@ -990,7 +988,7 @@ class GameTurn():
             text = template.format(
                 salvage=format_map_object(salvage),
                 damage=damage,
-                fleet=fleet.name,
+                fleet=format_map_object(fleet),
             )
             self._create_salvage_hazard_message(
                 fleet.player, text, priority=message_priority
@@ -1213,7 +1211,7 @@ class GameTurn():
         fleet.save(update_fields=['integrity'])
         text = (
             "%s took %s%% integrity damage whilst exploring %s."
-            % (fleet.name, damage, format_map_object(anomaly))
+            % (format_map_object(fleet), damage, format_map_object(anomaly))
         )
         self._create_anomaly_message(fleet.player, text, priority=True)
 
@@ -1274,14 +1272,14 @@ class GameTurn():
             fleet.save(update_fields=['integrity'])
             text = (
                 "Anomaly encounter at %s found no cargo on %s; hull stress caused %s%% integrity damage."
-                % (format_map_object(anomaly), fleet.name, damage)
+                % (format_map_object(anomaly), format_map_object(fleet), damage)
             )
             self._create_anomaly_message(fleet.player, text, priority=True)
             return
         loss_text = ', '.join(losses) if losses else 'no significant cargo'
         text = (
             "Anomaly encounter at %s disrupted %s cargo: %s lost."
-            % (format_map_object(anomaly), fleet.name, loss_text)
+            % (format_map_object(anomaly), format_map_object(fleet), loss_text)
         )
         self._create_anomaly_message(fleet.player, text, priority=True)
 
@@ -1404,7 +1402,7 @@ class GameTurn():
         fleet.save(update_fields=['integrity'])
         text = (
             "%s suffered %s%% integrity damage from the black hole %s."
-            % (fleet.name, damage, format_map_object(anomaly))
+            % (format_map_object(fleet), damage, format_map_object(anomaly))
         )
         self._create_anomaly_message(fleet.player, text, priority=True)
 
@@ -3804,13 +3802,15 @@ class GameTurn():
         """Mark a fleet as unowned and clear its orders."""
         fleet.orders.all().delete()
         fleet.player = None
-        fleet.save(update_fields=['player'])
+        fleet.travel_warp = 0
+        fleet.save(update_fields=['player', 'travel_warp'])
 
     def _capture_fleet(self, fleet, new_owner):
         """Transfer fleet ownership to a new player and clear orders."""
         fleet.orders.all().delete()
         fleet.player = new_owner
-        fleet.save(update_fields=['player'])
+        fleet.travel_warp = 0
+        fleet.save(update_fields=['player', 'travel_warp'])
 
     def _destroy_derelict_fleet(self, fleet):
         """Destroy an unowned fleet and create salvage if possible."""
@@ -4226,13 +4226,13 @@ class GameTurn():
             return
 
         attacker_msg = OrbitalDefenseHitMessageFactory(
-            self.game, attacker, star, fleet.name, integrity_lost, perspective='attacker'
+                self.game, attacker, star, fleet, integrity_lost, perspective='attacker'
         ).new_message()
         attacker_msg.year = self.game.year
         attacker_msg.save()
 
         defender_msg = OrbitalDefenseHitMessageFactory(
-            self.game, defender, star, fleet.name, integrity_lost, perspective='defender'
+                self.game, defender, star, fleet, integrity_lost, perspective='defender'
         ).new_message()
         defender_msg.year = self.game.year
         defender_msg.save()
@@ -4298,7 +4298,7 @@ class GameTurn():
             msg = TransferRaidThwartedMessageFactory(
                 self.game,
                 attacker,
-                fleet_name=fleet.name,
+                fleet=fleet,
                 star=star,
                 owner_name=getattr(defender, 'plural_name', None) or getattr(defender, 'name', ''),
                 resource_desc=resource_desc,
@@ -4311,7 +4311,7 @@ class GameTurn():
             msg = TransferRaidThwartedMessageFactory(
                 self.game,
                 defender,
-                fleet_name=fleet.name,
+                fleet=fleet,
                 star=star,
                 owner_name=getattr(defender, 'plural_name', None) or getattr(defender, 'name', ''),
                 resource_desc=resource_desc,
@@ -4431,7 +4431,7 @@ class GameTurn():
                 if random.random() < 0.10:
                     star.player = fleet.player
                     factory = ColonistsUnexpectedColonyMessageFactory(
-                        self.game, fleet.player, fleet.name, colonists_transfer_kt, star
+                    self.game, fleet.player, fleet, colonists_transfer_kt, star
                     )
                     msg = factory.new_message()
                     msg.year = self.game.year
@@ -4439,7 +4439,7 @@ class GameTurn():
                 else:
                     fleet.colonists -= colonists_transfer_kt
                     factory = ColonistsFailedToColoniseMessageFactory(
-                        self.game, fleet.player, fleet.name, colonists_transfer_kt, star
+                    self.game, fleet.player, fleet, colonists_transfer_kt, star
                     )
                     msg = factory.new_message()
                     msg.year = self.game.year
@@ -4479,7 +4479,7 @@ class GameTurn():
                 gift_factory = MineralGiftMessageFactory(
                     self.game,
                     foreign_owner_before,
-                    fleet.name,
+                    fleet,
                     star,
                     transfers,
                 )
@@ -4776,7 +4776,7 @@ class GameTurn():
         if star is None:
             _, target_x, target_y, _ = order.get_actual_target()
             factory = BombardFailedNoStarMessageFactory(
-                self.game, fleet.player, fleet.name, target_x, target_y
+                self.game, fleet.player, fleet, target_x, target_y
             )
             msg = factory.new_message()
             msg.year = self.game.year
@@ -5336,7 +5336,7 @@ class GameTurn():
         if not star:
             # No star at location, cannot colonise - create message and delete order
             factory = ColoniseFailedNoStarMessageFactory(
-                self.game, fleet.player, fleet.name, dest_x, dest_y,
+                self.game, fleet.player, fleet, dest_x, dest_y,
                 target_star=None
             )
             msg = factory.new_message()
@@ -5350,7 +5350,7 @@ class GameTurn():
             factory = ColoniseFailedAlreadyOwnedMessageFactory(
                 self.game,
                 fleet.player,
-                fleet.name,
+                fleet,
                 star,
                 same_player=(star.player == fleet.player)
             )
@@ -5363,7 +5363,7 @@ class GameTurn():
         # Check if fleet has colonists - can't colonise without them
         if fleet.colonists <= 0:
             factory = ColoniseFailedNoColonistsMessageFactory(
-                self.game, fleet.player, fleet.name, star
+                self.game, fleet.player, fleet, star
             )
             msg = factory.new_message()
             msg.year = self.game.year
@@ -5666,7 +5666,7 @@ class GameTurn():
         sender_msg = FleetTransferredMessageFactory(
             self.game,
             previous_owner,
-            fleet_name,
+            fleet,
             recipient_name=(recipient.name if recipient is not None else None),
         ).new_message()
         sender_msg.year = self.game.year
@@ -5676,7 +5676,7 @@ class GameTurn():
             recipient_msg = FleetReceivedMessageFactory(
                 self.game,
                 recipient,
-                fleet_name,
+                fleet,
                 previous_owner.name,
             ).new_message()
             recipient_msg.year = self.game.year

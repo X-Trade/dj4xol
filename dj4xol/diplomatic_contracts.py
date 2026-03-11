@@ -911,7 +911,8 @@ def _apply_clause_immediately(contract, prefix, year):
             return False
         fleet.orders.all().delete()
         fleet.player = grant_target
-        fleet.save(update_fields=['player'])
+        fleet.travel_warp = 0
+        fleet.save(update_fields=['player', 'travel_warp'])
         return True
     if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
         return _transfer_specific_colony_clause(contract, prefix, handle_homeworld_loss=True)
@@ -999,7 +1000,11 @@ def _expire_contract(contract, year, apply_consequence=False):
 
 
 def ensure_specific_fleet_report(contract):
-    if contract.offer_clause_type != DiplomaticContract.CLAUSE_SPECIFIC_FLEET or contract.offer_fleet is None:
+    if (
+        contract.offer_clause_type != DiplomaticContract.CLAUSE_SPECIFIC_FLEET or
+        contract.offer_fleet is None or
+        not bool(getattr(contract, 'offer_fleet_include_report', True))
+    ):
         return
     from .turn import GameTurn
 

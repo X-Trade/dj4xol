@@ -864,6 +864,13 @@ class TestAnomalyInteractions(TestCase):
             category='RANDOM',
             message__icontains='integrity damage',
         ).exists())
+        damage_msg = GameMessage.objects.filter(
+            game=game,
+            player=player,
+            category='RANDOM',
+            message__icontains='integrity damage',
+        ).latest('id')
+        self.assertIn(fleet.short_id, damage_msg.message)
         with patch('dj4xol.turn.random.randint', return_value=5):
             turn.anomaly_interactions()
         self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
@@ -1377,6 +1384,13 @@ class TestAnomalyInteractions(TestCase):
             category='RANDOM',
             message__icontains='integrity damage',
         ).exists())
+        msg = GameMessage.objects.filter(
+            game=game,
+            player=player,
+            category='RANDOM',
+            message__icontains='integrity damage',
+        ).latest('id')
+        self.assertIn(fleet.short_id, msg.message)
 
     def test_black_hole_roll_destroys_fleet_on_2_to_4(self):
         game = default_game()
@@ -1789,9 +1803,15 @@ class TestAnomalyInteractions(TestCase):
     def test_asteroid_field_damage_sends_non_priority_message(self):
         game = default_game()
         player = game.players.first()
-        fleet = player.fleets.first()
-        fleet.integrity = 100
-        fleet.save(update_fields=['integrity'])
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Salvage Scout',
+            x=41,
+            y=41,
+            integrity=100,
+        )
         salvage = Salvage.objects.create(
             game=game,
             x=fleet.x,
@@ -1808,6 +1828,7 @@ class TestAnomalyInteractions(TestCase):
         self.assertFalse(msg.priority)
         self.assertIn('Asteroid Field', msg.message)
         self.assertIn('6% integrity damage', msg.message)
+        self.assertIn(fleet.short_id, msg.message)
 
     def test_wormhole_below_30_stability_can_instantly_destroy(self):
         game = default_game()
@@ -6517,6 +6538,8 @@ class TestFleetTransferOrders(TestCase):
             colonists=4,
             ship_count=1,
             integrity=100,
+            heading=87.0,
+            travel_warp=5,
         )
 
         FleetOrders.objects.create(
@@ -6531,6 +6554,8 @@ class TestFleetTransferOrders(TestCase):
         fleet.refresh_from_db()
         self.assertEqual(fleet.player_id, player2.id)
         self.assertEqual(fleet.orders.count(), 0)
+        self.assertEqual(fleet.travel_warp, 0)
+        self.assertAlmostEqual(float(fleet.heading), 87.0, places=1)
 
         sender_messages = list(player1.messages.filter(message__icontains="Gift Ship"))
         receiver_messages = list(player2.messages.filter(message__icontains="Gift Ship"))
@@ -6562,6 +6587,8 @@ class TestFleetTransferOrders(TestCase):
             boranium_inventory=9,
             ship_count=1,
             integrity=100,
+            heading=133.0,
+            travel_warp=4,
         )
 
         FleetOrders.objects.create(
@@ -6575,6 +6602,8 @@ class TestFleetTransferOrders(TestCase):
         fleet.refresh_from_db()
         self.assertIsNone(fleet.player)
         self.assertEqual(fleet.orders.count(), 0)
+        self.assertEqual(fleet.travel_warp, 0)
+        self.assertAlmostEqual(float(fleet.heading), 133.0, places=1)
         self.assertTrue(player.messages.filter(message__icontains="Drifter").exists())
 
         report = Report.objects.get(

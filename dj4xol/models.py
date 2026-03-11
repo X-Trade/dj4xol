@@ -1512,6 +1512,7 @@ class DiplomaticContract(AbstractGameObject):
         related_name='+',
         on_delete=models.SET_NULL,
     )
+    offer_fleet_include_report = models.BooleanField(default=True)
     offer_star = models.ForeignKey(
         Star,
         null=True,
