@@ -487,6 +487,7 @@ class ServerSettingsForm(forms.Form):
             'allow_self_signup',
             'allow_player_public_races',
             'enable_spectator_mode',
+            'max_diplomatic_requests_per_race_per_turn',
             'enable_debug_actions',
             'enable_play_api',
         ]),
@@ -542,6 +543,13 @@ class ServerSettingsForm(forms.Form):
         required=False,
         help_text="Shows View actions for public games and allows spectator access.",
     )
+    max_diplomatic_requests_per_race_per_turn = forms.IntegerField(
+        label="Diplomatic Requests Per Race Per Turn",
+        required=True,
+        min_value=1,
+        help_text="Maximum diplomatic requests a player can send to the same race in one turn.",
+        initial=2,
+    )
     enable_gpt = forms.BooleanField(
         label="Enable GPT",
         required=False,
@@ -592,6 +600,10 @@ class ServerSettingsForm(forms.Form):
             'description': 'Enable spectator mode',
             'boolean': True,
             'default': True,
+        },
+        'max_diplomatic_requests_per_race_per_turn': {
+            'description': 'Maximum diplomatic requests per race per turn',
+            'default': 2,
         },
         'enable_gpt': {'description': 'Enable GPT API usage', 'boolean': True},
         'enable_debug_actions': {'description': 'Enable debug actions in game panels', 'boolean': True},

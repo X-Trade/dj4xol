@@ -326,6 +326,11 @@
             </div>
         </div>
         <script>
+        window.playerTurnedIn = {{ player.turned_in|yesno:'true,false' }};
+        window.currentYear = {{ game.year }};
+        window.gameStatusUrl = "{% url 'dj4xol:game_status' game.short_id %}";
+        window.turnIsDue = false;
+
         (function() {
             var hamburger = document.getElementById('hamburger-btn');
             var dropdown = document.getElementById('nav-dropdown');
@@ -343,6 +348,88 @@
                     hamburger.classList.remove('open');
                 }
             });
+        })();
+        (function nextTurnCountdown() {
+            var countdownEl = document.getElementById('next-turn-countdown');
+            if (!countdownEl) {
+                return;
+            }
+            var iso = countdownEl.getAttribute('data-next-turn-iso');
+            if (!iso) {
+                countdownEl.textContent = 'pending';
+                return;
+            }
+            var targetMs = Date.parse(iso);
+            if (!Number.isFinite(targetMs)) {
+                countdownEl.textContent = 'pending';
+                return;
+            }
+            function renderCountdown() {
+                var remainingMs = targetMs - Date.now();
+                if (remainingMs <= 60000) {
+                    countdownEl.textContent = 'Due';
+                    countdownEl.classList.add('status-due');
+                    if (!window.turnIsDue) {
+                        window.turnIsDue = true;
+                        if (window.__startTurnPoll) {
+                            window.__startTurnPoll();
+                        }
+                    }
+                    return;
+                }
+                countdownEl.classList.remove('status-due');
+                var totalMinutes = Math.floor(remainingMs / 60000);
+                var hours = Math.floor(totalMinutes / 60);
+                var minutes = totalMinutes % 60;
+                if (hours > 0) {
+                    countdownEl.textContent = hours + 'h ' + minutes + 'm';
+                    return;
+                }
+                countdownEl.textContent = minutes + 'm';
+            }
+            renderCountdown();
+            setInterval(renderCountdown, 15000);
+        })();
+        (function pollForNextTurn() {
+            function startTurnPoll() {
+                if (!window.gameStatusUrl) {
+                    return;
+                }
+                if (!window.playerTurnedIn && !window.turnIsDue) {
+                    return;
+                }
+                if (window.__turnPollStarted) {
+                    return;
+                }
+                window.__turnPollStarted = true;
+
+                var minDelay = 29 * 1000;
+                var maxDelay = 61 * 1000;
+                var firstDelay = 1000;
+
+                function scheduleNext(delay) {
+                    var url = window.gameStatusUrl + '?ts=' + Date.now();
+                    fetch(url, { credentials: 'same-origin', cache: 'no-store' })
+                        .then(function(resp) { return resp.json(); })
+                        .then(function(data) {
+                            if (data && data.year && data.year > window.currentYear) {
+                                window.location.reload();
+                            } else {
+                                var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+                                setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
+                            }
+                        })
+                        .catch(function() {
+                            var nextDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+                            setTimeout(function() { scheduleNext(nextDelay); }, nextDelay);
+                        });
+                }
+
+                setTimeout(function() { scheduleNext(firstDelay); }, firstDelay);
+            }
+
+            window.__startTurnPoll = startTurnPoll;
+            startTurnPoll();
         })();
         (function() {
             var form = document.getElementById('diplomacy-form');
@@ -421,5 +508,6 @@
             });
         })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

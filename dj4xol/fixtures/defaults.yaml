@@ -88,6 +88,11 @@
     value: 'True'
 - model: dj4xol.ServerSettings
   fields:
+    key: 'max_diplomatic_requests_per_race_per_turn'
+    description: 'Maximum diplomatic requests per race per turn'
+    value: '2'
+- model: dj4xol.ServerSettings
+  fields:
     key: 'enable_profanity_filter'
     description: 'Enable profanity filter'
     value: 'True'

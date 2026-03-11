@@ -247,6 +247,14 @@ def server_setting_enabled(key, default=False):
     return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
 
 
+def server_setting_int(key, default=0):
+    value = ServerSettings.get(key, str(default))
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return int(default)
+
+
 def profanity_filter_settings():
     return {
         'enabled': server_setting_enabled('enable_profanity_filter', True),

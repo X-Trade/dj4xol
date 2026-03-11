@@ -1,10 +1,12 @@
 import json
+from datetime import timedelta
 
 from django.core import mail
 from django.test import TestCase, Client
 from django.test.utils import override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
+from django.utils import timezone
 from ..models import (
     Account,
     DiplomaticContract,
@@ -444,6 +446,7 @@ class TestServerSettingsView(TestCase):
                 'enable_email': 'on',
                 'allow_player_public_races': 'on',
                 'enable_spectator_mode': 'on',
+                'max_diplomatic_requests_per_race_per_turn': '3',
                 'enable_gpt': '',
                 'enable_debug_actions': '',
                 'enable_play_api': 'on',
@@ -475,6 +478,7 @@ class TestServerSettingsView(TestCase):
         self.assertEqual(ServerSettings.get('enable_email'), 'True')
         self.assertEqual(ServerSettings.get('allow_player_public_races'), 'True')
         self.assertEqual(ServerSettings.get('enable_spectator_mode'), 'True')
+        self.assertEqual(ServerSettings.get('max_diplomatic_requests_per_race_per_turn'), '3')
         self.assertEqual(ServerSettings.get('enable_gpt'), 'False')
         self.assertEqual(ServerSettings.get('enable_profanity_filter'), 'False')
         self.assertEqual(ServerSettings.get('profanity_filter_whitelist'), 'scunthorpe')
@@ -497,6 +501,7 @@ class TestServerSettingsView(TestCase):
                 'enable_email': '',
                 'allow_player_public_races': '',
                 'enable_spectator_mode': '',
+                'max_diplomatic_requests_per_race_per_turn': '2',
                 'enable_gpt': '',
                 'enable_debug_actions': '',
                 'enable_play_api': 'on',
@@ -1873,6 +1878,9 @@ class TestFleetOrderViews(TestCase):
 class TestDiplomacyView(TestCase):
     def test_diplomacy_page_lists_contact_and_default(self):
         game = default_game(stars=5, fleets=0)
+        game.turn_scheme = 'HOURLY'
+        game.next_generation = timezone.now() + timedelta(hours=1)
+        game.save(update_fields=['turn_scheme', 'next_generation'])
         player = game.players.first()
         race_type = get_default_race_type()
         other_account_user = User.objects.create_user('diplo_other', 'diplo_other@test.com', 'pass')
@@ -1917,6 +1925,228 @@ class TestDiplomacyView(TestCase):
         self.assertNotContains(response, 'Update Standing')
         self.assertContains(response, 'Current Effects')
         self.assertNotContains(response, 'Effects They Grant')
+        self.assertContains(response, 'id="next-turn-countdown"', html=False)
+        self.assertContains(response, 'window.currentYear = %s;' % game.year)
+        self.assertContains(response, 'window.gameStatusUrl =')
+
+    def test_diplomacy_limits_requests_per_race_per_turn_with_warning(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_account_user = User.objects.create_user('diplo_limit_target', 'diplo_limit_target@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_account_user, alias='DLT')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Limit Race',
+            plural_name='Limit Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        ServerSettings.objects.update_or_create(
+            key='max_diplomatic_requests_per_race_per_turn',
+            defaults={
+                'value': '2',
+                'description': 'Maximum diplomatic requests per race per turn',
+            },
+        )
+        for _idx in range(2):
+            DiplomaticContract.objects.create(
+                game=game,
+                sender=player,
+                recipient=other_player,
+                temperature='REQUEST',
+                status='SENT',
+                sent_year=game.year,
+                expires_year=game.year + 24,
+                request_clause_type='STANCE',
+                request_stance='NEUTRAL',
+                offer_clause_type='NOTHING',
+            )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'send_contract',
+                'temperature': 'REQUEST',
+                'deadline_years': '24',
+                'extend_on_accept_years': '0',
+                'request_clause_type': 'STANCE',
+                'request_stance': 'WARM',
+                'offer_clause_type': 'NOTHING',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'You have already sent the maximum of 2 diplomatic requests to Limit Race this turn.',
+        )
+        self.assertContains(response, 'form-message-banner')
+        self.assertEqual(
+            DiplomaticContract.objects.filter(
+                game=game,
+                sender=player,
+                recipient=other_player,
+                sent_year=game.year,
+            ).count(),
+            2,
+        )
+
+    def test_diplomacy_same_turn_revoke_creates_no_status_messages(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_revoke_silent', 'diplo_revoke_silent@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DRS')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Revoke Race',
+            plural_name='Revoke Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='WARM',
+            offer_clause_type='NOTHING',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'revoke_contract',
+                'contract_id': contract.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_REVOKED)
+        self.assertFalse(
+            GameMessage.objects.filter(
+                game=game,
+                category='DIPLOMATIC',
+                message__contains='Diplomatic request revoked:',
+            ).exists()
+        )
+
+    def test_diplomacy_older_revoke_still_creates_status_messages(self):
+        game = default_game(stars=5, fleets=0)
+        game.year += 1
+        game.save(update_fields=['year'])
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_revoke_logged', 'diplo_revoke_logged@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DRL')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Older Race',
+            plural_name='Older Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year - 1,
+            expires_year=game.year + 23,
+            request_clause_type='STANCE',
+            request_stance='WARM',
+            offer_clause_type='NOTHING',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'revoke_contract',
+                'contract_id': contract.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_REVOKED)
+        self.assertEqual(
+            GameMessage.objects.filter(
+                game=game,
+                category='DIPLOMATIC',
+                message__contains='Diplomatic request revoked:',
+            ).count(),
+            2,
+        )
     def test_diplomacy_post_updates_default_and_specific_stance(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
