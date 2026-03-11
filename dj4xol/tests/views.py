@@ -2657,6 +2657,70 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(shared_report.year, game.year - 2)
         self.assertNotIn('colonists', shared_data)
 
+    def test_diplomacy_request_colony_report_accepts_without_existing_owner_report_row(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_report_request_live_owner', 'diplo_report_request_live_owner@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DRL')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Live Owner Race',
+            plural_name='Live Owner Races',
+            race_type=race_type,
+        )
+        target_star = game.stars.exclude(id=player.homeworld_id).order_by('id').first()
+        target_star.player = other_player
+        target_star.colonists = 42000
+        target_star.save(update_fields=['player', 'colonists'])
+        other_player.homeworld = target_star
+        other_player.save(update_fields=['homeworld'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=target_star.id,
+            cached_report=json.dumps({
+                'name': target_star.name,
+                'x': target_star.x,
+                'y': target_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'ownership',
+            }),
+        )
+
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='REPORT',
+            request_report_target_type='star',
+            request_report_target_id=target_star.id,
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='NOTHING',
+        )
+
+        other_client = Client()
+        other_client.force_login(other_user)
+        response = other_client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': player.short_id, 'action': 'accept_contract', 'contract_id': contract.short_id},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+        shared_report = Report.objects.get(player=player, target_type='star', target_id=target_star.id)
+        shared_data = shared_report.get_report_data()
+        self.assertEqual(shared_data.get('report_tier'), 'ownership')
+        self.assertEqual(shared_data.get('player_name'), other_player.name)
+
     def test_diplomacy_report_choices_only_include_directional_colonies_and_advanced_intel(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
@@ -2682,6 +2746,8 @@ class TestDiplomacyView(TestCase):
         hidden_star.player = other_player
         other_colony.save(update_fields=['player'])
         hidden_star.save(update_fields=['player'])
+        other_player.homeworld = other_colony
+        other_player.save(update_fields=['homeworld'])
         Report.objects.create(
             game=game,
             player=player,
@@ -2851,17 +2917,64 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'grant us report')
         self.assertContains(response, 'grant them report')
-        self.assertContains(response, 'colony %s' % player_colony.name)
-        self.assertContains(response, 'colony %s' % player_recent_colony.name)
-        self.assertContains(response, 'colony %s' % other_colony.name)
-        self.assertContains(response, 'anomaly %s' % anomaly.name)
-        self.assertContains(response, 'ancient debris %s' % ancient.name)
+        self.assertContains(response, player_colony.name)
+        self.assertContains(response, player_recent_colony.name)
+        self.assertContains(response, '%s (their home)' % other_colony.name)
+        self.assertContains(response, anomaly.name)
+        self.assertContains(response, ancient.name)
         self.assertContains(response, 'value="star:%s"' % player_colony.id)
         self.assertContains(response, 'value="star:%s"' % player_recent_colony.id)
         self.assertContains(response, 'value="star:%s"' % other_colony.id)
         self.assertNotContains(response, 'value="star:%s"' % hidden_star.id)
         self.assertNotContains(response, wreck.name)
         self.assertNotContains(response, 'Shallow Echo')
+        self.assertNotContains(response, 'colony %s' % player_colony.name)
+        self.assertNotContains(response, 'anomaly %s' % anomaly.name)
+        self.assertNotContains(response, 'ancient debris %s' % ancient.name)
+
+    def test_diplomacy_colony_lists_put_homeworld_first(self):
+        game = default_game(stars=6, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_home_first', 'diplo_home_first@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DHF')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Home First Race',
+            plural_name='Home First Races',
+            race_type=race_type,
+        )
+        known_stars = list(game.stars.exclude(id=player.homeworld_id).order_by('id')[:3])
+        other_home = known_stars[1]
+        other_colony_a = known_stars[0]
+        other_colony_b = known_stars[2]
+        for star in (other_home, other_colony_a, other_colony_b):
+            star.player = other_player
+            star.save(update_fields=['player'])
+            self._create_contact_star_report(game, player, other_player, star)
+        other_player.homeworld = other_home
+        other_player.save(update_fields=['homeworld'])
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id, 'compose': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        home_label = '%s (their home)' % other_home.name
+        self.assertLess(
+            content.index(home_label),
+            content.index(other_colony_a.name),
+        )
+        self.assertLess(
+            content.index(home_label),
+            content.index(other_colony_b.name),
+        )
 
     def test_diplomacy_report_offer_can_be_granted_on_resource_completion(self):
         game = default_game(stars=5, fleets=0)
@@ -2967,7 +3080,7 @@ class TestDiplomacyView(TestCase):
             include_sender_account=False,
         )
 
-        self.assertIn('demands do nothing in exchange for technology', summary)
+        self.assertIn('demands we do nothing in exchange for technology', summary)
         self.assertIn(tech.name, summary)
         self.assertNotIn('demands technology', summary)
 
@@ -3099,7 +3212,7 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(phrase, vague_threat_phrase(contract))
         self.assertIn(('we demand that threat receiver do nothing, or else we %s.' % phrase).lower(), sender_statement.lower())
         self.assertIn(('tester demands that we do nothing, or else they %s.' % phrase).lower(), recipient_statement.lower())
-        self.assertIn(('demands do nothing or else %s.' % phrase).lower(), summary.lower())
+        self.assertIn(('demands we do nothing or else %s.' % phrase).lower(), summary.lower())
 
     def test_diplomacy_can_send_technology_request_and_offer_from_form(self):
         game = default_game(stars=5, fleets=0)
@@ -4100,6 +4213,65 @@ class TestDiplomacyView(TestCase):
         self.assertContains(response, '25kt Ironium')
         self.assertContains(response, 'Complete by Year %s' % (game.year + 24))
         self.assertContains(response, 'View</a>', html=False)
+        self.assertContains(
+            response,
+            '?target=%s&contract=%s' % (other_player.short_id, contract.short_id),
+            html=False,
+        )
+
+    def test_main_game_messages_do_not_pin_accepted_immediate_report_requests(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_accept_report_pin', 'diplo_accept_report_pin@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DAR')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Report Accepted Race',
+            plural_name='Report Accepted Races',
+            race_type=race_type,
+        )
+        target_star = game.stars.exclude(id=player.homeworld_id).order_by('id').first()
+        target_star.player = other_player
+        target_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=target_star.id,
+            cached_report=json.dumps({
+                'name': target_star.name,
+                'x': target_star.x,
+                'y': target_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'ownership',
+            }),
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='ACCEPTED',
+            sent_year=game.year,
+            accepted_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='REPORT',
+            request_report_target_type='star',
+            request_report_target_id=target_star.id,
+            offer_clause_type='NOTHING',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(reverse('dj4xol:game', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'active-contract-%s' % contract.short_id, html=False)
+        self.assertNotContains(response, 'Awaiting from Report Accepted Race:', html=False)
 
     def test_diplomacy_rejects_direct_world_colonist_contracts(self):
         game = default_game(stars=5, fleets=0)
