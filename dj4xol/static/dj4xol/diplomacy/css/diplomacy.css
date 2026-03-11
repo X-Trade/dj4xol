@@ -282,6 +282,17 @@
     min-width: 180px;
 }
 
+.compose-inline-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.95em;
+}
+
+.compose-inline-checkbox input {
+    margin: 0;
+}
+
 .diplomacy-compose-form .detail-row {
     gap: 12px;
 }

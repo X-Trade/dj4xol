@@ -65,6 +65,15 @@ def format_map_object(obj, link=True):
     return name
 
 
+def format_map_object_reference(obj=None, name=None, link=True):
+    """Format a map object when an object may not always be available."""
+    if obj is not None:
+        return format_map_object(obj, link=link)
+    if name is None:
+        return ""
+    return escape(str(name))
+
+
 RESOURCE_DISPLAY_NAMES = {
     'ironium': 'Ironium',
     'boranium': 'Boranium',
@@ -650,20 +659,20 @@ class ColoniseFailedAlreadyOwnedMessageFactory(MessageFactory):
         "{fleet} arrived at {star} but found it already claimed by {race}.",
     ]
 
-    def __init__(self, game, player, fleet_name, star, same_player=False, message=None):
+    def __init__(self, game, player, fleet, star, same_player=False, message=None):
         super().__init__(game, player, message, intensity=-0.3)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.star = star
         self.same_player = same_player
 
     def format_message(self):
         if self.same_player:
             return random.choice(self.templates_same).format(
-                fleet=self.fleet_name,
+                fleet=format_map_object_reference(self.fleet),
                 star=format_map_object(self.star)
             )
         return random.choice(self.templates_other).format(
-            fleet=self.fleet_name,
+            fleet=format_map_object_reference(self.fleet),
             star=format_map_object(self.star),
             race=self.star.player.name if self.star.player else "another race"
         )
@@ -684,9 +693,9 @@ class ColoniseFailedNoStarMessageFactory(MessageFactory):
         "{fleet} reached {location} but found no world to colonise.",
     ]
 
-    def __init__(self, game, player, fleet_name, x, y, target_star=None, message=None):
+    def __init__(self, game, player, fleet, x, y, target_star=None, message=None):
         super().__init__(game, player, message, intensity=-0.2)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.x = x
         self.y = y
         self.target_star = target_star
@@ -695,13 +704,13 @@ class ColoniseFailedNoStarMessageFactory(MessageFactory):
         location = format_location(x=self.x, y=self.y, link=True, game=self.game)
         if self.target_star:
             return random.choice(self.templates_with_star).format(
-                fleet=self.fleet_name,
+                fleet=format_map_object_reference(self.fleet),
                 star=format_map_object(self.target_star),
                 location=location
             )
         else:
             return random.choice(self.templates_no_star).format(
-                fleet=self.fleet_name,
+                fleet=format_map_object_reference(self.fleet),
                 location=location
             )
 
@@ -716,15 +725,15 @@ class BombardFailedNoStarMessageFactory(MessageFactory):
         "{fleet} reached {location}, but there was no star to bombard.",
     ]
 
-    def __init__(self, game, player, fleet_name, x, y, message=None):
+    def __init__(self, game, player, fleet, x, y, message=None):
         super().__init__(game, player, message, intensity=-0.2)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.x = x
         self.y = y
 
     def format_message(self):
         return random.choice(self.templates).format(
-            fleet=self.fleet_name,
+            fleet=format_map_object_reference(self.fleet),
             location=format_location(x=self.x, y=self.y, link=True, game=self.game),
         )
 
@@ -894,14 +903,14 @@ class ColoniseFailedNoColonistsMessageFactory(MessageFactory):
         "{fleet} arrived at {star} but has no colonists to establish a colony.",
     ]
 
-    def __init__(self, game, player, fleet_name, star, message=None):
+    def __init__(self, game, player, fleet, star, message=None):
         super().__init__(game, player, message, intensity=-0.2)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.star = star
 
     def format_message(self):
         return random.choice(self.templates).format(
-            fleet=self.fleet_name,
+            fleet=format_map_object_reference(self.fleet),
             star=format_map_object(self.star)
         )
 
@@ -942,15 +951,15 @@ class ColonistsFailedToColoniseMessageFactory(MessageFactory):
         "{colonists}k colonists sent to {star} from {fleet} could not sustain a colony.",
     ]
 
-    def __init__(self, game, player, fleet_name, colonists_kt, star, message=None):
+    def __init__(self, game, player, fleet, colonists_kt, star, message=None):
         super().__init__(game, player, message, intensity=-0.6)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.colonists_kt = colonists_kt
         self.star = star
 
     def format_message(self):
         return random.choice(self.templates).format(
-            fleet=self.fleet_name,
+            fleet=format_map_object_reference(self.fleet),
             colonists=self.colonists_kt,
             star=format_map_object(self.star)
         )
@@ -965,15 +974,15 @@ class ColonistsUnexpectedColonyMessageFactory(MessageFactory):
         "Against the odds, {colonists}k colonists from {fleet} founded a colony at {star}.",
     ]
 
-    def __init__(self, game, player, fleet_name, colonists_kt, star, message=None):
+    def __init__(self, game, player, fleet, colonists_kt, star, message=None):
         super().__init__(game, player, message, intensity=0.2)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.colonists_kt = colonists_kt
         self.star = star
 
     def format_message(self):
         return random.choice(self.templates).format(
-            fleet=self.fleet_name,
+            fleet=format_map_object_reference(self.fleet),
             colonists=self.colonists_kt,
             star=format_map_object(self.star)
         )
@@ -985,13 +994,13 @@ class MineralGiftMessageFactory(MessageFactory):
     priority = True
     templates = [
         "{fleet} deposited minerals on {star}: {cargo}.",
-        "A foreign fleet delivered minerals to {star}: {cargo}.",
+        "Foreign fleet {fleet} delivered minerals to {star}: {cargo}.",
         "{fleet} left a mineral shipment on {star}: {cargo}.",
     ]
 
-    def __init__(self, game, player, fleet_name, star, transfers, message=None):
+    def __init__(self, game, player, fleet, star, transfers, message=None):
         super().__init__(game, player, message, intensity=0.2)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.star = star
         self.transfers = transfers or {}
 
@@ -1004,7 +1013,7 @@ class MineralGiftMessageFactory(MessageFactory):
 
     def format_message(self):
         return random.choice(self.templates).format(
-            fleet=self.fleet_name,
+            fleet=format_map_object_reference(self.fleet),
             star=format_map_object(self.star),
             cargo=self._format_cargo()
         )
@@ -1297,19 +1306,19 @@ class FleetTransferredMessageFactory(MessageFactory):
         "Abandonment complete: {fleet} is now an unowned derelict.",
     ]
 
-    def __init__(self, game, player, fleet_name, recipient_name=None, message=None):
+    def __init__(self, game, player, fleet, recipient_name=None, message=None):
         super().__init__(game, player, message, intensity=0.0)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.recipient_name = recipient_name
 
     def format_message(self):
         if self.recipient_name:
             return random.choice(self.templates_to_player).format(
-                fleet=self.fleet_name,
+                fleet=format_map_object_reference(self.fleet),
                 recipient=self.recipient_name,
             )
         return random.choice(self.templates_abandoned).format(
-            fleet=self.fleet_name,
+            fleet=format_map_object_reference(self.fleet),
         )
 
 
@@ -1323,14 +1332,14 @@ class FleetReceivedMessageFactory(MessageFactory):
         "{sender} transferred control of {fleet} to us.",
     ]
 
-    def __init__(self, game, player, fleet_name, sender_name, message=None):
+    def __init__(self, game, player, fleet, sender_name, message=None):
         super().__init__(game, player, message, intensity=0.0)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.sender_name = sender_name
 
     def format_message(self):
         return random.choice(self.templates).format(
-            fleet=self.fleet_name,
+            fleet=format_map_object_reference(self.fleet),
             sender=self.sender_name,
         )
 
@@ -1503,10 +1512,10 @@ class OrbitalDefenseHitMessageFactory(MessageFactory):
         "Hostile fleet {fleet} was hit by defenses at {star}; {damage}% integrity lost.",
     ]
 
-    def __init__(self, game, player, star, fleet_name, damage, perspective='attacker', message=None):
+    def __init__(self, game, player, star, fleet, damage, perspective='attacker', message=None):
         super().__init__(game, player, message, intensity=-0.3)
         self.star = star
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.damage = int(damage)
         self.perspective = perspective
 
@@ -1514,7 +1523,7 @@ class OrbitalDefenseHitMessageFactory(MessageFactory):
         templates = self.templates_attacker if self.perspective == 'attacker' else self.templates_defender
         return random.choice(templates).format(
             star=format_map_object(self.star),
-            fleet=self.fleet_name,
+            fleet=format_map_object_reference(self.fleet),
             damage=self.damage,
         )
 
@@ -1534,9 +1543,9 @@ class TransferRaidThwartedMessageFactory(MessageFactory):
         "Planetary defenses stopped a theft attempt at {star}; {fleet} suffered {damage}% damage.",
     ]
 
-    def __init__(self, game, player, fleet_name, star, owner_name, resource_desc, damage, perspective='attacker', message=None):
+    def __init__(self, game, player, fleet, star, owner_name, resource_desc, damage, perspective='attacker', message=None):
         super().__init__(game, player, message, intensity=-0.3)
-        self.fleet_name = fleet_name
+        self.fleet = fleet
         self.star = star
         self.owner_name = owner_name
         self.resource_desc = resource_desc
@@ -1546,7 +1555,7 @@ class TransferRaidThwartedMessageFactory(MessageFactory):
     def format_message(self):
         templates = self.templates_attacker if self.perspective == 'attacker' else self.templates_defender
         return random.choice(templates).format(
-            fleet=self.fleet_name,
+            fleet=format_map_object_reference(self.fleet),
             star=format_map_object(self.star),
             owner=self.owner_name,
             resource_desc=self.resource_desc,

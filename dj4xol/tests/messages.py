@@ -1,7 +1,19 @@
 from django.test import TestCase
 from unittest.mock import patch
 
-from ..messages import DiplomaticMessageFactory, AnomalyTargetLostMessageFactory
+from ..messages import (
+    DiplomaticMessageFactory,
+    AnomalyTargetLostMessageFactory,
+    ColoniseFailedAlreadyOwnedMessageFactory,
+    ColoniseFailedNoStarMessageFactory,
+    BombardFailedNoStarMessageFactory,
+    ColoniseFailedNoColonistsMessageFactory,
+    MineralGiftMessageFactory,
+    FleetTransferredMessageFactory,
+    FleetReceivedMessageFactory,
+    OrbitalDefenseHitMessageFactory,
+    TransferRaidThwartedMessageFactory,
+)
 from ..models import Game, Player, ServerRaceType
 from ._util import default_game
 
@@ -70,3 +82,29 @@ class TestAnomalyTargetLostMessageFactory(TestCase):
             message = factory.new_message().message
         self.assertIn('orders to enter Wormhole 1', message)
         self.assertIn('collapsed into', message)
+
+
+class TestFleetReferenceMessageFactories(TestCase):
+    def test_selected_factories_link_live_fleet(self):
+        game = default_game(stars=3, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        star = player.homeworld
+
+        factories = [
+            ColoniseFailedAlreadyOwnedMessageFactory(game, player, fleet, star, same_player=True),
+            ColoniseFailedNoStarMessageFactory(game, player, fleet, 99, 99, target_star=star),
+            BombardFailedNoStarMessageFactory(game, player, fleet, 99, 99),
+            ColoniseFailedNoColonistsMessageFactory(game, player, fleet, star),
+            MineralGiftMessageFactory(game, player, fleet, star, {'ironium': 25}),
+            FleetTransferredMessageFactory(game, player, fleet, recipient_name='Someone'),
+            FleetReceivedMessageFactory(game, player, fleet, 'Someone'),
+            OrbitalDefenseHitMessageFactory(game, player, star, fleet, 12),
+            TransferRaidThwartedMessageFactory(
+                game, player, fleet, star, 'Aliens', 'Ironium', 7
+            ),
+        ]
+
+        for factory in factories:
+            message = factory.new_message().message
+            self.assertIn(fleet.short_id, message)

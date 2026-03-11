@@ -2905,6 +2905,64 @@ class TestDiplomacyView(TestCase):
                 'report_tier': 'basic',
             }),
         )
+        vanished_anomaly_id = uuid.uuid4()
+        vanished_ancient_id = uuid.uuid4()
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='anomaly',
+            target_id=vanished_anomaly_id,
+            cached_report=json.dumps({
+                'name': 'Unknown Anomaly',
+                'x': 2,
+                'y': 2,
+                'anomaly_type': 'WORMHOLE',
+                'report_tier': 'advanced',
+            }),
+        )
+        Report.objects.create(
+            game=game,
+            player=other_player,
+            year=game.year,
+            target_type='anomaly',
+            target_id=vanished_anomaly_id,
+            cached_report=json.dumps({
+                'name': 'Unknown Anomaly',
+                'x': 2,
+                'y': 2,
+                'anomaly_type': 'WORMHOLE',
+                'report_tier': 'advanced',
+            }),
+        )
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='salvage',
+            target_id=vanished_ancient_id,
+            cached_report=json.dumps({
+                'name': 'Unknown Ancient Debris',
+                'x': 3,
+                'y': 3,
+                'salvage_type': 'ANCIENT_DEBRIS',
+                'report_tier': 'advanced',
+            }),
+        )
+        Report.objects.create(
+            game=game,
+            player=other_player,
+            year=game.year,
+            target_type='salvage',
+            target_id=vanished_ancient_id,
+            cached_report=json.dumps({
+                'name': 'Unknown Ancient Debris',
+                'x': 3,
+                'y': 3,
+                'salvage_type': 'ANCIENT_DEBRIS',
+                'report_tier': 'advanced',
+            }),
+        )
 
         user, _ = get_default_user()
         client = Client()
@@ -2928,6 +2986,8 @@ class TestDiplomacyView(TestCase):
         self.assertNotContains(response, 'value="star:%s"' % hidden_star.id)
         self.assertNotContains(response, wreck.name)
         self.assertNotContains(response, 'Shallow Echo')
+        self.assertNotContains(response, 'Unknown Anomaly')
+        self.assertNotContains(response, 'Unknown Ancient Debris')
         self.assertNotContains(response, 'colony %s' % player_colony.name)
         self.assertNotContains(response, 'anomaly %s' % anomaly.name)
         self.assertNotContains(response, 'ancient debris %s' % ancient.name)
@@ -3439,6 +3499,190 @@ class TestDiplomacyView(TestCase):
         offered_colony.refresh_from_db()
         self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
         self.assertEqual(offered_colony.player_id, other_player.id)
+
+    def test_diplomacy_specific_fleet_offer_includes_preview_report_by_default(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_fleet_preview', 'diplo_fleet_preview@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DFP')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Preview Race',
+            plural_name='Preview Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).order_by('id').first()
+        self._create_contact_star_report(game, player, other_player, contact_star)
+        offered_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Sales Pitch',
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+            ship_count=2,
+            integrity=100,
+            ironium_inventory=12,
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'send_contract',
+                'temperature': 'PROPOSE',
+                'deadline_years': '24',
+                'extend_on_accept_years': '0',
+                'request_clause_type': 'NOTHING',
+                'offer_condition_type': 'EXCHANGE',
+                'offer_clause_type': 'SPECIFIC_FLEET',
+                'offer_fleet': str(offered_fleet.id),
+                'offer_fleet_include_report': '1',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        contract = DiplomaticContract.objects.get(
+            sender=player,
+            recipient=other_player,
+            offer_clause_type='SPECIFIC_FLEET',
+            offer_fleet=offered_fleet,
+        )
+        self.assertTrue(contract.offer_fleet_include_report)
+        preview_report = Report.objects.get(
+            game=game,
+            player=other_player,
+            target_type='fleet',
+            target_id=offered_fleet.id,
+        )
+        cached = json.loads(preview_report.cached_report)
+        self.assertEqual(cached.get('report_tier'), 'encounter')
+        self.assertEqual(cached.get('name'), offered_fleet.name)
+        self.assertEqual(cached.get('ironium_inventory'), 12)
+
+    def test_diplomacy_specific_fleet_offer_can_skip_preview_report(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_no_fleet_preview', 'diplo_no_fleet_preview@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DNP')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='No Preview Race',
+            plural_name='No Preview Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).order_by('id').first()
+        self._create_contact_star_report(game, player, other_player, contact_star)
+        offered_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Silent Sale',
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+            ship_count=2,
+            integrity=100,
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'send_contract',
+                'temperature': 'PROPOSE',
+                'deadline_years': '24',
+                'extend_on_accept_years': '0',
+                'request_clause_type': 'NOTHING',
+                'offer_condition_type': 'EXCHANGE',
+                'offer_clause_type': 'SPECIFIC_FLEET',
+                'offer_fleet': str(offered_fleet.id),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        contract = DiplomaticContract.objects.get(
+            sender=player,
+            recipient=other_player,
+            offer_clause_type='SPECIFIC_FLEET',
+            offer_fleet=offered_fleet,
+        )
+        self.assertFalse(contract.offer_fleet_include_report)
+        self.assertFalse(
+            Report.objects.filter(
+                game=game,
+                player=other_player,
+                target_type='fleet',
+                target_id=offered_fleet.id,
+            ).exists()
+        )
+
+    def test_diplomacy_specific_fleet_transfer_resets_travel_warp_but_keeps_heading(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_offer_fleet', 'diplo_offer_fleet@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DOF')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Fleet Offer Race',
+            plural_name='Fleet Offer Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).order_by('id').first()
+        self._create_contact_star_report(game, player, other_player, contact_star)
+        offered_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Treaty Courier',
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+            ship_count=2,
+            integrity=100,
+            heading=271.5,
+            travel_warp=6,
+        )
+
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='SPECIFIC_FLEET',
+            offer_fleet=offered_fleet,
+        )
+
+        other_client = Client()
+        other_client.force_login(other_user)
+        response = other_client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': player.short_id,
+                'action': 'accept_contract',
+                'contract_id': contract.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        contract.refresh_from_db()
+        offered_fleet.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+        self.assertEqual(offered_fleet.player_id, other_player.id)
+        self.assertEqual(offered_fleet.travel_warp, 0)
+        self.assertAlmostEqual(float(offered_fleet.heading), 271.5, places=1)
 
     def test_diplomacy_colony_transfer_evacuates_population_into_owner_orbiting_fleets(self):
         game = default_game(stars=6, fleets=1)

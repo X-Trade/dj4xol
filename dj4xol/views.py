@@ -2734,18 +2734,24 @@ def _diplomacy_report_choice_groups(report_owner, viewer=None):
         if report.target_type == 'anomaly':
             if tier not in ('advanced', 'encounter'):
                 continue
+            anomaly = _resolve_report_target(report_owner.game, 'anomaly', report.target_id)
+            if anomaly is None:
+                continue
             anomaly_items.append({
                 'id': item_id,
-                'label': _diplomacy_report_item_label('anomaly', _resolve_report_target(report_owner.game, 'anomaly', report.target_id)),
+                'label': _diplomacy_report_item_label('anomaly', anomaly),
             })
             seen.add(item_id)
             continue
         if report.target_type == 'salvage':
             if tier not in ('advanced', 'encounter') or data.get('salvage_type') != 'ANCIENT_DEBRIS':
                 continue
+            salvage = _resolve_report_target(report_owner.game, 'salvage', report.target_id)
+            if salvage is None:
+                continue
             ancient_debris_items.append({
                 'id': item_id,
-                'label': _diplomacy_report_item_label('salvage', _resolve_report_target(report_owner.game, 'salvage', report.target_id)),
+                'label': _diplomacy_report_item_label('salvage', salvage),
             })
             seen.add(item_id)
     if colony_items:
@@ -2794,6 +2800,7 @@ def _diplomacy_build_compose_state(player, selected_player, request_obj=None, co
         'offer_stance': 'NEUTRAL',
         'request_ship_count': '',
         'offer_fleet': '',
+        'offer_fleet_include_report': '1',
         'request_suggested_star': '',
         'request_star': '',
         'offer_star': '',
@@ -2825,6 +2832,7 @@ def _diplomacy_build_compose_state(player, selected_player, request_obj=None, co
         state['offer_stance'] = request_obj.POST.get('offer_stance', state['offer_stance'])
         state['request_ship_count'] = request_obj.POST.get('request_ship_count', '')
         state['offer_fleet'] = request_obj.POST.get('offer_fleet', '')
+        state['offer_fleet_include_report'] = '1' if request_obj.POST.get('offer_fleet_include_report') else ''
         state['request_suggested_star'] = request_obj.POST.get('request_suggested_star', '')
         state['request_star'] = request_obj.POST.get('request_star', '')
         state['offer_star'] = request_obj.POST.get('offer_star', '')
@@ -2832,6 +2840,10 @@ def _diplomacy_build_compose_state(player, selected_player, request_obj=None, co
         state['extend_on_accept_years'] = request_obj.POST.get('extend_on_accept_years', state['extend_on_accept_years'])
         for key in state['resources']:
             state['resources'][key] = request_obj.POST.get('request_%s' % key, '')
+    elif counter_contract is not None:
+        state['offer_fleet_include_report'] = (
+            '1' if bool(getattr(counter_contract, 'offer_fleet_include_report', True)) else ''
+        )
     return state
 
 
@@ -2983,6 +2995,7 @@ def _diplomacy_parse_contract(player, target_player, post_data, available_offer_
             contract.offer_fleet = player.fleets.filter(id=offer_fleet_id).first()
             if contract.offer_fleet is None:
                 errors.append('Offered fleet must be one of your current fleets.')
+        contract.offer_fleet_include_report = bool(post_data.get('offer_fleet_include_report'))
 
     if (
         contract.offer_condition_type == DiplomaticContract.CONDITION_OR_ELSE and
