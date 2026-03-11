@@ -70,6 +70,11 @@ from .diplomacy import (
     stance_label,
     stance_towards,
 )
+from .diplomatic_contracts import (
+    apply_give_fleet_delivery,
+    apply_world_resource_delivery,
+    refresh_contract_integrity,
+)
 
 from .mineral_rules import ALL_RESOURCE_KEYS, random_asteroid_field_minerals, random_ancient_debris_minerals
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_name, get_secret_resource_label
@@ -451,6 +456,7 @@ class GameTurn():
         """Process a single year of game time."""
         self._scanner_sources_by_player_id = {}
         self._stance_map_by_player_id = {}
+        refresh_contract_integrity(self.game)
         self._apply_pending_diplomacy_snapshot()
         self.move_comets()
         self.move_wormholes()
@@ -4377,6 +4383,7 @@ class GameTurn():
 
         elif order.transfer_type in ('UNLOAD', 'UNLOAD_ALL'):
             # Unload from fleet to star
+            foreign_owner_before = star.player if star.player and star.player != fleet.player else None
             transfers = {}
             if order.transfer_type == 'UNLOAD_ALL':
                 for key in resource_keys:
@@ -4433,13 +4440,28 @@ class GameTurn():
             star.save()
             fleet.save()
 
-            if any(transfers.values()) and star.player and star.player != fleet.player:
+            if (
+                foreign_owner_before is not None and
+                star.player_id == foreign_owner_before.id and
+                any(transfers.values())
+            ):
                 gift_factory = MineralGiftMessageFactory(
-                    self.game, star.player, fleet.name, star, transfers
+                    self.game,
+                    foreign_owner_before,
+                    fleet.name,
+                    star,
+                    transfers,
                 )
                 gift_msg = gift_factory.new_message()
                 gift_msg.year = self.game.year
                 gift_msg.save()
+                apply_world_resource_delivery(
+                    fleet.player,
+                    foreign_owner_before,
+                    transfers,
+                    self.game.year,
+                    star=star,
+                )
 
             if star.player:
                 self._discover_secret_resources_from_star(star.player, star)
@@ -5568,6 +5590,16 @@ class GameTurn():
             return 'executed'
 
         fleet_name = fleet.name
+        cargo_bundle = {
+            'ironium': int(getattr(fleet, 'ironium_inventory', 0) or 0),
+            'boranium': int(getattr(fleet, 'boranium_inventory', 0) or 0),
+            'germanium': int(getattr(fleet, 'germanium_inventory', 0) or 0),
+            'resource_x': int(getattr(fleet, 'resource_x_inventory', 0) or 0),
+            'resource_y': int(getattr(fleet, 'resource_y_inventory', 0) or 0),
+            'resource_z': int(getattr(fleet, 'resource_z_inventory', 0) or 0),
+            'colonists': int(getattr(fleet, 'colonists', 0) or 0),
+        }
+        ship_count = int(getattr(fleet, 'ship_count', 0) or 0)
         recipient = order.transfer_player
         if recipient is not None and (
             recipient.game_id != self.game.id or bool(getattr(recipient, 'defeated', False))
@@ -5582,6 +5614,14 @@ class GameTurn():
             self._abandon_fleet(fleet)
         else:
             self._capture_fleet(fleet, recipient)
+            apply_give_fleet_delivery(
+                previous_owner,
+                recipient,
+                fleet,
+                cargo_bundle,
+                ship_count,
+                self.game.year,
+            )
 
         self._create_or_update_report(
             previous_owner,

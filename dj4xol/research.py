@@ -16,6 +16,7 @@ from .micromanager_rules import (
 )
 from .models import (
     DefaultResearchLevelRequirement,
+    PlayerTechnologyGrant,
     PlayerResearch,
     ResearchCategory,
     ResearchLevelRequirement,
@@ -1141,11 +1142,19 @@ def get_player_unlocked_technologies(player):
     level_by_cat = {
         row.category_id: row.current_level for row in rows
     }
+    granted_ids = set()
+    if player:
+        granted_ids = set(
+            PlayerTechnologyGrant.objects.filter(player=player)
+            .values_list('technology_id', flat=True)
+        )
     unlocked = []
     for tech in Technology.objects.select_related('category').filter(enabled=True):
         if (
-            level_by_cat.get(tech.category_id, 0.0) >= tech.level and
-            technology_is_available_for_player(tech, player)
+            tech.id in granted_ids or (
+                level_by_cat.get(tech.category_id, 0.0) >= tech.level and
+                technology_is_available_for_player(tech, player)
+            )
         ):
             unlocked.append(tech)
     return unlocked

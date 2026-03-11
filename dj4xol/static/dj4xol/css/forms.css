@@ -461,6 +461,7 @@ body.lcars.onboarding .hint.starting-tech-warning.form-errors {
  */
 .single-panel-page {
     height: 100vh;
+    height: 100dvh;
     overflow: hidden !important;
 }
 
@@ -485,4 +486,10 @@ body.lcars.onboarding .hint.starting-tech-warning.form-errors {
     margin-left: auto;
     margin-right: auto;
     overflow: hidden;
+}
+
+.single-panel-page.two-panel-page .panel-content.panel-stack {
+    min-height: 0 !important;
+    max-height: 40vh !important;
+    max-height: 40dvh !important;
 }

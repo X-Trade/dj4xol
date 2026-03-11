@@ -27,7 +27,7 @@ from ..colony_rules import (
     COLONISTS_PER_JOB,
     BUILDPOINTS_PER_FACTORY,
 )
-from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, Report, ServerRaceType
+from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, Report, ServerRaceType, DiplomaticContract
 from ..factory import GameFactory
 from ..research import ensure_player_research_rows
 from ..chance_rules import transfer_raid_success_chance
@@ -4762,6 +4762,129 @@ class TestProductionRollupMessages(TestCase):
 
 class TestFleetTransferOrders(TestCase):
     """Test fleet transfer order functionality."""
+
+    def test_resource_to_world_contract_fulfills_oldest_first(self):
+        game = default_game(stars=8, fleets=0)
+        player1 = game.players.first()
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        other_user = User.objects.create_user('contract_transfer_user', 'contract_transfer@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='CTR')
+        player2 = GameFactory(game).join_player(other_account, get_default_race())
+
+        contract_old = DiplomaticContract.objects.create(
+            game=game,
+            sender=player1,
+            recipient=player2,
+            temperature='REQUEST',
+            status='ACCEPTED',
+            sent_year=game.year,
+            accepted_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='RESOURCE_TO_WORLD',
+            request_ironium=3,
+            offer_clause_type='NOTHING',
+        )
+        contract_new = DiplomaticContract.objects.create(
+            game=game,
+            sender=player1,
+            recipient=player2,
+            temperature='REQUEST',
+            status='ACCEPTED',
+            sent_year=game.year,
+            accepted_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='RESOURCE_TO_WORLD',
+            request_ironium=4,
+            offer_clause_type='NOTHING',
+        )
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name='Contract Hauler',
+            x=player1.homeworld.x,
+            y=player1.homeworld.y,
+            cargo_capacity=20,
+            ironium_inventory=5,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=player1.homeworld,
+            transfer_type='UNLOAD',
+            transfer_ironium=5,
+        )
+
+        GameTurn(game).generate_turn()
+
+        contract_old.refresh_from_db()
+        contract_new.refresh_from_db()
+        self.assertEqual(contract_old.status, DiplomaticContract.STATUS_FULFILLED)
+        self.assertEqual(contract_new.status, DiplomaticContract.STATUS_ACCEPTED)
+        self.assertEqual(contract_new.progress_ironium, 2)
+
+    def test_fleet_give_contract_fulfills_oldest_first(self):
+        game = default_game(stars=8, fleets=0)
+        player1 = game.players.first()
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        other_user = User.objects.create_user('contract_give_user', 'contract_give@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='CTG')
+        player2 = GameFactory(game).join_player(other_account, get_default_race())
+
+        contract_old = DiplomaticContract.objects.create(
+            game=game,
+            sender=player1,
+            recipient=player2,
+            temperature='REQUEST',
+            status='ACCEPTED',
+            sent_year=game.year,
+            accepted_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='FLEET_BY_SHIP_COUNT',
+            request_ship_count=2,
+            offer_clause_type='NOTHING',
+        )
+        contract_new = DiplomaticContract.objects.create(
+            game=game,
+            sender=player1,
+            recipient=player2,
+            temperature='REQUEST',
+            status='ACCEPTED',
+            sent_year=game.year,
+            accepted_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='FLEET_BY_SHIP_COUNT',
+            request_ship_count=3,
+            offer_clause_type='NOTHING',
+        )
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name='Gift Fleet',
+            x=player2.homeworld.x,
+            y=player2.homeworld.y,
+            ship_count=4,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='GIVE',
+            transfer_player=player1,
+        )
+
+        GameTurn(game).generate_turn()
+
+        contract_old.refresh_from_db()
+        contract_new.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.player_id, player1.id)
+        self.assertEqual(contract_old.status, DiplomaticContract.STATUS_FULFILLED)
+        self.assertEqual(contract_new.status, DiplomaticContract.STATUS_ACCEPTED)
+        self.assertEqual(contract_new.progress_ship_count, 2)
 
     def test_multiple_instant_transfers(self):
         """Test multiple transfer orders executing in same turn."""

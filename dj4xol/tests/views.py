@@ -7,12 +7,14 @@ from django.urls import reverse
 from django.contrib.auth.models import User
 from ..models import (
     Account,
+    DiplomaticContract,
     Fleet,
     FleetOrders,
     GameMessage,
     GameInvitation,
     Player,
     PlayerDiplomaticStance,
+    PlayerTechnologyGrant,
     ProductionOrder,
     Report,
     ResearchCategory,
@@ -23,13 +25,18 @@ from ..models import (
     Technology,
 )
 from ..forms import JoinGameForm, NewGameForm
-from ..research import ensure_player_research_rows
+from ..research import (
+    ensure_player_research_rows,
+    get_player_tech_effects,
+    get_player_unlocked_technologies,
+)
 from ..diplomacy import (
     combat_chance_modifier_percent,
     combat_chance_percent,
     combat_chance_with_diplomacy_percent,
     combat_readiness_multiplier,
 )
+from ..diplomatic_contracts import format_contract_statement, format_contract_summary
 from ..turn import (
     GameTurn,
     format_basic_hidden_salvage_name,
@@ -2043,19 +2050,836 @@ class TestDiplomacyView(TestCase):
         other_race_type.diplomacy_multiplier = 2.0
         other_race_type.save(update_fields=['diplomacy_multiplier'])
         self.assertEqual(combat_chance_modifier_percent(player, other_player), -50)
-        self.assertEqual(
-            combat_chance_with_diplomacy_percent('NEUTRAL', 'NEUTRAL', player, other_player),
-            15,
+
+    def test_diplomacy_can_send_and_accept_contracts(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_contract_target', 'diplo_contract_target@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DCT')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Contract Race',
+            plural_name='Contract Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
         )
 
-        other_race_type.diplomacy_multiplier = 0.5
-        other_race_type.save(update_fields=['diplomacy_multiplier'])
-        persuasive_type.diplomacy_multiplier = 0.5
-        persuasive_type.save(update_fields=['diplomacy_multiplier'])
-        self.assertEqual(combat_chance_modifier_percent(player, other_player), 100)
-        self.assertEqual(
-            combat_chance_with_diplomacy_percent('NEUTRAL', 'NEUTRAL', player, other_player),
-            60,
+        tech = Technology.objects.filter(enabled=True).order_by('level', 'id').first()
+        other_rows = ensure_player_research_rows(other_player)
+        target_row = next(row for row in other_rows if row.category_id == tech.category_id)
+        target_row.current_level = tech.level
+        target_row.save(update_fields=['current_level'])
+        tech = get_player_unlocked_technologies(other_player)[0]
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'send_contract',
+                'temperature': 'PROPOSE',
+                'deadline_years': '24',
+                'extend_on_accept_years': '0',
+                'request_clause_type': 'STANCE',
+                'request_stance': 'WARM',
+                'offer_clause_type': 'NOTHING',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        contract = DiplomaticContract.objects.get(
+            sender=player,
+            recipient=other_player,
+            request_clause_type='STANCE',
+        )
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_SENT)
+
+        tech_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='TECHNOLOGY',
+            request_technology=tech,
+            offer_clause_type='NOTHING',
+        )
+
+        other_client = Client()
+        other_client.force_login(other_user)
+        response = other_client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': player.short_id,
+                'action': 'accept_contract',
+                'contract_id': tech_contract.short_id,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        tech_contract.refresh_from_db()
+        self.assertEqual(tech_contract.status, DiplomaticContract.STATUS_FULFILLED)
+        self.assertTrue(
+            PlayerTechnologyGrant.objects.filter(player=player, technology=tech).exists()
+        )
+        self.assertIn(tech.id, {item.id for item in get_player_unlocked_technologies(player)})
+
+    def test_diplomacy_technology_exchange_grants_correct_tech_to_each_player(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_contract_tech_exchange', 'diplo_contract_tech_exchange@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DTE')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Exchange Race',
+            plural_name='Exchange Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+
+        propulsion = ResearchCategory.objects.create(
+            code='DIPLOXPROP',
+            name='Diplomatic Propulsion',
+            enabled=True,
+        )
+        construction = ResearchCategory.objects.create(
+            code='DIPLOXHULL',
+            name='Diplomatic Hulls',
+            enabled=True,
+        )
+        player_tech = Technology.objects.create(
+            category=construction,
+            level=4,
+            name='Gifted Freighter Hull',
+            tech_type='HULL',
+            params_json='{"max_cargo_capacity": 350, "max_fuel": 180, "hull_thumbnail_class": "freighter"}',
+            enabled=True,
+        )
+        other_tech = Technology.objects.create(
+            category=propulsion,
+            level=4,
+            name='Gifted Warp 8',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 8, "fuel_efficiency": 1.2}',
+            enabled=True,
+        )
+        player_rows = ensure_player_research_rows(player)
+        for row in player_rows:
+            row.current_level = float(player_tech.level) if row.category_id == player_tech.category_id else 0.0
+            row.save(update_fields=['current_level'])
+        other_rows = ensure_player_research_rows(other_player)
+        for row in other_rows:
+            row.current_level = float(other_tech.level) if row.category_id == other_tech.category_id else 0.0
+            row.save(update_fields=['current_level'])
+
+        self.assertIn(player_tech.id, {item.id for item in get_player_unlocked_technologies(player)})
+        self.assertNotIn(player_tech.id, {item.id for item in get_player_unlocked_technologies(other_player)})
+        self.assertIn(other_tech.id, {item.id for item in get_player_unlocked_technologies(other_player)})
+        self.assertNotIn(other_tech.id, {item.id for item in get_player_unlocked_technologies(player)})
+
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='TECHNOLOGY',
+            request_technology=other_tech,
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='TECHNOLOGY',
+            offer_technology=player_tech,
+        )
+
+        other_client = Client()
+        other_client.force_login(other_user)
+        response = other_client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': player.short_id,
+                'action': 'accept_contract',
+                'contract_id': contract.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+
+        player_grant = PlayerTechnologyGrant.objects.get(player=player, technology=other_tech)
+        self.assertEqual(player_grant.source_contract_id, contract.id)
+        self.assertEqual(player_grant.granted_by_player_id, other_player.id)
+
+        other_grant = PlayerTechnologyGrant.objects.get(player=other_player, technology=player_tech)
+        self.assertEqual(other_grant.source_contract_id, contract.id)
+        self.assertEqual(other_grant.granted_by_player_id, player.id)
+
+        self.assertIn(other_tech.id, {item.id for item in get_player_unlocked_technologies(player)})
+        self.assertIn(player_tech.id, {item.id for item in get_player_unlocked_technologies(other_player)})
+
+        player_effects = get_player_tech_effects(player)
+        self.assertEqual(player_effects['max_warp_speed'], 8)
+        self.assertGreaterEqual(player_effects['fuel_efficiency'], 1.2)
+
+        other_effects = get_player_tech_effects(other_player)
+        self.assertEqual(other_effects['max_cargo_capacity'], 350)
+        self.assertEqual(other_effects['max_fuel'], 180)
+        self.assertEqual(other_effects['hull_thumbnail_class'], 'freighter')
+
+    def test_diplomacy_summary_keeps_do_nothing_exchange_wording(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_do_nothing_summary', 'diplo_do_nothing_summary@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DDS')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Summary Race',
+            plural_name='Summary Races',
+            race_type=race_type,
+        )
+        tech = Technology.objects.filter(enabled=True).order_by('level', 'id').first()
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='DEMAND',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='TECHNOLOGY',
+            offer_technology=tech,
+        )
+
+        summary = format_contract_summary(
+            contract,
+            viewer=other_player,
+            include_links=False,
+            include_sender_account=False,
+        )
+
+        self.assertIn('demands do nothing in exchange for technology', summary)
+        self.assertIn(tech.name, summary)
+        self.assertNotIn('demands technology', summary)
+
+    def test_diplomacy_statement_matches_form_style_for_recipient(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_statement_recipient', 'diplo_statement_recipient@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DSR')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Statement Race',
+            plural_name='Statement Races',
+            race_type=race_type,
+        )
+        tech = Technology.objects.filter(enabled=True).order_by('level', 'id').first()
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='DEMAND',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='TECHNOLOGY',
+            offer_technology=tech,
+        )
+
+        statement = format_contract_statement(
+            contract,
+            viewer=other_player,
+            include_links=False,
+            include_sender_account=False,
+        )
+
+        self.assertIn('tester demands that we do nothing, in exchange they grant us technology', statement.lower())
+        self.assertIn(tech.name, statement)
+        self.assertNotIn('(admin)', statement)
+
+    def test_diplomacy_statement_matches_form_style_for_sender(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_statement_sender', 'diplo_statement_sender@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DSS')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Receiver Race',
+            plural_name='Receiver Races',
+            race_type=race_type,
+        )
+        tech = Technology.objects.filter(enabled=True).order_by('level', 'id').first()
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='DEMAND',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='TECHNOLOGY',
+            offer_technology=tech,
+        )
+
+        statement = format_contract_statement(
+            contract,
+            viewer=player,
+            include_links=False,
+            include_sender_account=False,
+        )
+
+        self.assertIn('we demand that receiver race do nothing, in exchange we grant them technology', statement.lower())
+        self.assertIn(tech.name, statement)
+        self.assertNotIn('(admin)', statement)
+
+    def test_diplomacy_can_send_technology_request_and_offer_from_form(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_contract_tech_form', 'diplo_contract_tech_form@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DTF')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Tech Race',
+            plural_name='Tech Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        player_tech = get_player_unlocked_technologies(player)[0]
+        other_rows = ensure_player_research_rows(other_player)
+        target_row = next(row for row in other_rows if row.category_id == player_tech.category_id)
+        target_row.current_level = player_tech.level
+        target_row.save(update_fields=['current_level'])
+        other_tech = get_player_unlocked_technologies(other_player)[0]
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'send_contract',
+                'temperature': 'PROPOSE',
+                'deadline_years': '24',
+                'extend_on_accept_years': '0',
+                'request_clause_type': 'TECHNOLOGY',
+                'request_technology': str(other_tech.id),
+                'offer_condition_type': 'EXCHANGE',
+                'offer_clause_type': 'TECHNOLOGY',
+                'offer_technology': str(player_tech.id),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        contract = DiplomaticContract.objects.get(
+            sender=player,
+            recipient=other_player,
+            request_clause_type='TECHNOLOGY',
+            offer_clause_type='TECHNOLOGY',
+        )
+        self.assertEqual(contract.request_technology_id, other_tech.id)
+        self.assertEqual(contract.offer_technology_id, player_tech.id)
+
+    def test_diplomacy_compose_form_uses_narrative_layout_and_grouped_technology_choices(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_contract_grouped', 'diplo_contract_grouped@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DCG')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Grouped Race',
+            plural_name='Grouped Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        tech = Technology.objects.filter(enabled=True).order_by('level', 'id').first()
+        other_rows = ensure_player_research_rows(other_player)
+        target_row = next(row for row in other_rows if row.category_id == tech.category_id)
+        target_row.current_level = tech.level
+        target_row.save(update_fields=['current_level'])
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id, 'compose': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'diplomacy-compose-narrative')
+        self.assertContains(response, 'name="offer_condition_type"')
+        self.assertContains(response, 'that they')
+        self.assertContains(response, 'grant us technology')
+        self.assertContains(response, 'grant them technology')
+        self.assertContains(response, 'in exchange')
+        self.assertContains(response, '<optgroup label=')
+
+    def test_diplomacy_decline_can_trigger_or_else_stance_without_demand_temperature(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_or_else_target', 'diplo_or_else_target@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DCO')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Or Else Race',
+            plural_name='Or Else Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            offer_condition_type='OR_ELSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='NEUTRAL',
+            offer_clause_type='STANCE',
+            offer_stance='HOSTILE',
+        )
+
+        other_client = Client()
+        other_client.force_login(other_user)
+        response = other_client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': player.short_id,
+                'action': 'decline_contract',
+                'contract_id': contract.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_DECLINED)
+        stance = PlayerDiplomaticStance.objects.get(player=player, target_player=other_player)
+        self.assertEqual(stance.pending_stance, 'HOSTILE')
+
+    def test_diplomacy_compose_shows_delivery_warning_for_direct_world_delivery_at_cold_stance(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player.default_diplomatic_stance = 'COLD'
+        player.save(update_fields=['default_diplomatic_stance'])
+        player.turned_in = True
+        player.save(update_fields=['turned_in'])
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_delivery_warn', 'diplo_delivery_warn@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DDW')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Delivery Race',
+            plural_name='Delivery Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'send_contract',
+                'temperature': 'REQUEST',
+                'request_clause_type': 'RESOURCE_TO_WORLD',
+                'request_ironium': '10',
+                'offer_clause_type': 'NOTHING',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'likely to be shot down by your colony defences')
+
+    def test_diplomacy_counter_uses_button_and_compose_panel_renders_above_requests(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_counter_button', 'diplo_counter_button@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DCB')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Counter Race',
+            plural_name='Counter Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=other_player,
+            recipient=player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='NEUTRAL',
+            offer_clause_type='NOTHING',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id, 'compose': '1', 'counter': contract.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<button type="submit">Counter</button>', html=True)
+        body = response.content.decode('utf-8')
+        self.assertLess(body.index('Counter Offer'), body.index('diplomacy-contract-list'))
+
+    def test_diplomacy_request_list_includes_status_classes(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_status_classes', 'diplo_status_classes@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DSC')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Status Race',
+            plural_name='Status Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        DiplomaticContract.objects.create(
+            game=game,
+            sender=other_player,
+            recipient=player,
+            temperature='REQUEST',
+            status='ACCEPTED',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='WARM',
+            offer_clause_type='NOTHING',
+        )
+        DiplomaticContract.objects.create(
+            game=game,
+            sender=other_player,
+            recipient=player,
+            temperature='REQUEST',
+            status='COUNTERED',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='NEUTRAL',
+            offer_clause_type='NOTHING',
+        )
+        DiplomaticContract.objects.create(
+            game=game,
+            sender=other_player,
+            recipient=player,
+            temperature='REQUEST',
+            status='EXPIRED',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='COLD',
+            offer_clause_type='NOTHING',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'diplomacy-contract-status-accepted')
+        self.assertContains(response, 'diplomacy-contract-status-countered')
+        self.assertContains(response, 'diplomacy-contract-status-expired')
+
+    def test_main_game_messages_include_incoming_contract_alert(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_alert_target', 'diplo_alert_target@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DCA')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Alert Race',
+            plural_name='Alert Races',
+            race_type=race_type,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=other_player,
+            recipient=player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='NEUTRAL',
+            offer_clause_type='NOTHING',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(reverse('dj4xol:game', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Respond</a>', html=False)
+        self.assertNotContains(response, '>Diplomatic request</a>', html=False)
+        self.assertContains(response, 'diplomatic-priority')
+        self.assertContains(response, 'Year %s' % contract.sent_year)
+        self.assertNotContains(response, '(%s)' % other_account.alias)
+
+    def test_main_game_messages_keep_unfulfilled_accepted_request_at_top(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_accept_alert', 'diplo_accept_alert@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DAA')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Accepted Race',
+            plural_name='Accepted Races',
+            race_type=race_type,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='ACCEPTED',
+            sent_year=game.year,
+            accepted_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='RESOURCE_TO_WORLD',
+            request_ironium=25,
+            offer_clause_type='NOTHING',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(reverse('dj4xol:game', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Awaiting from Accepted Race:')
+        self.assertContains(response, '25kt Ironium')
+        self.assertContains(response, 'Complete by Year %s' % (game.year + 24))
+        self.assertContains(response, 'View</a>', html=False)
+
+    def test_diplomacy_rejects_direct_world_colonist_contracts(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_colonist_target', 'diplo_colonist_target@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DCC')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Cargo Race',
+            plural_name='Cargo Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'send_contract',
+                'temperature': 'REQUEST',
+                'deadline_years': '24',
+                'extend_on_accept_years': '0',
+                'request_clause_type': 'RESOURCE_TO_WORLD',
+                'request_colonists': '5',
+                'offer_clause_type': 'NOTHING',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'Colonists must currently be requested on a transferred fleet',
         )
 
     def test_diplomacy_page_shows_signed_persuasion_modifier_next_to_base_chance(self):

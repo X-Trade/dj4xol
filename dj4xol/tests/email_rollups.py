@@ -4,7 +4,9 @@ from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from ..models import Account, ServerSettings
+from ..email_rollups import send_message_rollup_for_account
+from ..models import Account, DiplomaticContract, ServerSettings
+from ._util import default_game, get_default_race
 
 
 class EmailUnsubscribeTest(TestCase):
@@ -99,3 +101,58 @@ class TestGenericEmailAction(TestCase):
         self.assertIn('Profile URL: https://example.test', message.body)
         self.assertIn('/4x/profile/', message.body)
         self.assertIn('Unsubscribe URL: https://example.test', message.body)
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class TestDiplomaticContractRollups(TestCase):
+    def setUp(self):
+        ServerSettings.objects.update_or_create(
+            key='enable_email',
+            defaults={'value': 'True', 'description': 'Enable outbound email'},
+        )
+        ServerSettings.objects.update_or_create(
+            key='server_url',
+            defaults={'value': 'https://example.test', 'description': 'Server URL'},
+        )
+        self.game = default_game(stars=6, fleets=0)
+        self.player = self.game.players.first()
+        self.account = self.player.account
+        self.game.joinable = True
+        self.game.save(update_fields=['joinable'])
+        self.account.email = 'rollup_player@example.com'
+        self.account.save(update_fields=['email'])
+
+        other_user = User.objects.create_user('rollup_other', 'rollup_other@example.com', 'pw')
+        other_account = Account.objects.create(
+            django_user=other_user,
+            alias='ROLL',
+            email='rollup_other@example.com',
+            full_name='Rollup Other',
+        )
+        from ..factory import GameFactory
+        self.other_player = GameFactory(self.game).join_player(other_account, get_default_race())
+        self.account.email_game_updates = True
+        self.account.email_game_rollups_per_day = 1
+        self.account.save(update_fields=['email_game_updates', 'email_game_rollups_per_day'])
+
+    def test_rollup_includes_unhandled_contract_alert(self):
+        DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.other_player,
+            recipient=self.player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=self.game.year,
+            expires_year=self.game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='NEUTRAL',
+            offer_clause_type='NOTHING',
+        )
+
+        sent, reason = send_message_rollup_for_account(self.account)
+
+        self.assertTrue(sent, reason)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('Diplomatic request:', mail.outbox[0].body)
+        self.assertIn('Expires Year %s' % (self.game.year + 24), mail.outbox[0].body)
+        self.assertNotIn('(%s)' % self.other_player.account.alias, mail.outbox[0].body)

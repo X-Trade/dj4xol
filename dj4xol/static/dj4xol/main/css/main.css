@@ -1017,6 +1017,10 @@ body.turned-in.lcars .order-params::after {
     background: #ffe0e0;
 }
 
+.messages-scroll .message.diplomatic-priority {
+    background: #d9ddff;
+}
+
 .messages-footer {
     border-top: 1px solid #e0e0e0;
     text-align: right;

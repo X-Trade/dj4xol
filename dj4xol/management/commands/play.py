@@ -57,6 +57,7 @@ from dj4xol.diplomacy import (
     stance_towards,
     update_player_stances,
 )
+from dj4xol.diplomatic_contracts import build_player_message_feed
 from dj4xol.turn import GameTurn
 
 try:  # Enables terminal history/editing for input() on supported platforms.
@@ -342,17 +343,20 @@ class Command(BaseCommand):
         return player
 
     def _show_priority_messages(self, player, game):
-        qs = self._messages_base_queryset(player).filter(priority=True)
-        msgs = list(qs[:20])
+        msgs = [
+            msg for msg in self._messages_base_queryset(player)
+            if bool(msg.get("priority"))
+        ][:20]
         if not msgs:
             return
         self.stdout.write(self.style.WARNING("Priority messages (year %s):" % game.year))
         payload = {}
         for msg in msgs:
-            payload[msg.short_id] = {
-                "year": msg.year,
-                "category": msg.category,
-                "message": self._format_message_text_for_cli(msg.message),
+            rendered = msg["text"] if msg.get("diplomatic_priority") else self._format_message_text_for_cli(msg["message"])
+            payload[msg["short_id"]] = {
+                "year": msg["year"],
+                "category": msg["category"],
+                "message": rendered,
             }
         self._print_yaml({"priority_messages": payload})
 
@@ -2158,38 +2162,42 @@ class Command(BaseCommand):
         self._print_yaml(payload)
 
     def _messages_summary(self, player, game, filters):
-        qs = self._messages_base_queryset(player)
+        entries = list(self._messages_base_queryset(player))
 
         year = filters.get("year")
         if year is not None:
             try:
-                qs = qs.filter(year=int(year))
+                year = int(year)
             except ValueError:
                 raise CommandError("Invalid year filter: %s" % year)
+            entries = [entry for entry in entries if int(entry["year"]) == year]
 
         since = filters.get("since")
         if since is not None:
             try:
-                qs = qs.filter(year__gte=int(since))
+                since = int(since)
             except ValueError:
                 raise CommandError("Invalid since filter: %s" % since)
+            entries = [entry for entry in entries if int(entry["year"]) >= since]
 
         category = filters.get("category")
         if category:
-            qs = qs.filter(category=category.upper())
+            category = category.upper()
+            entries = [entry for entry in entries if entry["category"] == category]
 
         priority = filters.get("priority")
         if priority is not None:
             if priority.lower() in ("1", "true", "yes", "y"):
-                qs = qs.filter(priority=True)
+                entries = [entry for entry in entries if bool(entry["priority"])]
             elif priority.lower() in ("0", "false", "no", "n"):
-                qs = qs.filter(priority=False)
+                entries = [entry for entry in entries if not bool(entry["priority"])]
             else:
                 raise CommandError("Invalid priority filter: %s" % priority)
 
         contains = filters.get("contains")
         if contains:
-            qs = qs.filter(message__icontains=contains)
+            contains = contains.lower()
+            entries = [entry for entry in entries if contains in str(entry["text"]).lower()]
 
         limit = filters.get("limit", "50")
         try:
@@ -2199,20 +2207,18 @@ class Command(BaseCommand):
         limit = max(1, min(limit, 500))
 
         payload = {}
-        for msg in qs[:limit]:
-            payload[msg.short_id] = {
-                "year": msg.year,
-                "category": msg.category,
-                "priority": bool(msg.priority),
-                "text": self._format_message_text_for_cli(msg.message),
+        for msg in entries[:limit]:
+            rendered = msg["text"] if msg.get("diplomatic_priority") else self._format_message_text_for_cli(msg["message"])
+            payload[msg["short_id"]] = {
+                "year": msg["year"],
+                "category": msg["category"],
+                "priority": bool(msg["priority"]),
+                "text": rendered,
             }
         return payload
 
     def _messages_base_queryset(self, player):
-        qs = player.messages.order_by("-priority", "-year", "-id")
-        if player.messages_seen_year is not None:
-            qs = qs.filter(year__gte=player.messages_seen_year)
-        return qs
+        return build_player_message_feed(player, limit=1000, include_seen_filter=True)
 
     def _format_message_text_for_cli(self, message):
         text = str(message or "")

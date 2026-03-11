@@ -3,7 +3,7 @@
     <div class="panel-content panel-stack">
         <section id="messages" class="messages-scroll panel-scrollable-list" data-year="{{ game.year }}">
             {% for msg in messages %}
-            <div class="message{% if msg.priority %} priority{% endif %}">
+            <div class="message{% if msg.priority %} priority{% endif %}{% if msg.diplomatic_priority %} diplomatic-priority{% endif %}">
                 <span class="message-year">Year {{ msg.year }}{% if msg.priority %} <span class="priority-flag">!</span>{% endif %}</span>
                 <p class="message-text">{{ msg.message|safe }}</p>
             </div>

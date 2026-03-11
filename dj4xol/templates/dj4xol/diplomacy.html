@@ -124,6 +124,202 @@
                                 </div>
                                 {% endfor %}
                             </div>
+                            {% if not detail.is_default %}
+                            <hr class="detail-divider">
+                            <h4>Negotiations</h4>
+                            {% if compose_errors %}
+                                {% include 'dj4xol/_form_message_banner.html' with errors=compose_errors %}
+                            {% endif %}
+                            {% if compose_notice %}
+                            <p class="diplomacy-compose-notice">{{ compose_notice }}</p>
+                            {% endif %}
+                            {% if diplomacy_locked %}
+                            <p class="diplomacy-compose-warning">{{ diplomacy_lock_reason }}</p>
+                            {% endif %}
+                            {% if not compose_open %}
+                            <p class="diplomacy-compose-toggle">
+                                <a href="?target={{ selected_target }}&compose=1">Draft Negotiation</a>
+                            </p>
+                            {% else %}
+                            <hr class="detail-divider">
+                            <h4>{% if counter_contract %}Counter Offer{% else %}Draft Negotiation{% endif %}</h4>
+                            {% if counter_contract %}
+                            <p class="diplomacy-compose-warning">Countering: {{ counter_contract_summary }}</p>
+                            {% endif %}
+                            <form method="post" class="diplomacy-compose-form" id="diplomacy-compose-form" data-delivery-warning="{% if detail.delivery_warning %}1{% else %}0{% endif %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="target" value="{{ selected_target }}">
+                                <input type="hidden" name="action" value="send_contract">
+                                {% if counter_contract %}
+                                <input type="hidden" name="counter_from" value="{{ counter_contract.short_id }}">
+                                {% endif %}
+                                <div class="diplomacy-compose-narrative panel-scrollable-list">
+                                    <span class="compose-token compose-token-static">We</span>
+                                    <select id="temperature" name="temperature" class="compose-token">
+                                        {% for value, label in temperature_choices %}
+                                        <option value="{{ value }}"{% if compose_state.temperature == value %} selected{% endif %}>{{ label|lower }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <span class="compose-token-static">that they</span>
+                                    <select id="request_clause_type" name="request_clause_type" class="compose-token" data-clause-prefix="request">
+                                        {% for value, label in request_clause_choices %}
+                                        <option value="{{ value }}"{% if compose_state.request_clause_type == value %} selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <span class="compose-detail-block compose-field compose-request-technology">
+                                        <select id="request_technology" name="request_technology">
+                                            <option value="">technology...</option>
+                                            {% for group in request_technology_groups %}
+                                            <optgroup label="{{ group.label }}">
+                                                {% for tech in group.items %}
+                                                <option value="{{ tech.id }}"{% if compose_state.request_technology == tech.id|stringformat:'s' %} selected{% endif %}>L{{ tech.level }} {{ tech.name }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                            {% endfor %}
+                                        </select>
+                                    </span>
+                                    <span class="compose-detail-block compose-field compose-request-stance">
+                                        <select id="request_stance" name="request_stance">
+                                            {% for value, label in stance_choices %}
+                                            <option value="{{ value }}"{% if compose_state.request_stance == value %} selected{% endif %}>{{ label|lower }} stance</option>
+                                            {% endfor %}
+                                        </select>
+                                    </span>
+                                    <span class="compose-detail-block compose-field compose-request-ship-count">
+                                        <input id="request_ship_count" type="number" min="1" name="request_ship_count" value="{{ compose_state.request_ship_count }}" placeholder="ships">
+                                        <span class="compose-token-static">ships</span>
+                                    </span>
+                                    <span class="compose-detail-block compose-field compose-request-resources">
+                                        {% for resource in resource_rows %}
+                                        <label class="compose-resource-frag" for="request_{{ resource.key }}">
+                                            <input id="request_{{ resource.key }}" type="number" min="0" name="request_{{ resource.key }}" value="{{ resource.value }}" placeholder="0">
+                                            <span>{{ resource.label }}</span>
+                                        </label>
+                                        {% endfor %}
+                                    </span>
+                                    <span class="compose-detail-block compose-field compose-request-suggested-star">
+                                        <span class="compose-token-static">to</span>
+                                        <select id="request_suggested_star" name="request_suggested_star">
+                                            <option value="">any owned world</option>
+                                            {% for star in colony_choices %}
+                                            <option value="{{ star.id }}"{% if compose_state.request_suggested_star == star.id|stringformat:'s' %} selected{% endif %}>{{ star.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </span>
+                                    <select id="offer_condition_type" name="offer_condition_type" class="compose-token">
+                                        {% for value, label in offer_condition_choices %}
+                                        <option value="{{ value }}"{% if compose_state.offer_condition_type == value %} selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <span class="compose-token-static">, we</span>
+                                    <select id="offer_clause_type" name="offer_clause_type" class="compose-token" data-clause-prefix="offer">
+                                        {% for value, label in offer_clause_choices %}
+                                        <option value="{{ value }}"{% if compose_state.offer_clause_type == value %} selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <span class="compose-detail-block compose-field compose-offer-technology">
+                                        <select id="offer_technology" name="offer_technology">
+                                            <option value="">technology...</option>
+                                            {% for group in offer_technology_groups %}
+                                            <optgroup label="{{ group.label }}">
+                                                {% for tech in group.items %}
+                                                <option value="{{ tech.id }}"{% if compose_state.offer_technology == tech.id|stringformat:'s' %} selected{% endif %}>L{{ tech.level }} {{ tech.name }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                            {% endfor %}
+                                        </select>
+                                    </span>
+                                    <span class="compose-detail-block compose-field compose-offer-stance">
+                                        <select id="offer_stance" name="offer_stance">
+                                            {% for value, label in stance_choices %}
+                                            <option value="{{ value }}"{% if compose_state.offer_stance == value %} selected{% endif %}>{{ label|lower }} stance</option>
+                                            {% endfor %}
+                                        </select>
+                                    </span>
+                                    <span class="compose-detail-block compose-field compose-offer-fleet">
+                                        <select id="offer_fleet" name="offer_fleet">
+                                            <option value="">fleet...</option>
+                                            {% for fleet in fleet_choices %}
+                                            <option value="{{ fleet.id }}"{% if compose_state.offer_fleet == fleet.id|stringformat:'s' %} selected{% endif %}>{{ fleet.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </span>
+                                    <span class="compose-token compose-token-static">.</span>
+                                </div>
+                                <div class="diplomacy-compose-timing panel-scrollable-list">
+                                    <span class="compose-token-static">Deadline of</span>
+                                    <input id="deadline_years" type="number" min="1" max="200" name="deadline_years" value="{{ compose_state.deadline_years }}">
+                                    <span class="compose-token-static">years for response. Extend by</span>
+                                    <input id="extend_on_accept_years" type="number" min="0" max="200" name="extend_on_accept_years" value="{{ compose_state.extend_on_accept_years }}">
+                                    <span class="compose-token-static">on acceptance.</span>
+                                </div>
+                                <p
+                                    id="diplomacy-delivery-warning"
+                                    class="diplomacy-compose-warning diplomacy-compose-inline-warning"
+                                    {% if not detail.delivery_warning or compose_state.request_clause_type != 'RESOURCE_TO_WORLD' %}style="display:none"{% endif %}
+                                >
+                                    Warning: fleets delivering directly to your worlds are likely to be shot down by your colony defences at the current stance. A warmer stance is recommended.
+                                </p>
+                                <div class="diplomacy-contract-actions">
+                                    <button type="submit">Send</button>
+                                    <a href="?target={{ selected_target }}">Close</a>
+                                </div>
+                            </form>
+                            {% endif %}
+                            <div class="diplomacy-contract-list">
+                                {% for contract in contracts %}
+                                <article class="diplomacy-contract diplomacy-contract-status-{{ contract.status_raw|lower }}{% if contract.selected %} selected{% endif %}">
+                                    <div class="diplomacy-contract-summary">{{ contract.summary_html|safe }}</div>
+                                    <div class="diplomacy-contract-meta">
+                                        <span class="diplomacy-contract-status-label">Status: <span class="diplomacy-contract-status-value">{{ contract.status }}</span></span>
+                                        <span>Expires Year {{ contract.expires_year }}</span>
+                                    </div>
+                                    {% if contract.progress %}
+                                    <div class="diplomacy-contract-progress">{{ contract.progress }}</div>
+                                    {% endif %}
+                                    <div class="diplomacy-contract-actions">
+                                        {% if contract.can_accept %}
+                                        <form method="post">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="target" value="{{ selected_target }}">
+                                            <input type="hidden" name="action" value="accept_contract">
+                                            <input type="hidden" name="contract_id" value="{{ contract.short_id }}">
+                                            <button type="submit">Accept</button>
+                                        </form>
+                                        {% endif %}
+                                        {% if contract.can_decline %}
+                                        <form method="post">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="target" value="{{ selected_target }}">
+                                            <input type="hidden" name="action" value="decline_contract">
+                                            <input type="hidden" name="contract_id" value="{{ contract.short_id }}">
+                                            <button type="submit">Decline</button>
+                                        </form>
+                                        {% endif %}
+                                        {% if contract.can_counter %}
+                                        <form method="get">
+                                            <input type="hidden" name="target" value="{{ selected_target }}">
+                                            <input type="hidden" name="compose" value="1">
+                                            <input type="hidden" name="counter" value="{{ contract.short_id }}">
+                                            <button type="submit">Counter</button>
+                                        </form>
+                                        {% endif %}
+                                        {% if contract.can_revoke %}
+                                        <form method="post">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="target" value="{{ selected_target }}">
+                                            <input type="hidden" name="action" value="revoke_contract">
+                                            <input type="hidden" name="contract_id" value="{{ contract.short_id }}">
+                                            <button type="submit">Revoke</button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </article>
+                                {% empty %}
+                                <p>No negotiations with this race yet.</p>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </section>
                     </div>
                 </div>
@@ -164,6 +360,64 @@
                         form.submit();
                     }
                 });
+            });
+        })();
+        (function() {
+            var composeForm = document.getElementById('diplomacy-compose-form');
+            if (!composeForm) {
+                return;
+            }
+            var clauseFields = [
+                ['request_clause_type', 'request', {
+                    'NOTHING': [],
+                    'TECHNOLOGY': ['technology'],
+                    'STANCE': ['stance'],
+                    'RESOURCE_TO_WORLD': ['resources', 'suggested-star'],
+                    'RESOURCE_ON_GIVEN_FLEET': ['resources'],
+                    'FLEET_BY_SHIP_COUNT': ['ship-count']
+                }],
+                ['offer_clause_type', 'offer', {
+                    'NOTHING': [],
+                    'TECHNOLOGY': ['technology'],
+                    'STANCE': ['stance'],
+                    'SPECIFIC_FLEET': ['fleet']
+                }]
+            ];
+            function updatePrefix(prefix, value, map) {
+                ['technology', 'stance', 'ship-count', 'resources', 'suggested-star', 'fleet'].forEach(function(suffix) {
+                    var nodes = composeForm.querySelectorAll('.compose-' + prefix + '-' + suffix);
+                    Array.prototype.forEach.call(nodes, function(node) {
+                        node.style.display = 'none';
+                    });
+                });
+                (map[value] || []).forEach(function(suffix) {
+                    var nodes = composeForm.querySelectorAll('.compose-' + prefix + '-' + suffix);
+                    Array.prototype.forEach.call(nodes, function(node) {
+                        node.style.display = 'inline-flex';
+                    });
+                });
+                updateDeliveryWarning();
+            }
+            function updateDeliveryWarning() {
+                var warning = document.getElementById('diplomacy-delivery-warning');
+                var requestSelect = document.getElementById('request_clause_type');
+                if (!warning || !requestSelect) {
+                    return;
+                }
+                var enabled = composeForm.getAttribute('data-delivery-warning') === '1';
+                var show = enabled && requestSelect.value === 'RESOURCE_TO_WORLD';
+                warning.style.display = show ? '' : 'none';
+            }
+            clauseFields.forEach(function(row) {
+                var select = document.getElementById(row[0]);
+                if (!select) {
+                    return;
+                }
+                var apply = function() {
+                    updatePrefix(row[1], select.value, row[2]);
+                };
+                select.addEventListener('change', apply);
+                apply();
             });
         })();
         </script>

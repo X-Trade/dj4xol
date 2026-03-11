@@ -6,6 +6,7 @@
 /* Full height layout */
 html, body {
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
 }
 
