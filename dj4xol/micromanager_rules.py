@@ -10,6 +10,8 @@ from .colony_rules import (
     calculate_growth_factor,
     calculate_productivity_multiplier,
     calculate_staffing_ratio,
+    limit_population_growth_by_surface_resources,
+    population_growth_uses_surface_resources,
 )
 from .mineral_rules import ALL_RESOURCE_KEYS
 
@@ -79,6 +81,14 @@ def _projected_population(player, star):
     population = int(getattr(star, 'colonists', 0) or 0)
     if population <= 0 or not player or not getattr(player, 'race_type', None):
         return population
+    growth, _reserve = _projected_population_growth_and_reserve(player, star)
+    return population + growth
+
+
+def _projected_population_growth_and_reserve(player, star, growth_cap=None):
+    population = int(getattr(star, 'colonists', 0) or 0)
+    if population <= 0 or not player or not getattr(player, 'race_type', None):
+        return 0, {'ironium': 0, 'boranium': 0}
     factor = calculate_growth_factor(player, star)
     raw_multiplier = getattr(player.race_type, 'population_growth_multiplier', 1.0)
     if raw_multiplier is None:
@@ -87,8 +97,40 @@ def _projected_population(player, star):
         raw_multiplier
     )
     if factor <= 0:
-        return population
-    return population + int(population * factor)
+        return 0, {'ironium': 0, 'boranium': 0}
+    growth = int(population * factor)
+    if growth_cap is not None:
+        growth = min(growth, max(0, int(growth_cap or 0)))
+    if growth <= 0:
+        return 0, {'ironium': 0, 'boranium': 0}
+    if not population_growth_uses_surface_resources(player):
+        return growth, {'ironium': 0, 'boranium': 0}
+    limited_growth, ironium_cost, boranium_cost = (
+        limit_population_growth_by_surface_resources(star, growth)
+    )
+    return limited_growth, {
+        'ironium': int(ironium_cost or 0),
+        'boranium': int(boranium_cost or 0),
+    }
+
+
+def _population_growth_resource_reserve(player, star):
+    if not population_growth_uses_surface_resources(player):
+        return {'ironium': 0, 'boranium': 0}
+    population = int(getattr(star, 'colonists', 0) or 0)
+    if population <= 0:
+        return {'ironium': 0, 'boranium': 0}
+    current_jobs = _job_capacity(star)
+    target_population = int((float(current_jobs) / JOB_TARGET_RATIO) + 0.999999)
+    if target_population <= population:
+        return {'ironium': 0, 'boranium': 0}
+    growth_needed = target_population - population
+    _growth, reserve = _projected_population_growth_and_reserve(
+        player,
+        star,
+        growth_cap=growth_needed,
+    )
+    return reserve
 
 
 def _projected_job_thresholds(player, star):
@@ -286,7 +328,7 @@ def get_micromanager_managed_order_types(tier):
     return ()
 
 
-def _has_resource_surplus_for_order(star, cost_map, order_type, reserve_factor=2):
+def _has_resource_surplus_for_order(player, star, cost_map, order_type, reserve_factor=2):
     """Return True when the colony can cover queue demand with headroom."""
     if not cost_map:
         return False
@@ -297,12 +339,36 @@ def _has_resource_surplus_for_order(star, cost_map, order_type, reserve_factor=2
     )
     if bp_needed > calculate_available_buildpoints(star):
         return False
+    growth_reserve = _population_growth_resource_reserve(player, star)
     for key in ALL_RESOURCE_KEYS:
         demand = (
             int(getattr(star, 'queue_%s' % key, 0) or 0) +
             max(0, int(cost.get(key, 0) or 0)) * int(reserve_factor or 0)
         )
+        if key in growth_reserve:
+            demand += int(growth_reserve.get(key, 0) or 0)
         if demand > int(getattr(star, '%s_inventory' % key, 0) or 0):
+            return False
+    return True
+
+
+def _preserves_population_growth_reserve(player, star, cost_map, order_type):
+    """Return True when adding this order won't spend into growth reserves."""
+    if not cost_map:
+        return True
+    growth_reserve = _population_growth_resource_reserve(player, star)
+    if not any(int(value or 0) > 0 for value in growth_reserve.values()):
+        return True
+    cost = cost_map.get(order_type, {})
+    for key in ('ironium', 'boranium'):
+        reserve = int(growth_reserve.get(key, 0) or 0)
+        if reserve <= 0:
+            continue
+        inventory = int(getattr(star, '%s_inventory' % key, 0) or 0)
+        queue_demand = int(getattr(star, 'queue_%s' % key, 0) or 0)
+        added_cost = max(0, int(cost.get(key, 0) or 0))
+        remaining_after_spend = inventory - min(inventory, queue_demand + added_cost)
+        if remaining_after_spend < reserve:
             return False
     return True
 
@@ -324,6 +390,16 @@ def get_micromanager_candidate_orders(
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
     candidates = []
+
+    def append_candidate(order_type):
+        if not _preserves_population_growth_reserve(
+            player,
+            star,
+            cost_map,
+            order_type,
+        ):
+            return
+        candidates.append(order_type)
     current_mines = int(getattr(star, 'mines', 0) or 0)
     current_factories = int(getattr(star, 'factories', 0) or 0)
     max_mines = safe_mine_count(star)
@@ -342,7 +418,7 @@ def get_micromanager_candidate_orders(
         if (
             int(getattr(star, 'labs', 0) or 0) <= 0 and
             _can_add_jobs_without_breaking_limit(player, star, 'BUILD_LAB') and
-            _has_resource_surplus_for_order(star, cost_map, 'BUILD_LAB')
+            _has_resource_surplus_for_order(player, star, cost_map, 'BUILD_LAB')
         ):
             level_one_support_candidates.append('BUILD_LAB')
         if (
@@ -351,6 +427,7 @@ def get_micromanager_candidate_orders(
                 player, star, 'BUILD_SHIPYARD'
             ) and
             _has_resource_surplus_for_order(
+                player,
                 star,
                 cost_map,
                 'BUILD_SHIPYARD',
@@ -361,19 +438,21 @@ def get_micromanager_candidate_orders(
     if needs_jobs:
         # Bootstrap economic base before considering other priorities.
         if mine_room and current_mines <= 0:
-            candidates.append('BUILD_MINE')
+            append_candidate('BUILD_MINE')
         if current_factories <= 0:
-            candidates.append('BUILD_FACTORY')
+            append_candidate('BUILD_FACTORY')
         if queue_pressure.get('mines') and mine_room:
-            candidates.append('BUILD_MINE')
+            append_candidate('BUILD_MINE')
         if queue_pressure.get('factories'):
-            candidates.append('BUILD_FACTORY')
+            append_candidate('BUILD_FACTORY')
 
         if mine_room:
             if current_mines < (current_factories + 1) * 2:
-                candidates.extend(['BUILD_MINE', 'BUILD_FACTORY'])
+                append_candidate('BUILD_MINE')
+                append_candidate('BUILD_FACTORY')
             else:
-                candidates.extend(['BUILD_FACTORY', 'BUILD_MINE'])
+                append_candidate('BUILD_FACTORY')
+                append_candidate('BUILD_MINE')
         else:
             if int(tier or 0) >= TIER_SUPPORT:
                 if (
@@ -383,21 +462,24 @@ def get_micromanager_candidate_orders(
                         player, star, 'BUILD_SHIPYARD'
                     )
                 ):
-                    candidates.append('BUILD_SHIPYARD')
-            candidates.extend(filler_order_types)
-            candidates.extend(level_one_support_candidates)
+                    append_candidate('BUILD_SHIPYARD')
+            for order_type in filler_order_types:
+                append_candidate(order_type)
+            for order_type in level_one_support_candidates:
+                append_candidate(order_type)
     else:
         if queue_pressure.get('mines') and mine_room:
-            candidates.append('BUILD_MINE')
+            append_candidate('BUILD_MINE')
         if queue_pressure.get('factories'):
-            candidates.append('BUILD_FACTORY')
+            append_candidate('BUILD_FACTORY')
         if (
             int(tier or 0) >= TIER_SUPPORT and
             int(getattr(star, 'shipyards', 0) or 0) < int(fleets_in_orbit or 0) and
             _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD')
         ):
-            candidates.append('BUILD_SHIPYARD')
-        candidates.extend(level_one_support_candidates)
+            append_candidate('BUILD_SHIPYARD')
+        for order_type in level_one_support_candidates:
+            append_candidate(order_type)
 
     if (
         int(tier or 0) >= TIER_TERRAFORM and
@@ -407,7 +489,7 @@ def get_micromanager_candidate_orders(
     ):
         terraform_order = preferred_terraform_order(player, star)
         if terraform_order:
-            candidates.append(terraform_order)
+            append_candidate(terraform_order)
 
     deduped = []
     seen = set()

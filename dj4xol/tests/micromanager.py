@@ -472,6 +472,87 @@ class AdministrationAutomationTest(TestCase):
         self.assertGreaterEqual(len(planned), 1)
         self.assertEqual(planned[0], 'BUILD_MINE')
 
+    def test_micromanager_preserves_growth_resources_for_overemployed_mechanical_colony(self):
+        self._create_administration_tech(2, 2)
+        self.star.has_administration = True
+        self.star.colonists = 60_000
+        self.star.mines = 10
+        self.star.factories = 20
+        self.star.labs = 10
+        self.star.defenses = 10
+        self.star.shipyards = 0
+        self.star.gravity = self.player.gravity_center
+        self.star.temperature = self.player.temperature_center
+        self.star.radiation = self.player.radiation_center
+        self.player.race_type.population_growth_multiplier = 0.8
+        self.player.race_type.population_growth_uses_resources = True
+        self.player.race_type.save(update_fields=[
+            'population_growth_multiplier',
+            'population_growth_uses_resources',
+        ])
+        self.star.ironium_inventory = 7
+        self.star.boranium_inventory = 5
+        self.star.germanium_inventory = 1_000
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=0,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertEqual(planned, [])
+
+    def test_micromanager_can_spend_surplus_after_growth_reserve(self):
+        self._create_administration_tech(2, 2)
+        self.star.has_administration = True
+        self.star.colonists = 60_000
+        self.star.mines = 10
+        self.star.factories = 20
+        self.star.labs = 10
+        self.star.defenses = 10
+        self.star.shipyards = 0
+        self.star.gravity = self.player.gravity_center
+        self.star.temperature = self.player.temperature_center
+        self.star.radiation = self.player.radiation_center
+        self.player.race_type.population_growth_multiplier = 0.8
+        self.player.race_type.population_growth_uses_resources = True
+        self.player.race_type.save(update_fields=[
+            'population_growth_multiplier',
+            'population_growth_uses_resources',
+        ])
+        self.star.ironium_inventory = 500
+        self.star.boranium_inventory = 500
+        self.star.germanium_inventory = 1_000
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=0,
+            cost_map=get_player_production_costs(self.player),
+            queue_requirements={
+                'bp': 1_000,
+                'ironium': 0,
+                'boranium': 0,
+                'germanium': 0,
+                'resource_x': 0,
+                'resource_y': 0,
+                'resource_z': 0,
+            },
+        )
+
+        self.assertTrue(planned)
+
     def test_micromanager_coalesces_adjacent_orders_into_quantities(self):
         self._create_administration_tech(1, 1)
         self.player.race_type.population_growth_multiplier = 0

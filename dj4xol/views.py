@@ -118,6 +118,7 @@ RACE_TYPE_INTEGER_FIELDS = [
     ('starting_colonies', 'Starting Colonies', 1),
     ('starting_economy', 'Starting Economy', 2),
     ('economy_offset', 'Economy Offset', 0),
+    ('population_cap_multiplier', 'Population Cap', 1),
 ]
 RACE_TYPE_BOOLEAN_FIELDS = [
     ('population_growth_uses_resources', 'Growth Uses Resources', True, False),
@@ -165,6 +166,8 @@ def _race_type_detail_rows(race_type):
             continue
         if field_name == 'economy_offset':
             rows.append({'name': label, 'value': '%+d' % value})
+        elif field_name == 'population_cap_multiplier':
+            rows.append({'name': label, 'value': '%dx' % value})
         else:
             rows.append({'name': label, 'value': str(value)})
     for field_name, label, active_value, default_value in RACE_TYPE_BOOLEAN_FIELDS:

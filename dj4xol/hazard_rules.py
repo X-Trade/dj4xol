@@ -85,7 +85,7 @@ def anomaly_danger_level(anomaly):
     if anomaly_type == Anomaly.TYPE_BLACK_HOLE:
         return _pick_level(seed, [DANGER_MEDIUM, DANGER_HIGH])
     if anomaly_type == Anomaly.TYPE_WORMHOLE:
-        return DANGER_MEDIUM
+        return _pick_level(seed, [DANGER_NONE, DANGER_LOW, DANGER_MEDIUM])
     return DANGER_MEDIUM
 
 

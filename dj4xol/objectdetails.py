@@ -41,6 +41,10 @@ from dj4xol.colony_rules import (
     calculate_growth_factor,
     calculate_habitability_factor,
     effective_capacity,
+    habitability_value_for_environment,
+    limit_population_growth_by_surface_resources,
+    player_ignores_environment,
+    population_growth_uses_surface_resources,
     calculate_employment_percent,
     calculate_effective_defenses,
     calculate_available_buildpoints,
@@ -1141,6 +1145,12 @@ class DetailBuilder():
         )
         current = self.selected_obj.colonists
         new_pop = apply_population_change(current, factor)
+        if factor > 0 and population_growth_uses_surface_resources(self.player):
+            limited_growth, _, _ = limit_population_growth_by_surface_resources(
+                self.selected_obj,
+                new_pop - current,
+            )
+            new_pop = current + limited_growth
         return new_pop - current
 
     def get_effective_capacity(self):
@@ -1393,10 +1403,27 @@ class DetailBuilder():
             hab_min = self.player.hab_min(env_name)
             hab_max = self.player.hab_max(env_name)
             center = getattr(self.player, f'{env_name}_center')
+            is_ignored = player_ignores_environment(self.player, env_name)
             data['hab_min_percent'] = (hab_min / 2.0) * 100
             data['hab_max_percent'] = (hab_max / 2.0) * 100
             data['hab_center_percent'] = (center / 2.0) * 100
-            data['is_habitable'] = hab_min <= value <= hab_max
+            data['is_ignored'] = is_ignored
+            data['is_habitable'] = habitability_value_for_environment(
+                self.player,
+                env_name,
+                value,
+            ) >= 0
+            if is_ignored:
+                data['bar_style'] = 'background: #00aa00;'
+            else:
+                data['bar_style'] = (
+                    'background: linear-gradient(to right, '
+                    '#400000 0%, '
+                    f'#400000 {data["hab_min_percent"]:.1f}%, '
+                    f'#00ff00 {data["hab_center_percent"]:.1f}%, '
+                    f'#400000 {data["hab_max_percent"]:.1f}%, '
+                    '#400000 100%);'
+                )
         return data
 
     def _resource_label(self, resource_key):

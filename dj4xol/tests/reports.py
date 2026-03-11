@@ -190,6 +190,24 @@ class VisibilityTest(TestCase):
         self.assertTrue(can_view)
         self.assertEqual(year, 2400)
 
+    def test_ignored_environment_marks_bar_as_fully_habitable(self):
+        self.owned_star.temperature = 2.0
+        self.owned_star.save(update_fields=['temperature'])
+        self.player1.race_type.ignores_temperature = True
+        self.player1.race_type.save(update_fields=['ignores_temperature'])
+
+        builder = DetailBuilder(
+            self.game,
+            x=self.owned_star.x,
+            y=self.owned_star.y,
+            player=self.player1
+        )
+        data = builder._build_env_data('temperature', self.owned_star.temperature, 'Hot')
+
+        self.assertTrue(data['is_ignored'])
+        self.assertTrue(data['is_habitable'])
+        self.assertEqual(data['bar_style'], 'background: #00aa00;')
+
 
 class UnexploredDetailTest(TestCase):
     """Tests for unexplored object display."""
