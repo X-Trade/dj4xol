@@ -22,7 +22,7 @@ from .models import (
     Game, Player, ServerSettings, ServerRace, ServerRaceType, Account, GameInvitation, Fleet,
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology,
     ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
-    Spectator, profanity_filter_settings, server_setting_enabled, DiplomaticContract,
+    Spectator, profanity_filter_settings, server_setting_enabled, server_setting_int, DiplomaticContract,
 )
 from .email_rollups import (
     send_message_rollup_for_account,
@@ -2874,6 +2874,22 @@ def diplomacy(request, game_short_id):
             elif locked:
                 contract_errors.append(lock_reason)
             else:
+                max_requests = max(1, server_setting_int('max_diplomatic_requests_per_race_per_turn', 2))
+                sent_count = DiplomaticContract.objects.filter(
+                    game=game,
+                    sender=player,
+                    recipient=selected_player,
+                    sent_year=game.year,
+                ).count()
+                if sent_count >= max_requests:
+                    contract_errors.append(
+                        'You have already sent the maximum of %s diplomatic request%s to %s this turn.'
+                        % (
+                            max_requests,
+                            '' if max_requests == 1 else 's',
+                            selected_player.name,
+                        )
+                    )
                 counter_contract = None
                 if counter_short_id:
                     counter_contract = DiplomaticContract.objects.filter(

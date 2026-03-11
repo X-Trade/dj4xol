@@ -739,8 +739,9 @@ def revoke_contract(contract, acting_player):
         include_links=False,
         include_sender_account=False,
     )
-    _create_contract_status_message(contract.sender, contract, 'Diplomatic request revoked: %s' % summary)
-    _create_contract_status_message(contract.recipient, contract, 'Diplomatic request revoked: %s' % summary)
+    if int(contract.sent_year or 0) != int(contract.game.year or 0):
+        _create_contract_status_message(contract.sender, contract, 'Diplomatic request revoked: %s' % summary)
+        _create_contract_status_message(contract.recipient, contract, 'Diplomatic request revoked: %s' % summary)
     return True, 'Request revoked.'
 
 
