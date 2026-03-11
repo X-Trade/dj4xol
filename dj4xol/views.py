@@ -59,6 +59,7 @@ from .diplomacy import (
     update_player_stances,
 )
 from .diplomatic_contracts import (
+    _resolve_report_target,
     accept_contract,
     build_player_message_feed,
     decline_contract,
@@ -67,7 +68,6 @@ from .diplomatic_contracts import (
     ensure_specific_fleet_report,
     format_contract_statement,
     format_contract_summary,
-    format_report_trade_label,
     mark_countered,
     pair_contracts,
     resource_label_for_player,
@@ -2566,7 +2566,7 @@ def _diplomacy_request_clause_choices():
         (DiplomaticContract.CLAUSE_REPORT, 'grant us report'),
         (DiplomaticContract.CLAUSE_STANCE, 'set their stance to'),
         (DiplomaticContract.CLAUSE_SPECIFIC_COLONY, 'give us colony'),
-        (DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD, 'deliver'),
+        (DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD, 'deliver resources'),
         (DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET, 'give us a fleet carrying'),
         (DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT, 'give us a fleet of'),
     ]
@@ -2659,21 +2659,48 @@ def _diplomacy_known_target_colony_choices(player, target_player):
     return stars
 
 
-def _diplomacy_colony_choice_rows(owner, stars):
-    rows = []
-    homeworld_id = getattr(owner, 'homeworld_id', None)
-    for star in stars:
-        label = star.name
-        if homeworld_id and star.id == homeworld_id:
+def _diplomacy_star_choice_label(star, owner, viewer):
+    label = getattr(star, 'name', 'Unknown Colony')
+    if getattr(owner, 'homeworld_id', None) and star.id == owner.homeworld_id:
+        if viewer is not None and getattr(viewer, 'id', None) == getattr(owner, 'id', None):
             label = '%s (home)' % label
+        else:
+            label = '%s (their home)' % label
+    return label
+
+
+def _diplomacy_sort_stars_with_homeworld_first(owner, stars):
+    homeworld_id = getattr(owner, 'homeworld_id', None)
+    return sorted(
+        list(stars or []),
+        key=lambda star: (0 if homeworld_id and star.id == homeworld_id else 1, star.id),
+    )
+
+
+def _diplomacy_report_item_label(target_type, target, owner=None, viewer=None):
+    target_type = str(target_type or '').lower()
+    if target_type == 'star':
+        if target is None:
+            return 'Unknown Colony'
+        return _diplomacy_star_choice_label(target, owner, viewer)
+    if target_type == 'anomaly':
+        return getattr(target, 'name', None) or 'Unknown Anomaly'
+    if target_type == 'salvage':
+        return getattr(target, 'name', None) or 'Unknown Ancient Debris'
+    return 'Unknown report'
+
+
+def _diplomacy_colony_choice_rows(owner, stars, viewer=None):
+    rows = []
+    for star in _diplomacy_sort_stars_with_homeworld_first(owner, stars):
         rows.append({
             'id': star.id,
-            'label': label,
+            'label': _diplomacy_star_choice_label(star, owner, viewer),
         })
     return rows
 
 
-def _diplomacy_report_choice_groups(report_owner):
+def _diplomacy_report_choice_groups(report_owner, viewer=None):
     groups = []
     if not report_owner:
         return groups
@@ -2681,9 +2708,12 @@ def _diplomacy_report_choice_groups(report_owner):
     colony_items = [
         {
             'id': 'star:%s' % star.id,
-            'label': format_report_trade_label('star', star.id, report_owner.game, include_links=False),
+            'label': _diplomacy_report_item_label('star', star, owner=report_owner, viewer=viewer or report_owner),
         }
-        for star in report_owner.stars.order_by('id')
+        for star in _diplomacy_sort_stars_with_homeworld_first(
+            report_owner,
+            report_owner.stars.order_by('id'),
+        )
     ]
     anomaly_items = []
     ancient_debris_items = []
@@ -2706,7 +2736,7 @@ def _diplomacy_report_choice_groups(report_owner):
                 continue
             anomaly_items.append({
                 'id': item_id,
-                'label': format_report_trade_label('anomaly', report.target_id, report_owner.game, include_links=False),
+                'label': _diplomacy_report_item_label('anomaly', _resolve_report_target(report_owner.game, 'anomaly', report.target_id)),
             })
             seen.add(item_id)
             continue
@@ -2715,7 +2745,7 @@ def _diplomacy_report_choice_groups(report_owner):
                 continue
             ancient_debris_items.append({
                 'id': item_id,
-                'label': format_report_trade_label('salvage', report.target_id, report_owner.game, include_links=False),
+                'label': _diplomacy_report_item_label('salvage', _resolve_report_target(report_owner.game, 'salvage', report.target_id)),
             })
             seen.add(item_id)
     if colony_items:
@@ -2734,13 +2764,16 @@ def _diplomacy_request_report_choice_groups(requesting_player, target_player):
     colony_items = [
         {
             'id': 'star:%s' % star.id,
-            'label': format_report_trade_label('star', star.id, target_player.game, include_links=False),
+            'label': _diplomacy_report_item_label('star', star, owner=target_player, viewer=requesting_player),
         }
-        for star in _diplomacy_known_target_colony_choices(requesting_player, target_player)
+        for star in _diplomacy_sort_stars_with_homeworld_first(
+            target_player,
+            _diplomacy_known_target_colony_choices(requesting_player, target_player),
+        )
     ]
     if colony_items:
         groups.append({'label': 'Colonies', 'items': colony_items})
-    other_groups = _diplomacy_report_choice_groups(target_player)
+    other_groups = _diplomacy_report_choice_groups(target_player, viewer=requesting_player)
     for group in other_groups:
         if group['label'] != 'Colonies':
             groups.append(group)
@@ -3235,16 +3268,18 @@ def diplomacy(request, game_short_id):
     request_technologies = get_player_unlocked_technologies(selected_player) if selected_player else []
     offer_technology_groups = _diplomacy_group_technologies(offer_technologies)
     request_technology_groups = _diplomacy_group_technologies(request_technologies)
-    offer_report_groups = _diplomacy_report_choice_groups(player)
+    offer_report_groups = _diplomacy_report_choice_groups(player, viewer=player)
     request_report_groups = _diplomacy_request_report_choice_groups(player, selected_player)
     fleet_choices = list(player.fleets.order_by('name', 'id')) if player else []
     owned_colony_choices = _diplomacy_colony_choice_rows(
         player,
         list(player.stars.order_by('id')) if player else [],
+        viewer=player,
     )
     request_colony_choices = _diplomacy_colony_choice_rows(
         selected_player,
         _diplomacy_known_target_colony_choices(player, selected_player),
+        viewer=player,
     )
 
     return render(request, 'dj4xol/diplomacy.html', {

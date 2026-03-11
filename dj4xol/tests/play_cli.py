@@ -1463,6 +1463,36 @@ class PlayCommandTest(TestCase):
         self.assertIn('25kt Ironium', output)
         self.assertIn('Complete by Year %s' % (self.game.year + 24), output)
 
+    def test_messages_command_ignores_accepted_immediate_report_request_alerts(self):
+        target_star = self.game.stars.exclude(id=self.player1.homeworld_id).order_by('id').first()
+        target_star.player = self.player2
+        target_star.save(update_fields=['player'])
+        contract = DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.player1,
+            recipient=self.player2,
+            temperature='REQUEST',
+            status='ACCEPTED',
+            sent_year=self.game.year,
+            accepted_year=self.game.year,
+            expires_year=self.game.year + 24,
+            request_clause_type='REPORT',
+            request_report_target_type='star',
+            request_report_target_id=target_star.id,
+            offer_clause_type='NOTHING',
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/messages priority=1 category=DIPLOMATIC limit=5', '/exit'],
+        )
+
+        self.assertNotIn('active-contract-%s' % contract.short_id, output)
+        self.assertNotIn('Awaiting from', output)
+
     def test_messages_command_defaults_match_game_panel_filter(self):
         self.player1.messages_seen_year = self.game.year - 1
         self.player1.save(update_fields=['messages_seen_year'])

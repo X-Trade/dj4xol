@@ -226,6 +226,41 @@ class AdministrationAutomationTest(TestCase):
         self.assertFalse(orders[0].added_by_micromanager)
         self.assertTrue(orders[1].added_by_micromanager)
 
+    def test_level_one_projects_player_factory_order_before_planning_auto(self):
+        self._create_administration_tech(1, 1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 20_000
+        self.star.mines = 1
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 500
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            position=1,
+            quantity=1,
+        )
+        GameTurn(self.game)._refresh_administration_production_queue(self.star)
+
+        orders = list(self.star.production_orders.order_by('position'))
+        self.assertGreaterEqual(len(orders), 2)
+        self.assertEqual(orders[0].order_type, 'BUILD_FACTORY')
+        self.assertFalse(orders[0].added_by_micromanager)
+        self.assertEqual(orders[1].order_type, 'BUILD_MINE')
+        self.assertTrue(orders[1].added_by_micromanager)
+
     def test_candidate_orders_put_first_mine_first(self):
         self._create_administration_tech(1, 1)
         self.player.race_type.population_growth_multiplier = 0

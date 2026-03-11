@@ -6556,6 +6556,27 @@ class GameTurn():
         for order in changed:
             order.save(update_fields=['position'])
 
+    def _projected_player_economy_order_types(self, orders):
+        """Return remaining player mine/factory orders as projected types."""
+        projected = []
+        for order in list(orders or []):
+            if bool(getattr(order, 'added_by_micromanager', False)):
+                continue
+            if getattr(order, 'order_type', None) not in (
+                'BUILD_MINE',
+                'BUILD_FACTORY',
+            ):
+                continue
+            remaining = max(
+                0,
+                int(getattr(order, 'quantity', 0) or 0) -
+                int(getattr(order, 'completed', 0) or 0),
+            )
+            if remaining <= 0:
+                continue
+            projected.extend([order.order_type] * remaining)
+        return projected
+
     def _convert_repeat_player_infrastructure_orders_to_micromanager(
         self,
         star,
@@ -6631,6 +6652,9 @@ class GameTurn():
         queue_orders = list(star.production_orders.exclude(
             id__in=[order.id for order in editable]
         ))
+        player_projected_types = self._projected_player_economy_order_types(
+            queue_orders
+        )
         cost_map = get_player_production_costs(star.player)
         planned = plan_micromanager_orders(
             star.player,
@@ -6639,7 +6663,7 @@ class GameTurn():
             fleets_in_orbit=star.player.fleets.filter(x=star.x, y=star.y).count(),
             terraform_available=(terraform_rate > 0),
             terraform_rate=terraform_rate,
-            preplanned_orders=existing_types,
+            preplanned_orders=existing_types + player_projected_types,
             cost_map=cost_map,
             queue_requirements=remaining_queue_requirements(
                 queue_orders, cost_map

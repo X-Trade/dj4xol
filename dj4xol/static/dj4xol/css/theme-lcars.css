@@ -460,7 +460,7 @@ input[type="password"] {
     border: 2px solid #cc6633;
     border-radius: 15px;
     color: #ff9966;
-    padding: 8px 15px;
+    padding: 8px 8px;
 }
 
 textarea {

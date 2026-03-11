@@ -230,12 +230,13 @@
                                             {% endfor %}
                                         </select>
                                     </span>
+                                    <span class="compose-token-static">,</span>
                                     <select id="offer_condition_type" name="offer_condition_type" class="compose-token"{% if diplomacy_locked %} disabled{% endif %}>
                                         {% for value, label in offer_condition_choices %}
                                         <option value="{{ value }}"{% if compose_state.offer_condition_type == value %} selected{% endif %}>{{ label }}</option>
                                         {% endfor %}
                                     </select>
-                                    <span class="compose-token-static">, we</span>
+                                    <span class="compose-token-static">we</span>
                                     <select id="offer_clause_type" name="offer_clause_type" class="compose-token" data-clause-prefix="offer"{% if diplomacy_locked %} disabled{% endif %}>
                                         {% for value, label in offer_clause_choices %}
                                         <option value="{{ value }}"{% if compose_state.offer_clause_type == value %} selected{% endif %}>{{ label }}</option>
@@ -295,7 +296,7 @@
                                     <input id="deadline_years" type="number" min="1" max="200" name="deadline_years" value="{{ compose_state.deadline_years }}"{% if diplomacy_locked %} disabled{% endif %}>
                                     <span class="compose-token-static">years for response. Extend by</span>
                                     <input id="extend_on_accept_years" type="number" min="0" max="200" name="extend_on_accept_years" value="{{ compose_state.extend_on_accept_years }}"{% if diplomacy_locked %} disabled{% endif %}>
-                                    <span class="compose-token-static">on acceptance.</span>
+                                    <span class="compose-token-static">years on acceptance.</span>
                                 </div>
                                 <p
                                     id="diplomacy-delivery-warning"
@@ -474,8 +475,8 @@
                 }
                 window.__turnPollStarted = true;
 
-                var minDelay = 29 * 1000;
-                var maxDelay = 61 * 1000;
+                var minDelay = 15 * 1000;
+                var maxDelay = 31 * 1000;
                 var firstDelay = 1000;
 
                 function scheduleNext(delay) {

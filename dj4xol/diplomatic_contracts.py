@@ -299,14 +299,20 @@ def format_contract_summary(contract, viewer=None, include_links=True, include_s
     offer_text = format_contract_clause(contract, 'offer', viewer=viewer, include_links=include_links)
     sender_label = escape(player_display_name(contract.sender, include_account=include_sender_account))
     sender_is_viewer = getattr(contract.sender, 'id', None) == getattr(viewer, 'id', None)
+    request_subject = (
+        escape(player_display_name(contract.recipient, include_account=include_sender_account))
+        if sender_is_viewer else
+        'we'
+    )
     joiner = (
         'or else'
         if contract.offer_condition_type == DiplomaticContract.CONDITION_OR_ELSE
         else 'in exchange for'
     )
-    return '%s %s %s %s %s.' % (
+    return '%s %s %s %s %s %s.' % (
         sender_label,
         _temperature_verb(contract.temperature, subject_is_we=sender_is_viewer),
+        request_subject,
         request_text,
         joiner,
         offer_text,
@@ -365,6 +371,14 @@ def contract_link(contract, label, target_short_id=None):
         contract.short_id,
         escape(label),
     )
+
+
+def _contract_counterparty_short_id(contract, viewer):
+    if contract is None:
+        return ''
+    if getattr(contract.sender, 'id', None) == getattr(viewer, 'id', None):
+        return getattr(contract.recipient, 'short_id', '')
+    return getattr(contract.sender, 'short_id', '')
 
 
 def build_incoming_contract_alert_entries(player):
@@ -430,6 +444,7 @@ def build_unfulfilled_contract_alert_entries(player):
         DiplomaticContract.objects.filter(
             game=player.game,
             status=DiplomaticContract.STATUS_ACCEPTED,
+            request_clause_type__in=REQUEST_RESOURCE_CLAUSE_TYPES + (DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT,),
             sender__in=[player],
         ).select_related(
             'sender',
@@ -447,6 +462,7 @@ def build_unfulfilled_contract_alert_entries(player):
         DiplomaticContract.objects.filter(
             game=player.game,
             status=DiplomaticContract.STATUS_ACCEPTED,
+            request_clause_type__in=REQUEST_RESOURCE_CLAUSE_TYPES + (DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT,),
             recipient__in=[player],
         ).select_related(
             'sender',
@@ -496,7 +512,7 @@ def build_unfulfilled_contract_alert_entries(player):
                 contract_link(
                     contract,
                     'View',
-                    target_short_id=getattr(contract.sender, 'short_id', ''),
+                    target_short_id=_contract_counterparty_short_id(contract, player),
                 ),
             ),
             'text': text,
@@ -613,6 +629,26 @@ def _qualifying_report_for_trade(player, target_type, target_id):
         target_id=target_id,
     ).first()
     if report is None:
+        if str(target_type or '').lower() == 'star':
+            star = _resolve_report_target(getattr(player, 'game', None), target_type, target_id)
+            if star is not None and getattr(star, 'player_id', None) == getattr(player, 'id', None):
+                report = Report.objects.create(
+                    game=player.game,
+                    player=player,
+                    year=player.game.year,
+                    target_type='star',
+                    target_id=star.id,
+                    cached_report='{}',
+                )
+                report.set_report_data({
+                    'name': star.name,
+                    'x': star.x,
+                    'y': star.y,
+                    'player_name': player.name,
+                    'report_tier': 'ownership',
+                })
+                report.save()
+                return report
         return None
     data = report.get_report_data()
     rank = _report_tier_rank(data.get('report_tier'))
