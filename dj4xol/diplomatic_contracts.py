@@ -1,13 +1,14 @@
 from __future__ import unicode_literals
 
 from datetime import timedelta
+import hashlib
 
 from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
 
-from .models import DiplomaticContract, GameMessage, PlayerDiplomaticStance, PlayerTechnologyGrant
+from .models import DiplomaticContract, GameMessage, PlayerDiplomaticStance, PlayerTechnologyGrant, Report
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
 
 
@@ -19,6 +20,12 @@ IMMEDIATE_CLAUSE_TYPES = (
     DiplomaticContract.CLAUSE_NOTHING,
     DiplomaticContract.CLAUSE_TECHNOLOGY,
     DiplomaticContract.CLAUSE_STANCE,
+    DiplomaticContract.CLAUSE_REPORT,
+    DiplomaticContract.CLAUSE_VAGUE_THREAT,
+)
+APPLY_ON_ACCEPT_CLAUSE_TYPES = IMMEDIATE_CLAUSE_TYPES + (
+    DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
+    DiplomaticContract.CLAUSE_SPECIFIC_COLONY,
 )
 HANDLED_CONTRACT_STATUSES = (
     DiplomaticContract.STATUS_ACCEPTED,
@@ -27,6 +34,21 @@ HANDLED_CONTRACT_STATUSES = (
     DiplomaticContract.STATUS_COUNTERED,
     DiplomaticContract.STATUS_EXPIRED,
     DiplomaticContract.STATUS_REVOKED,
+)
+
+REPORT_TIER_ORDER = {
+    'ownership': 0,
+    'basic': 1,
+    'advanced': 2,
+    'encounter': 3,
+}
+
+VAGUE_THREAT_PHRASES = (
+    'threaten dire consequences',
+    'promise certain ruin',
+    'vow to rain destruction on your worlds',
+    'warn that we will do something about it',
+    'hint at a most unpleasant response',
 )
 
 
@@ -48,6 +70,23 @@ def _temperature_verb(temperature, subject_is_we=False):
     if verb.endswith('s'):
         return verb
     return '%ss' % verb
+
+
+def vague_threat_phrase(contract):
+    if contract is None:
+        return VAGUE_THREAT_PHRASES[0]
+    seed = (
+        str(getattr(contract, 'short_id', '') or '') or
+        str(getattr(contract, 'id', '') or '') or
+        '%s-%s-%s' % (
+            getattr(contract, 'sender_id', 0),
+            getattr(contract, 'recipient_id', 0),
+            getattr(contract, 'created_at', ''),
+        )
+    )
+    digest = hashlib.sha1(seed.encode('utf-8')).hexdigest()
+    index = int(digest[:8], 16) % len(VAGUE_THREAT_PHRASES)
+    return VAGUE_THREAT_PHRASES[index]
 
 
 def player_display_name(player, include_account=True):
@@ -128,6 +167,8 @@ def format_contract_clause(contract, prefix, viewer=None, include_links=True):
     viewer = viewer or contract.sender
     if clause_type == DiplomaticContract.CLAUSE_NOTHING:
         return 'do nothing' if prefix == 'request' else 'nothing'
+    if clause_type == DiplomaticContract.CLAUSE_VAGUE_THREAT:
+        return vague_threat_phrase(contract)
     if clause_type == DiplomaticContract.CLAUSE_TECHNOLOGY:
         tech = getattr(contract, '%s_technology' % prefix)
         return 'technology %s' % (getattr(tech, 'name', 'Unknown technology'))
@@ -162,6 +203,23 @@ def format_contract_clause(contract, prefix, viewer=None, include_links=True):
             base = reverse('dj4xol:game', args=[contract.game.short_id])
             return '<a href="%s?sel=%s">%s</a>' % (base, fleet.short_id, label)
         return label
+    if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
+        star = getattr(contract, '%s_star' % prefix)
+        if star is None:
+            return 'the promised colony'
+        label = escape(getattr(star, 'name', 'Unknown Colony'))
+        if include_links:
+            base = reverse('dj4xol:game', args=[contract.game.short_id])
+            return 'colony <a href="%s?sel=%s">%s</a>' % (base, star.short_id, label)
+        return 'colony %s' % label
+    if clause_type == DiplomaticContract.CLAUSE_REPORT:
+        label = format_report_trade_label(
+            getattr(contract, '%s_report_target_type' % prefix, ''),
+            getattr(contract, '%s_report_target_id' % prefix, None),
+            contract.game,
+            include_links=include_links,
+        )
+        return 'report on %s' % label
     return clause_type
 
 
@@ -175,6 +233,10 @@ def format_contract_clause_as_form_phrase(contract, prefix, viewer=None, include
             tech = getattr(contract, '%s_technology' % prefix)
             object_pronoun = 'us' if sender_is_viewer else 'them'
             return 'grant %s technology %s' % (object_pronoun, getattr(tech, 'name', 'Unknown technology'))
+        if clause_type == DiplomaticContract.CLAUSE_REPORT:
+            object_pronoun = 'us' if sender_is_viewer else 'them'
+            report_text = format_contract_clause(contract, prefix, viewer=viewer, include_links=include_links)
+            return 'grant %s %s' % (object_pronoun, report_text)
         if clause_type == DiplomaticContract.CLAUSE_STANCE:
             stance = str(getattr(contract, '%s_stance' % prefix) or '').lower() or 'neutral'
             possessive = 'their' if sender_is_viewer else 'our'
@@ -192,13 +254,23 @@ def format_contract_clause_as_form_phrase(contract, prefix, viewer=None, include
             ship_count = int(getattr(contract, '%s_ship_count' % prefix, 0) or 0)
             object_pronoun = 'us' if sender_is_viewer else 'them'
             return 'give %s a fleet of %s ships' % (object_pronoun, ship_count)
+        if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
+            colony = format_contract_clause(contract, prefix, viewer=viewer, include_links=include_links)
+            object_pronoun = 'us' if sender_is_viewer else 'them'
+            return 'give %s %s' % (object_pronoun, colony)
     if prefix == 'offer':
         if clause_type == DiplomaticContract.CLAUSE_NOTHING:
             return 'do nothing'
+        if clause_type == DiplomaticContract.CLAUSE_VAGUE_THREAT:
+            return vague_threat_phrase(contract)
         if clause_type == DiplomaticContract.CLAUSE_TECHNOLOGY:
             tech = getattr(contract, '%s_technology' % prefix)
             object_pronoun = 'them' if sender_is_viewer else 'us'
             return 'grant %s technology %s' % (object_pronoun, getattr(tech, 'name', 'Unknown technology'))
+        if clause_type == DiplomaticContract.CLAUSE_REPORT:
+            object_pronoun = 'them' if sender_is_viewer else 'us'
+            report_text = format_contract_clause(contract, prefix, viewer=viewer, include_links=include_links)
+            return 'grant %s %s' % (object_pronoun, report_text)
         if clause_type == DiplomaticContract.CLAUSE_STANCE:
             stance = str(getattr(contract, '%s_stance' % prefix) or '').lower() or 'neutral'
             possessive = 'our' if sender_is_viewer else 'their'
@@ -214,6 +286,10 @@ def format_contract_clause_as_form_phrase(contract, prefix, viewer=None, include
                 label = '<a href="%s?sel=%s">%s</a>' % (base, fleet.short_id, label)
             object_pronoun = 'them' if sender_is_viewer else 'us'
             return 'give %s %s' % (object_pronoun, label)
+        if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
+            colony = format_contract_clause(contract, prefix, viewer=viewer, include_links=include_links)
+            object_pronoun = 'them' if sender_is_viewer else 'us'
+            return 'give %s %s' % (object_pronoun, colony)
     return format_contract_clause(contract, prefix, viewer=viewer, include_links=include_links)
 
 
@@ -304,6 +380,8 @@ def build_incoming_contract_alert_entries(player):
             'request_technology',
             'offer_technology',
             'offer_fleet',
+            'offer_star',
+            'request_star',
             'request_suggested_star',
         ).order_by('expires_year', 'created_at')
     )
@@ -311,6 +389,8 @@ def build_incoming_contract_alert_entries(player):
     for contract in contracts:
         if contract.offer_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_FLEET:
             ensure_specific_fleet_report(contract)
+        if contract.offer_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
+            ensure_specific_colony_report(contract)
         message = '%s Expires Year %s.' % (
             format_contract_summary(
                 contract,
@@ -359,6 +439,8 @@ def build_unfulfilled_contract_alert_entries(player):
             'request_technology',
             'offer_technology',
             'offer_fleet',
+            'offer_star',
+            'request_star',
             'request_suggested_star',
         ).order_by('-accepted_year', '-created_at')
     ) + list(
@@ -374,6 +456,8 @@ def build_unfulfilled_contract_alert_entries(player):
             'request_technology',
             'offer_technology',
             'offer_fleet',
+            'offer_star',
+            'request_star',
             'request_suggested_star',
         ).order_by('-accepted_year', '-created_at')
     )
@@ -498,9 +582,263 @@ def _player_currently_has_technology(player, technology):
     return technology.id in unlocked_ids
 
 
+def _report_tier_rank(tier):
+    return REPORT_TIER_ORDER.get(str(tier or '').lower(), -1)
+
+
+def _report_target_model(target_type):
+    from .models import Anomaly, Salvage, Star
+
+    models = {
+        'star': Star,
+        'anomaly': Anomaly,
+        'salvage': Salvage,
+    }
+    return models.get(str(target_type or '').lower())
+
+
+def _resolve_report_target(game, target_type, target_id):
+    model = _report_target_model(target_type)
+    if model is None or not target_id or game is None:
+        return None
+    return model.objects.filter(game=game, id=target_id).first()
+
+
+def _qualifying_report_for_trade(player, target_type, target_id):
+    if not player or not target_type or not target_id:
+        return None
+    report = Report.objects.filter(
+        player=player,
+        target_type=target_type,
+        target_id=target_id,
+    ).first()
+    if report is None:
+        return None
+    data = report.get_report_data()
+    rank = _report_tier_rank(data.get('report_tier'))
+    if target_type == 'star':
+        if data.get('player_name'):
+            return report
+        return None
+    if target_type == 'anomaly':
+        return report if rank >= _report_tier_rank('advanced') else None
+    if target_type == 'salvage':
+        if rank >= _report_tier_rank('advanced') and data.get('salvage_type') == 'ANCIENT_DEBRIS':
+            return report
+    return None
+
+
+def _shared_report_data(source_report):
+    if source_report is None:
+        return None
+    data = dict(source_report.get_report_data() or {})
+    target_type = source_report.target_type
+    if target_type == 'star':
+        return {
+            'name': data.get('name'),
+            'x': data.get('x'),
+            'y': data.get('y'),
+            'player_name': data.get('player_name'),
+            'report_tier': 'ownership',
+        }
+    if target_type in ('anomaly', 'salvage'):
+        if _report_tier_rank(data.get('report_tier')) < _report_tier_rank('advanced'):
+            return None
+        data['report_tier'] = data.get('report_tier') or 'advanced'
+        return data
+    return None
+
+
+def format_report_trade_label(target_type, target_id, game, include_links=False):
+    target = _resolve_report_target(game, target_type, target_id)
+    target_type = str(target_type or '').lower()
+    if target_type == 'star':
+        label = escape(getattr(target, 'name', None) or 'Unknown Colony')
+        if include_links and target is not None:
+            base = reverse('dj4xol:game', args=[game.short_id])
+            label = '<a href="%s?sel=%s">%s</a>' % (base, target.short_id, label)
+        return 'colony %s' % label
+    if target_type == 'anomaly':
+        label = escape(getattr(target, 'name', None) or 'Unknown Anomaly')
+        if include_links and target is not None:
+            base = reverse('dj4xol:game', args=[game.short_id])
+            label = '<a href="%s?sel=%s">%s</a>' % (base, target.short_id, label)
+        return 'anomaly %s' % label
+    if target_type == 'salvage':
+        label = escape(getattr(target, 'name', None) or 'Unknown Ancient Debris')
+        if include_links and target is not None:
+            base = reverse('dj4xol:game', args=[game.short_id])
+            label = '<a href="%s?sel=%s">%s</a>' % (base, target.short_id, label)
+        return 'ancient debris %s' % label
+    return 'unknown report'
+
+
+def _grant_report_trade(contract, prefix):
+    if prefix == 'request':
+        grant_source = contract.recipient
+        grant_target = contract.sender
+    else:
+        grant_source = contract.sender
+        grant_target = contract.recipient
+    target_type = getattr(contract, '%s_report_target_type' % prefix, '')
+    target_id = getattr(contract, '%s_report_target_id' % prefix, None)
+    source_report = _qualifying_report_for_trade(grant_source, target_type, target_id)
+    if source_report is None:
+        return False
+    shared = _shared_report_data(source_report)
+    if shared is None:
+        return False
+    existing = Report.objects.filter(
+        player=grant_target,
+        target_type=target_type,
+        target_id=target_id,
+    ).first()
+    incoming_rank = _report_tier_rank(shared.get('report_tier'))
+    if existing is not None:
+        existing_data = existing.get_report_data()
+        existing_rank = _report_tier_rank(existing_data.get('report_tier'))
+        if existing_rank > incoming_rank:
+            return True
+        if existing_rank == incoming_rank and int(existing.year or 0) >= int(source_report.year or 0):
+            return True
+        existing.year = source_report.year
+        existing.game = contract.game
+        existing.set_report_data(shared)
+        existing.save()
+        return True
+    report = Report.objects.create(
+        game=contract.game,
+        player=grant_target,
+        year=source_report.year,
+        target_type=target_type,
+        target_id=target_id,
+        cached_report='{}',
+    )
+    report.set_report_data(shared)
+    report.save()
+    return True
+
+
+def _colony_clause_parties(contract, prefix):
+    if prefix == 'request':
+        return contract.recipient, contract.sender
+    return contract.sender, contract.recipient
+
+
+def _specific_colony_clause_available(contract, prefix):
+    grant_source, _grant_target = _colony_clause_parties(contract, prefix)
+    star = getattr(contract, '%s_star' % prefix)
+    return bool(
+        star is not None and
+        star.game_id == contract.game_id and
+        star.player_id == getattr(grant_source, 'id', None)
+    )
+
+
+def _evacuate_colony_to_owner_fleets(star, owner):
+    if star is None or owner is None:
+        return 0
+    try:
+        colony_kt = max(0, int(star.colonists or 0) // 1000)
+    except (TypeError, ValueError):
+        colony_kt = 0
+    if colony_kt <= 10:
+        return 0
+
+    max_transfer_kt = min(
+        int((int(star.colonists or 0) * 0.75) // 1000),
+        max(0, colony_kt - 10),
+    )
+    if max_transfer_kt <= 0:
+        return 0
+
+    transferred_kt = 0
+    fleets = owner.fleets.filter(
+        game=star.game,
+        x=star.x,
+        y=star.y,
+    ).order_by('id')
+    for fleet in fleets:
+        remaining = max_transfer_kt - transferred_kt
+        if remaining <= 0:
+            break
+        capacity = max(0, int(getattr(fleet, 'cargo_remaining', 0) or 0))
+        if capacity <= 0:
+            continue
+        load_kt = min(remaining, capacity)
+        if load_kt <= 0:
+            continue
+        fleet.colonists = int(getattr(fleet, 'colonists', 0) or 0) + load_kt
+        fleet.save(update_fields=['colonists'])
+        transferred_kt += load_kt
+
+    if transferred_kt > 0:
+        star.colonists = max(0, int(star.colonists or 0) - (transferred_kt * 1000))
+        star.save(update_fields=['colonists'])
+    return transferred_kt
+
+
+def _transfer_specific_colony_clause(contract, prefix, handle_homeworld_loss=True):
+    grant_source, grant_target = _colony_clause_parties(contract, prefix)
+    star = getattr(contract, '%s_star' % prefix)
+    if not _specific_colony_clause_available(contract, prefix):
+        return False
+
+    _evacuate_colony_to_owner_fleets(star, grant_source)
+    star.player = grant_target
+    star.save(update_fields=['player'])
+    if handle_homeworld_loss:
+        _handle_diplomatic_homeworld_loss(contract.game, grant_source, star)
+    return True
+
+
+def _apply_specific_colony_exchange(contract):
+    if not _specific_colony_clause_available(contract, 'request'):
+        return False, 'request_unavailable'
+    if not _specific_colony_clause_available(contract, 'offer'):
+        return False, 'offer_unavailable'
+
+    _transfer_specific_colony_clause(contract, 'request', handle_homeworld_loss=False)
+    _transfer_specific_colony_clause(contract, 'offer', handle_homeworld_loss=False)
+    request_source, _request_target = _colony_clause_parties(contract, 'request')
+    offer_source, _offer_target = _colony_clause_parties(contract, 'offer')
+    request_star = contract.request_star
+    offer_star = contract.offer_star
+    _handle_diplomatic_homeworld_loss(contract.game, request_source, request_star)
+    _handle_diplomatic_homeworld_loss(contract.game, offer_source, offer_star)
+    return True, ''
+
+
+def _handle_diplomatic_homeworld_loss(game, player, lost_star):
+    if player is None or lost_star is None:
+        return
+    if int(getattr(player, 'homeworld_id', 0) or 0) != int(getattr(lost_star, 'id', 0) or 0):
+        return
+    from .turn import GameTurn
+
+    turn = GameTurn(game)
+    if bool(getattr(player, 'fixed_homeworld', False)):
+        turn._defeat_player(
+            player,
+            lost_star_id=lost_star.id,
+            location=(lost_star.x, lost_star.y),
+        )
+        return
+    replacement = player.stars.exclude(id=lost_star.id).order_by('-colonists', 'id').first()
+    if replacement is None:
+        turn._defeat_player(
+            player,
+            lost_star_id=lost_star.id,
+            location=(lost_star.x, lost_star.y),
+        )
+        return
+    player.homeworld = replacement
+    player.save(update_fields=['homeworld'])
+
+
 def _apply_clause_immediately(contract, prefix, year):
     clause_type = getattr(contract, '%s_clause_type' % prefix)
-    if clause_type not in IMMEDIATE_CLAUSE_TYPES + (DiplomaticContract.CLAUSE_SPECIFIC_FLEET,):
+    if clause_type not in APPLY_ON_ACCEPT_CLAUSE_TYPES:
         return False
     if prefix == 'request':
         grant_source = contract.recipient
@@ -510,6 +848,8 @@ def _apply_clause_immediately(contract, prefix, year):
         grant_target = contract.recipient
 
     if clause_type == DiplomaticContract.CLAUSE_NOTHING:
+        return True
+    if clause_type == DiplomaticContract.CLAUSE_VAGUE_THREAT:
         return True
     if clause_type == DiplomaticContract.CLAUSE_TECHNOLOGY:
         technology = getattr(contract, '%s_technology' % prefix)
@@ -523,6 +863,8 @@ def _apply_clause_immediately(contract, prefix, year):
             year=year,
         )
         return True
+    if clause_type == DiplomaticContract.CLAUSE_REPORT:
+        return _grant_report_trade(contract, prefix)
     if clause_type == DiplomaticContract.CLAUSE_STANCE:
         stance = getattr(contract, '%s_stance' % prefix)
         _set_pending_stance(grant_source, grant_target, stance)
@@ -535,6 +877,8 @@ def _apply_clause_immediately(contract, prefix, year):
         fleet.player = grant_target
         fleet.save(update_fields=['player'])
         return True
+    if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
+        return _transfer_specific_colony_clause(contract, prefix, handle_homeworld_loss=True)
     return False
 
 
@@ -553,7 +897,7 @@ def contract_request_complete(contract):
         return _resource_progress_complete(contract)
     if clause_type == DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT:
         return int(contract.progress_ship_count or 0) >= int(contract.request_ship_count or 0)
-    if clause_type in IMMEDIATE_CLAUSE_TYPES:
+    if clause_type in APPLY_ON_ACCEPT_CLAUSE_TYPES:
         return contract.status == DiplomaticContract.STATUS_FULFILLED
     return False
 
@@ -634,6 +978,21 @@ def ensure_specific_fleet_report(contract):
     )
 
 
+def ensure_specific_colony_report(contract):
+    if contract.offer_clause_type != DiplomaticContract.CLAUSE_SPECIFIC_COLONY or contract.offer_star is None:
+        return
+    from .turn import GameTurn
+
+    turn = GameTurn(contract.game)
+    turn._create_or_update_report(
+        contract.recipient,
+        'star',
+        contract.offer_star,
+        contract.game.year,
+        report_tier='encounter',
+    )
+
+
 def refresh_contract_integrity(game):
     if not game:
         return
@@ -645,6 +1004,26 @@ def refresh_contract_integrity(game):
     for contract in contracts:
         fleet = contract.offer_fleet
         if fleet is None or fleet.game_id != game.id or fleet.player_id != contract.sender_id:
+            _expire_contract(contract, game.year, apply_consequence=False)
+
+    colony_contracts = DiplomaticContract.objects.filter(
+        game=game,
+        status__in=[DiplomaticContract.STATUS_SENT, DiplomaticContract.STATUS_ACCEPTED],
+        request_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_COLONY,
+    ).select_related('request_star', 'sender', 'recipient')
+    for contract in colony_contracts:
+        star = contract.request_star
+        if star is None or star.game_id != game.id or star.player_id != contract.recipient_id:
+            _expire_contract(contract, game.year, apply_consequence=False)
+
+    offered_colony_contracts = DiplomaticContract.objects.filter(
+        game=game,
+        status__in=[DiplomaticContract.STATUS_SENT, DiplomaticContract.STATUS_ACCEPTED],
+        offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_COLONY,
+    ).select_related('offer_star', 'sender', 'recipient')
+    for contract in offered_colony_contracts:
+        star = contract.offer_star
+        if star is None or star.game_id != game.id or star.player_id != contract.sender_id:
             _expire_contract(contract, game.year, apply_consequence=False)
 
     expirable = DiplomaticContract.objects.filter(
@@ -681,7 +1060,25 @@ def accept_contract(contract, acting_player):
     _create_contract_status_message(contract.sender, contract, 'Diplomatic request accepted: %s' % summary)
     _create_contract_status_message(contract.recipient, contract, 'Diplomatic request accepted: %s' % summary)
 
-    if contract.request_clause_type in IMMEDIATE_CLAUSE_TYPES:
+    if (
+        contract.request_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY and
+        contract.offer_condition_type == DiplomaticContract.CONDITION_EXCHANGE and
+        contract.offer_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY
+    ):
+        ok, reason = _apply_specific_colony_exchange(contract)
+        if not ok:
+            _expire_contract(
+                contract,
+                contract.game.year,
+                apply_consequence=(reason == 'request_unavailable'),
+            )
+            if reason == 'offer_unavailable':
+                return False, 'Request could not be completed because the offered clause is no longer available.'
+            return False, 'Request could not be completed because the requested clause is no longer available.'
+        _mark_contract_fulfilled(contract, contract.game.year)
+        return True, 'Request accepted and fulfilled.'
+
+    if contract.request_clause_type in APPLY_ON_ACCEPT_CLAUSE_TYPES:
         if not _apply_clause_immediately(contract, 'request', contract.game.year):
             _expire_contract(contract, contract.game.year, apply_consequence=True)
             return False, 'Request could not be completed because the requested clause is no longer available.'
@@ -772,7 +1169,10 @@ def mark_countered(original_contract, new_contract):
 def _apply_offer_on_completion(contract, year):
     if contract.offer_condition_type == DiplomaticContract.CONDITION_OR_ELSE:
         return True
-    if contract.offer_clause_type == DiplomaticContract.CLAUSE_NOTHING:
+    if contract.offer_clause_type in (
+        DiplomaticContract.CLAUSE_NOTHING,
+        DiplomaticContract.CLAUSE_VAGUE_THREAT,
+    ):
         return True
     return _apply_clause_immediately(contract, 'offer', year)
 
@@ -879,6 +1279,8 @@ def pair_contracts(player, other_player):
             'request_technology',
             'offer_technology',
             'offer_fleet',
+            'offer_star',
+            'request_star',
             'request_suggested_star',
         ).order_by('-created_at')
     )

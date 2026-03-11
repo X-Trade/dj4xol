@@ -27,537 +27,306 @@
                             This is a user-facing summary of recent developments.
                         </p>
 
-                        <h4><span class="env-label">v0.16.1</span></h4>
-
+                        <h4><span class="env-label">v0.16.2</span></h4>
                         <ul class="game-list">
+                            <li>Fixed advanced scanners were not updating stale encounter reports.</li>
+                            <li>Added vague threat response in diplomatic requests.</li>
+                            <li>Added ability to trade colonies and reports in diplomatic requests.</li>
+                        </ul>
 
+                        <h4><span class="env-label">v0.16.1</span></h4>
+                        <ul class="game-list">
                             <li>Add a server setting for maximum diplomatic requests per race per turn, to prevent abuse. Defaults to 2.</li>
-
                             <li>Prevent sending a diplomatic request revoked message when it is revoked in the same turn it is sent.</li>
-
                             <li>Fixed the header in the diplomacy page.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.16.0</span></h4>
-
                         <ul class="game-list">
-
                             <li>Initial version of the diplomatic requests feature.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.15.2</span></h4>
-
                         <ul class="game-list">
-
                             <li>Removed intermediate hulls from warmongers.</li>
-
                             <li>No smart bombs for warmongers.</li>
-
                             <li>Only scientists get the Prototype Wormhole Drive.</li>
-
                             <li>Advanced Remote Miners now requires server race type trait: has_advanced_remoteminers.</li>
-
                             <li>Implemented warp_advantage from server race type traits, gives a fractional boost or cut to effective warp speed.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.15.1</span></h4>
-
                         <ul class="game-list">
-
                             <li>Added diplomacy to the Play CLI.</li>
-
                             <li>Cleaned up legacy database migrations repeatedly loading technology tree data from fixtures.</li>
-
                             <li>Add ability to block certain technologies based on Race Type or Race Type traits.</li>
-
                             <li>Changed how wormhole drive fleets are merged so their stats are averaged.</li>
-
                             <li>Rebalanced warp and bomb unlocks.</li>
-
                             <li>Rebalanced colony scanner ranges and ensure they are all multiples of 5.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.15.0</span></h4>
-
                         <ul class="game-list">
-
                             <li>Added scanner range race type trait multiplier.</li>
-
                             <li>Add race type browser to the help index.</li>
-
                             <li>Use bombardment multiplier from race type.</li>
-
                             <li>Use starting_colonies from server race type traits in the game joining process.</li>
-
                             <li>Allow micromanager (Administration) L1 to build up to 1 lab and 1 shipyard, only when all other resource requirements are met.</li>
-
                             <li>Allow micromanager (Administration) L2 to take ownership of player-created repeat orders for mines, factories, defences, labs, and shipyards in order to optimise jobs, economy and production.</li>
-
                             <li>Use the race type's ground force multiplier for invasion strength and defending colonists.</li>
-
                             <li>Conneted up Server Race Type manufacturing multiplier, combat multiplier, defence multiplier, and population growth multiplier.</li>
-
                             <li>Added server race type browser.</li>
-
                             <li>Hooked up server race type research multiplier.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.14.0</span></h4>
-
                         <ul class="game-list">
-
                             <li>Tweaked diplomacy weightings so combate is ever so slightly less likely in cases of Hostile vs anything else.</li>
-
                             <li>Added server race trait diplomatic profile to encounter combat chance.</li>
-
                             <li>Added message to the other player when diplomatic stance is changed.</li>
-
                             <li>Show allied forces as a darker green on the starmap.</li>
-
                             <li>Process diplomacy changes at the start of turn processing, no intel is revealed or message generated mid-turn.</li>
-
                             <li>Added diplomacy effects such as shipyard access, shared intel reports, shared scanner ranges, unrestricted resource transfer access, as well as modifiers to combat and colony defence strike chances.</li>
-
                             <li>Fix production/fleet orders panels refusing to go into a third column in desktop views.</li>
-
                             <li>Added diplomacy view and basic known-race/default standing parameters.</li>
-
                             <li>Fixed an issue where no-scanners games would not correctly track other player's fleets.</li>
-
                             <li>Set default standing to 'hostile' only for existing games to replicate existing behaviour.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.13.1</span></h4>
-
                         <ul class="game-list">
-
                             <li>Added game owner email notification when someone joins your game.</li>
-
                             <li>Added pop-out order params box for greater form accessibility.</li>
-
                             <li>Fixed production costs subpanel header is clipped in LCARS theme.</li>
-
                             <li>Cleaned up debug action buttons.</li>
-
                             <li>Fixed max_safe_warp wasn't being passed through to the order params form, defaulting all fleets to warp 5.</li>
-
                             <li>Fixed ancient debris is revealed by its subtype in basic scans.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.13.0</span></h4>
-
                         <ul class="game-list">
-
                             <li>Added more help pages for beginners.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.12.8</span></h4>
-
                         <ul class="game-list">
-
                             <li>Run profanity filter at the input instead of the model level for Mapobjects.</li>
-
                             <li>Show unowned stars with infrastructure as 'abandoned' instead.</li>
-
                             <li>Improved fleet heading and speed tracking.</li>
-
                             <li>Improved representation of untracked/lost fleets when following locate links.</li>
-
                             <li>Do not reveal fleet heading and speed from orders, use last effective movement data.</li>
-
                             <li>Block auto-locate when completeing a set-target action on the starmap.</li>
-
                             <li>Also block auto-locate when adding orders to the queue.</li>
-
                             <li>Show draft movement order legs on the starmap, similarly to draft patrol order radius.</li>
-
                             <li>Direct the player to their homeworld upon joining instead of showing an empty map.</li>
-
                             <li>Moved the auto tag for Administration/Micromanager orders to the end of the line to visually align better with player orders.</li>
-
                             <li>Tweaked fleet speed/heading line to show 'in orbit' or 'stopped' when appropriate.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.12.7</span></h4>
-
                         <ul class="game-list">
-
                             <li>Added support for public server races.</li>
-
                             <li>Add server setting to enable race publishing.</li>
-
                             <li>Allow to skip race creation on the onboarding process if any public server races exist.</li>
-
                             <li>Heading and speed now also available in no-scanners games.</li>
-
                             <li>Detail panel is allowed to fill the righthand column when no Orders panel exists.</li>
-
                             <li>Fixed move-order starmap jump can get out of sync when the order type changes unexpectedly.</li>
-
                             <li>Locate links to a fleet that has moved out of range now show the last known position instead of revealing actual location.</li>
-
                             <li>Added heading and speed to basic reports.</li>
-
                             <li>Micromanager/Administration now places its orders at the end of the turn, so the player can review them and they are consumed by production at the next turn.</li>
-
                             <li>Improved mobile layout for transfer order parameters.</li>
-
                             <li>Encounter with basic scanners no longer reports on enemy fleet capabilities.</li>
-
                             <li>Simplified star touch area on mobile devices, prioritise homeworlds and the primary (named) world, without satellite world touch on the starmap.</li>
-
                             <li>Ensure that the names on the starmap always match the primary world at that location.</li>
-
                             <li>Fixed unidentified fleet's names were still showing in the orders list.</li>
-
                             <li>Attempt to fix transfer orders params layout issues.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.12.6</span></h4>
-
                         <ul class="game-list">
-
                             <li>Adjusted first contact message for ranged contacts.</li>
-
                             <li>Improved ordering of location based selection lists (target, detail, etc.</li>
-
                             <li>Obfuscated fleet names in basic reports.</li>
-
                             <li>Improved salvage detail report layout.</li>
-
                             <li>Added 'mineral composition unknown' message to basic reports of stars and salvage.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.12.5</span></h4>
-
                         <ul class="game-list">
-
                             <li>Improved mobile styling in research panels.</li>
-
                             <li>Added 'recently unlocked' section to research detail view.</li>
-
                             <li>Disable changing research priorities when the player is turned-in or the next turn is due.</li>
-
                             <li>Fixed hamburger menu in join and spectate game forms.</li>
-
                             <li>Gave more consistent styling to homepage and profilepage game listings.</li>
-
                             <li>Form messages now use the same banner system as starmap targeting.</li>
-
                             <li>Fixed missing habitability summary in some remote basic reports.</li>
-
                             <li>Added rollup message per turn of new remotely discovered habitable worlds for scanner enabled games.</li>
-
                             <li>Made primary-primary double barreled star names less common.</li>
-
                             <li>Added a server setting to disable spectator mode.</li>
-
                             <li>Improved micromanager/administration predictive resource allocation.</li>
-
                             <li>Rebalanced micromanager/Administration costs and added remove order.</li>
-
                             <li>Added colony micromanager aka Administration, as an unlockable infrastructure item for basic colony management automation.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.12.4</span></h4>
-
                         <ul class="game-list">
-
                             <li>Remove duplicated information from the profile panel.</li>
-
                             <li>Made basic report thumbs even more blurry.</li>
-
                             <li>Improved blur of basic report thumbnails.</li>
-
                             <li>Added more email testing features for server admins.</li>
-
                             <li>Added server admin settings form.</li>
-
                             <li>Fixed nova bombs not creating asteroid fields, made black hole creation slightly more probable.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.12.3</span></h4>
-
                         <ul class="game-list">
-
                             <li>Give Fleet order added for transfer or abandonment.</li>
-
                             <li>Asteroid-field damage now generates a message.</li>
-
                             <li>Wormhole traversal messages no longer repeat every traversal.</li>
-
                             <li>Overmax warp damage/destruction now only checks when overmax movement begins.</li>
-
                             <li>Overmax speed reduction only affects the current order, not repeated copies.</li>
-
                             <li>Early overmax fuel penalties are higher and stay high until late propulsion.</li>
-
                             <li>Cleaned up base tech progression Electronics L6 being overpowered.</li>
-
                             <li>In scanner games, salvage reveals full mineral composition on advanced scan or encounter.</li>
-
                             <li>In no_scanners games, visiting salvage with basic scanners or better now reveals full mineral composition, since it cannot be owned or otherwise determined.</li>
-
                             <li>Basic-report thumbnail blur now uses pre-generated blurred image assets instead of CSS blur.</li>
-
                             <li>Salvage is now globally visible again for games with the no-scanners option enabled.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.12.2</span></h4>
-
                         <ul class="game-list">
-
                             <li>Salvage now reveals limited information in basic scans.</li>
-
                             <li>Basic scan of map objects always reveeals a thumbnail and name.</li>
-
                             <li>Basic scans now produce a blurry thumbnail. Advanced scan or encounter is necessary for the full thumbnail.</li>
-
                             <li>Salvage is now hidden until it is in basic scanning range, requiring a report to be shown on the starmap.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.12.1</span></h4>
-
                         <ul class="game-list">
-
                             <li>Stop fleets from following targeted enemy fleets that have moved out of sensor range.</li>
-
                             <li>Prevent potential unsporting gameplay data leaks in the Play CLI's detail command.</li>
-
                             <li>Added strict origin checking for Play CLI's API.</li>
-
                             <li>Added 'own' and 'other' filtering for /fleets command in Play CLI.</li>
-
                             <li>Added cleaner mapobject link text representation in Play CLI.</li>
-
                             <li>Added /rename and /notes commands to Play CLI.</li>
-
                             <li>Added ability to search for objects by name (using quotation marks) in the Play CLI.</li>
-
                             <li>Extended Play CLI help commands and subcommands.</li>
-
                             <li>Added Web Play CLI for regular desktop players to access a text based interface to their game.</li>
-
                             <li>Added /reports (known objects) list and /status (turn status) commands to the Play CLI.</li>
-
                             <li>Added salvage and anomales listing to the Play CLI.</li>
-
                             <li>Added test email admin action.</li>
-
                             <li>Rebalanced anomaly decay with stability based decay probability.</li>
-
                             <li>Rebalanced anomaly spawning with count/cap based spawn probability.</li>
-
                             <li>Added a message when a fleet was targeting an anomaly that has been removed.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.12.0</span></h4>
-
                         <ul class="game-list">
-
                             <li>Improved join game screen.</li>
-
                             <li>Added spectator mode.</li>
-
                             <li>Added info hint in race creation form when selecting fixed-homeworld.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.11.5</span></h4>
-
                         <ul class="game-list">
-
                             <li>Default scanners overlay to ON.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.11.4</span></h4>
-
                         <ul class="game-list">
-
                             <li>Fleet inventory scans always require advanced scanner AND an encounter.</li>
-
                             <li>Fixed anomaly type not recorded in basic reports.</li>
-
                             <li>Transfering minerals from an enemy star is now hazardous.</li>
-
                             <li>Added defeat condition and homeworld reassignment.</li>
-
                             <li>Added ability to have abandoned fleets.</li>
-
                             <li>Added salvaging of abandoned fleets.</li>
-
                             <li>Added single-homeworld race trait that prevents homeworld reassignment in exchange for a defence boost.</li>
-
                             <li>Added research cost and warp range game multipliers for game speed adjustment.</li>
-
                             <li>Adjusted ancient debris visitation messages.</li>
-
                             <li>Adjusted 'join game' form.</li>
-
                             <li>Fleets take damage visiting asteroids or ancient debris.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.11.3</span></h4>
-
                         <ul class="game-list">
-
                             <li>Added ancient debris.</li>
-
                             <li>Added anomalie spawn rate for new games.</li>
-
                             <li>Added some new star thumbnails.</li>
-
                             <li>Improved shorthand id (url key) system for better future compatibility with less collisions.</li>
-
                             <li>Fixed empty resources were not displayed in star reports.</li>
-
                             <li>Fixed star thumbnails were not persistent.</li>
                             <li>Added asteroid fields as unique salvage generated by the anomalie system.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.11.2</span></h4>
-
                         <ul class="game-list">
-
                             <li>Added thumbnails for anomalies.</li>
-
                             <li>Added tooltips for remote mining and bombing orders.</li>
-
                             <li>Added mining focus checkboxes for advanced remote miners.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.11.1</span></h4>
-
                         <ul class="game-list">
-
                             <li>Rebalance tech level requirements to take into account new resources and late game play.</li>
-
                             <li>Added research prerequisites to the Play CLI.</li>
-
                             <li>Added secret resource interaction with anomalies.</li>
-
                             <li>Added (un)help(ful) page on secret resources.</li>
-
                             <li>Tied secret resources into the research tree.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.11.0</span></h4>
-
                         <ul class="game-list">
-
                             <li>Added secret resources feature.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.10.1</span></h4>
-
                         <ul class="game-list">
-
                             <li>Made anomaly message more consistent.</li>
-
                             <li>Show 'due' in red when next turn is due.</li>
-
                             <li>Cleaned up bombardment and anomaly messages.</li>
-
                             <li>Styled the join-game panel and added additional helpful information there.</li>
-
                             <li>Added emails to players when invited to join a new game.</li>
-
                             <li>Added costs to production panel.</li>
-
                             <li>Terraforming is now unlocked by research technology.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.10.0</span></h4>
-
                         <ul class="game-list">
-
                             <li>Added capability to have research levels require other categories to have completed a certain level of research.</li>
-
                             <li>Added spiral-arm galaxy game generation mode.</li>
-
                             <li>Added email game updates.</li>
-
                             <li>Reworked lab resource consumption.</li>
-
                             <li>Added mineral requirements to higher research levels.</li>
-
                             <li>Fixed mineral consumption for research was all-or-nothing. Now tracks incremental progress.</li>
-
                             <li>Rebalance tech tree for extended play.</li>
-
                             <li>Added technology placeholder icons for more technology types.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.9.3</span></h4>
-
                         <ul class="game-list">
-
                             <li>Added chance for wormhole drive to create unstable wormhole on fleet destruction.</li>
-
                             <li>Lock scheduled games when turn is due similar to quoroum games that are turned-in.</li>
-
                             <li>Poll for turn update when turn is due in scheduled games.</li>
-
                             <li>Doubled the fuel consumption of all warp engines.</li>
-
                             <li>Added fleet capabilities detail section.</li>
-
                             <li>Fixed wormhole naming.</li>
-
                             <li>Enabled random events and anomalies by default.</li>
-
                             <li>Added no-scanners game option (more refined version of original behaviour).</li>
-
                             <li>Added scanners.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.9.2</span></h4>
-
                         <ul class="game-list">
-
                             <li>Claned up anomaly damage message generation.</li>
-
                             <li>Added possibility of fleet destruction when transiting an unstable wormhole.</li>
-
                             <li>Added wormholes.</li>
-
                             <li>Added chance of nova bombs spawning black holes.</li>
-
                             <li>Added chance of wormhole drive destruction spawning rift.</li>
-
                             <li>Added black holes.</li>
-
                             <li>Added moving comets.</li>
-
                         </ul>
 
                         <h4><span class="env-label">v0.9.1</span></h4>
-
                         <ul class="game-list">
                             <li>added detail note and help pages about anomalies</li>
                             <li>Added anomalies (simple 'passive' points of interested for now).</li>

@@ -1387,6 +1387,9 @@ class DiplomaticContract(AbstractGameObject):
     CLAUSE_RESOURCE_ON_GIVEN_FLEET = 'RESOURCE_ON_GIVEN_FLEET'
     CLAUSE_FLEET_BY_SHIP_COUNT = 'FLEET_BY_SHIP_COUNT'
     CLAUSE_SPECIFIC_FLEET = 'SPECIFIC_FLEET'
+    CLAUSE_SPECIFIC_COLONY = 'SPECIFIC_COLONY'
+    CLAUSE_REPORT = 'REPORT'
+    CLAUSE_VAGUE_THREAT = 'VAGUE_THREAT'
     CLAUSE_CHOICES = [
         (CLAUSE_NOTHING, 'Nothing'),
         (CLAUSE_TECHNOLOGY, 'Technology'),
@@ -1395,6 +1398,9 @@ class DiplomaticContract(AbstractGameObject):
         (CLAUSE_RESOURCE_ON_GIVEN_FLEET, 'Resources On Given Fleet'),
         (CLAUSE_FLEET_BY_SHIP_COUNT, 'Fleet By Ship Count'),
         (CLAUSE_SPECIFIC_FLEET, 'Specific Fleet'),
+        (CLAUSE_SPECIFIC_COLONY, 'Specific Colony'),
+        (CLAUSE_REPORT, 'Report'),
+        (CLAUSE_VAGUE_THREAT, 'Vague Threat'),
     ]
 
     sender = models.ForeignKey(
@@ -1471,6 +1477,15 @@ class DiplomaticContract(AbstractGameObject):
         related_name='+',
         on_delete=models.SET_NULL,
     )
+    request_star = models.ForeignKey(
+        Star,
+        null=True,
+        blank=True,
+        related_name='+',
+        on_delete=models.SET_NULL,
+    )
+    request_report_target_type = models.CharField(max_length=10, blank=True, default='')
+    request_report_target_id = models.UUIDField(null=True, blank=True)
 
     offer_clause_type = models.CharField(
         max_length=24,
@@ -1497,6 +1512,15 @@ class DiplomaticContract(AbstractGameObject):
         related_name='+',
         on_delete=models.SET_NULL,
     )
+    offer_star = models.ForeignKey(
+        Star,
+        null=True,
+        blank=True,
+        related_name='+',
+        on_delete=models.SET_NULL,
+    )
+    offer_report_target_type = models.CharField(max_length=10, blank=True, default='')
+    offer_report_target_id = models.UUIDField(null=True, blank=True)
 
     progress_ironium = models.IntegerField(default=0)
     progress_boranium = models.IntegerField(default=0)
@@ -1525,6 +1549,13 @@ class DiplomaticContract(AbstractGameObject):
             self.request_suggested_star.player_id != self.sender_id
         ):
             raise ValidationError('Suggested destination star must belong to the sending player.')
+        if self.request_star_id and self.request_star.game_id != self.game_id:
+            raise ValidationError('Requested colony must belong to this game.')
+        if (
+            self.request_star_id and self.recipient_id and
+            self.request_star.player_id != self.recipient_id
+        ):
+            raise ValidationError('Requested colony must belong to the receiving player.')
         if self.offer_fleet_id and self.offer_fleet.game_id != self.game_id:
             raise ValidationError('Offered fleet must belong to this game.')
         if (
@@ -1532,6 +1563,13 @@ class DiplomaticContract(AbstractGameObject):
             self.offer_fleet.player_id != self.sender_id
         ):
             raise ValidationError('Offered fleet must belong to the sending player.')
+        if self.offer_star_id and self.offer_star.game_id != self.game_id:
+            raise ValidationError('Offered colony must belong to this game.')
+        if (
+            self.offer_star_id and self.sender_id and
+            self.offer_star.player_id != self.sender_id
+        ):
+            raise ValidationError('Offered colony must belong to the sending player.')
 
     @property
     def is_handled(self):

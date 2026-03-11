@@ -990,6 +990,48 @@ class ScannerReportTest(TestCase):
         self.assertNotIn('mines', data)
         self.assertNotIn('factories', data)
 
+    def test_advanced_scanner_refreshes_stale_encounter_star_ownership(self):
+        fleet = self._create_scanner_fleet(basic=6, advanced=6, x=12, y=12)
+        star = self._place_enemy_star_near(fleet.x, fleet.y, distance=4)
+        star.player = None
+        star.colonists = 0
+        star.save(update_fields=['player', 'colonists'])
+
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year - 71,
+            target_type='star',
+            target_id=star.id,
+            cached_report=json.dumps({
+                'name': star.name,
+                'x': star.x,
+                'y': star.y,
+                'gravity': star.gravity,
+                'temperature': star.temperature,
+                'radiation': star.radiation,
+                'player_name': None,
+                'colonists': 0,
+                'mines': 5,
+                'factories': 3,
+                'report_tier': 'encounter',
+            }),
+        )
+
+        star.player = self.player2
+        star.colonists = 42000
+        star.save(update_fields=['player', 'colonists'])
+
+        GameTurn(self.game).generate_scanner_reports()
+        report.refresh_from_db()
+        data = report.get_report_data()
+        self.assertEqual(report.year, self.game.year)
+        self.assertEqual(data.get('report_tier'), 'encounter')
+        self.assertEqual(data.get('player_name'), self.player2.name)
+        self.assertEqual(data.get('colonists'), 42000)
+        self.assertEqual(data.get('mines'), 5)
+        self.assertEqual(data.get('factories'), 3)
+
     def test_basic_scanner_reports_fleet_presence_only(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=0, x=10, y=10)
         enemy_fleet = Fleet.objects.create(
