@@ -63,9 +63,11 @@ from .diplomatic_contracts import (
     build_player_message_feed,
     decline_contract,
     diplomatic_actions_locked,
+    ensure_specific_colony_report,
     ensure_specific_fleet_report,
     format_contract_statement,
     format_contract_summary,
+    format_report_trade_label,
     mark_countered,
     pair_contracts,
     resource_label_for_player,
@@ -2561,7 +2563,9 @@ def _diplomacy_request_clause_choices():
     return [
         (DiplomaticContract.CLAUSE_NOTHING, 'do nothing'),
         (DiplomaticContract.CLAUSE_TECHNOLOGY, 'grant us technology'),
+        (DiplomaticContract.CLAUSE_REPORT, 'grant us report'),
         (DiplomaticContract.CLAUSE_STANCE, 'set their stance to'),
+        (DiplomaticContract.CLAUSE_SPECIFIC_COLONY, 'give us colony'),
         (DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD, 'deliver'),
         (DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET, 'give us a fleet carrying'),
         (DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT, 'give us a fleet of'),
@@ -2571,8 +2575,11 @@ def _diplomacy_request_clause_choices():
 def _diplomacy_offer_clause_choices():
     return [
         (DiplomaticContract.CLAUSE_NOTHING, 'do nothing'),
+        (DiplomaticContract.CLAUSE_VAGUE_THREAT, 'make vague threats'),
         (DiplomaticContract.CLAUSE_TECHNOLOGY, 'grant them technology'),
+        (DiplomaticContract.CLAUSE_REPORT, 'grant them report'),
         (DiplomaticContract.CLAUSE_STANCE, 'set our stance to'),
+        (DiplomaticContract.CLAUSE_SPECIFIC_COLONY, 'give them colony'),
         (DiplomaticContract.CLAUSE_SPECIFIC_FLEET, 'give them'),
     ]
 
@@ -2629,6 +2636,117 @@ def _diplomacy_group_technologies(technologies):
     return groups
 
 
+def _diplomacy_known_target_colony_choices(player, target_player):
+    if not player or not target_player:
+        return []
+    known_star_ids = []
+    for report in Report.objects.filter(
+        game=player.game,
+        player=player,
+        target_type='star',
+    ).order_by('id'):
+        try:
+            data = report.get_report_data()
+        except Exception:
+            continue
+        if data.get('player_name') == target_player.name:
+            known_star_ids.append(report.target_id)
+    if not known_star_ids:
+        return []
+    stars = list(
+        target_player.stars.filter(id__in=known_star_ids).order_by('id')
+    )
+    return stars
+
+
+def _diplomacy_colony_choice_rows(owner, stars):
+    rows = []
+    homeworld_id = getattr(owner, 'homeworld_id', None)
+    for star in stars:
+        label = star.name
+        if homeworld_id and star.id == homeworld_id:
+            label = '%s (home)' % label
+        rows.append({
+            'id': star.id,
+            'label': label,
+        })
+    return rows
+
+
+def _diplomacy_report_choice_groups(report_owner):
+    groups = []
+    if not report_owner:
+        return groups
+
+    colony_items = [
+        {
+            'id': 'star:%s' % star.id,
+            'label': format_report_trade_label('star', star.id, report_owner.game, include_links=False),
+        }
+        for star in report_owner.stars.order_by('id')
+    ]
+    anomaly_items = []
+    ancient_debris_items = []
+    seen = {item['id'] for item in colony_items}
+    reports = Report.objects.filter(
+        game=report_owner.game,
+        player=report_owner,
+        target_type__in=['star', 'anomaly', 'salvage'],
+    ).order_by('target_type', 'year', 'id')
+    for report in reports:
+        data = report.get_report_data()
+        tier = str(data.get('report_tier') or '').lower()
+        item_id = '%s:%s' % (report.target_type, report.target_id)
+        if item_id in seen:
+            continue
+        if report.target_type == 'star':
+            continue
+        if report.target_type == 'anomaly':
+            if tier not in ('advanced', 'encounter'):
+                continue
+            anomaly_items.append({
+                'id': item_id,
+                'label': format_report_trade_label('anomaly', report.target_id, report_owner.game, include_links=False),
+            })
+            seen.add(item_id)
+            continue
+        if report.target_type == 'salvage':
+            if tier not in ('advanced', 'encounter') or data.get('salvage_type') != 'ANCIENT_DEBRIS':
+                continue
+            ancient_debris_items.append({
+                'id': item_id,
+                'label': format_report_trade_label('salvage', report.target_id, report_owner.game, include_links=False),
+            })
+            seen.add(item_id)
+    if colony_items:
+        groups.append({'label': 'Colonies', 'items': colony_items})
+    if anomaly_items:
+        groups.append({'label': 'Anomalies', 'items': anomaly_items})
+    if ancient_debris_items:
+        groups.append({'label': 'Ancient Debris', 'items': ancient_debris_items})
+    return groups
+
+
+def _diplomacy_request_report_choice_groups(requesting_player, target_player):
+    if not requesting_player or not target_player:
+        return []
+    groups = []
+    colony_items = [
+        {
+            'id': 'star:%s' % star.id,
+            'label': format_report_trade_label('star', star.id, target_player.game, include_links=False),
+        }
+        for star in _diplomacy_known_target_colony_choices(requesting_player, target_player)
+    ]
+    if colony_items:
+        groups.append({'label': 'Colonies', 'items': colony_items})
+    other_groups = _diplomacy_report_choice_groups(target_player)
+    for group in other_groups:
+        if group['label'] != 'Colonies':
+            groups.append(group)
+    return groups
+
+
 def _diplomacy_build_compose_state(player, selected_player, request_obj=None, counter_contract=None):
     state = {
         'temperature': DiplomaticContract.TEMPERATURE_PROPOSE,
@@ -2636,12 +2754,16 @@ def _diplomacy_build_compose_state(player, selected_player, request_obj=None, co
         'request_clause_type': DiplomaticContract.CLAUSE_NOTHING,
         'offer_clause_type': DiplomaticContract.CLAUSE_NOTHING,
         'request_technology': '',
+        'request_report_target': '',
         'offer_technology': '',
+        'offer_report_target': '',
         'request_stance': 'NEUTRAL',
         'offer_stance': 'NEUTRAL',
         'request_ship_count': '',
         'offer_fleet': '',
         'request_suggested_star': '',
+        'request_star': '',
+        'offer_star': '',
         'deadline_years': '24',
         'extend_on_accept_years': '0',
         'resources': {
@@ -2663,12 +2785,16 @@ def _diplomacy_build_compose_state(player, selected_player, request_obj=None, co
         state['request_clause_type'] = request_obj.POST.get('request_clause_type', state['request_clause_type'])
         state['offer_clause_type'] = request_obj.POST.get('offer_clause_type', state['offer_clause_type'])
         state['request_technology'] = request_obj.POST.get('request_technology', '')
+        state['request_report_target'] = request_obj.POST.get('request_report_target', '')
         state['offer_technology'] = request_obj.POST.get('offer_technology', '')
+        state['offer_report_target'] = request_obj.POST.get('offer_report_target', '')
         state['request_stance'] = request_obj.POST.get('request_stance', state['request_stance'])
         state['offer_stance'] = request_obj.POST.get('offer_stance', state['offer_stance'])
         state['request_ship_count'] = request_obj.POST.get('request_ship_count', '')
         state['offer_fleet'] = request_obj.POST.get('offer_fleet', '')
         state['request_suggested_star'] = request_obj.POST.get('request_suggested_star', '')
+        state['request_star'] = request_obj.POST.get('request_star', '')
+        state['offer_star'] = request_obj.POST.get('offer_star', '')
         state['deadline_years'] = request_obj.POST.get('deadline_years', state['deadline_years'])
         state['extend_on_accept_years'] = request_obj.POST.get('extend_on_accept_years', state['extend_on_accept_years'])
         for key in state['resources']:
@@ -2677,7 +2803,9 @@ def _diplomacy_build_compose_state(player, selected_player, request_obj=None, co
 
 
 def _diplomacy_parse_contract(player, target_player, post_data, available_offer_techs,
-                               available_request_techs, counter_from=None):
+                               available_request_techs, available_request_stars,
+                               available_offer_stars, available_request_reports,
+                               available_offer_reports, counter_from=None):
     errors = []
     temperature = post_data.get('temperature', DiplomaticContract.TEMPERATURE_PROPOSE)
     valid_temperatures = {choice[0] for choice in DiplomaticContract.TEMPERATURE_CHOICES}
@@ -2737,8 +2865,26 @@ def _diplomacy_parse_contract(player, target_player, post_data, available_offer_
             errors.append('Requested technology is not available for this negotiation.')
         else:
             contract.request_technology = available_request_techs[request_tech_id]
+    elif request_clause == DiplomaticContract.CLAUSE_REPORT:
+        request_report_target = post_data.get('request_report_target')
+        if not request_report_target:
+            errors.append('Requested report is required.')
+        elif request_report_target not in available_request_reports:
+            errors.append('Requested report is not available for this negotiation.')
+        else:
+            target_type, target_id = available_request_reports[request_report_target]
+            contract.request_report_target_type = target_type
+            contract.request_report_target_id = target_id
     elif request_clause == DiplomaticContract.CLAUSE_STANCE:
         contract.request_stance = normalise_stance(post_data.get('request_stance'))
+    elif request_clause == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
+        request_star_id = post_data.get('request_star')
+        if not request_star_id:
+            errors.append('Requested colony is required.')
+        elif request_star_id not in available_request_stars:
+            errors.append('Requested colony is not available for this negotiation.')
+        else:
+            contract.request_star = available_request_stars[request_star_id]
     elif request_clause == DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT:
         contract.request_ship_count = max(1, parse_int('request_ship_count', 0))
         if contract.request_ship_count <= 0:
@@ -2776,8 +2922,26 @@ def _diplomacy_parse_contract(player, target_player, post_data, available_offer_
             errors.append('You cannot offer a technology you do not currently have.')
         else:
             contract.offer_technology = available_offer_techs[offer_tech_id]
+    elif offer_clause == DiplomaticContract.CLAUSE_REPORT:
+        offer_report_target = post_data.get('offer_report_target')
+        if not offer_report_target:
+            errors.append('Offered report is required.')
+        elif offer_report_target not in available_offer_reports:
+            errors.append('You cannot offer a report you do not currently have.')
+        else:
+            target_type, target_id = available_offer_reports[offer_report_target]
+            contract.offer_report_target_type = target_type
+            contract.offer_report_target_id = target_id
     elif offer_clause == DiplomaticContract.CLAUSE_STANCE:
         contract.offer_stance = normalise_stance(post_data.get('offer_stance'))
+    elif offer_clause == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
+        offer_star_id = post_data.get('offer_star')
+        if not offer_star_id:
+            errors.append('Offered colony is required.')
+        elif offer_star_id not in available_offer_stars:
+            errors.append('Offered colony must be one of your current colonies.')
+        else:
+            contract.offer_star = available_offer_stars[offer_star_id]
     elif offer_clause == DiplomaticContract.CLAUSE_SPECIFIC_FLEET:
         offer_fleet_id = post_data.get('offer_fleet')
         if not offer_fleet_id:
@@ -2906,6 +3070,22 @@ def diplomacy(request, game_short_id):
                 available_request_techs = {
                     str(tech.id): tech for tech in get_player_unlocked_technologies(selected_player)
                 } if selected_player is not None else {}
+                available_request_stars = {
+                    str(star.id): star for star in _diplomacy_known_target_colony_choices(player, selected_player)
+                } if selected_player is not None else {}
+                available_offer_stars = {
+                    str(star.id): star for star in player.stars.order_by('id')
+                }
+                available_request_reports = {
+                    item['id']: tuple(item['id'].split(':', 1))
+                    for group in _diplomacy_request_report_choice_groups(player, selected_player)
+                    for item in group['items']
+                } if selected_player is not None else {}
+                available_offer_reports = {
+                    item['id']: tuple(item['id'].split(':', 1))
+                    for group in _diplomacy_report_choice_groups(player)
+                    for item in group['items']
+                }
                 if not contract_errors:
                     contract, parse_errors = _diplomacy_parse_contract(
                         player,
@@ -2913,6 +3093,10 @@ def diplomacy(request, game_short_id):
                         request.POST,
                         available_offer_techs,
                         available_request_techs,
+                        available_request_stars,
+                        available_offer_stars,
+                        available_request_reports,
+                        available_offer_reports,
                         counter_from=counter_contract,
                     )
                     contract_errors.extend(parse_errors)
@@ -2920,6 +3104,8 @@ def diplomacy(request, game_short_id):
                         contract.save()
                         if contract.offer_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_FLEET:
                             ensure_specific_fleet_report(contract)
+                        if contract.offer_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
+                            ensure_specific_colony_report(contract)
                         if counter_contract is not None:
                             mark_countered(counter_contract, contract)
                         return redirect(
@@ -2967,6 +3153,8 @@ def diplomacy(request, game_short_id):
         for contract in pair_contracts(player, selected_player):
             if contract.offer_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_FLEET and contract.recipient_id == player.id:
                 ensure_specific_fleet_report(contract)
+            if contract.offer_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY and contract.recipient_id == player.id:
+                ensure_specific_colony_report(contract)
             progress = _diplomacy_contract_progress(contract, player)
             contract_rows.append({
                 'short_id': contract.short_id,
@@ -2979,6 +3167,7 @@ def diplomacy(request, game_short_id):
                 ),
                 'status': contract.get_status_display(),
                 'status_raw': contract.status,
+                'request_clause_type': contract.request_clause_type,
                 'expires_year': int(contract.expires_year or 0),
                 'progress': progress,
                 'is_incoming': contract.recipient_id == player.id,
@@ -2988,6 +3177,12 @@ def diplomacy(request, game_short_id):
                 'can_decline': (contract.recipient_id == player.id and contract.status == DiplomaticContract.STATUS_SENT and not locked),
                 'can_counter': (contract.recipient_id == player.id and contract.status == DiplomaticContract.STATUS_SENT and not locked),
                 'can_revoke': (contract.sender_id == player.id and contract.status == DiplomaticContract.STATUS_SENT and not locked),
+                'accept_homeworld_warning': bool(
+                    contract.recipient_id == player.id and
+                    contract.status == DiplomaticContract.STATUS_SENT and
+                    contract.request_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY and
+                    getattr(contract, 'request_star_id', None) == getattr(player, 'homeworld_id', None)
+                ),
             })
 
     if selected_player:
@@ -3005,6 +3200,7 @@ def diplomacy(request, game_short_id):
             'effects': stance_effect_items(our_stance),
             'is_default': False,
             'delivery_warning': our_stance in (STANCE_HOSTILE, STANCE_COLD),
+            'colony_transfer_warning': True,
         }
     else:
         detail = {
@@ -3016,6 +3212,7 @@ def diplomacy(request, game_short_id):
             'effects': stance_effect_items(pending_default_stance),
             'is_default': True,
             'delivery_warning': False,
+            'colony_transfer_warning': False,
         }
 
     compose_state = _diplomacy_build_compose_state(
@@ -3038,8 +3235,17 @@ def diplomacy(request, game_short_id):
     request_technologies = get_player_unlocked_technologies(selected_player) if selected_player else []
     offer_technology_groups = _diplomacy_group_technologies(offer_technologies)
     request_technology_groups = _diplomacy_group_technologies(request_technologies)
+    offer_report_groups = _diplomacy_report_choice_groups(player)
+    request_report_groups = _diplomacy_request_report_choice_groups(player, selected_player)
     fleet_choices = list(player.fleets.order_by('name', 'id')) if player else []
-    colony_choices = list(player.stars.order_by('id')) if player else []
+    owned_colony_choices = _diplomacy_colony_choice_rows(
+        player,
+        list(player.stars.order_by('id')) if player else [],
+    )
+    request_colony_choices = _diplomacy_colony_choice_rows(
+        selected_player,
+        _diplomacy_known_target_colony_choices(player, selected_player),
+    )
 
     return render(request, 'dj4xol/diplomacy.html', {
         'game': game,
@@ -3061,8 +3267,11 @@ def diplomacy(request, game_short_id):
         'offer_clause_choices': offer_clause_choices,
         'request_technology_groups': request_technology_groups,
         'offer_technology_groups': offer_technology_groups,
+        'request_report_groups': request_report_groups,
+        'offer_report_groups': offer_report_groups,
         'fleet_choices': fleet_choices,
-        'colony_choices': colony_choices,
+        'owned_colony_choices': owned_colony_choices,
+        'request_colony_choices': request_colony_choices,
         'resource_rows': resource_rows,
         'diplomacy_locked': locked,
         'diplomacy_lock_reason': lock_reason,

@@ -1747,17 +1747,25 @@ class GameTurn():
             existing_data = report.get_report_data()
             existing_owner_known = bool(existing_data.get('player_name'))
             existing_tier = existing_data.get('report_tier') or 'advanced'
-            if self._report_tier_rank(existing_tier) > self._report_tier_rank(report_tier):
-                return False
             report.year = year
             report.game = self.game
-            report_data = self._build_report_data(
+            fresh_data = self._build_report_data(
                 player,
                 obj,
                 target_type,
                 report_tier=report_tier,
                 include_cargo=include_cargo,
             )
+            if self._report_tier_rank(existing_tier) > self._report_tier_rank(report_tier):
+                report_data = self._merge_report_refresh(
+                    target_type,
+                    existing_data,
+                    fresh_data,
+                    existing_tier,
+                    report_tier,
+                )
+            else:
+                report_data = fresh_data
             if existing_data.get('wormhole_traversed'):
                 report_data['wormhole_traversed'] = True
                 if 'first_wormhole_traversal_year' in existing_data:
@@ -1808,6 +1816,29 @@ class GameTurn():
                 msg.year = self.game.year
                 msg.save()
         return created
+
+    def _merge_report_refresh(self, target_type, existing_data, fresh_data, existing_tier, fresh_tier):
+        merged = dict(existing_data or {})
+        for key, value in fresh_data.items():
+            if key == 'report_tier':
+                continue
+            if value is None and key in merged:
+                continue
+            merged[key] = value
+        merged['report_tier'] = existing_tier
+
+        if target_type == 'fleet' and fresh_tier == 'basic' and existing_data.get('name'):
+            merged['name'] = existing_data.get('name')
+            if existing_data.get('player_name'):
+                merged['player_name'] = existing_data.get('player_name')
+
+        if target_type == 'salvage':
+            if fresh_tier == 'basic' and existing_data.get('name'):
+                merged['name'] = existing_data.get('name')
+            if existing_data.get('salvage_type') and not fresh_data.get('salvage_type'):
+                merged['salvage_type'] = existing_data.get('salvage_type')
+
+        return merged
 
     def _queue_scanner_habitable_star(
         self,

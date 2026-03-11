@@ -11,7 +11,7 @@
         {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
         {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
     </head>
-    <body{% if user_theme %} class="{{ user_theme }}"{% endif %}>
+    <body{% if user_theme or player.turned_in %} class="{% if user_theme %}{{ user_theme }}{% endif %}{% if player.turned_in %}{% if user_theme %} {% endif %}turned-in{% endif %}"{% endif %}>
         <div class="title-bar">
             <span class="title">{{ game.name }}</span>
             <span class="year"><span class="year-prefix">Year </span><span class="year-value">{{ game.year }}</span></span>
@@ -69,7 +69,7 @@
                                                value="{{ value }}"
                                                data-target="{{ row.short_id }}"
                                                {% if row.stance == value %}checked{% endif %}
-                                               {% if player.turned_in %}disabled{% endif %}>
+                                               {% if diplomacy_locked %}disabled{% endif %}>
                                     </label>
                                     {% endfor %}
                                 </div>
@@ -138,7 +138,11 @@
                             {% endif %}
                             {% if not compose_open %}
                             <p class="diplomacy-compose-toggle">
-                                <a href="?target={{ selected_target }}&compose=1">Draft Negotiation</a>
+                                <form method="get" class="diplomacy-compose-toggle-form">
+                                    <input type="hidden" name="target" value="{{ selected_target }}">
+                                    <input type="hidden" name="compose" value="1">
+                                    <button type="submit" id="diplomacy-compose-toggle-button"{% if diplomacy_locked %} disabled{% endif %}>Draft Negotiation</button>
+                                </form>
                             </p>
                             {% else %}
                             <hr class="detail-divider">
@@ -146,7 +150,7 @@
                             {% if counter_contract %}
                             <p class="diplomacy-compose-warning">Countering: {{ counter_contract_summary }}</p>
                             {% endif %}
-                            <form method="post" class="diplomacy-compose-form" id="diplomacy-compose-form" data-delivery-warning="{% if detail.delivery_warning %}1{% else %}0{% endif %}">
+                            <form method="post" class="diplomacy-compose-form{% if diplomacy_locked %} diplomacy-compose-locked{% endif %}" id="diplomacy-compose-form" data-delivery-warning="{% if detail.delivery_warning %}1{% else %}0{% endif %}" data-colony-warning="{% if detail.colony_transfer_warning %}1{% else %}0{% endif %}" data-homeworld-id="{% if player.homeworld_id %}{{ player.homeworld_id }}{% endif %}">
                                 {% csrf_token %}
                                 <input type="hidden" name="target" value="{{ selected_target }}">
                                 <input type="hidden" name="action" value="send_contract">
@@ -155,19 +159,19 @@
                                 {% endif %}
                                 <div class="diplomacy-compose-narrative panel-scrollable-list">
                                     <span class="compose-token compose-token-static">We</span>
-                                    <select id="temperature" name="temperature" class="compose-token">
+                                    <select id="temperature" name="temperature" class="compose-token"{% if diplomacy_locked %} disabled{% endif %}>
                                         {% for value, label in temperature_choices %}
                                         <option value="{{ value }}"{% if compose_state.temperature == value %} selected{% endif %}>{{ label|lower }}</option>
                                         {% endfor %}
                                     </select>
                                     <span class="compose-token-static">that they</span>
-                                    <select id="request_clause_type" name="request_clause_type" class="compose-token" data-clause-prefix="request">
+                                    <select id="request_clause_type" name="request_clause_type" class="compose-token" data-clause-prefix="request"{% if diplomacy_locked %} disabled{% endif %}>
                                         {% for value, label in request_clause_choices %}
                                         <option value="{{ value }}"{% if compose_state.request_clause_type == value %} selected{% endif %}>{{ label }}</option>
                                         {% endfor %}
                                     </select>
                                     <span class="compose-detail-block compose-field compose-request-technology">
-                                        <select id="request_technology" name="request_technology">
+                                        <select id="request_technology" name="request_technology"{% if diplomacy_locked %} disabled{% endif %}>
                                             <option value="">technology...</option>
                                             {% for group in request_technology_groups %}
                                             <optgroup label="{{ group.label }}">
@@ -178,47 +182,67 @@
                                             {% endfor %}
                                         </select>
                                     </span>
+                                    <span class="compose-detail-block compose-field compose-request-report">
+                                        <select id="request_report_target" name="request_report_target"{% if diplomacy_locked %} disabled{% endif %}>
+                                            <option value="">report...</option>
+                                            {% for group in request_report_groups %}
+                                            <optgroup label="{{ group.label }}">
+                                                {% for item in group.items %}
+                                                <option value="{{ item.id }}"{% if compose_state.request_report_target == item.id %} selected{% endif %}>{{ item.label }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                            {% endfor %}
+                                        </select>
+                                    </span>
                                     <span class="compose-detail-block compose-field compose-request-stance">
-                                        <select id="request_stance" name="request_stance">
+                                        <select id="request_stance" name="request_stance"{% if diplomacy_locked %} disabled{% endif %}>
                                             {% for value, label in stance_choices %}
                                             <option value="{{ value }}"{% if compose_state.request_stance == value %} selected{% endif %}>{{ label|lower }} stance</option>
                                             {% endfor %}
                                         </select>
                                     </span>
+                                    <span class="compose-detail-block compose-field compose-request-star">
+                                        <select id="request_star" name="request_star"{% if diplomacy_locked %} disabled{% endif %}>
+                                            <option value="">colony...</option>
+                                            {% for star in request_colony_choices %}
+                                            <option value="{{ star.id }}"{% if compose_state.request_star == star.id|stringformat:'s' %} selected{% endif %}>{{ star.label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </span>
                                     <span class="compose-detail-block compose-field compose-request-ship-count">
-                                        <input id="request_ship_count" type="number" min="1" name="request_ship_count" value="{{ compose_state.request_ship_count }}" placeholder="ships">
+                                        <input id="request_ship_count" type="number" min="1" name="request_ship_count" value="{{ compose_state.request_ship_count }}" placeholder="ships"{% if diplomacy_locked %} disabled{% endif %}>
                                         <span class="compose-token-static">ships</span>
                                     </span>
                                     <span class="compose-detail-block compose-field compose-request-resources">
                                         {% for resource in resource_rows %}
                                         <label class="compose-resource-frag" for="request_{{ resource.key }}">
-                                            <input id="request_{{ resource.key }}" type="number" min="0" name="request_{{ resource.key }}" value="{{ resource.value }}" placeholder="0">
+                                            <input id="request_{{ resource.key }}" type="number" min="0" name="request_{{ resource.key }}" value="{{ resource.value }}" placeholder="0"{% if diplomacy_locked %} disabled{% endif %}>
                                             <span>{{ resource.label }}</span>
                                         </label>
                                         {% endfor %}
                                     </span>
                                     <span class="compose-detail-block compose-field compose-request-suggested-star">
                                         <span class="compose-token-static">to</span>
-                                        <select id="request_suggested_star" name="request_suggested_star">
+                                        <select id="request_suggested_star" name="request_suggested_star"{% if diplomacy_locked %} disabled{% endif %}>
                                             <option value="">any owned world</option>
-                                            {% for star in colony_choices %}
-                                            <option value="{{ star.id }}"{% if compose_state.request_suggested_star == star.id|stringformat:'s' %} selected{% endif %}>{{ star.name }}</option>
+                                            {% for star in owned_colony_choices %}
+                                            <option value="{{ star.id }}"{% if compose_state.request_suggested_star == star.id|stringformat:'s' %} selected{% endif %}>{{ star.label }}</option>
                                             {% endfor %}
                                         </select>
                                     </span>
-                                    <select id="offer_condition_type" name="offer_condition_type" class="compose-token">
+                                    <select id="offer_condition_type" name="offer_condition_type" class="compose-token"{% if diplomacy_locked %} disabled{% endif %}>
                                         {% for value, label in offer_condition_choices %}
                                         <option value="{{ value }}"{% if compose_state.offer_condition_type == value %} selected{% endif %}>{{ label }}</option>
                                         {% endfor %}
                                     </select>
                                     <span class="compose-token-static">, we</span>
-                                    <select id="offer_clause_type" name="offer_clause_type" class="compose-token" data-clause-prefix="offer">
+                                    <select id="offer_clause_type" name="offer_clause_type" class="compose-token" data-clause-prefix="offer"{% if diplomacy_locked %} disabled{% endif %}>
                                         {% for value, label in offer_clause_choices %}
                                         <option value="{{ value }}"{% if compose_state.offer_clause_type == value %} selected{% endif %}>{{ label }}</option>
                                         {% endfor %}
                                     </select>
                                     <span class="compose-detail-block compose-field compose-offer-technology">
-                                        <select id="offer_technology" name="offer_technology">
+                                        <select id="offer_technology" name="offer_technology"{% if diplomacy_locked %} disabled{% endif %}>
                                             <option value="">technology...</option>
                                             {% for group in offer_technology_groups %}
                                             <optgroup label="{{ group.label }}">
@@ -229,15 +253,35 @@
                                             {% endfor %}
                                         </select>
                                     </span>
+                                    <span class="compose-detail-block compose-field compose-offer-report">
+                                        <select id="offer_report_target" name="offer_report_target"{% if diplomacy_locked %} disabled{% endif %}>
+                                            <option value="">report...</option>
+                                            {% for group in offer_report_groups %}
+                                            <optgroup label="{{ group.label }}">
+                                                {% for item in group.items %}
+                                                <option value="{{ item.id }}"{% if compose_state.offer_report_target == item.id %} selected{% endif %}>{{ item.label }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                            {% endfor %}
+                                        </select>
+                                    </span>
                                     <span class="compose-detail-block compose-field compose-offer-stance">
-                                        <select id="offer_stance" name="offer_stance">
+                                        <select id="offer_stance" name="offer_stance"{% if diplomacy_locked %} disabled{% endif %}>
                                             {% for value, label in stance_choices %}
                                             <option value="{{ value }}"{% if compose_state.offer_stance == value %} selected{% endif %}>{{ label|lower }} stance</option>
                                             {% endfor %}
                                         </select>
                                     </span>
+                                    <span class="compose-detail-block compose-field compose-offer-star">
+                                        <select id="offer_star" name="offer_star"{% if diplomacy_locked %} disabled{% endif %}>
+                                            <option value="">colony...</option>
+                                            {% for star in owned_colony_choices %}
+                                            <option value="{{ star.id }}"{% if compose_state.offer_star == star.id|stringformat:'s' %} selected{% endif %}>{{ star.label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </span>
                                     <span class="compose-detail-block compose-field compose-offer-fleet">
-                                        <select id="offer_fleet" name="offer_fleet">
+                                        <select id="offer_fleet" name="offer_fleet"{% if diplomacy_locked %} disabled{% endif %}>
                                             <option value="">fleet...</option>
                                             {% for fleet in fleet_choices %}
                                             <option value="{{ fleet.id }}"{% if compose_state.offer_fleet == fleet.id|stringformat:'s' %} selected{% endif %}>{{ fleet.name }}</option>
@@ -246,11 +290,11 @@
                                     </span>
                                     <span class="compose-token compose-token-static">.</span>
                                 </div>
-                                <div class="diplomacy-compose-timing panel-scrollable-list">
+                                <div class="diplomacy-compose-timing">
                                     <span class="compose-token-static">Deadline of</span>
-                                    <input id="deadline_years" type="number" min="1" max="200" name="deadline_years" value="{{ compose_state.deadline_years }}">
+                                    <input id="deadline_years" type="number" min="1" max="200" name="deadline_years" value="{{ compose_state.deadline_years }}"{% if diplomacy_locked %} disabled{% endif %}>
                                     <span class="compose-token-static">years for response. Extend by</span>
-                                    <input id="extend_on_accept_years" type="number" min="0" max="200" name="extend_on_accept_years" value="{{ compose_state.extend_on_accept_years }}">
+                                    <input id="extend_on_accept_years" type="number" min="0" max="200" name="extend_on_accept_years" value="{{ compose_state.extend_on_accept_years }}"{% if diplomacy_locked %} disabled{% endif %}>
                                     <span class="compose-token-static">on acceptance.</span>
                                 </div>
                                 <p
@@ -260,8 +304,22 @@
                                 >
                                     Warning: fleets delivering directly to your worlds are likely to be shot down by your colony defences at the current stance. A warmer stance is recommended.
                                 </p>
+                                <p
+                                    id="diplomacy-colony-warning"
+                                    class="diplomacy-compose-warning diplomacy-compose-inline-warning"
+                                    {% if not detail.colony_transfer_warning or compose_state.offer_clause_type != 'SPECIFIC_COLONY' %}style="display:none"{% endif %}
+                                >
+                                    Warning: when you give a colony, up to 75% of its population may evacuate into your orbiting fleets before transfer, subject to available cargo space, leaving at least 10kt behind.
+                                </p>
+                                <p
+                                    id="diplomacy-homeworld-warning"
+                                    class="diplomacy-compose-warning diplomacy-compose-inline-warning"
+                                    {% if compose_state.offer_clause_type != 'SPECIFIC_COLONY' or compose_state.offer_star != player.homeworld_id|stringformat:'s' %}style="display:none"{% endif %}
+                                >
+                                    Warning: you are giving away your homeworld. Your homeworld marker will transfer to your next most populous colony if you still hold one; otherwise you will be defeated unless this request also grants you another colony in exchange.
+                                </p>
                                 <div class="diplomacy-contract-actions">
-                                    <button type="submit">Send</button>
+                                    <button type="submit"{% if diplomacy_locked %} disabled{% endif %}>Send</button>
                                     <a href="?target={{ selected_target }}">Close</a>
                                 </div>
                             </form>
@@ -274,6 +332,16 @@
                                         <span class="diplomacy-contract-status-label">Status: <span class="diplomacy-contract-status-value">{{ contract.status }}</span></span>
                                         <span>Expires Year {{ contract.expires_year }}</span>
                                     </div>
+                                    {% if contract.can_accept and contract.accept_homeworld_warning %}
+                                    <p class="diplomacy-compose-warning diplomacy-compose-inline-warning">
+                                        Warning: accepting this request will give away your homeworld. Your homeworld marker will transfer to your next most populous colony if you still hold one; otherwise you will be defeated unless this request also grants you another colony in exchange.
+                                    </p>
+                                    {% endif %}
+                                    {% if contract.can_accept and contract.is_incoming and contract.status_raw == 'SENT' and contract.request_clause_type == 'SPECIFIC_COLONY' %}
+                                    <p class="diplomacy-compose-warning diplomacy-compose-inline-warning">
+                                        Warning: accepting this request will transfer the colony immediately. Up to 75% of its population may evacuate into your orbiting fleets first, subject to cargo space, leaving at least 10kt behind.
+                                    </p>
+                                    {% endif %}
                                     {% if contract.progress %}
                                     <div class="diplomacy-contract-progress">{{ contract.progress }}</div>
                                     {% endif %}
@@ -371,6 +439,9 @@
                     countdownEl.classList.add('status-due');
                     if (!window.turnIsDue) {
                         window.turnIsDue = true;
+                        if (window.__applyDiplomacyLock) {
+                            window.__applyDiplomacyLock();
+                        }
                         if (window.__startTurnPoll) {
                             window.__startTurnPoll();
                         }
@@ -432,6 +503,41 @@
             startTurnPoll();
         })();
         (function() {
+            function applyDiplomacyLock() {
+                if (!window.playerTurnedIn && !window.turnIsDue) {
+                    return;
+                }
+                var stanceForm = document.getElementById('diplomacy-form');
+                if (stanceForm) {
+                    stanceForm.classList.add('allocation-locked');
+                    var stanceControls = stanceForm.querySelectorAll('input[type="radio"]');
+                    Array.prototype.forEach.call(stanceControls, function(control) {
+                        control.disabled = true;
+                    });
+                }
+
+                var composeToggle = document.getElementById('diplomacy-compose-toggle-button');
+                if (composeToggle) {
+                    composeToggle.disabled = true;
+                }
+
+                var composeForm = document.getElementById('diplomacy-compose-form');
+                if (composeForm) {
+                    composeForm.classList.add('diplomacy-compose-locked');
+                    var composeControls = composeForm.querySelectorAll('input, select, button');
+                    Array.prototype.forEach.call(composeControls, function(control) {
+                        if (control.type === 'hidden') {
+                            return;
+                        }
+                        control.disabled = true;
+                    });
+                }
+            }
+
+            window.__applyDiplomacyLock = applyDiplomacyLock;
+            applyDiplomacyLock();
+        })();
+        (function() {
             var form = document.getElementById('diplomacy-form');
             var targetInput = document.getElementById('diplomacy-target-input');
             if (!form || !targetInput) {
@@ -458,7 +564,9 @@
                 ['request_clause_type', 'request', {
                     'NOTHING': [],
                     'TECHNOLOGY': ['technology'],
+                    'REPORT': ['report'],
                     'STANCE': ['stance'],
+                    'SPECIFIC_COLONY': ['star'],
                     'RESOURCE_TO_WORLD': ['resources', 'suggested-star'],
                     'RESOURCE_ON_GIVEN_FLEET': ['resources'],
                     'FLEET_BY_SHIP_COUNT': ['ship-count']
@@ -466,12 +574,14 @@
                 ['offer_clause_type', 'offer', {
                     'NOTHING': [],
                     'TECHNOLOGY': ['technology'],
+                    'REPORT': ['report'],
                     'STANCE': ['stance'],
+                    'SPECIFIC_COLONY': ['star'],
                     'SPECIFIC_FLEET': ['fleet']
                 }]
             ];
             function updatePrefix(prefix, value, map) {
-                ['technology', 'stance', 'ship-count', 'resources', 'suggested-star', 'fleet'].forEach(function(suffix) {
+                ['technology', 'report', 'stance', 'ship-count', 'resources', 'suggested-star', 'star', 'fleet'].forEach(function(suffix) {
                     var nodes = composeForm.querySelectorAll('.compose-' + prefix + '-' + suffix);
                     Array.prototype.forEach.call(nodes, function(node) {
                         node.style.display = 'none';
@@ -494,6 +604,29 @@
                 var enabled = composeForm.getAttribute('data-delivery-warning') === '1';
                 var show = enabled && requestSelect.value === 'RESOURCE_TO_WORLD';
                 warning.style.display = show ? '' : 'none';
+                updateColonyWarning();
+            }
+            function updateColonyWarning() {
+                var warning = document.getElementById('diplomacy-colony-warning');
+                var offerSelect = document.getElementById('offer_clause_type');
+                if (!warning || !offerSelect) {
+                    return;
+                }
+                var enabled = composeForm.getAttribute('data-colony-warning') === '1';
+                var show = enabled && offerSelect.value === 'SPECIFIC_COLONY';
+                warning.style.display = show ? '' : 'none';
+                updateHomeworldWarning();
+            }
+            function updateHomeworldWarning() {
+                var warning = document.getElementById('diplomacy-homeworld-warning');
+                var offerSelect = document.getElementById('offer_clause_type');
+                var offerStar = document.getElementById('offer_star');
+                if (!warning || !offerSelect || !offerStar) {
+                    return;
+                }
+                var homeworldId = composeForm.getAttribute('data-homeworld-id') || '';
+                var show = offerSelect.value === 'SPECIFIC_COLONY' && homeworldId && offerStar.value === homeworldId;
+                warning.style.display = show ? '' : 'none';
             }
             clauseFields.forEach(function(row) {
                 var select = document.getElementById(row[0]);
@@ -506,6 +639,11 @@
                 select.addEventListener('change', apply);
                 apply();
             });
+            var offerStarSelect = document.getElementById('offer_star');
+            if (offerStarSelect) {
+                offerStarSelect.addEventListener('change', updateHomeworldWarning);
+            }
+            updateColonyWarning();
         })();
         </script>
         <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
