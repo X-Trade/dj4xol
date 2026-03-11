@@ -792,6 +792,8 @@ class Command(BaseCommand):
                 entry["anomaly_type"] = detail.get("anomaly_type")
             if detail.get("stability") is not None:
                 entry["stability_pct"] = detail.get("stability")
+            if detail.get("danger_level_display"):
+                entry["danger"] = detail.get("danger_level_display")
             if detail.get("heading") is not None:
                 entry["heading"] = round(float(detail.get("heading")), 1)
             data[anomaly.short_id] = entry
@@ -866,6 +868,8 @@ class Command(BaseCommand):
             total = salvage_inventory.get("total")
             if total is not None:
                 entry["total_minerals_kt"] = total
+            if detail.get("danger_level_display"):
+                entry["danger"] = detail.get("danger_level_display")
             data[salvage.short_id] = entry
         return data
 

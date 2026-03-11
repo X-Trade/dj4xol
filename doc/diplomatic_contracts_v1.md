@@ -18,7 +18,8 @@ the Diplomacy screen.
 1. Player opens the Diplomacy screen and selects an encountered race.
 2. Player opens a draft wizard from that race detail.
 3. Player composes one contract with:
-   - tone: `propose`, `request`, or `demand`
+   - temperature: `propose`, `request`, or `demand`
+   - condition connector: `in exchange for` or `or else`
    - one clause from sender side
    - one clause from recipient side
    - deadline in years, default `24`
@@ -53,6 +54,10 @@ Rules:
 ## Clause Model
 
 Each side of a contract has exactly one clause. No clause stacking in V1.
+
+Temperature is presentation only. It sets the diplomatic mood of the
+message, while the separate condition connector determines whether the
+sender is offering an exchange or threatening an `or else` consequence.
 
 Supported clause types:
 
@@ -238,7 +243,7 @@ Recommended entry point:
 
 Wizard inputs:
 
-- tone
+- temperature
 - recipient race
 - request clause
 - reward / consequence clause
@@ -277,4 +282,3 @@ Rules:
 - resource reward clauses
 - `or else` effects beyond stance or no-op
 - treaty bundles or broader alliance systems
-

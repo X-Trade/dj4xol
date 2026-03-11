@@ -1,6 +1,7 @@
 import json
 import uuid
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.core import mail
 from django.test import TestCase, Client
@@ -44,9 +45,11 @@ from ..diplomatic_contracts import (
     apply_world_resource_delivery,
     format_contract_statement,
     format_contract_summary,
+    grant_player_technology,
     vague_threat_phrase,
     VAGUE_THREAT_PHRASES,
 )
+from ..play_cli_web import execute_browser_command
 from ..turn import (
     GameTurn,
     format_basic_hidden_salvage_name,
@@ -1287,6 +1290,39 @@ class TestPlayCliWebApi(TestCase):
         self.assertEqual(row.allocation_percent, 55.0)
         self.assertIn('allocation_percent: 55.0', '\n'.join(payload['lines']))
 
+    def test_command_endpoint_allows_diplomacy_summary(self):
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/diplomacy'}),
+            content_type='application/json',
+            HTTP_ORIGIN=self.origin,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertIn('our_stance_raw: NEUTRAL', '\n'.join(payload['lines']))
+
+    def test_command_endpoint_allows_diplomacy_update(self):
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/diplomacy default hostile'}),
+            content_type='application/json',
+            HTTP_ORIGIN=self.origin,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['mutated'])
+        self.player.refresh_from_db()
+        self.assertEqual(self.player.pending_default_diplomatic_stance, 'HOSTILE')
+
+    def test_execute_browser_command_supports_clear(self):
+        payload = execute_browser_command(self.game, self.player, '/clear')
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['clear_output'])
+        self.assertFalse(payload['mutated'])
+        self.assertEqual(payload['lines'], [])
+
     def test_command_endpoint_supports_exit(self):
         response = self.client.post(
             reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
@@ -1553,6 +1589,64 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'data-section="infrastructure"')
         self.assertContains(response, 'Scanners')
         self.assertContains(response, '6ly/2ly')
+
+    def test_advanced_anomaly_report_shows_danger(self):
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=self.star.x + 2,
+            y=self.star.y + 1,
+            name='Hazard Rift',
+            anomaly_type='RIFT',
+            stability=65,
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='anomaly',
+            target_id=anomaly.id,
+            cached_report=json.dumps({
+                'name': anomaly.name,
+                'x': anomaly.x,
+                'y': anomaly.y,
+                'anomaly_type': anomaly.anomaly_type,
+                'description': anomaly.description,
+                'heading': anomaly.heading,
+                'stability': anomaly.stability,
+                'danger_level': 'HIGH',
+                'report_tier': 'advanced',
+            }),
+        )
+        response = self._get_detail_response(anomaly)
+        self.assertContains(response, 'Danger')
+        self.assertContains(response, 'High')
+
+    def test_advanced_ancient_debris_report_shows_danger(self):
+        ancient = Salvage.objects.create(
+            game=self.game,
+            x=self.star.x + 3,
+            y=self.star.y + 1,
+            salvage_type='ANCIENT_DEBRIS',
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='salvage',
+            target_id=ancient.id,
+            cached_report=json.dumps({
+                'name': ancient.name,
+                'x': ancient.x,
+                'y': ancient.y,
+                'salvage_type': 'ANCIENT_DEBRIS',
+                'danger_level': 'HIGH',
+                'total_minerals': 0,
+                'report_tier': 'advanced',
+            }),
+        )
+        response = self._get_detail_response(ancient)
+        self.assertContains(response, 'Danger')
+        self.assertContains(response, 'High')
 
     def test_unowned_star_with_leftover_infrastructure_shows_abandoned_owner(self):
         self.star.player = None

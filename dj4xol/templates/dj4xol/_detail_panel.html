@@ -80,6 +80,12 @@
                 <span class="env-label">Stability</span>
                 <span class="detail-value">{% if detail.stability != None %}{{ detail.stability }}%{% else %}???{% endif %}</span>
             </div>
+            {% if detail.danger_level_display %}
+            <div class="detail-row">
+                <span class="env-label">Danger</span>
+                <span class="detail-value">{{ detail.danger_level_display }}</span>
+            </div>
+            {% endif %}
         </div>
     </div>
     {% endif %}
@@ -207,6 +213,12 @@
                 <span class="env-label">Type</span>
                 <span class="detail-value">{{ detail.salvage_type_display|default:'Unknown' }}</span>
             </div>
+            {% if detail.danger_level_display %}
+            <div class="detail-row">
+                <span class="env-label">Danger</span>
+                <span class="detail-value">{{ detail.danger_level_display }}</span>
+            </div>
+            {% endif %}
         </div>
     </div>
     {% endif %}

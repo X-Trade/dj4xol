@@ -75,6 +75,19 @@ from .diplomatic_contracts import (
     apply_world_resource_delivery,
     refresh_contract_integrity,
 )
+from .hazard_rules import (
+    DANGER_NONE,
+    DANGER_HIGH,
+    DANGER_LOW,
+    DANGER_MEDIUM,
+    _pick_level,
+    anomaly_danger_level,
+    damage_intensity_multiplier,
+    direct_destruction_allowed,
+    hazard_trigger_chance,
+    reward_intensity_multiplier,
+    salvage_danger_level,
+)
 
 from .mineral_rules import ALL_RESOURCE_KEYS, random_asteroid_field_minerals, random_ancient_debris_minerals
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_name, get_secret_resource_label
@@ -113,6 +126,7 @@ from .research import (
     ensure_player_research_rows,
     get_player_production_costs,
     get_player_terraforming_profile,
+    _prerequisites_met,
 )
 from .micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
@@ -124,6 +138,7 @@ from .micromanager_rules import (
 )
 from .fleet_thumbnails import choose_fleet_thumbnail
 from .chance_rules import (
+    apply_roll_bend,
     clamp_percent,
     roll_chance as chance_roll,
     scaled_luck_roll,
@@ -242,7 +257,7 @@ ANOMALY_DAMAGE_MAX = 30
 ANOMALY_CARGO_LOSS_MIN = 0.10
 ANOMALY_CARGO_LOSS_MAX = 0.45
 ANOMALY_BONUS_RP_MIN = 150
-ANOMALY_BONUS_RP_MAX = 400
+ANOMALY_BONUS_RP_MAX = 1500
 ANOMALY_MAJOR_PROGRESS_RP_MIN = 500
 ANOMALY_MAJOR_PROGRESS_RP_MAX = 900
 ANOMALY_SPAWN_CHANCE_PER_YEAR = 0.02
@@ -257,9 +272,6 @@ ANCIENT_DEBRIS_DAMAGE_MAX = 90
 ANOMALY_MAX_STAR_RATIO = 0.15
 ANOMALY_COMET_DRIFT_WARP = 1.0
 ANOMALY_MAX_RISK_REWARD_BONUS = 0.50
-BLACK_HOLE_RESEARCH_MULTIPLIER = 2.0
-BLACK_HOLE_DAMAGE_MIN = 50
-BLACK_HOLE_DAMAGE_MAX = 100
 WORMHOLE_DAMAGE_MAX = 85
 WORMHOLE_EXIT_MIN_DISTANCE = 4.0
 WORMHOLE_EXIT_MAX_DISTANCE = 8.0
@@ -516,6 +528,37 @@ class GameTurn():
     def _anomaly_risk_reward_multiplier(cls, anomaly):
         """Return 1.0..1.5 multiplier based on instability."""
         return 1.0 + (cls._anomaly_instability_ratio(anomaly) * ANOMALY_MAX_RISK_REWARD_BONUS)
+
+    def _apply_anomaly_breakthrough(self, player, anomaly):
+        rows = ensure_player_research_rows(player)
+        if not rows:
+            return False
+        level_map = {row.category_id: int(row.current_level or 0) for row in rows}
+        eligible = []
+        for row in rows:
+            next_level = int(row.current_level or 0) + 1
+            if not _prerequisites_met(row.category_id, next_level, level_map):
+                continue
+            eligible.append(row)
+        if not eligible:
+            return False
+        row = random.choice(eligible)
+        old_level = int(row.current_level or 0)
+        row.current_level = old_level + 1
+        row.save(update_fields=['current_level'])
+        self._create_research_unlock_messages(player, [{
+            'category': row.category,
+            'old_level': old_level,
+            'new_level': int(row.current_level or 0),
+        }])
+        self._create_anomaly_message(
+            player,
+            "Anomaly breakthrough at %s advanced %s to level %s." % (
+                format_map_object(anomaly), row.category.name, int(row.current_level or 0)
+            ),
+            priority=False,
+        )
+        return True
 
     def decay_anomalies(self):
         """Decay unstable anomalies and collapse very unstable anomalies over time."""
@@ -837,23 +880,39 @@ class GameTurn():
             anomaly = anomaly_positions.get((fleet.x, fleet.y))
             if anomaly is None:
                 continue
-            if getattr(anomaly, 'anomaly_type', None) == Anomaly.TYPE_BLACK_HOLE:
-                self._apply_black_hole_interaction(fleet, anomaly)
-                continue
             if getattr(anomaly, 'anomaly_type', None) == Anomaly.TYPE_WORMHOLE:
                 self._apply_wormhole_interaction(fleet, anomaly)
                 continue
-            # D6 table: 1-2 no effect (2/6), 3 damage, 4 cargo loss, 5 destroyed, 6 research boon.
             roll = random.randint(1, 6)
+            danger_level = anomaly_danger_level(anomaly)
+            if danger_level == DANGER_LOW:
+                if roll in (1, 2):
+                    continue
+                if roll == 3:
+                    self._apply_anomaly_damage(fleet, anomaly)
+                    continue
+                if roll == 4:
+                    self._apply_anomaly_cargo_loss(fleet, anomaly)
+                    continue
+                self._apply_anomaly_research_boon(fleet, anomaly)
+                continue
+            if danger_level == DANGER_HIGH:
+                if roll in (1, 2):
+                    continue
+                if roll == 3:
+                    self._apply_anomaly_damage(fleet, anomaly)
+                    continue
+                if roll == 4:
+                    self._apply_anomaly_destruction(fleet, anomaly)
+                    continue
+                self._apply_anomaly_research_boon(fleet, anomaly)
+                continue
             if roll in (1, 2):
                 continue
             if roll == 3:
                 self._apply_anomaly_damage(fleet, anomaly)
                 continue
             if roll == 4:
-                self._apply_anomaly_cargo_loss(fleet, anomaly)
-                continue
-            if roll == 5:
                 self._apply_anomaly_destruction(fleet, anomaly)
                 continue
             self._apply_anomaly_research_boon(fleet, anomaly)
@@ -874,6 +933,9 @@ class GameTurn():
             if salvage is None:
                 continue
             salvage_type = getattr(salvage, 'salvage_type', None)
+            danger_level = salvage_danger_level(salvage)
+            if not roll_chance(hazard_trigger_chance(danger_level)):
+                continue
             if salvage_type == Salvage.TYPE_ASTEROID_FIELD:
                 templates = [
                     "{fleet} took {damage}% integrity damage from rock strikes in {salvage}.",
@@ -885,6 +947,7 @@ class GameTurn():
                     salvage,
                     ASTEROID_FIELD_DAMAGE_MIN,
                     ASTEROID_FIELD_DAMAGE_MAX,
+                    danger_level=danger_level,
                     message_templates=templates,
                     message_priority=False,
                 )
@@ -901,6 +964,7 @@ class GameTurn():
                 ]
                 self._apply_salvage_damage(
                     fleet, salvage, ANCIENT_DEBRIS_DAMAGE_MIN, ANCIENT_DEBRIS_DAMAGE_MAX,
+                    danger_level=danger_level,
                     message_templates=templates,
                     destruction_templates=destruction_templates,
                     allow_destroy=True,
@@ -915,6 +979,7 @@ class GameTurn():
         salvage,
         min_damage,
         max_damage,
+        danger_level=None,
         message_templates=None,
         destruction_templates=None,
         allow_destroy=False,
@@ -934,10 +999,15 @@ class GameTurn():
         except (TypeError, ValueError):
             defense_level = 0
         defense_factor = 1.0 + (max(0, defense_level) / 2.0)
-        scaled = int(round(float(base_damage) / float(defense_factor)))
+        scaled = int(round(
+            (float(base_damage) * damage_intensity_multiplier(danger_level))
+            / float(defense_factor)
+        ))
         damage = max(0, scaled)
         if damage <= 0:
             return
+        if not direct_destruction_allowed(danger_level):
+            allow_destroy = False
         if allow_destroy and min_defense_for_survival is not None:
             if defense_level < int(min_defense_for_survival):
                 deficit = int(min_defense_for_survival) - defense_level
@@ -1194,7 +1264,11 @@ class GameTurn():
 
     def _apply_anomaly_damage(self, fleet, anomaly):
         damage = random.randint(ANOMALY_DAMAGE_MIN, ANOMALY_DAMAGE_MAX)
-        damage = int(round(float(damage) * self._anomaly_risk_reward_multiplier(anomaly)))
+        danger_level = anomaly_danger_level(anomaly)
+        damage = int(round(
+            float(damage)
+            * damage_intensity_multiplier(danger_level, getattr(anomaly, 'stability', None))
+        ))
         damage = max(1, min(100, damage))
         before = int(fleet.integrity or 0)
         fleet.integrity = max(0, before - damage)
@@ -1217,7 +1291,10 @@ class GameTurn():
 
     def _apply_anomaly_cargo_loss(self, fleet, anomaly):
         loss_ratio = random.uniform(ANOMALY_CARGO_LOSS_MIN, ANOMALY_CARGO_LOSS_MAX)
-        loss_ratio *= self._anomaly_risk_reward_multiplier(anomaly)
+        loss_ratio *= damage_intensity_multiplier(
+            anomaly_danger_level(anomaly),
+            getattr(anomaly, 'stability', None),
+        )
         loss_ratio = min(0.95, max(0.0, loss_ratio))
         iron_loss = int((fleet.ironium_inventory or 0) * loss_ratio)
         bor_loss = int((fleet.boranium_inventory or 0) * loss_ratio)
@@ -1255,7 +1332,13 @@ class GameTurn():
             losses.append('%sk colonists' % colonist_loss)
         if not losses:
             damage = random.randint(ANOMALY_DAMAGE_MIN, ANOMALY_DAMAGE_MAX)
-            damage = int(round(float(damage) * self._anomaly_risk_reward_multiplier(anomaly)))
+            damage = int(round(
+                float(damage)
+                * damage_intensity_multiplier(
+                    anomaly_danger_level(anomaly),
+                    getattr(anomaly, 'stability', None),
+                )
+            ))
             damage = max(1, min(100, damage))
             before = int(fleet.integrity or 0)
             fleet.integrity = max(0, before - damage)
@@ -1303,9 +1386,6 @@ class GameTurn():
             return
         row = random.choice(rows)
         category = row.category
-        extra_multiplier = 1.0
-        if getattr(anomaly, 'anomaly_type', None) == 'BLACK_HOLE':
-            extra_multiplier = BLACK_HOLE_RESEARCH_MULTIPLIER
         basic_range = int(getattr(fleet, 'basic_scanner_range', 0) or 0)
         advanced_range = int(getattr(fleet, 'advanced_scanner_range', 0) or 0)
         scanner_multiplier = 1.0
@@ -1315,12 +1395,34 @@ class GameTurn():
             scanner_multiplier = 0.5
         else:
             scanner_multiplier = 0.2
+        danger_level = anomaly_danger_level(anomaly)
+        danger_reward_multiplier = reward_intensity_multiplier(
+            danger_level,
+            getattr(anomaly, 'stability', None),
+        )
+        breakthrough_chance = {
+            DANGER_LOW: 0.01,
+            DANGER_MEDIUM: 0.18,
+            DANGER_HIGH: 0.25,
+        }.get(danger_level, 0.10)
+        if random.random() < breakthrough_chance:
+            extra_rp = self._convert_secret_resources_to_rp(fleet)
+            extra_rp = int(round(float(extra_rp) * danger_reward_multiplier))
+            if self._apply_anomaly_breakthrough(player, anomaly):
+                if extra_rp > 0:
+                    result = apply_research_bonus_rp(player, category.id, int(extra_rp))
+                    if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
+                        self._create_research_unlock_messages(player, [result])
+                return
         if random.random() < 0.5:
-            bonus_rp = random.randint(ANOMALY_BONUS_RP_MIN, ANOMALY_BONUS_RP_MAX)
-            bonus_rp = int(round(float(bonus_rp) * extra_multiplier))
-            bonus_rp = int(round(float(bonus_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
+            bonus_rp_roll = apply_roll_bend(random.random(), bend=-2.3)
+            bonus_rp = ANOMALY_BONUS_RP_MIN + int(round(
+                (ANOMALY_BONUS_RP_MAX - ANOMALY_BONUS_RP_MIN) * bonus_rp_roll
+            ))
+            bonus_rp = int(round(float(bonus_rp) * danger_reward_multiplier))
             bonus_rp = int(round(float(bonus_rp) * scanner_multiplier))
             extra_rp = self._convert_secret_resources_to_rp(fleet)
+            extra_rp = int(round(float(extra_rp) * danger_reward_multiplier))
             total_rp = int(bonus_rp) + int(extra_rp)
             result = apply_research_bonus_rp(player, category.id, total_rp)
             text = (
@@ -1333,16 +1435,19 @@ class GameTurn():
                 text += " Level increased to %s." % int(result['new_level'])
             self._create_anomaly_message(player, text, priority=False)
             return
-        progress_rp = random.randint(ANOMALY_MAJOR_PROGRESS_RP_MIN, ANOMALY_MAJOR_PROGRESS_RP_MAX)
-        progress_rp = int(round(float(progress_rp) * extra_multiplier))
-        progress_rp = int(round(float(progress_rp) * self._anomaly_risk_reward_multiplier(anomaly)))
-        progress_rp = int(round(float(progress_rp) * scanner_multiplier))
+        bonus_rp_roll = apply_roll_bend(random.random(), bend=-2.3)
+        bonus_rp = ANOMALY_BONUS_RP_MIN + int(round(
+            (ANOMALY_BONUS_RP_MAX - ANOMALY_BONUS_RP_MIN) * bonus_rp_roll
+        ))
+        bonus_rp = int(round(float(bonus_rp) * danger_reward_multiplier))
+        bonus_rp = int(round(float(bonus_rp) * scanner_multiplier))
         extra_rp = self._convert_secret_resources_to_rp(fleet)
-        total_rp = int(progress_rp) + int(extra_rp)
+        extra_rp = int(round(float(extra_rp) * danger_reward_multiplier))
+        total_rp = int(bonus_rp) + int(extra_rp)
         result = apply_research_bonus_rp(player, category.id, total_rp)
         text = (
-            "Major anomaly breakthrough at %s: %s RP applied to %s."
-            % (format_map_object(anomaly), progress_rp, category.name)
+            "Anomaly data from %s granted %s bonus RP in %s."
+            % (format_map_object(anomaly), bonus_rp, category.name)
         )
         if extra_rp > 0:
             text += " Exotic cargo yielded %s RP." % int(extra_rp)
@@ -1369,42 +1474,6 @@ class GameTurn():
         if update_fields:
             fleet.save(update_fields=update_fields)
         return int(extra_rp)
-
-    def _apply_black_hole_interaction(self, fleet, anomaly):
-        """Resolve black hole interactions with a custom high-danger D6 table.
-
-        1: Research boon
-        2-4: Destruction
-        5-6: Heavy integrity damage (50%+)
-        """
-        roll = random.randint(1, 6)
-        if roll == 1:
-            self._apply_anomaly_research_boon(fleet, anomaly)
-            return
-        if roll in (2, 3, 4):
-            self._apply_anomaly_destruction(fleet, anomaly)
-            return
-        damage = random.randint(BLACK_HOLE_DAMAGE_MIN, BLACK_HOLE_DAMAGE_MAX)
-        damage = int(round(float(damage) * self._anomaly_risk_reward_multiplier(anomaly)))
-        damage = max(BLACK_HOLE_DAMAGE_MIN, min(100, damage))
-        before = int(fleet.integrity or 0)
-        fleet.integrity = max(0, before - damage)
-        if fleet.integrity <= 0:
-            self._apply_anomaly_destruction(
-                fleet,
-                anomaly,
-                reason=(
-                    "%s was destroyed by the black hole %s."
-                    % (fleet.name, format_map_object(anomaly))
-                ),
-            )
-            return
-        fleet.save(update_fields=['integrity'])
-        text = (
-            "%s suffered %s%% integrity damage from the black hole %s."
-            % (format_map_object(fleet), damage, format_map_object(anomaly))
-        )
-        self._create_anomaly_message(fleet.player, text, priority=True)
 
     def _apply_wormhole_interaction(self, fleet, anomaly):
         """Resolve wormhole transit: possible damage, then relocation near the paired endpoint."""
@@ -2090,6 +2159,7 @@ class GameTurn():
                 'x': obj.x,
                 'y': obj.y,
                 'salvage_type': obj.salvage_type,
+                'danger_level': salvage_danger_level(obj),
                 'ironium_inventory': obj.ironium_inventory,
                 'boranium_inventory': obj.boranium_inventory,
                 'germanium_inventory': obj.germanium_inventory,
@@ -2115,6 +2185,7 @@ class GameTurn():
                 'x': obj.x,
                 'y': obj.y,
                 'anomaly_type': obj.anomaly_type,
+                'danger_level': anomaly_danger_level(obj),
                 'description': obj.description,
                 'heading': obj.heading,
                 'stability': obj.stability,
@@ -2740,10 +2811,31 @@ class GameTurn():
         if iron == 0 and bor == 0 and germ == 0 and res_x == 0 and res_y == 0 and res_z == 0:
             return False
 
-        self._create_salvage_at_location(fleet.x, fleet.y, iron, bor, germ, res_x, res_y, res_z)
+        self._create_salvage_at_location(
+            fleet.x, fleet.y, iron, bor, germ, res_x, res_y, res_z,
+            danger_level=self._raw_salvage_danger_level(fleet.x, fleet.y, combat=True),
+        )
         return True
 
-    def _create_salvage_at_location(self, x, y, iron, bor, germ, res_x=0, res_y=0, res_z=0):
+    @staticmethod
+    def _danger_rank(level):
+        order = {
+            DANGER_NONE: 0,
+            DANGER_LOW: 1,
+            DANGER_MEDIUM: 2,
+            DANGER_HIGH: 3,
+        }
+        return order.get(str(level or '').upper(), -1)
+
+    def _raw_salvage_danger_level(self, x, y, combat=False):
+        if not combat:
+            return DANGER_NONE
+        seed = 'raw-salvage:%s:%s:%s' % (self.game.id, int(x), int(y))
+        return _pick_level(seed, [DANGER_NONE, DANGER_LOW])
+
+    def _create_salvage_at_location(
+        self, x, y, iron, bor, germ, res_x=0, res_y=0, res_z=0, danger_level=None
+    ):
         """Create salvage at location, or deposit on star if present."""
         from .models import Star, Salvage
         if iron == 0 and bor == 0 and germ == 0 and res_x == 0 and res_y == 0 and res_z == 0:
@@ -2764,6 +2856,7 @@ class GameTurn():
         salvage, created = Salvage.objects.get_or_create(
             game=self.game, x=x, y=y,
             defaults={
+                'danger_level': str(danger_level or ''),
                 'ironium_inventory': iron,
                 'boranium_inventory': bor,
                 'germanium_inventory': germ,
@@ -2779,7 +2872,17 @@ class GameTurn():
             salvage.resource_x_inventory += res_x
             salvage.resource_y_inventory += res_y
             salvage.resource_z_inventory += res_z
-            salvage.save()
+            update_fields = [
+                'ironium_inventory', 'boranium_inventory', 'germanium_inventory',
+                'resource_x_inventory', 'resource_y_inventory', 'resource_z_inventory',
+            ]
+            if danger_level is not None:
+                existing_rank = self._danger_rank(getattr(salvage, 'danger_level', ''))
+                incoming_rank = self._danger_rank(danger_level)
+                if incoming_rank > existing_rank:
+                    salvage.danger_level = str(danger_level or '')
+                    update_fields.append('danger_level')
+            salvage.save(update_fields=update_fields)
         return salvage
 
     def move_fleet(self, fleet):
@@ -3775,28 +3878,10 @@ class GameTurn():
             return star
 
         # No star - create or add to existing salvage pile
-        salvage, created = Salvage.objects.get_or_create(
-            game=self.game, x=fleet.x, y=fleet.y,
-            defaults={
-                'ironium_inventory': iron,
-                'boranium_inventory': bor,
-                'germanium_inventory': germ,
-                'resource_x_inventory': res_x,
-                'resource_y_inventory': res_y,
-                'resource_z_inventory': res_z,
-            }
+        return self._create_salvage_at_location(
+            fleet.x, fleet.y, iron, bor, germ, res_x, res_y, res_z,
+            danger_level=self._raw_salvage_danger_level(fleet.x, fleet.y, combat=True),
         )
-        if not created:
-            # Stack onto existing salvage
-            salvage.ironium_inventory += iron
-            salvage.boranium_inventory += bor
-            salvage.germanium_inventory += germ
-            salvage.resource_x_inventory += res_x
-            salvage.resource_y_inventory += res_y
-            salvage.resource_z_inventory += res_z
-            salvage.save()
-
-        return salvage
 
     def _abandon_fleet(self, fleet):
         """Mark a fleet as unowned and clear its orders."""
@@ -3975,6 +4060,7 @@ class GameTurn():
                 transfers.get('resource_x', 0),
                 transfers.get('resource_y', 0),
                 transfers.get('resource_z', 0),
+                danger_level=DANGER_NONE,
             )
 
     def _handle_invasion(self, fleet, star, invader_colonists_kt):

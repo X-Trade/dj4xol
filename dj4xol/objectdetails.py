@@ -26,6 +26,7 @@ from dj4xol.salvage_thumbnails import (
     get_blurred_salvage_thumbnail,
     get_salvage_thumbnail,
 )
+from dj4xol.hazard_rules import danger_level_display, object_danger_level
 from dj4xol.research import (
     get_player_administration_profile,
     get_player_colony_defense_level,
@@ -220,6 +221,14 @@ class DetailBuilder():
                          self.selected_obj.get_salvage_type_display()
                          if isinstance(self.selected_obj, Salvage) else None
                      ),
+                     'danger_level': (
+                         object_danger_level(self.selected_obj)
+                         if isinstance(self.selected_obj, (Salvage, Anomaly)) else None
+                     ),
+                     'danger_level_display': (
+                         danger_level_display(object_danger_level(self.selected_obj))
+                         if isinstance(self.selected_obj, (Salvage, Anomaly)) else None
+                     ),
                      'anomaly_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Anomaly) else None,
                      'anomaly_type': self.selected_obj.anomaly_type if isinstance(self.selected_obj, Anomaly) else None,
                      'stability': self.selected_obj.stability if isinstance(self.selected_obj, Anomaly) else None,
@@ -306,6 +315,11 @@ class DetailBuilder():
             'salvage_short_id': obj.short_id if isinstance(obj, Salvage) else None,
             'salvage_type': obj.salvage_type if isinstance(obj, Salvage) else None,
             'salvage_type_display': obj.get_salvage_type_display() if isinstance(obj, Salvage) else None,
+            'danger_level': object_danger_level(obj) if isinstance(obj, (Salvage, Anomaly)) else None,
+            'danger_level_display': (
+                danger_level_display(object_danger_level(obj))
+                if isinstance(obj, (Salvage, Anomaly)) else None
+            ),
             'anomaly_short_id': obj.short_id if isinstance(obj, Anomaly) else None,
             'anomaly_type': obj.anomaly_type if isinstance(obj, Anomaly) else None,
             'stability': obj.stability if isinstance(obj, Anomaly) else None,
@@ -587,6 +601,14 @@ class DetailBuilder():
                 detail['salvage_type_display'] = self._salvage_type_display_from_code(
                     data.get('salvage_type')
                 )
+            detail['danger_level'] = None
+            detail['danger_level_display'] = None
+            if str(data.get('report_tier') or '').lower() in ('advanced', 'encounter'):
+                detail['danger_level'] = data.get('danger_level') or object_danger_level(self.selected_obj)
+                detail['danger_level_display'] = (
+                    danger_level_display(detail['danger_level'])
+                    if detail.get('danger_level') else None
+                )
             if 'total_minerals' in data:
                 items = []
                 has_inventory_breakdown = False
@@ -612,6 +634,14 @@ class DetailBuilder():
             detail['description'] = data.get('description')
             detail['stability'] = data.get('stability')
             detail['heading'] = data.get('heading')
+            detail['danger_level'] = None
+            detail['danger_level_display'] = None
+            if str(data.get('report_tier') or '').lower() in ('advanced', 'encounter'):
+                detail['danger_level'] = data.get('danger_level') or object_danger_level(self.selected_obj)
+                detail['danger_level_display'] = (
+                    danger_level_display(detail['danger_level'])
+                    if detail.get('danger_level') else None
+                )
 
         self._apply_fleet_motion_summary(detail)
         return detail

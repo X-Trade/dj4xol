@@ -1239,6 +1239,7 @@ class ScannerReportTest(TestCase):
             x=fleet.x + 2,
             y=fleet.y,
             salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            danger_level='HIGH',
             ironium_inventory=10,
             boranium_inventory=5,
             germanium_inventory=2,
@@ -1269,7 +1270,9 @@ class ScannerReportTest(TestCase):
             salvage_report.get_report_data().get('salvage_type'),
             Salvage.TYPE_ANCIENT_DEBRIS,
         )
+        self.assertEqual(salvage_report.get_report_data().get('danger_level'), 'HIGH')
         self.assertEqual(anomaly_report.get_report_data().get('report_tier'), 'advanced')
+        self.assertIn(anomaly_report.get_report_data().get('danger_level'), ('LOW', 'MEDIUM', 'HIGH'))
 
     def test_basic_scanner_reports_ancient_debris_total_without_type_and_anomaly_type(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=0, x=20, y=20)

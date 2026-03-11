@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 
 from datetime import timedelta
 import hashlib
+import random
 
 from django.db import transaction
 from django.urls import reverse
@@ -572,7 +573,96 @@ def grant_player_technology(player, technology, source_contract=None, granted_by
         technology=technology,
         defaults=defaults,
     )
+    if _created:
+        _apply_reverse_engineering_reward(
+            player,
+            technology,
+            year=year,
+        )
     return grant
+
+
+def _create_reverse_engineering_message(player, year, text):
+    GameMessage.objects.create(
+        game=player.game,
+        player=player,
+        year=int(year or 0),
+        category='RESEARCH',
+        message=text,
+        priority=False,
+    )
+
+
+def _apply_reverse_engineering_reward(player, technology, year=None):
+    if not player or technology is None or technology.category_id is None:
+        return
+    from .research import ensure_player_research_rows, apply_research_bonus_rp, get_level_requirement
+
+    rows = ensure_player_research_rows(player)
+    row = None
+    for candidate in rows:
+        if candidate.category_id == technology.category_id:
+            row = candidate
+            break
+    if row is None:
+        return
+
+    current_level = int(row.current_level or 0)
+    gifted_level = int(getattr(technology, 'level', 0) or 0)
+    if gifted_level < current_level + 3:
+        return
+
+    if year is None:
+        year = player.game.year if getattr(player, 'game', None) is not None else 0
+
+    roll = random.randint(1, 3)
+    if roll == 3:
+        _create_reverse_engineering_message(
+            player,
+            year,
+            "Reverse engineering of gifted technology %s yielded no immediate breakthroughs."
+            % getattr(technology, 'name', 'Unknown technology'),
+        )
+        return
+
+    if roll == 1:
+        gifted_req = get_level_requirement(technology.category_id, gifted_level, player=player)
+        current_req_level = max(1, current_level + 1)
+        current_req = get_level_requirement(technology.category_id, current_req_level, player=player)
+        rp_gap = max(
+            1,
+            int(gifted_req.get('rp_cost', 0) or 0) - int(current_req.get('rp_cost', 0) or 0),
+        )
+        fraction = random.uniform(0.20, 0.50)
+        bonus_rp = max(1, int(round(float(rp_gap) * float(fraction))))
+        result = apply_research_bonus_rp(player, technology.category_id, bonus_rp)
+        text = (
+            "Reverse engineering of gifted technology %s yielded %s RP in %s."
+            % (getattr(technology, 'name', 'Unknown technology'), bonus_rp, technology.category.name)
+        )
+        if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
+            text += " Level increased to %s." % int(result['new_level'])
+        _create_reverse_engineering_message(player, year, text)
+        return
+
+    jump = random.randint(1, 2)
+    target_level = min(gifted_level, current_level + jump)
+    if target_level <= current_level:
+        _create_reverse_engineering_message(
+            player,
+            year,
+            "Reverse engineering of gifted technology %s yielded no immediate breakthroughs."
+            % getattr(technology, 'name', 'Unknown technology'),
+        )
+        return
+    row.current_level = int(target_level)
+    row.save(update_fields=['current_level'])
+    _create_reverse_engineering_message(
+        player,
+        year,
+        "Reverse engineering of gifted technology %s advanced %s to level %s."
+        % (getattr(technology, 'name', 'Unknown technology'), technology.category.name, int(target_level)),
+    )
 
 
 def _set_pending_stance(source_player, target_player, stance):
