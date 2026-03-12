@@ -71,4 +71,5 @@ urlpatterns = [
     url(r'^(?P<game_short_id>[0-9a-z]{8})/research/$', views.research, name='research'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/diplomacy/$', views.diplomacy, name='diplomacy'),
     url(r'^(?P<game_short_id>[0-9a-z]{8})/rename/(?P<object_short_id>[0-9a-z]{12})/$', views.rename_object, name='rename_object'),
+    url(r'^(?P<game_short_id>[0-9a-z]{8})/marker/(?P<star_short_id>[0-9a-z]{12})/$', views.set_star_marker, name='set_star_marker'),
 ]

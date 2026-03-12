@@ -46,6 +46,9 @@
         if (target.closest && target.closest('#rename-popover')) {
             return true;
         }
+        if (target.closest && target.closest('#marker-popover')) {
+            return true;
+        }
         var tagName = (target.tagName || '').toLowerCase();
         if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
             return true;

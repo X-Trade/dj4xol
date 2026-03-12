@@ -4,7 +4,15 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from ..factory import GameFactory
-from ..models import Account, Report, Anomaly, Fleet, Salvage, PlayerDiplomaticStance
+from ..models import (
+    Account,
+    Report,
+    Anomaly,
+    Fleet,
+    Salvage,
+    PlayerDiplomaticStance,
+    PlayerStarMarker,
+)
 from ..starmap import StarMap
 from ._util import default_game, get_default_race
 
@@ -52,6 +60,21 @@ class TestStarMap(TestCase):
         self.assertIn('data-map-object="1"', html)
         self.assertIn('data-object-type="star"', html)
         self.assertIn('data-object-type="fleet"', html)
+
+    def test_star_marker_renders_circle_class_on_map(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        star = player.homeworld
+        PlayerStarMarker.objects.create(
+            player=player,
+            star=star,
+            marker_type=PlayerStarMarker.TYPE_CIRCLE,
+        )
+
+        starmap = StarMap(game, player)
+        html = starmap.render_star(star)
+
+        self.assertIn('mapstar-marker-circle', html)
 
     def test_multi_star_stack_uses_homeworld_as_primary_selection_target(self):
         game = default_game(stars=2, fleets=0)

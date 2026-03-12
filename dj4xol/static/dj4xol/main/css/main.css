@@ -491,6 +491,13 @@ body.map-dragging * {
     flex: 0 0 auto;
 }
 
+.detail-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+
 .rename-btn {
     background: none;
     border: none;
@@ -504,6 +511,11 @@ body.map-dragging * {
 .rename-btn:hover {
     background: #e0e0e0;
     color: #333;
+}
+
+.marker-btn {
+    min-width: 26px;
+    text-align: center;
 }
 
 .rename-popover {
@@ -524,6 +536,12 @@ body.map-dragging * {
 
 .panel-content > .rename-popover {
     width: auto;
+}
+
+.marker-popover {
+    left: auto;
+    right: 0;
+    min-width: 220px;
 }
 
 .rename-popover-content {
@@ -551,7 +569,13 @@ body.map-dragging * {
     justify-content: flex-end;
 }
 
-.rename-popover-buttons button {
+.marker-popover-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.rename-popover-buttons button,
+.marker-popover-buttons button {
     padding: 4px 12px;
     cursor: pointer;
     background: #444;
@@ -559,8 +583,13 @@ body.map-dragging * {
     color: #fff;
 }
 
-.rename-popover-buttons button:hover {
+.rename-popover-buttons button:hover,
+.marker-popover-buttons button:hover {
     background: #555;
+}
+
+.marker-option.is-active {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
 }
 
 .rename-error {

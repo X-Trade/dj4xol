@@ -1618,7 +1618,7 @@ class GameTurn():
             self._generate_reports_for_fleet(fleet)
 
     def generate_shared_intel_reports(self):
-        """Push advanced fleet/colony intel to allies that are granted sharing."""
+        """Push allied intel reports to players that are granted sharing."""
         from .models import Fleet, Player, Star
 
         players = list(Player.objects.filter(game=self.game, defeated=False))
@@ -1651,7 +1651,7 @@ class GameTurn():
                         'star',
                         star,
                         self.game.year,
-                        report_tier='advanced',
+                        report_tier='encounter',
                     )
                 for fleet in fleets_by_player.get(grantor.id, []):
                     self._create_or_update_report(

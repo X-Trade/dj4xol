@@ -188,6 +188,49 @@ body.lcars .maparea a.mapstar-name {
     border-radius: 50%;
     position: absolute;
 }
+
+.mapstar-marker-circle::after,
+.mapstar-marker-x::before,
+.mapstar-marker-x::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+.mapstar-marker-circle,
+.mapstar-marker-x {
+    z-index: 50 !important;
+}
+
+.mapstar-marker-circle::after {
+    left: -3px;
+    top: -3px;
+    width: 11px;
+    height: 11px;
+    border: 1.5px solid #7fd7ff;
+    border-radius: 50%;
+    box-sizing: border-box;
+    box-shadow: 0 0 3px rgba(127, 215, 255, 0.65);
+}
+
+.mapstar-marker-x::before,
+.mapstar-marker-x::after {
+    left: -2px;
+    top: 2px;
+    width: 9px;
+    height: 1.5px;
+    background: #ff7070;
+    box-shadow: 0 0 3px rgba(255, 112, 112, 0.65);
+    transform-origin: center;
+}
+
+.mapstar-marker-x::before {
+    transform: rotate(45deg);
+}
+
+.mapstar-marker-x::after {
+    transform: rotate(-45deg);
+}
 .mapfleet {
     height: 3.5px;
     width: 3.5px;

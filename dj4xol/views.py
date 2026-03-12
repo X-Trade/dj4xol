@@ -22,7 +22,8 @@ from .models import (
     Game, Player, ServerSettings, ServerRace, ServerRaceType, Account, GameInvitation, Fleet,
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology,
     ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
-    Spectator, profanity_filter_settings, server_setting_enabled, server_setting_int, DiplomaticContract,
+    Spectator, PlayerStarMarker, profanity_filter_settings, server_setting_enabled,
+    server_setting_int, DiplomaticContract,
 )
 from .email_rollups import (
     send_message_rollup_for_account,
@@ -3835,3 +3836,43 @@ def rename_object(request, game_short_id, object_short_id):
     obj.save()
 
     return JsonResponse({'success': True, 'name': new_name})
+
+
+@player_only_view()
+def set_star_marker(request, game_short_id, star_short_id):
+    """Create, update, or clear the player's personal marker for a visible star."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    if player is None:
+        return JsonResponse({'error': 'Player not found'}, status=404)
+
+    star = Star.objects.filter(short_id=star_short_id, game=game).first()
+    if star is None:
+        return JsonResponse({'error': 'Star not found'}, status=404)
+
+    builder = DetailBuilder(game, star.x, star.y, star.short_id, player=player)
+    can_view, _report_year = builder.can_view_object(star)
+    if not can_view:
+        return JsonResponse({'error': 'You do not have intel on this star'}, status=403)
+
+    marker_type = (request.POST.get('marker_type', '') or '').strip().upper()
+    if marker_type == 'CLEAR':
+        marker_type = ''
+    valid_types = {PlayerStarMarker.TYPE_CIRCLE, PlayerStarMarker.TYPE_X}
+    if marker_type and marker_type not in valid_types:
+        return JsonResponse({'error': 'Invalid marker type'}, status=400)
+
+    if not marker_type:
+        PlayerStarMarker.objects.filter(player=player, star=star).delete()
+    else:
+        PlayerStarMarker.objects.update_or_create(
+            player=player,
+            star=star,
+            defaults={'marker_type': marker_type},
+        )
+
+    return JsonResponse({'success': True, 'marker_type': marker_type})

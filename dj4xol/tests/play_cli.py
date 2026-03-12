@@ -1521,7 +1521,10 @@ class PlayCommandTest(TestCase):
 
         self.assertIn('Awaiting from', output)
         self.assertIn('25kt Ironium', output)
-        self.assertIn('Complete by Year %s' % (self.game.year + 24), output)
+        self.assertRegex(
+            output,
+            r'Complete by\s+Year\s+%s' % (self.game.year + 24),
+        )
 
     def test_messages_command_ignores_accepted_immediate_report_request_alerts(self):
         target_star = self.game.stars.exclude(id=self.player1.homeworld_id).order_by('id').first()

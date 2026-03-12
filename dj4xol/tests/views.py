@@ -25,6 +25,7 @@ from ..models import (
     ResearchCategory,
     Salvage,
     Anomaly,
+    PlayerStarMarker,
     ServerRace,
     ServerRaceType,
     ServerSettings,
@@ -1307,6 +1308,82 @@ class TestRenameObjectView(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['error'], 'Name contains blocked profanity.')
+
+
+class TestStarMarkerView(TestCase):
+    def setUp(self):
+        self.game = default_game(stars=6, fleets=0)
+        self.player = self.game.players.first()
+        self.reported_star = self.game.stars.filter(player__isnull=True).exclude(
+            id=self.player.homeworld_id
+        ).first()
+        self.hidden_star = self.game.stars.filter(player__isnull=True).exclude(
+            id=self.player.homeworld_id
+        ).exclude(id=self.reported_star.id).first()
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='star',
+            target_id=self.reported_star.id,
+            cached_report=json.dumps({
+                'name': self.reported_star.name,
+                'x': self.reported_star.x,
+                'y': self.reported_star.y,
+                'gravity': self.reported_star.gravity,
+                'temperature': self.reported_star.temperature,
+                'radiation': self.reported_star.radiation,
+                'report_tier': 'basic',
+            }),
+        )
+        self.user, _ = get_default_user()
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_set_star_marker_on_reported_star(self):
+        response = self.client.post(
+            reverse('dj4xol:set_star_marker', args=[self.game.short_id, self.reported_star.short_id]),
+            {'marker_type': 'CIRCLE'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['marker_type'], 'CIRCLE')
+        self.assertTrue(
+            PlayerStarMarker.objects.filter(
+                player=self.player,
+                star=self.reported_star,
+                marker_type='CIRCLE',
+            ).exists()
+        )
+
+    def test_clear_star_marker(self):
+        PlayerStarMarker.objects.create(
+            player=self.player,
+            star=self.reported_star,
+            marker_type=PlayerStarMarker.TYPE_X,
+        )
+
+        response = self.client.post(
+            reverse('dj4xol:set_star_marker', args=[self.game.short_id, self.reported_star.short_id]),
+            {'marker_type': 'CLEAR'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            PlayerStarMarker.objects.filter(
+                player=self.player,
+                star=self.reported_star,
+            ).exists()
+        )
+
+    def test_rejects_star_marker_without_intel(self):
+        response = self.client.post(
+            reverse('dj4xol:set_star_marker', args=[self.game.short_id, self.hidden_star.short_id]),
+            {'marker_type': 'X'},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'You do not have intel on this star')
 
 
 class TestPlayCliWebApi(TestCase):
@@ -3364,9 +3441,49 @@ class TestDiplomacyView(TestCase):
             include_sender_account=False,
         )
 
-        self.assertIn('demands we do nothing in exchange for technology', summary)
+        self.assertIn('demands that we do nothing, in exchange they grant us technology', summary.lower())
         self.assertIn(tech.name, summary)
-        self.assertNotIn('demands technology', summary)
+        self.assertNotIn('demands technology', summary.lower())
+
+    def test_diplomacy_summary_includes_give_verb_for_transferred_fleet_resources(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_summary_giveverb', 'diplo_summary_giveverb@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DSGV')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Bradoid',
+            plural_name='Bradoids',
+            race_type=race_type,
+        )
+        tech = Technology.objects.filter(enabled=True).order_by('level', 'id').first()
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=other_player,
+            recipient=player,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='RESOURCE_ON_GIVEN_FLEET',
+            request_germanium=100,
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='TECHNOLOGY',
+            offer_technology=tech,
+        )
+
+        summary = format_contract_summary(
+            contract,
+            viewer=player,
+            include_links=False,
+            include_sender_account=False,
+        )
+
+        self.assertIn('proposes that we give them a fleet carrying 100kt Germanium'.lower(), summary.lower())
+        self.assertIn('in exchange they grant us technology', summary.lower())
+        self.assertIn(tech.name, summary)
 
     def test_diplomacy_statement_matches_form_style_for_recipient(self):
         game = default_game(stars=5, fleets=0)
@@ -3403,7 +3520,7 @@ class TestDiplomacyView(TestCase):
             include_sender_account=False,
         )
 
-        self.assertIn('tester demands that we do nothing, in exchange they grant us technology', statement.lower())
+        self.assertIn('testers demands that we do nothing, in exchange they grant us technology', statement.lower())
         self.assertIn(tech.name, statement)
         self.assertNotIn('(admin)', statement)
 
@@ -3442,7 +3559,7 @@ class TestDiplomacyView(TestCase):
             include_sender_account=False,
         )
 
-        self.assertIn('we demand that receiver race do nothing, in exchange we grant them technology', statement.lower())
+        self.assertIn('we demand that receiver races do nothing, in exchange we grant them technology', statement.lower())
         self.assertIn(tech.name, statement)
         self.assertNotIn('(admin)', statement)
 
@@ -3494,9 +3611,9 @@ class TestDiplomacyView(TestCase):
 
         self.assertIn(phrase, VAGUE_THREAT_PHRASES)
         self.assertEqual(phrase, vague_threat_phrase(contract))
-        self.assertIn(('we demand that threat receiver do nothing, or else we %s.' % phrase).lower(), sender_statement.lower())
-        self.assertIn(('tester demands that we do nothing, or else they %s.' % phrase).lower(), recipient_statement.lower())
-        self.assertIn(('demands we do nothing or else %s.' % phrase).lower(), summary.lower())
+        self.assertIn(('we demand that threat receivers do nothing, or else we %s.' % phrase).lower(), sender_statement.lower())
+        self.assertIn(('testers demands that we do nothing, or else they %s.' % phrase).lower(), recipient_statement.lower())
+        self.assertIn(('demands that we do nothing, or else they %s.' % phrase).lower(), summary.lower())
 
     def test_diplomacy_can_send_technology_request_and_offer_from_form(self):
         game = default_game(stars=5, fleets=0)
@@ -4677,7 +4794,7 @@ class TestDiplomacyView(TestCase):
         response = client.get(reverse('dj4xol:game', args=[game.short_id]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Awaiting from Accepted Race:')
+        self.assertContains(response, 'Awaiting from Accepted Races:')
         self.assertContains(response, '25kt Ironium')
         self.assertContains(response, 'Complete by Year %s' % (game.year + 24))
         self.assertContains(response, 'View</a>', html=False)

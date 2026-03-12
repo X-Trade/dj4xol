@@ -1,5 +1,5 @@
 from django.db import models
-from dj4xol.models import Fleet, Star, Salvage, Anomaly, Report
+from dj4xol.models import Fleet, Star, Salvage, Anomaly, Report, PlayerStarMarker
 from dj4xol.scanners import (
     get_scanner_sources_for_player,
     fleet_visible_to_player,
@@ -217,6 +217,8 @@ class DetailBuilder():
                          get_salvage_thumbnail(self.selected_obj)
                          if isinstance(self.selected_obj, Salvage) else None
                      ),
+                     'can_set_marker': bool(self.player and isinstance(self.selected_obj, Star)),
+                     'star_marker_type': self._get_star_marker_type() if isinstance(self.selected_obj, Star) else '',
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
                      'salvage_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Salvage) else None,
@@ -346,6 +348,8 @@ class DetailBuilder():
             'x': obj.x,
             'y': obj.y,
             'thumbnail_blurred': False,
+            'can_set_marker': False,
+            'star_marker_type': '',
         }
 
     def _build_spectator_detail(self):
@@ -473,6 +477,8 @@ class DetailBuilder():
         # Type-specific fields from cached report
         if target_type == 'star':
             detail['star_short_id'] = self.selected_obj.short_id
+            detail['can_set_marker'] = bool(self.player)
+            detail['star_marker_type'] = self._get_star_marker_type()
             detail['population'] = data.get('colonists')
             detail['capacity'] = data.get('capacity')
             detail['is_survivable'] = data.get('is_survivable')
@@ -649,6 +655,15 @@ class DetailBuilder():
 
         self._apply_fleet_motion_summary(detail)
         return detail
+
+    def _get_star_marker_type(self):
+        if not self.player or not self.selected_obj or not isinstance(self.selected_obj, Star):
+            return ''
+        marker = PlayerStarMarker.objects.filter(
+            player=self.player,
+            star=self.selected_obj,
+        ).values_list('marker_type', flat=True).first()
+        return marker or ''
 
     def _apply_fleet_motion_summary(self, detail):
         """Attach a user-facing fleet movement summary line to detail payload."""
