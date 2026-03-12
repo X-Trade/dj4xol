@@ -76,7 +76,31 @@ class TestStarMap(TestCase):
 
         self.assertIn('mapstar-marker-circle', html)
 
-    def test_multi_star_stack_uses_homeworld_as_primary_selection_target(self):
+    def test_primary_star_marker_does_not_render_on_satellite_star(self):
+        game = default_game(stars=2, fleets=0)
+        player = game.players.first()
+        primary = player.homeworld
+        satellite = game.stars.exclude(pk=primary.pk).first()
+        satellite.x = primary.x
+        satellite.y = primary.y
+        satellite.save(update_fields=['x', 'y'])
+        PlayerStarMarker.objects.create(
+            player=player,
+            star=primary,
+            marker_type=PlayerStarMarker.TYPE_CIRCLE,
+        )
+
+        starmap = StarMap(game, player)
+        satellite_html = starmap.render_star(
+            satellite,
+            satellite=True,
+            selection_star=satellite,
+            primary_star=primary,
+        )
+
+        self.assertNotIn('mapstar-marker-circle', satellite_html)
+
+    def test_multi_star_stack_renders_satellite_with_own_selection_and_primary_metadata(self):
         game = default_game(stars=2, fleets=0)
         player = game.players.first()
         home = player.homeworld
@@ -91,7 +115,27 @@ class TestStarMap(TestCase):
         self.assertIn(f'title="{home.name}"', html)
         self.assertIn(f'sel={home.short_id}', html)
         self.assertIn(f'data-object-id="{home.short_id}"', html)
-        self.assertNotIn(f'data-object-id="{other_star.short_id}"', html)
+        self.assertIn(f'data-object-id="{other_star.short_id}"', html)
+        self.assertIn(f'data-primary-object-id="{home.short_id}"', html)
+
+    def test_fleet_at_star_selects_primary_star_instead_of_fleet(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        home = player.homeworld
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Orbital Fleet',
+            x=home.x,
+            y=home.y,
+        )
+
+        starmap = StarMap(game, player)
+        html = starmap.render_fleet(fleet)
+
+        self.assertIn(f'sel={home.short_id}', html)
+        self.assertIn('data-object-type="star"', html)
+        self.assertIn(f'data-object-id="{home.short_id}"', html)
 
     def test_wormhole_anomaly_uses_wormhole_css_class(self):
         game = default_game(stars=5, fleets=0)

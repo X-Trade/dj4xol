@@ -65,6 +65,7 @@ class StarMap():
         self.fleet_report_tiers = {}
         self.salvage_report_tiers = {}
         self.star_markers = {}
+        self.primary_star_by_position = {}
         self.explored_star_ids = set()
         self.explored_salvage_ids = set()
         if self.spectator:
@@ -124,6 +125,7 @@ class StarMap():
                 self.salvage_report_tiers[report.target_id] = tier
             if not getattr(self.game, 'no_scanners', False):
                 self.salvages = self.salvages.filter(id__in=self.explored_salvage_ids)
+        self.primary_star_by_position = self._build_primary_star_by_position()
         self.map = self.render_map()
 
     @property
@@ -221,10 +223,23 @@ class StarMap():
                     offset_x,
                     offset_y,
                     satellite=True,
-                    selection_star=anchor_star,
+                    selection_star=star,
+                    primary_star=anchor_star,
                 )
             html += self.render_star_name(label_star)
         return html
+
+    def _build_primary_star_by_position(self):
+        stars_by_pos = {}
+        for star in self.stars:
+            pos = (star.x, star.y)
+            if pos not in stars_by_pos:
+                stars_by_pos[pos] = []
+            stars_by_pos[pos].append(star)
+        return {
+            pos: self._primary_star_for_group(group)
+            for pos, group in stars_by_pos.items()
+        }
 
     def _primary_star_for_group(self, stars):
         """Return the canonical primary star for a stacked star location."""
@@ -346,6 +361,7 @@ class StarMap():
         extra_classes="",
         name_override=None,
         selection_object=None,
+        extra_data_attrs="",
     ):
         """Render a game object on map using HTML"""
         selected = selection_object or object
@@ -356,11 +372,11 @@ class StarMap():
             html_class = f"{html_class} {extra_classes}"
         name = name_override if name_override is not None else object.name
         style = f"left:{x}px; top:{y}px;{extra_style}"
-        if isinstance(object, Fleet):
+        if isinstance(selected, Fleet):
             object_type = 'fleet'
-        elif isinstance(object, Salvage):
+        elif isinstance(selected, Salvage):
             object_type = 'salvage'
-        elif isinstance(object, Anomaly):
+        elif isinstance(selected, Anomaly):
             object_type = 'anomaly'
         else:
             object_type = 'star'
@@ -369,6 +385,8 @@ class StarMap():
             f'data-object-id="{selected.short_id}" data-x="{selected.x}" '
             f'data-y="{selected.y}"'
         )
+        if extra_data_attrs:
+            data_attrs = f'{data_attrs} {extra_data_attrs}'
 
         # In destination mode, clicks call JavaScript instead of navigating
         if self.dest_mode and isinstance(object, (Star, Fleet, Salvage, Anomaly)):
@@ -387,10 +405,11 @@ class StarMap():
         satellite=False,
         class_override=None,
         selection_star=None,
+        primary_star=None,
     ):
         """Render a star object on map using HTML"""
         explored_class = self._get_exploration_class(star)
-        marker_class = self._get_star_marker_class(star)
+        marker_class = '' if satellite else self._get_star_marker_class(star)
         extra_classes = explored_class
         if marker_class:
             extra_classes = f"{extra_classes} {marker_class}".strip()
@@ -405,6 +424,12 @@ class StarMap():
                 class_override=satellite_class,
                 extra_classes=extra_classes,
                 selection_object=selection_star,
+                extra_data_attrs=(
+                    f'data-primary-object-id="{primary_star.short_id}" '
+                    f'data-primary-x="{primary_star.x}" '
+                    f'data-primary-y="{primary_star.y}"'
+                    if primary_star is not None and primary_star != star else ''
+                ),
             )
         else:
             # Main star renders on top
@@ -476,10 +501,12 @@ class StarMap():
         # Base rotation of -135deg makes heading 0 point north
         rotation = -135 + fleet.heading
         extra_style = f" transform: translate(-20%, -20%) rotate({rotation}deg);"
+        selection_object = self.primary_star_by_position.get((fleet.x, fleet.y)) or fleet
         return self.render_object(
             fleet,
             extra_style,
             name_override=self._fleet_display_name(fleet),
+            selection_object=selection_object,
         )
 
     def render_salvage(self, salvage):

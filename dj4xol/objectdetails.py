@@ -219,6 +219,7 @@ class DetailBuilder():
                      ),
                      'can_set_marker': bool(self.player and isinstance(self.selected_obj, Star)),
                      'star_marker_type': self._get_star_marker_type() if isinstance(self.selected_obj, Star) else '',
+                     'marker_star_short_id': self._get_marker_star().short_id if isinstance(self.selected_obj, Star) and self._get_marker_star() else None,
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
                      'salvage_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Salvage) else None,
@@ -350,6 +351,7 @@ class DetailBuilder():
             'thumbnail_blurred': False,
             'can_set_marker': False,
             'star_marker_type': '',
+            'marker_star_short_id': None,
         }
 
     def _build_spectator_detail(self):
@@ -479,6 +481,8 @@ class DetailBuilder():
             detail['star_short_id'] = self.selected_obj.short_id
             detail['can_set_marker'] = bool(self.player)
             detail['star_marker_type'] = self._get_star_marker_type()
+            marker_star = self._get_marker_star()
+            detail['marker_star_short_id'] = marker_star.short_id if marker_star else None
             detail['population'] = data.get('colonists')
             detail['capacity'] = data.get('capacity')
             detail['is_survivable'] = data.get('is_survivable')
@@ -657,13 +661,38 @@ class DetailBuilder():
         return detail
 
     def _get_star_marker_type(self):
-        if not self.player or not self.selected_obj or not isinstance(self.selected_obj, Star):
+        marker_star = self._get_marker_star()
+        if not self.player or marker_star is None:
             return ''
         marker = PlayerStarMarker.objects.filter(
             player=self.player,
-            star=self.selected_obj,
+            star=marker_star,
         ).values_list('marker_type', flat=True).first()
         return marker or ''
+
+    def _get_marker_star(self):
+        if not self.selected_obj or not isinstance(self.selected_obj, Star):
+            return None
+        stars = list(
+            Star.objects.filter(
+                game=self.game,
+                x=self.selected_obj.x,
+                y=self.selected_obj.y,
+            )
+        )
+        if not stars:
+            return self.selected_obj
+        if self.player and self.player.homeworld_id:
+            for star in stars:
+                if star.id == self.player.homeworld_id:
+                    return star
+        return sorted(
+            stars,
+            key=lambda star: (
+                str(getattr(star, 'short_id', '') or ''),
+                int(getattr(star, 'id', 0) or 0),
+            ),
+        )[0]
 
     def _apply_fleet_motion_summary(self, detail):
         """Attach a user-facing fleet movement summary line to detail payload."""
