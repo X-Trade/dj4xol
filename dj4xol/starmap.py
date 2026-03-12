@@ -201,10 +201,8 @@ class StarMap():
             html += self.render_star(anchor_star)
             html += self.render_star_name(label_star)
         else:
-            # Determine group ownership for main dot color
-            group_class = self._resolve_group_class(stars)
-            # First star at center (shows group ownership)
-            html += self.render_star(anchor_star, class_override=group_class)
+            # First star at center always represents a real star in the stack.
+            html += self.render_star(anchor_star)
             # Additional stars spaced evenly around center (smaller, show individual ownership)
             offset_distance = self.MAP_SCALE * self.MULTI_STAR_OFFSET
             angle_start = 45  # degrees
@@ -245,17 +243,30 @@ class StarMap():
         """Return the canonical primary star for a stacked star location."""
         if not stars:
             return None
-        if self.player and self.player.homeworld_id:
-            for star in stars:
-                if star.id == self.player.homeworld_id:
-                    return star
         return sorted(
             stars,
-            key=lambda star: (
-                str(getattr(star, 'short_id', '') or ''),
-                int(getattr(star, 'id', 0) or 0),
-            ),
+            key=self._star_group_priority,
         )[0]
+
+    def _star_group_priority(self, star):
+        owner = getattr(star, 'player', None)
+        if self.player and owner == self.player:
+            owner_priority = 0
+        elif owner is not None and self._can_reveal_star_owner(star) and self._is_allied_owner(owner):
+            owner_priority = 1
+        elif owner is not None and self._can_reveal_star_owner(star):
+            owner_priority = 2
+        else:
+            owner_priority = 3
+        homeworld_priority = 0
+        if self.player and self.player.homeworld_id == getattr(star, 'id', None):
+            homeworld_priority = -1
+        return (
+            owner_priority,
+            homeworld_priority,
+            str(getattr(star, 'short_id', '') or ''),
+            int(getattr(star, 'id', 0) or 0),
+        )
 
     def render_star_name(self, star):
         """Render a star name label above the star position."""
@@ -274,40 +285,6 @@ class StarMap():
             f'<a href="{url}" class="mapstar-name" '
             f'style="left:{x}px; top:{y}px;" title="{safe_name}">{safe_name}</a>'
         )
-
-    def _resolve_group_class(self, stars):
-        """Determine CSS class for a group of stars based on ownership mix."""
-        has_owned = any(
-            self.player is not None and s.player == self.player
-            for s in stars
-        )
-        has_allied = any(
-            s.player is not None
-            and s.player != self.player
-            and self._can_reveal_star_owner(s)
-            and self._is_allied_owner(s.player)
-            for s in stars
-        )
-        has_enemy = any(
-            s.player is not None
-            and s.player != self.player
-            and self._can_reveal_star_owner(s)
-            and not self._is_allied_owner(s.player)
-            for s in stars
-        )
-
-        if has_owned and has_enemy:
-            return "mapstar-mixed"  # Yellow - mix of ours and enemy
-        elif has_owned:
-            return "mapstar-owned"  # Green - all ours (or ours + unowned)
-        elif has_allied and has_enemy:
-            return "mapstar-mixed"  # Yellow - mix of allied and enemy
-        elif has_allied:
-            return "mapstar-allied"  # Dim green - allied intel ownership
-        elif has_enemy:
-            return "mapstar-enemy"  # Red - all enemy (or enemy + unowned)
-        else:
-            return "mapstar"  # White - all unowned
 
     def _is_allied_owner(self, owner):
         if not self.player or not owner:

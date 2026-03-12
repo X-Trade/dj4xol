@@ -118,6 +118,29 @@ class TestStarMap(TestCase):
         self.assertIn(f'data-object-id="{other_star.short_id}"', html)
         self.assertIn(f'data-primary-object-id="{home.short_id}"', html)
 
+    def test_multi_star_stack_promotes_single_colonized_secondary_to_main_dot(self):
+        game = default_game(stars=2, fleets=0)
+        player = game.players.first()
+        primary = player.homeworld
+        primary.player = None
+        primary.colonists = 0
+        primary.save(update_fields=['player', 'colonists'])
+
+        secondary = game.stars.exclude(pk=primary.pk).first()
+        secondary.x = primary.x
+        secondary.y = primary.y
+        secondary.player = player
+        secondary.colonists = 1000
+        secondary.save(update_fields=['x', 'y', 'player', 'colonists'])
+
+        starmap = StarMap(game, player)
+        html = starmap.render_map()
+
+        self.assertIn(f'?x={secondary.x}&y={secondary.y}&sel={secondary.short_id}', html)
+        self.assertIn(f'data-object-id="{secondary.short_id}"', html)
+        self.assertEqual(html.count('mapstar-owned'), 1)
+        self.assertEqual(html.count('mapstar-satellite-owned'), 0)
+
     def test_fleet_at_star_selects_primary_star_instead_of_fleet(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
