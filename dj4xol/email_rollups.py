@@ -149,6 +149,51 @@ def send_game_join_email(game, owner_account, joining_account, via_invitation=Fa
     return True
 
 
+def send_game_deleted_email(game, owner_account, player_account, dry_run=False, stdout=None):
+    if not _email_enabled():
+        if stdout:
+            stdout.write('Email disabled; skipping game deletion email.')
+        return False
+    if not player_account or not getattr(player_account, 'email', ''):
+        return False
+    if not getattr(player_account, 'email_game_updates', False):
+        return False
+    if player_account == owner_account:
+        return False
+
+    base_url = _get_server_url()
+    from_email = _get_from_email()
+    subject = f'DJ4XOL: {game.name} was deleted'
+    body = render_to_string('dj4xol/email/game_deleted.txt', {
+        'game': game,
+        'owner_account': owner_account,
+        'player_account': player_account,
+        'server_url': base_url,
+        'unsubscribe_url': _unsubscribe_url(player_account, base_url),
+    })
+
+    if dry_run:
+        if stdout:
+            stdout.write(f'[DRY RUN] Would send deleted-game email to {player_account.email}')
+        return False
+
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=from_email,
+            recipient_list=[player_account.email],
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception(
+            'Failed to send game deletion email for game %s',
+            getattr(game, 'id', None),
+        )
+        return False
+    return True
+
+
 def send_generic_test_email_for_account(account, dry_run=False, stdout=None):
     """Send a plain-text test email to confirm backend delivery works."""
     if not _email_enabled():

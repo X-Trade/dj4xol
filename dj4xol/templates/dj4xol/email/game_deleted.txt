@@ -1,0 +1,6 @@
+Your game "{{ game.name }}" has been deleted by its owner, {{ owner_account.alias }}.
+
+This game is no longer available on the server.
+
+{% if server_url %}Server URL: {{ server_url }}
+{% endif %}Unsubscribe URL: {{ unsubscribe_url }}

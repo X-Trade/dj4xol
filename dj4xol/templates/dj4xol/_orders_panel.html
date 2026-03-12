@@ -66,6 +66,37 @@
                     {% endif %}
                     </div>
                     <div class="order-actions">
+                        {% if order.order_type == 'TRANSFER' or order.order_type == 'GIVE' or order.order_type == 'BOMB' or order.order_type == 'REMOTEMINE' or order.order_type == 'PATROL' %}
+                        <button
+                            type="button"
+                            class="order-edit-btn"
+                            title="Edit order"
+                            data-edit-order="1"
+                            data-order-short-id="{{ order.short_id }}"
+                            data-order-type="{{ order.order_type }}"
+                            data-repeat="{% if order.repeat %}true{% else %}false{% endif %}"
+                            data-target-kind="{{ order.target_kind|default:'' }}"
+                            data-target-short-id="{{ order.target_short_id|default:'' }}"
+                            data-target-x="{{ order.target_x|default:'' }}"
+                            data-target-y="{{ order.target_y|default:'' }}"
+                            data-target-label="{{ order.target|default:'' }}"
+                            data-warpfactor="{{ order.warpfactor|default:'' }}"
+                            data-transfer-type="{{ order.transfer_type|default:'' }}"
+                            data-transfer-player="{{ order.transfer_player_short_id|default:'' }}"
+                            data-transfer-ironium="{{ order.transfer_ironium|default:0 }}"
+                            data-transfer-boranium="{{ order.transfer_boranium|default:0 }}"
+                            data-transfer-germanium="{{ order.transfer_germanium|default:0 }}"
+                            data-transfer-resource-x="{{ order.transfer_resource_x|default:0 }}"
+                            data-transfer-resource-y="{{ order.transfer_resource_y|default:0 }}"
+                            data-transfer-resource-z="{{ order.transfer_resource_z|default:0 }}"
+                            data-transfer-colonists="{{ order.transfer_colonists|default:0 }}"
+                            data-patrol-radius="{{ order.patrol_radius|default:15 }}"
+                            data-intercept-speed="{{ order.intercept_speed|default:5 }}"
+                            data-bomb-until="{{ order.bomb_until|default:'COLONISTS_ZERO' }}"
+                            data-mine-until-full="{% if order.mine_until_full %}true{% else %}false{% endif %}"
+                            data-remotemine-focus="{{ order.remotemine_focus|default:'' }}"
+                        >&#x270e;</button>
+                        {% endif %}
                         <form method="post" action="{% url 'dj4xol:toggle_fleet_order_repeat' game.short_id order.short_id %}" style="display:inline">
                             {% csrf_token %}
                             <input type="hidden" name="x" value="{{ selection.x }}">
@@ -92,6 +123,7 @@
         <form method="post" action="{% url 'dj4xol:add_fleet_order' game.short_id %}" class="order-form panel-footer-form" id="order-form">
             {% csrf_token %}
             <input type="hidden" name="fleet" value="{{ detail.fleet_short_id }}">
+            <input type="hidden" name="edit_order" id="edit-order-input" value="">
             <input type="hidden" name="order_type" id="order-type-input" value="{% if request.GET.order_type %}{{ request.GET.order_type }}{% else %}MOVE{% endif %}">
             <input type="hidden" name="target_star" value="{{ dest_star_id|default:'' }}">
             <input type="hidden" name="target_fleet" value="{{ dest_fleet_id|default:'' }}">
@@ -514,6 +546,7 @@
 <script>
 (function() {
     var orderType = document.getElementById('order-type');
+    var editOrderInput = document.getElementById('edit-order-input');
     var orderTypeInput = document.getElementById('order-type-input');
     var moveParams = document.getElementById('move-params');
     var transferParams = document.getElementById('transfer-params');
@@ -538,6 +571,7 @@
     var orderParamsOverlayAdd = document.getElementById('order-params-overlay-add');
     var orderParamsOverlayTitle = document.getElementById('order-params-overlay-title');
     var orderParamsPopoutToggle = document.getElementById('order-params-popout-toggle');
+    var repeatCheckbox = document.getElementById('repeat-checkbox');
     
     // Warp factor slider elements
     var warpSlider = document.getElementById('warp-slider');
@@ -571,6 +605,17 @@
         var destX = document.querySelector('input[name="target_x"]').value;
 
         addBtn.disabled = !destStar && !destFleet && !destSalvage && !destAnomaly && !destX;
+    }
+
+    function updateSubmitButtonLabels() {
+        var isEditing = !!(editOrderInput && editOrderInput.value);
+        if (addBtn) {
+            addBtn.textContent = isEditing ? '\u2713' : '+';
+            addBtn.title = isEditing ? 'Save order changes' : 'Add order';
+        }
+        if (orderParamsOverlayAdd) {
+            orderParamsOverlayAdd.textContent = isEditing ? 'Save' : 'Add';
+        }
     }
 
     function setMoveTargetInputs(targetValue, optionEl) {
@@ -652,6 +697,273 @@
         orderFormHome.parentNode.insertBefore(orderForm, orderFormHome.nextSibling);
     }
 
+    function ensureSelectHasOption(selectEl, value, label, attrs) {
+        if (!selectEl || !value) return null;
+        var option = null;
+        for (var i = 0; i < selectEl.options.length; i += 1) {
+            if (selectEl.options[i].value === value) {
+                option = selectEl.options[i];
+                break;
+            }
+        }
+        if (!option) {
+            option = document.createElement('option');
+            option.value = value;
+            option.textContent = label || value;
+            selectEl.appendChild(option);
+        } else if (label) {
+            option.textContent = label;
+        }
+        if (attrs) {
+            Object.keys(attrs).forEach(function(key) {
+                if (attrs[key] !== null && attrs[key] !== undefined) {
+                    option.setAttribute(key, attrs[key]);
+                }
+            });
+        }
+        selectEl.value = value;
+        return option;
+    }
+
+    function setDestinationText(containerId, label, emphasize) {
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        var display = container.querySelector('.dest-display');
+        if (!display) return;
+        if (emphasize) {
+            display.innerHTML = '<em>' + label + '</em>';
+            return;
+        }
+        display.textContent = label;
+    }
+
+    function syncEditTarget(button) {
+        var kind = button.getAttribute('data-target-kind') || '';
+        var shortId = button.getAttribute('data-target-short-id') || '';
+        var targetLabel = button.getAttribute('data-target-label') || '';
+        var targetX = button.getAttribute('data-target-x') || '';
+        var targetY = button.getAttribute('data-target-y') || '';
+        var targetValue = '';
+        if (kind === 'star' || kind === 'fleet' || kind === 'salvage' || kind === 'anomaly') {
+            targetValue = kind + ':' + shortId;
+        } else if (kind === 'space') {
+            targetValue = 'space';
+        }
+
+        setMoveTargetInputs(targetValue, null);
+        if (kind === 'space' && targetX && targetY && targetXInput && targetYInput) {
+            targetXInput.value = targetX;
+            targetYInput.value = targetY;
+        }
+        if (moveTargetSelect) {
+            ensureSelectHasOption(moveTargetSelect, targetValue, targetLabel, {
+                'data-x': targetX,
+                'data-y': targetY
+            });
+        } else if (destDisplay && targetLabel) {
+            destDisplay.textContent = targetLabel;
+        }
+
+        var transferTargetSelect = document.getElementById('transfer-target');
+        var transferTargetInput = document.getElementById('transfer-target-input');
+        if (transferTargetInput) {
+            transferTargetInput.value = targetValue;
+        }
+        if (transferTargetSelect) {
+            ensureSelectHasOption(transferTargetSelect, targetValue, targetLabel, {
+                'data-x': targetX,
+                'data-y': targetY
+            });
+        } else if (targetValue) {
+            var singleTransfer = document.getElementById('single-target-value');
+            var emptyTransfer = document.getElementById('empty-target-value');
+            if (singleTransfer && kind !== 'space') {
+                singleTransfer.setAttribute('data-target', targetValue);
+                setDestinationText('transfer-destination', targetLabel, false);
+            }
+            if (emptyTransfer && kind === 'space') {
+                emptyTransfer.setAttribute('data-target', 'space');
+                emptyTransfer.setAttribute('data-x', targetX);
+                emptyTransfer.setAttribute('data-y', targetY);
+                setDestinationText('transfer-destination', targetLabel || 'Empty Space', true);
+            }
+        }
+
+        if (patrolTargetInput) {
+            patrolTargetInput.value = targetValue;
+        }
+        var patrolTargetSelect = document.getElementById('patrol-target');
+        if (patrolTargetSelect) {
+            ensureSelectHasOption(patrolTargetSelect, targetValue, targetLabel, {
+                'data-x': targetX,
+                'data-y': targetY
+            });
+        } else if (targetValue) {
+            var patrolSingle = document.getElementById('patrol-single-target-value');
+            var patrolEmpty = document.getElementById('patrol-empty-target-value');
+            if (patrolSingle && kind !== 'space') {
+                patrolSingle.setAttribute('data-target', targetValue);
+                setDestinationText('patrol-destination', targetLabel, false);
+            }
+            if (patrolEmpty && kind === 'space') {
+                patrolEmpty.setAttribute('data-target', 'space');
+                patrolEmpty.setAttribute('data-x', targetX);
+                patrolEmpty.setAttribute('data-y', targetY);
+                setDestinationText('patrol-destination', targetLabel || 'Empty Space', true);
+            }
+        }
+
+        if (targetXInput && targetYInput && targetX && targetY) {
+            targetXInput.value = targetX;
+            targetYInput.value = targetY;
+        }
+
+        var starTargetValue = shortId || '';
+        var coloniseTargetInput = document.getElementById('colonise-target-input');
+        var bombTargetInput = document.getElementById('bomb-target-input');
+        var remotemineTargetInput = document.getElementById('remotemine-target-input');
+        var mergeTargetInput = document.getElementById('merge-target-input');
+        if (coloniseTargetInput) coloniseTargetInput.value = kind === 'star' ? starTargetValue : '';
+        if (bombTargetInput) bombTargetInput.value = kind === 'star' ? starTargetValue : '';
+        if (remotemineTargetInput) remotemineTargetInput.value = kind === 'star' ? starTargetValue : '';
+        if (mergeTargetInput) mergeTargetInput.value = kind === 'fleet' ? shortId : '';
+
+        var coloniseTargetSelect = document.getElementById('colonise-target');
+        if (coloniseTargetSelect && kind === 'star') {
+            ensureSelectHasOption(coloniseTargetSelect, starTargetValue, targetLabel);
+        } else if (kind === 'star') {
+            var coloniseSingle = document.getElementById('colonise-single-target-value');
+            if (coloniseSingle) {
+                coloniseSingle.setAttribute('data-target', starTargetValue);
+                setDestinationText('colonise-destination', targetLabel, false);
+            }
+        }
+
+        var bombTargetSelect = document.getElementById('bomb-target');
+        if (bombTargetSelect && kind === 'star') {
+            ensureSelectHasOption(bombTargetSelect, starTargetValue, targetLabel);
+        } else if (kind === 'star') {
+            var bombSingle = document.getElementById('bomb-single-target-value');
+            if (bombSingle) {
+                bombSingle.setAttribute('data-target', starTargetValue);
+                setDestinationText('bomb-destination', targetLabel, false);
+            }
+        }
+
+        var remotemineTargetSelect = document.getElementById('remotemine-target');
+        if (remotemineTargetSelect && kind === 'star') {
+            ensureSelectHasOption(remotemineTargetSelect, starTargetValue, targetLabel);
+        } else if (kind === 'star') {
+            var remotemineSingle = document.getElementById('remotemine-single-target-value');
+            if (remotemineSingle) {
+                remotemineSingle.setAttribute('data-target', starTargetValue);
+                setDestinationText('remotemine-destination', targetLabel, false);
+            }
+        }
+
+        var mergeTargetSelect = document.getElementById('merge-target');
+        if (mergeTargetSelect && kind === 'fleet') {
+            ensureSelectHasOption(mergeTargetSelect, shortId, targetLabel);
+        } else if (kind === 'fleet') {
+            var mergeSingle = document.getElementById('merge-single-target-value');
+            if (mergeSingle) {
+                mergeSingle.setAttribute('data-target', shortId);
+                setDestinationText('merge-destination', targetLabel, false);
+            }
+        }
+    }
+
+    function populateEditForm(button) {
+        if (!button || !editOrderInput || !orderType) return;
+        editOrderInput.value = button.getAttribute('data-order-short-id') || '';
+        updateSubmitButtonLabels();
+
+        orderType.value = button.getAttribute('data-order-type') || 'MOVE';
+        orderTypeInput.value = orderType.value;
+        if (repeatCheckbox) {
+            repeatCheckbox.checked = button.getAttribute('data-repeat') === 'true';
+        }
+
+        initializeOrderType();
+        syncEditTarget(button);
+
+        if (warpInput && warpSlider) {
+            warpInput.value = button.getAttribute('data-warpfactor') || warpInput.value;
+            warpSlider.value = warpInput.value;
+            warpSlider.dispatchEvent(new Event('input'));
+        }
+
+        var transferTypeSelect = document.getElementById('transfer-type-select');
+        if (transferTypeSelect && transferTypeInput) {
+            transferTypeInput.value = button.getAttribute('data-transfer-type') || 'LOAD';
+            transferTypeSelect.value = transferTypeInput.value;
+            transferTypeSelect.dispatchEvent(new Event('change'));
+        }
+
+        ['ironium', 'boranium', 'germanium', 'resource_x', 'resource_y', 'resource_z', 'colonists'].forEach(function(resource) {
+            var slider = document.getElementById(resource + '-slider');
+            var input = document.getElementById('transfer-' + resource + '-input');
+            var attr = 'data-transfer-' + resource.replace(/_/g, '-');
+            var value = button.getAttribute(attr) || '0';
+            if (slider) {
+                slider.value = value;
+                slider.dispatchEvent(new Event('input'));
+            }
+            if (input) {
+                input.value = value;
+            }
+        });
+
+        if (transferPlayerInput) {
+            transferPlayerInput.value = button.getAttribute('data-transfer-player') || '';
+        }
+        var transferPlayerSelect = document.getElementById('transfer-player-select');
+        if (transferPlayerSelect && transferPlayerInput && transferPlayerInput.value) {
+            ensureSelectHasOption(transferPlayerSelect, transferPlayerInput.value, transferPlayerInput.value);
+            transferPlayerSelect.value = transferPlayerInput.value;
+        }
+
+        if (patrolRadiusHidden && patrolRadiusInput) {
+            patrolRadiusHidden.value = button.getAttribute('data-patrol-radius') || patrolRadiusHidden.value;
+            patrolRadiusInput.value = patrolRadiusHidden.value;
+            patrolRadiusInput.dispatchEvent(new Event('input'));
+        }
+
+        if (interceptSpeedInput && interceptSpeedSlider) {
+            interceptSpeedInput.value = button.getAttribute('data-intercept-speed') || interceptSpeedInput.value;
+            interceptSpeedSlider.value = interceptSpeedInput.value;
+            interceptSpeedSlider.dispatchEvent(new Event('input'));
+        }
+
+        if (bombUntilInput) {
+            bombUntilInput.value = button.getAttribute('data-bomb-until') || 'COLONISTS_ZERO';
+            var bombRadio = document.querySelector('input[name="bomb_until_radio"][value="' + bombUntilInput.value + '"]');
+            if (bombRadio) {
+                bombRadio.checked = true;
+            }
+        }
+
+        if (mineUntilFullInput) {
+            mineUntilFullInput.value = button.getAttribute('data-mine-until-full') === 'true' ? '1' : '0';
+            var mineUntilFullCheckbox = document.getElementById('mine-until-full-checkbox');
+            if (mineUntilFullCheckbox) {
+                mineUntilFullCheckbox.checked = mineUntilFullInput.value === '1';
+            }
+        }
+
+        if (remotemineFocusInput) {
+            remotemineFocusInput.value = button.getAttribute('data-remotemine-focus') || '';
+            var selectedFocus = (remotemineFocusInput.value || '').split(',');
+            document.querySelectorAll('.remotemine-focus-checkbox').forEach(function(box) {
+                box.checked = selectedFocus.indexOf(box.value) !== -1;
+            });
+        }
+
+        initializeOrderType();
+        updateSubmitButtonLabels();
+        openOrderParamsOverlay();
+    }
+
     function currentOrderTypeLabel() {
         var labels = {
             MOVE: 'Move Order',
@@ -675,7 +987,14 @@
         }
     }
 
-    function closeOrderParamsOverlay() {
+    function clearEditMode() {
+        if (editOrderInput) {
+            editOrderInput.value = '';
+        }
+        updateSubmitButtonLabels();
+    }
+
+    function closeOrderParamsOverlay(preserveEditState) {
         if (!orderParamsOverlay) return;
         restoreOrderForm();
         orderParamsOverlay.hidden = true;
@@ -683,6 +1002,9 @@
         document.body.classList.remove('order-params-overlay-open');
         if (orderParamsPopoutToggle) {
             orderParamsPopoutToggle.setAttribute('aria-expanded', 'false');
+        }
+        if (!preserveEditState) {
+            clearEditMode();
         }
     }
 
@@ -1482,17 +1804,25 @@
             ev.preventDefault();
             ev.stopPropagation();
             if (orderParamsOverlay && !orderParamsOverlay.hidden) {
-                closeOrderParamsOverlay();
+                closeOrderParamsOverlay(false);
             } else {
                 openOrderParamsOverlay();
             }
         });
     }
 
+    document.querySelectorAll('[data-edit-order="1"]').forEach(function(button) {
+        button.addEventListener('click', function(ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            populateEditForm(button);
+        });
+    });
+
     if (orderParamsOverlayClose) {
         orderParamsOverlayClose.addEventListener('click', function(ev) {
             ev.preventDefault();
-            closeOrderParamsOverlay();
+            closeOrderParamsOverlay(false);
         });
     }
 
@@ -1502,20 +1832,20 @@
                 ev.target === orderParamsOverlay ||
                 ev.target.classList.contains('order-params-overlay-backdrop')
             ) {
-                closeOrderParamsOverlay();
+                closeOrderParamsOverlay(false);
             }
         });
     }
 
     document.addEventListener('keydown', function(ev) {
         if (ev.key === 'Escape' && orderParamsOverlay && !orderParamsOverlay.hidden) {
-            closeOrderParamsOverlay();
+            closeOrderParamsOverlay(false);
         }
     });
 
     if (orderForm) {
         orderForm.addEventListener('submit', function() {
-            closeOrderParamsOverlay();
+            closeOrderParamsOverlay(true);
         });
     }
     
@@ -1626,6 +1956,7 @@
     });
     
     // Initialize on page load (call this last)
+    updateSubmitButtonLabels();
     initializeOrderType();
     updateOrderParamsOverlayTitle();
     if (warpSlider) {

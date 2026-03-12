@@ -140,6 +140,12 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'Laser Test')
         self.assertNotContains(response, 'Shield Test')
 
+    def test_help_technology_type_dropdown_is_alphabetised(self):
+        response = self.client.get(reverse('dj4xol:help_technology'))
+        self.assertEqual(response.status_code, 200)
+        labels = [label for _code, label in response.context['tech_type_choices']]
+        self.assertEqual(labels, sorted(labels, key=lambda label: label.lower()))
+
     def test_help_technology_category_counts_show_full_totals(self):
         energy = ResearchCategory.objects.create(
             code='ENERCNT',

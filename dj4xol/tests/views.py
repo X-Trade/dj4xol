@@ -14,6 +14,7 @@ from ..models import (
     DiplomaticContract,
     Fleet,
     FleetOrders,
+    Game,
     GameMessage,
     GameInvitation,
     Player,
@@ -697,7 +698,18 @@ class TestGameDetailRendering(TestCase):
         self.assertContains(response, 'BP/Year (+20%)')
 
 
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 class TestProfileView(TestCase):
+    def setUp(self):
+        ServerSettings.objects.update_or_create(
+            key='enable_email',
+            defaults={'value': 'True', 'description': 'Enable outbound email'},
+        )
+        ServerSettings.objects.update_or_create(
+            key='server_url',
+            defaults={'value': 'https://example.test', 'description': 'Server URL'},
+        )
+
     def test_profile_shows_turned_in_status_for_my_quorum_game(self):
         game = default_game(stars=5)
         player = game.players.first()
@@ -711,6 +723,77 @@ class TestProfileView(TestCase):
         response = client.get(reverse('dj4xol:profile'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Turned in')
+
+    def test_profile_can_delete_owned_game(self):
+        game = default_game(stars=5)
+        user, account = get_default_user()
+        game.owner = account
+        game.save(update_fields=['owner'])
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(reverse('dj4xol:delete_owned_game', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dj4xol:profile'))
+        self.assertFalse(Game.objects.filter(id=game.id).exists())
+
+    def test_profile_delete_owned_game_emails_other_players(self):
+        game = default_game(stars=6, fleets=0)
+        owner_user, owner_account = get_default_user()
+        owner_player = game.players.first()
+        owner_player.account = owner_account
+        owner_player.save(update_fields=['account'])
+        game.owner = owner_account
+        game.save(update_fields=['owner'])
+
+        other_user = User.objects.create_user('delete_notify_other', 'other@example.com', 'pw')
+        other_account = Account.objects.create(
+            django_user=other_user,
+            alias='OTHR',
+            email='other@example.com',
+            full_name='Other Player',
+            email_game_updates=True,
+            email_game_rollups_per_day=1,
+        )
+        Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Other Race',
+            plural_name='Other Races',
+            race_type=get_default_race_type(),
+        )
+
+        silent_user = User.objects.create_user('delete_notify_silent', 'silent@example.com', 'pw')
+        silent_account = Account.objects.create(
+            django_user=silent_user,
+            alias='SLNT',
+            email='silent@example.com',
+            full_name='Silent Player',
+            email_game_updates=False,
+            email_game_rollups_per_day=0,
+        )
+        Player.objects.create(
+            game=game,
+            account=silent_account,
+            name='Silent Race',
+            plural_name='Silent Races',
+            race_type=get_default_race_type(),
+        )
+
+        client = Client()
+        client.force_login(owner_user)
+
+        response = client.post(reverse('dj4xol:delete_owned_game', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Game.objects.filter(id=game.id).exists())
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ['other@example.com'])
+        self.assertIn('%s was deleted' % game.name, message.subject)
+        self.assertIn('deleted by its owner', message.body)
+        self.assertIn(owner_account.alias, message.body)
 
 
 class TestPreJoinNavigation(TestCase):
@@ -947,6 +1030,53 @@ class TestRaceCreationView(TestCase):
         race = ServerRace.objects.get(name='PlayerPublicRace')
         self.assertTrue(race.public)
         self.assertEqual(race.owner, self.account)
+
+    def test_edit_race_prefills_form_and_shows_warning(self):
+        race = ServerRace.objects.create(
+            owner=self.account,
+            name='Editable Race',
+            plural_name='Editable Races',
+            race_type=self.race_type,
+            description='Before',
+        )
+
+        response = self.client.get(reverse('dj4xol:edit_race', args=[race.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Edit Custom Race')
+        self.assertContains(response, 'players already using this race in active games keep the stats they copied when they joined')
+        self.assertContains(response, 'value="Editable Race"', html=False)
+
+    def test_edit_race_updates_owned_race(self):
+        race = ServerRace.objects.create(
+            owner=self.account,
+            name='Original Race',
+            plural_name='Original Races',
+            race_type=self.race_type,
+        )
+        payload = self._race_payload('Updated Race')
+
+        response = self.client.post(reverse('dj4xol:edit_race', args=[race.short_id]), payload)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dj4xol:profile'))
+        race.refresh_from_db()
+        self.assertEqual(race.name, 'Updated Race')
+        self.assertEqual(race.plural_name, 'Updated RaceP')
+
+    def test_delete_race_removes_owned_race(self):
+        race = ServerRace.objects.create(
+            owner=self.account,
+            name='Disposable Race',
+            plural_name='Disposable Races',
+            race_type=self.race_type,
+        )
+
+        response = self.client.post(reverse('dj4xol:delete_race', args=[race.short_id]))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dj4xol:profile'))
+        self.assertFalse(ServerRace.objects.filter(pk=race.pk).exists())
 
 
 class TestOnboardingRaceView(TestCase):
@@ -4840,6 +4970,90 @@ class TestDiplomacyView(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertIn('no_locate=1', response.url)
+
+    def test_add_fleet_order_can_edit_existing_order(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        target_star = player.homeworld
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=target_star,
+            transfer_type='LOAD',
+            transfer_ironium=12,
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'edit_order': order.short_id,
+                'order_type': 'TRANSFER',
+                'transfer_target': 'star:%s' % target_star.short_id,
+                'transfer_type': 'UNLOAD',
+                'transfer_ironium': '34',
+                'transfer_colonists': '56',
+                'repeat': 'on',
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+            }
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(fleet.orders.count(), 1)
+        order.refresh_from_db()
+        self.assertEqual(order.order_type, 'TRANSFER')
+        self.assertEqual(order.target_star_id, target_star.id)
+        self.assertEqual(order.transfer_type, 'UNLOAD')
+        self.assertEqual(order.transfer_ironium, 34)
+        self.assertEqual(order.transfer_colonists, 56)
+        self.assertTrue(order.repeat)
+
+    def test_add_fleet_order_does_not_edit_move_orders(self):
+        game = default_game(stars=5, fleets=2)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        target_star = game.stars.exclude(id=player.homeworld_id).first()
+        target_fleet = player.fleets.exclude(id=fleet.id).first()
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='MOVE',
+            target_star=target_star,
+            warpfactor=5,
+            original_warpfactor=5,
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'edit_order': order.short_id,
+                'order_type': 'INTERCEPT',
+                'target_fleet': target_fleet.short_id,
+                'warpfactor': '8',
+                'repeat': 'on',
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+            }
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order.refresh_from_db()
+        self.assertEqual(order.order_type, 'MOVE')
+        self.assertEqual(order.target_star_id, target_star.id)
+        self.assertEqual(order.warpfactor, 5)
+        self.assertFalse(order.repeat)
 
     def test_add_fleet_order_redirect_suppresses_auto_locate_when_player_turned_in(self):
         game = default_game(stars=5, fleets=1)

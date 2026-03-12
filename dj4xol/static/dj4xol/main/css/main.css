@@ -1261,6 +1261,25 @@ body.floating-tooltips-enabled .has-tooltip::after {
     background: #a33;
 }
 
+.order-edit-btn {
+    background: #2a5a8a;
+    color: #fff;
+    border: none;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+    opacity: 0.8;
+}
+
+.order-edit-btn:hover {
+    background: #356b9f;
+    opacity: 0.95;
+}
+
 .order-actions {
     display: inline-flex;
     align-items: center;

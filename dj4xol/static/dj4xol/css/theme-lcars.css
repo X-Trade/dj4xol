@@ -134,7 +134,7 @@ body {
     position: absolute;
     right: 10px;
     bottom: 8px;
-    z-index: 100;
+    z-index: 260;
 }
 
 .hamburger {
@@ -149,6 +149,8 @@ body {
     align-items: center;
     gap: 3px;
     padding: 0;
+    position: relative;
+    z-index: 261;
 }
 
 .hamburger span {
@@ -187,6 +189,7 @@ body {
     border: 3px solid #cc6633;
     border-radius: 0 0 20px 20px;
     overflow: hidden;
+    z-index: 262;
 }
 
 .nav-dropdown a {
@@ -430,6 +433,17 @@ a:hover {
     background: #ccccff;
 }
 
+.lcars .action-link.profile-delete-trigger {
+    background: #cc6699;
+    color: #000 !important;
+    line-height: 24px;
+    padding-bottom: 2px;
+}
+
+.lcars .action-link.profile-delete-trigger:hover {
+    background: #dd77aa;
+}
+
 /* ============================================
    LCARS Lists
    ============================================ */
@@ -439,6 +453,10 @@ a:hover {
 
 .game-meta {
     color: #9999cc;
+}
+
+.lcars .game-entry-actions {
+    margin-right: 8px;
 }
 
 .no-items {
@@ -649,6 +667,18 @@ input:focus {
 
 .order-remove-btn:hover {
     background: #dd77aa;
+}
+
+.order-edit-btn {
+    background: #2a5a8a;
+    border-radius: 3px;
+    color: #fff;
+    opacity: 0.8;
+}
+
+.order-edit-btn:hover {
+    background: #356b9f;
+    opacity: 0.95;
 }
 
 .order-add-btn {

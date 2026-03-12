@@ -324,11 +324,11 @@ a:hover {
 .action-link {
     background: #c0c0c0;
     color: #000000 !important;
-    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
-                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
     border-radius: 0;
-    padding: 2px 12px;
-    font-weight: normal;
+    padding: 0 8px;
+    min-width: 44px;
+    font-weight: bold;
     text-decoration: none;
 }
 
@@ -687,6 +687,20 @@ input:focus {
     background: #d4d4d4;
 }
 
+.order-edit-btn {
+    background: #2a5a8a;
+    box-shadow: none;
+    border-radius: 3px;
+    color: #ffffff;
+    font-weight: normal;
+    opacity: 0.8;
+}
+
+.order-edit-btn:hover {
+    background: #356b9f;
+    opacity: 0.95;
+}
+
 .order-add-btn {
     background: #c0c0c0;
     color: #000000;
@@ -971,6 +985,20 @@ input[type="range"]::-webkit-slider-thumb {
 
 .rename-popover-buttons button:hover {
     background: #d4d4d4;
+}
+
+.owned-game-delete-popover {
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    border: none;
+    border-radius: 0;
+    color: #000000;
+}
+
+.owned-game-delete-popover h3,
+.owned-game-delete-popover p {
+    color: #000000;
 }
 
 /* Destination mode banner */

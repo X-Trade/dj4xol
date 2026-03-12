@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-        <title>Create Race</title>
+        <title>{{ page_title|default:"Create Race" }}</title>
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
         {% if selected_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
@@ -12,22 +12,27 @@
     </head>
     <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} create-race single-panel-page">
         <div class="title-bar">
-            <span class="title">Create Race</span>
+            <span class="title">{{ page_title|default:"Create Race" }}</span>
             <span class="tagline">Custom race template</span>
             {% include 'dj4xol/_nav_menu.html' with current_page='create_race' %}
         </div>
         <div class="columns single-column">
             <div class="column">
                 <div class="panel no-transition open" data-panel="race">
-                    <h2><span>Create New Race</span><span class="panel-toggle"></span></h2>
+                    <h2><span>{{ form_heading|default:"Create New Race" }}</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
                         <section class="panel-scrollable-text">
                         <form method="post" class="race-form">
                             {% csrf_token %}
+                            {% if is_edit_mode %}
+                            <div class="hint starting-tech-warning form-errors">
+                                Editing this custom race only affects the template. Any players already using this race in active games keep the stats they copied when they joined.
+                            </div>
+                            {% endif %}
                             {% include 'dj4xol/_race_form_table.html' %}
                             <div class="form-nav">
-                                <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:index' %}'">Back to Games</button>
-                                <button type="submit" class="nav-button primary">Create Race</button>
+                                <button type="button" class="nav-button" onclick="window.location.href='{{ cancel_url }}'">{% if is_edit_mode %}Back to Profile{% else %}Back to Games{% endif %}</button>
+                                <button type="submit" class="nav-button primary">{{ submit_label|default:"Create Race" }}</button>
                             </div>
                         </form>
                         </section>
