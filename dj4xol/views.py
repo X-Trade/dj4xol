@@ -3859,6 +3859,24 @@ def set_star_marker(request, game_short_id, star_short_id):
     if not can_view:
         return JsonResponse({'error': 'You do not have intel on this star'}, status=403)
 
+    stars_at_location = list(Star.objects.filter(game=game, x=star.x, y=star.y))
+    if player.homeworld_id:
+        primary_star = next(
+            (candidate for candidate in stars_at_location if candidate.id == player.homeworld_id),
+            None,
+        )
+    else:
+        primary_star = None
+    if primary_star is None:
+        primary_star = sorted(
+            stars_at_location or [star],
+            key=lambda candidate: (
+                str(getattr(candidate, 'short_id', '') or ''),
+                int(getattr(candidate, 'id', 0) or 0),
+            ),
+        )[0]
+    star = primary_star
+
     marker_type = (request.POST.get('marker_type', '') or '').strip().upper()
     if marker_type == 'CLEAR':
         marker_type = ''

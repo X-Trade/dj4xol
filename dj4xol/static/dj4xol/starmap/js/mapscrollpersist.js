@@ -725,6 +725,51 @@ $(document).ready(function() {
     // Check if in destination selection mode
     var destMode = $maparea.data('dest-mode') === true || $maparea.data('dest-mode') === 'true';
 
+    function shouldPreferPrimaryStarSelection() {
+        if (document.querySelector('.columns.single-column')) {
+            return true;
+        }
+        if (!window.matchMedia) {
+            return false;
+        }
+        return window.matchMedia(
+            '(pointer: coarse), (hover: none), (max-width: 900px)'
+        ).matches;
+    }
+
+    function navigateToPrimaryStar(primaryId, primaryX, primaryY) {
+        persistStarmapScrollPosition();
+        if (destMode) {
+            submitDestination(primaryId, primaryX, primaryY, 'star');
+            return;
+        }
+        var params = new URLSearchParams(window.location.search);
+        params.set('x', primaryX);
+        params.set('y', primaryY);
+        params.set('sel', primaryId);
+        params.delete('locate');
+        params.delete('no_locate');
+        window.location.search = params.toString();
+    }
+
+    $maparea.on('click', '[data-primary-object-id]', function(e) {
+        if (!shouldPreferPrimaryStarSelection()) {
+            return;
+        }
+        if (hasDragged) {
+            e.preventDefault();
+            return;
+        }
+        var primaryId = this.getAttribute('data-primary-object-id');
+        var primaryX = this.getAttribute('data-primary-x');
+        var primaryY = this.getAttribute('data-primary-y');
+        if (!primaryId) {
+            return;
+        }
+        e.preventDefault();
+        navigateToPrimaryStar(primaryId, primaryX, primaryY);
+    });
+
     var posX = localStorage.getItem(storageKey + ':posX');
     var posY = localStorage.getItem(storageKey + ':posY');
     var hasSavedPos = posX !== null && posY !== null;

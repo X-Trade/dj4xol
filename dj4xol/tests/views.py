@@ -1385,6 +1385,33 @@ class TestStarMarkerView(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()['error'], 'You do not have intel on this star')
 
+    def test_satellite_star_marker_is_saved_on_primary_star(self):
+        primary = self.player.homeworld
+        satellite = self.reported_star
+        satellite.x = primary.x
+        satellite.y = primary.y
+        satellite.save(update_fields=['x', 'y'])
+
+        response = self.client.post(
+            reverse('dj4xol:set_star_marker', args=[self.game.short_id, satellite.short_id]),
+            {'marker_type': 'X'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            PlayerStarMarker.objects.filter(
+                player=self.player,
+                star=primary,
+                marker_type='X',
+            ).exists()
+        )
+        self.assertFalse(
+            PlayerStarMarker.objects.filter(
+                player=self.player,
+                star=satellite,
+            ).exists()
+        )
+
 
 class TestPlayCliWebApi(TestCase):
     def setUp(self):
