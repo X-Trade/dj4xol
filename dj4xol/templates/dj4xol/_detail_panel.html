@@ -29,8 +29,17 @@
         {% else %}
         <h3>{{ detail.name }}</h3>
         {% endif %}
-        {% if detail.is_owned %}
-        <button class="rename-btn" onclick="showRenamePopover()" title="Rename">&#9998;</button>
+        {% if detail.is_owned or detail.can_set_marker %}
+        <div class="detail-header-actions">
+            {% if detail.can_set_marker %}
+            <button class="rename-btn marker-btn" onclick="toggleMarkerPopover()" title="Map marker">
+                {% if detail.star_marker_type == 'CIRCLE' %}&#9711;{% elif detail.star_marker_type == 'X' %}&times;{% else %}&#9873;{% endif %}
+            </button>
+            {% endif %}
+            {% if detail.is_owned %}
+            <button class="rename-btn" onclick="showRenamePopover()" title="Rename">&#9998;</button>
+            {% endif %}
+        </div>
         {% endif %}
     </div>
     {% if detail.is_owned %}
@@ -43,6 +52,19 @@
                 <button type="button" onclick="hideRenamePopover()">Cancel</button>
             </div>
             <div id="rename-error" class="rename-error"></div>
+        </div>
+    </div>
+    {% endif %}
+    {% if detail.can_set_marker %}
+    <div id="marker-popover" class="rename-popover marker-popover" style="display: none;">
+        <div class="rename-popover-content">
+            <label>Map marker:</label>
+            <div class="marker-popover-buttons">
+                <button type="button" class="marker-option{% if detail.star_marker_type == 'CIRCLE' %} is-active{% endif %}" onclick="submitStarMarker('CIRCLE')">Circle</button>
+                <button type="button" class="marker-option{% if detail.star_marker_type == 'X' %} is-active{% endif %}" onclick="submitStarMarker('X')">X</button>
+                <button type="button" class="marker-option{% if not detail.star_marker_type %} is-active{% endif %}" onclick="submitStarMarker('CLEAR')">Clear</button>
+            </div>
+            <div id="marker-error" class="rename-error"></div>
         </div>
     </div>
     {% endif %}
@@ -362,19 +384,83 @@
     {% endif %}
 </div>
 </div>
-{% if detail.is_owned %}
+{% if detail.is_owned or detail.can_set_marker %}
 <script>
 function showRenamePopover() {
     var popover = document.getElementById('rename-popover');
     var input = document.getElementById('rename-input');
+    hideMarkerPopover();
+    if (!popover || !input) {
+        return;
+    }
     popover.style.display = 'block';
     input.focus();
     input.select();
 }
 
 function hideRenamePopover() {
-    document.getElementById('rename-popover').style.display = 'none';
-    document.getElementById('rename-error').textContent = '';
+    var popover = document.getElementById('rename-popover');
+    var error = document.getElementById('rename-error');
+    if (popover) {
+        popover.style.display = 'none';
+    }
+    if (error) {
+        error.textContent = '';
+    }
+}
+
+function toggleMarkerPopover() {
+    var popover = document.getElementById('marker-popover');
+    var error = document.getElementById('marker-error');
+    hideRenamePopover();
+    if (!popover) {
+        return;
+    }
+    if (error) {
+        error.textContent = '';
+    }
+    popover.style.display = popover.style.display === 'block' ? 'none' : 'block';
+}
+
+function hideMarkerPopover() {
+    var popover = document.getElementById('marker-popover');
+    var error = document.getElementById('marker-error');
+    if (popover) {
+        popover.style.display = 'none';
+    }
+    if (error) {
+        error.textContent = '';
+    }
+}
+
+function submitStarMarker(markerType) {
+    var errorDiv = document.getElementById('marker-error');
+    var csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    var csrfToken = (csrfInput && csrfInput.value) ? csrfInput.value : '{{ csrf_token }}';
+    var starId = '{{ detail.star_short_id|default:"" }}';
+    var baseUrl = '{% url "dj4xol:game" game.short_id %}';
+
+    fetch(baseUrl + 'marker/' + starId + '/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': csrfToken
+        },
+        body: 'marker_type=' + encodeURIComponent(markerType)
+    })
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+        if (data.success) {
+            location.reload();
+        } else if (errorDiv) {
+            errorDiv.textContent = data.error || 'Failed to save marker';
+        }
+    })
+    .catch(function() {
+        if (errorDiv) {
+            errorDiv.textContent = 'Network error';
+        }
+    });
 }
 
 function submitRename() {
@@ -394,10 +480,9 @@ function submitRename() {
         return;
     }
 
-    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    var csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+    var csrfToken = (csrfInput && csrfInput.value) ? csrfInput.value : '{{ csrf_token }}';
     var objectId = '{{ detail.selected_id }}';
-    var gameId = '{{ game.short_id }}';
-
     var baseUrl = '{% url "dj4xol:game" game.short_id %}';
     fetch(baseUrl + 'rename/' + objectId + '/', {
         method: 'POST',
@@ -420,12 +505,15 @@ function submitRename() {
     });
 }
 
-document.getElementById('rename-input').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') {
-        submitRename();
-    } else if (e.key === 'Escape') {
-        hideRenamePopover();
-    }
-});
+var renameInput = document.getElementById('rename-input');
+if (renameInput) {
+    renameInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            submitRename();
+        } else if (e.key === 'Escape') {
+            hideRenamePopover();
+        }
+    });
+}
 </script>
 {% endif %}

@@ -93,10 +93,15 @@ def vague_threat_phrase(contract):
 def player_display_name(player, include_account=True):
     if not player:
         return 'Unknown race'
+    race_name = (
+        getattr(player, 'plural_name', None) or
+        getattr(player, 'name', None) or
+        'Unknown race'
+    )
     if not include_account:
-        return getattr(player, 'name', None) or 'Unknown race'
+        return race_name
     alias = getattr(getattr(player, 'account', None), 'alias', None) or 'Unknown'
-    return '%s (%s)' % (player.name, alias)
+    return '%s (%s)' % (race_name, alias)
 
 
 def diplomatic_actions_locked(player):
@@ -295,28 +300,12 @@ def format_contract_clause_as_form_phrase(contract, prefix, viewer=None, include
 
 
 def format_contract_summary(contract, viewer=None, include_links=True, include_sender_account=True):
-    viewer = viewer or contract.recipient
-    request_text = format_contract_clause(contract, 'request', viewer=viewer, include_links=include_links)
-    offer_text = format_contract_clause(contract, 'offer', viewer=viewer, include_links=include_links)
-    sender_label = escape(player_display_name(contract.sender, include_account=include_sender_account))
-    sender_is_viewer = getattr(contract.sender, 'id', None) == getattr(viewer, 'id', None)
-    request_subject = (
-        escape(player_display_name(contract.recipient, include_account=include_sender_account))
-        if sender_is_viewer else
-        'we'
-    )
-    joiner = (
-        'or else'
-        if contract.offer_condition_type == DiplomaticContract.CONDITION_OR_ELSE
-        else 'in exchange for'
-    )
-    return '%s %s %s %s %s %s.' % (
-        sender_label,
-        _temperature_verb(contract.temperature, subject_is_we=sender_is_viewer),
-        request_subject,
-        request_text,
-        joiner,
-        offer_text,
+    return format_contract_statement(
+        contract,
+        viewer=viewer,
+        include_links=include_links,
+        include_sender_account=include_sender_account,
+        emphasize_actions=False,
     )
 
 

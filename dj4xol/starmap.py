@@ -1,6 +1,6 @@
 from math import cos, sin, radians
 from html import escape
-from .models import Game, Player, Fleet, Star, Salvage, Anomaly, Report
+from .models import Game, Player, Fleet, Star, Salvage, Anomaly, Report, PlayerStarMarker
 from .anomaly_thumbnails import nebula_palette_from_thumbnail
 from .scanners import (
     fleet_visible_to_player,
@@ -64,12 +64,19 @@ class StarMap():
         self.star_report_tiers = {}
         self.fleet_report_tiers = {}
         self.salvage_report_tiers = {}
+        self.star_markers = {}
         self.explored_star_ids = set()
         self.explored_salvage_ids = set()
         if self.spectator:
             self.explored_star_ids = set(self.stars.values_list('id', flat=True))
             self.explored_salvage_ids = set(self.salvages.values_list('id', flat=True))
         elif self.player:
+            self.star_markers = dict(
+                PlayerStarMarker.objects.filter(player=self.player).values_list(
+                    'star_id',
+                    'marker_type',
+                )
+            )
             reports = list(Report.objects.filter(
                 game=self.game,
                 player=self.player,
@@ -383,6 +390,10 @@ class StarMap():
     ):
         """Render a star object on map using HTML"""
         explored_class = self._get_exploration_class(star)
+        marker_class = self._get_star_marker_class(star)
+        extra_classes = explored_class
+        if marker_class:
+            extra_classes = f"{extra_classes} {marker_class}".strip()
         if satellite:
             # Satellite stars use dedicated CSS classes
             satellite_class = self._get_satellite_class(star)
@@ -392,7 +403,7 @@ class StarMap():
                 offset_x=offset_x,
                 offset_y=offset_y,
                 class_override=satellite_class,
-                extra_classes=explored_class,
+                extra_classes=extra_classes,
                 selection_object=selection_star,
             )
         else:
@@ -404,9 +415,17 @@ class StarMap():
                 offset_x=offset_x,
                 offset_y=offset_y,
                 class_override=class_override,
-                extra_classes=explored_class,
+                extra_classes=extra_classes,
                 selection_object=selection_star,
             )
+
+    def _get_star_marker_class(self, star):
+        marker_type = self.star_markers.get(getattr(star, 'id', None))
+        if marker_type == PlayerStarMarker.TYPE_CIRCLE:
+            return 'mapstar-marker-circle'
+        if marker_type == PlayerStarMarker.TYPE_X:
+            return 'mapstar-marker-x'
+        return ''
 
     def _get_exploration_class(self, star):
         """Return star exploration visibility class for current player."""

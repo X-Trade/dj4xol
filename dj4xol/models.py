@@ -1035,6 +1035,32 @@ class PlayerNote(models.Model):
         unique_together = [['player', 'note_id']]
 
 
+class PlayerStarMarker(models.Model):
+    """Per-player visual markers for stars on the starmap."""
+    TYPE_CIRCLE = 'CIRCLE'
+    TYPE_X = 'X'
+    TYPE_CHOICES = [
+        (TYPE_CIRCLE, 'Circle'),
+        (TYPE_X, 'X'),
+    ]
+
+    player = models.ForeignKey(
+        Player, related_name='star_markers', on_delete=models.CASCADE
+    )
+    star = models.ForeignKey(
+        Star, related_name='player_markers', on_delete=models.CASCADE
+    )
+    marker_type = models.CharField(
+        max_length=10,
+        choices=TYPE_CHOICES,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [['player', 'star']]
+
+
 class PlayerDiplomaticStance(models.Model):
     player = models.ForeignKey(
         Player, related_name='diplomatic_stances', on_delete=models.CASCADE

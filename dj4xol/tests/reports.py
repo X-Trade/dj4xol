@@ -1209,7 +1209,7 @@ class ScannerReportTest(TestCase):
         self.assertIsNotNone(report)
         self.assertEqual(report.get_report_data().get('report_tier'), 'basic')
 
-    def test_allied_intel_sharing_creates_advanced_fleet_and_colony_reports(self):
+    def test_allied_intel_sharing_creates_advanced_fleet_and_encounter_colony_reports(self):
         shared_fleet = Fleet.objects.create(
             game=self.game,
             player=self.player2,
@@ -1247,8 +1247,11 @@ class ScannerReportTest(TestCase):
             target_id=shared_star.id,
         ).first()
         self.assertIsNotNone(star_report)
-        self.assertEqual(star_report.get_report_data().get('report_tier'), 'advanced')
-        self.assertEqual(star_report.get_report_data().get('player_name'), self.player2.name)
+        star_data = star_report.get_report_data()
+        self.assertEqual(star_data.get('report_tier'), 'encounter')
+        self.assertEqual(star_data.get('player_name'), self.player2.name)
+        self.assertIn('mines', star_data)
+        self.assertIn('shipyards', star_data)
 
     def test_advanced_scanner_reports_salvage_and_anomaly(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=6, x=20, y=20)

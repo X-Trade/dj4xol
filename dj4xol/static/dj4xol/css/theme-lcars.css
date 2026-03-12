@@ -1093,14 +1093,16 @@ input[type="range"]::-webkit-slider-thumb {
     color: #ff9966;
 }
 
-.rename-popover-buttons button {
+.rename-popover-buttons button,
+.marker-popover-buttons button {
     background: #9999cc;
     color: #000;
     border: none;
     border-radius: 10px;
 }
 
-.rename-popover-buttons button:hover {
+.rename-popover-buttons button:hover,
+.marker-popover-buttons button:hover {
     background: #ccccff;
 }
 
