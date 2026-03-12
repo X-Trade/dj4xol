@@ -1719,6 +1719,10 @@ class DetailBuilder():
                 'short_id': o.short_id,
                 'target': target,
                 'target_link': target_link,
+                'target_kind': kind,
+                'target_short_id': getattr(obj, 'short_id', ''),
+                'target_x': x,
+                'target_y': y,
                 'warpfactor': o.warpfactor,
                 'eta_years': eta_years,
                 'repeat': o.repeat,
@@ -1727,8 +1731,14 @@ class DetailBuilder():
                 'transfer_player_name': (
                     o.transfer_player.name if getattr(o, 'transfer_player_id', None) else None
                 ),
+                'transfer_player_short_id': (
+                    o.transfer_player.short_id if getattr(o, 'transfer_player_id', None) else ''
+                ),
                 'patrol_radius': o.patrol_radius,
+                'intercept_speed': o.intercept_speed,
                 'mine_until_full': bool(o.mine_until_full),
+                'bomb_until': o.bomb_until,
+                'remotemine_focus': getattr(o, 'remotemine_focus', '') or '',
                 'transfer_type': o.transfer_type,
                 'transfer_ironium': o.transfer_ironium,
                 'transfer_boranium': o.transfer_boranium,

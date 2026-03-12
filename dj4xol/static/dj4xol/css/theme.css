@@ -80,6 +80,8 @@ label {
     color: var(--titlebar-text);
     flex-shrink: 0;
     min-width: 0;
+    position: relative;
+    z-index: 200;
 }
 
 .title-bar .title {
@@ -316,6 +318,7 @@ body:not(.lcars):not(.win95) .detail-header.detail-header-unexplored {
 .nav-menu {
     margin-left: auto;
     position: relative;
+    z-index: 201;
 }
 
 .hamburger {

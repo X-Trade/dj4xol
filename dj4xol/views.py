@@ -27,6 +27,7 @@ from .models import (
 from .email_rollups import (
     send_message_rollup_for_account,
     send_generic_test_email_for_account,
+    send_game_deleted_email,
     send_game_join_email,
 )
 from .decorators import registration_required, player_only_view
@@ -1376,12 +1377,53 @@ def add_fleet_order(request, game_short_id):
     fleet_short_id = request.POST.get('fleet')
     order_type = request.POST.get('order_type', 'MOVE')
     repeat = request.POST.get('repeat') == 'on'
+    edit_order_short_id = (request.POST.get('edit_order') or '').strip().lower()
 
     # Verify fleet belongs to player
     fleet = Fleet.objects.get(short_id=fleet_short_id, game=game, player=player)
 
-    # Create order based on type
-    order = FleetOrders(game=game, fleet=fleet, order_type=order_type, repeat=repeat)
+    if edit_order_short_id:
+        order = FleetOrders.objects.get(
+            short_id=edit_order_short_id,
+            game=game,
+            fleet=fleet,
+        )
+        if order.order_type in {'MOVE', 'INTERCEPT'} or order_type in {'MOVE', 'INTERCEPT'}:
+            return _redirect_preserving_selection(
+                request,
+                game,
+                suppress_autolocate=True,
+            )
+        order.order_type = order_type
+        order.repeat = repeat
+        order.warpfactor = 0
+        order.original_warpfactor = None
+        order.overmax_risk_checked = False
+        order.x = None
+        order.y = None
+        order.target_kind = None
+        order.target_short_id = None
+        order.target_star = None
+        order.target_fleet = None
+        order.target_salvage = None
+        order.transfer_type = None
+        order.transfer_ironium = 0
+        order.transfer_boranium = 0
+        order.transfer_germanium = 0
+        order.transfer_resource_x = 0
+        order.transfer_resource_y = 0
+        order.transfer_resource_z = 0
+        order.transfer_colonists = 0
+        order.transfer_player = None
+        order.patrol_radius = 0
+        order.intercept_speed = 5
+        order.patrol_generated = False
+        order.bomb_until = 'COLONISTS_ZERO'
+        order.mine_until_full = True
+        order.remotemine_focus = ''
+    else:
+        # Create order based on type
+        order = FleetOrders(game=game, fleet=fleet, order_type=order_type, repeat=repeat)
     
     if order_type in ['MOVE', 'INTERCEPT']:
         target_star_id = request.POST.get('target_star')
@@ -1397,6 +1439,8 @@ def add_fleet_order(request, game_short_id):
         ):
             warpfactor = 13
         order.warpfactor = warpfactor
+        order.original_warpfactor = warpfactor
+        order.overmax_risk_checked = False
 
         if target_star_id:
             order.target_star = Star.objects.get(short_id=target_star_id, game=game)
@@ -1645,6 +1689,24 @@ def toggle_fleet_order_repeat(request, game_short_id, order_short_id):
     return _redirect_preserving_selection(request, game)
 
 
+@registration_required()
+def delete_owned_game(request, game_short_id):
+    """Delete a game from the owner's profile list."""
+    account = request.user.dj4xol_account
+    game = get_object_or_404(Game, short_id=game_short_id, owner=account)
+    if request.method == 'POST':
+        notified_account_ids = set()
+        for player_account in Account.objects.filter(
+            players__game=game
+        ).exclude(pk=account.pk).distinct():
+            if player_account.pk in notified_account_ids:
+                continue
+            notified_account_ids.add(player_account.pk)
+            send_game_deleted_email(game, account, player_account)
+        game.delete()
+    return redirect('dj4xol:profile')
+
+
 def _can_publish_public_races(user):
     if user and user.is_staff:
         return True
@@ -1655,22 +1717,25 @@ def _public_server_races_available():
     return ServerRace.objects.filter(public=True, owner__isnull=True).exists()
 
 
-@registration_required()
-def create_race(request):
-    """Create a new custom race template."""
-    account = request.user.dj4xol_account
+def _render_race_form_page(request, account, race=None):
     selected_theme = account.theme if account else 'classic'
     show_public = _can_publish_public_races(request.user)
     selected_race_type = request.GET.get('race_type')
+    is_edit_mode = race is not None
     if request.method == 'POST':
-        form = ServerRaceForm(request.POST, show_public=show_public)
+        form = ServerRaceForm(
+            request.POST,
+            instance=race,
+            show_public=show_public,
+        )
         if form.is_valid():
-            race = form.save(commit=False)
-            race.owner = None if (request.user.is_staff and race.public) else account
-            race.save()
-            return redirect('dj4xol:index')
+            saved_race = form.save(commit=False)
+            saved_race.owner = None if (request.user.is_staff and saved_race.public) else account
+            saved_race.save()
+            return redirect('dj4xol:profile' if is_edit_mode else 'dj4xol:index')
     else:
         form = ServerRaceForm(
+            instance=race,
             show_public=show_public,
             selected_race_type=selected_race_type,
         )
@@ -1685,7 +1750,37 @@ def create_race(request):
         'starting_tech_costs_json': json.dumps(
             get_starting_tech_balance_costs(max_level=max_level)
         ),
+        'is_edit_mode': is_edit_mode,
+        'page_title': 'Edit Race' if is_edit_mode else 'Create Race',
+        'form_heading': 'Edit Custom Race' if is_edit_mode else 'Create New Race',
+        'submit_label': 'Save Race' if is_edit_mode else 'Create Race',
+        'cancel_url': reverse('dj4xol:profile' if is_edit_mode else 'dj4xol:index'),
     })
+
+
+@registration_required()
+def create_race(request):
+    """Create a new custom race template."""
+    account = request.user.dj4xol_account
+    return _render_race_form_page(request, account)
+
+
+@registration_required()
+def edit_race(request, race_short_id):
+    """Edit a custom race template owned by the current account."""
+    account = request.user.dj4xol_account
+    race = get_object_or_404(ServerRace, short_id=race_short_id, owner=account)
+    return _render_race_form_page(request, account, race=race)
+
+
+@registration_required()
+def delete_race(request, race_short_id):
+    """Delete a custom race template owned by the current account."""
+    account = request.user.dj4xol_account
+    race = get_object_or_404(ServerRace, short_id=race_short_id, owner=account)
+    if request.method == 'POST':
+        race.delete()
+    return redirect('dj4xol:profile')
 
 
 @registration_required()
@@ -2297,6 +2392,10 @@ def help_technology(request):
             for prereq in prereq_map.get((tech.category_id, tech.level), [])
         ]
 
+    tech_type_choices = sorted(
+        Technology.TECH_TYPE_CHOICES,
+        key=lambda choice: choice[1].lower(),
+    )
     return render(request, 'dj4xol/help_technology.html', {
         'user_theme': account.theme if account else 'classic',
         'categories': categories,
@@ -2305,7 +2404,7 @@ def help_technology(request):
         'min_level': min_level,
         'max_level': max_level,
         'selected_tech_type': tech_type,
-        'tech_type_choices': Technology.TECH_TYPE_CHOICES,
+        'tech_type_choices': tech_type_choices,
         'search_query': q,
         'all_count': all_count,
         'tech_rows': tech_rows,

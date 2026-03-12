@@ -664,6 +664,18 @@ body.lcars .maparea a.mapstar-name {
     border-color: #888;
 }
 
+@media (hover: none), (pointer: coarse) {
+    .starmap-controls button:hover {
+        background: rgba(40, 40, 40, 0.9);
+        border-color: #666;
+    }
+
+    .starmap-controls button.active:hover {
+        background: rgba(0, 100, 180, 0.9);
+        border-color: #4af;
+    }
+}
+
 .starmap-controls button:active {
     background: rgba(100, 100, 100, 0.9);
 }

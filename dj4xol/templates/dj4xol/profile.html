@@ -139,6 +139,12 @@
                                     <a href="{% url 'dj4xol:game' entry.game.short_id %}" class="game-entry-title">{{ entry.game.name }}</a>
                                     <span class="game-meta">Year {{ entry.game.year }} &middot; {{ entry.status }}</span>
                                 </div>
+                                <div class="game-entry-actions">
+                                    <form method="post" action="{% url 'dj4xol:delete_owned_game' entry.game.short_id %}" class="profile-delete-form" data-item-name="{{ entry.game.name|escape }}" data-item-kind="game">
+                                        {% csrf_token %}
+                                        <button type="button" class="action-link profile-delete-trigger" aria-label="Delete game" title="Delete game">&times;</button>
+                                    </form>
+                                </div>
                             </li>
                         {% endfor %}
                         </ul>
@@ -159,6 +165,13 @@
                                     <span class="game-entry-title">{{ race.name }}</span>
                                     <span class="game-meta">{{ race.race_type.name }}</span>
                                 </div>
+                                <div class="game-entry-actions">
+                                    <a href="{% url 'dj4xol:edit_race' race.short_id %}" class="action-link">Edit</a>
+                                    <form method="post" action="{% url 'dj4xol:delete_race' race.short_id %}" class="profile-delete-form" data-item-name="{{ race.name|escape }}" data-item-kind="race">
+                                        {% csrf_token %}
+                                        <button type="button" class="action-link profile-delete-trigger" aria-label="Delete race" title="Delete race">&times;</button>
+                                    </form>
+                                </div>
                             </li>
                         {% endfor %}
                         </ul>
@@ -170,6 +183,18 @@
                             <a href="{% url 'dj4xol:create_race' %}">Create New Race</a>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="owned-game-delete-overlay" id="owned-game-delete-overlay" hidden>
+            <div class="owned-game-delete-backdrop"></div>
+            <div class="owned-game-delete-popover" role="dialog" aria-modal="true" aria-labelledby="owned-game-delete-title">
+                <h3 id="owned-game-delete-title">Delete Item</h3>
+                <p id="owned-game-delete-message">Delete this item?</p>
+                <div class="owned-game-delete-actions">
+                    <button type="button" class="action-link" id="owned-game-delete-confirm">Delete</button>
+                    <button type="button" class="action-link owned-game-delete-cancel" id="owned-game-delete-cancel">Cancel</button>
                 </div>
             </div>
         </div>
@@ -224,6 +249,43 @@
             var emailPrefStatus = document.getElementById('email-pref-status');
             var csrfToken = '{{ csrf_token }}';
             var emailRollupsSelect = document.getElementById('email-rollups-select');
+            var deleteOverlay = document.getElementById('owned-game-delete-overlay');
+            var deleteMessage = document.getElementById('owned-game-delete-message');
+            var deleteConfirm = document.getElementById('owned-game-delete-confirm');
+            var deleteCancel = document.getElementById('owned-game-delete-cancel');
+            var pendingDeleteForm = null;
+
+            function closeDeleteOverlay() {
+                pendingDeleteForm = null;
+                if (!deleteOverlay) {
+                    return;
+                }
+                deleteOverlay.hidden = true;
+                document.body.classList.remove('owned-game-delete-open');
+            }
+
+            function openDeleteOverlay(formEl) {
+                if (!deleteOverlay || !formEl) {
+                    return;
+                }
+                pendingDeleteForm = formEl;
+                var itemName = formEl.getAttribute('data-item-name') || 'this item';
+                var itemKind = formEl.getAttribute('data-item-kind') || 'item';
+                var itemLabel = itemKind === 'race' ? 'Race' : 'Game';
+                var deleteNoun = itemKind === 'race' ? 'race' : 'game';
+                var deleteVerb = itemKind === 'race'
+                    ? 'Delete "' + itemName + '"? This only removes the template. Players already using it in live games will keep their copied stats.'
+                    : 'Delete "' + itemName + '"? This cannot be undone. Any other players will be informed by email.';
+                var deleteTitle = document.getElementById('owned-game-delete-title');
+                if (deleteTitle) {
+                    deleteTitle.textContent = 'Delete ' + itemLabel;
+                }
+                if (deleteMessage) {
+                    deleteMessage.textContent = deleteVerb;
+                }
+                deleteOverlay.hidden = false;
+                document.body.classList.add('owned-game-delete-open');
+            }
 
             themeOptions.forEach(function(option) {
                 option.addEventListener('click', function() {
@@ -260,6 +322,43 @@
                         themeStatus.textContent = 'Network error';
                     });
                 });
+            });
+
+            document.querySelectorAll('.profile-delete-trigger').forEach(function(button) {
+                button.addEventListener('click', function() {
+                    openDeleteOverlay(button.closest('form'));
+                });
+            });
+
+            if (deleteConfirm) {
+                deleteConfirm.addEventListener('click', function() {
+                    if (pendingDeleteForm) {
+                        pendingDeleteForm.submit();
+                    }
+                });
+            }
+
+            if (deleteCancel) {
+                deleteCancel.addEventListener('click', function() {
+                    closeDeleteOverlay();
+                });
+            }
+
+            if (deleteOverlay) {
+                deleteOverlay.addEventListener('click', function(event) {
+                    if (
+                        event.target === deleteOverlay ||
+                        event.target.classList.contains('owned-game-delete-backdrop')
+                    ) {
+                        closeDeleteOverlay();
+                    }
+                });
+            }
+
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape' && deleteOverlay && !deleteOverlay.hidden) {
+                    closeDeleteOverlay();
+                }
             });
 
             if (emailPrefForm) {

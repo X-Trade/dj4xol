@@ -281,6 +281,13 @@ body.profile-page .columns.two-column .panel.open .panel-scrollable-text {
     flex: 0 0 auto;
     align-items: center;
     flex-wrap: wrap;
+    margin-left: auto;
+    justify-content: flex-end;
+}
+
+.game-entry-actions form {
+    display: inline-flex;
+    margin: 0;
 }
 
 .game-meta {
@@ -289,13 +296,23 @@ body.profile-page .columns.two-column .panel.open .panel-scrollable-text {
 }
 
 .action-link {
-    padding: 4px 12px;
+    padding: 0 12px;
     background: var(--theme-accent);
     color: #fff !important;
+    border: none;
     border-radius: 4px;
     font-size: 0.85em;
     text-decoration: none !important;
     white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: 26px;
+    cursor: pointer;
+    font: inherit;
+    appearance: none;
+    -webkit-appearance: none;
 }
 
 .action-link:hover {
@@ -310,9 +327,87 @@ body.profile-page .columns.two-column .panel.open .panel-scrollable-text {
     pointer-events: none;
 }
 
+.action-link.profile-delete-trigger {
+    width: 26px;
+    min-width: 26px;
+    height: 26px;
+    padding: 0;
+    max-width: 26px;
+    line-height: 1;
+    font-size: 18px;
+    font-weight: 600;
+    background: #c44;
+    color: #fff !important;
+}
+
+.action-link.profile-delete-trigger:hover {
+    background: #a33;
+}
+
 .detail-subpanel--scrollable {
     max-height: 240px;
     overflow-y: auto;
+}
+
+body.owned-game-delete-open {
+    overflow: hidden;
+}
+
+.owned-game-delete-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.owned-game-delete-overlay[hidden] {
+    display: none !important;
+}
+
+.owned-game-delete-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.owned-game-delete-popover {
+    position: relative;
+    width: min(420px, 100%);
+    background: #2b2b2b;
+    border: 1px solid #555;
+    border-radius: 8px;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+    padding: 18px;
+    color: #fff;
+}
+
+.owned-game-delete-popover h3 {
+    margin: 0 0 12px;
+    font-size: 1.05em;
+}
+
+.owned-game-delete-popover p {
+    margin: 0 0 16px;
+    color: #d7d7d7;
+}
+
+.owned-game-delete-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.owned-game-delete-cancel {
+    background: #666;
+}
+
+.owned-game-delete-cancel:hover {
+    background: #757575;
 }
 
 .detail-subpanel .detail-table {
@@ -472,24 +567,5 @@ body.profile-page .columns.two-column .panel.open .panel-scrollable-text {
     .columns.single-column,
     .columns.two-column {
         padding: 10px;
-    }
-
-    .game-list li {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
-    }
-
-    .game-entry-main {
-        width: 100%;
-    }
-
-    .game-entry-title {
-        min-width: auto;
-    }
-
-    .game-entry-actions {
-        width: 100%;
-        margin-top: 4px;
     }
 }
