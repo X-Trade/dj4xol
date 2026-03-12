@@ -10,7 +10,7 @@ class StarNamer():
              'Axolotl', 'Ayeyarwady', 'Areyeready', 'Baekdu', 'Bagu',
              'Bake-eo', 'Indus', 'Sectans', 'Bibha', 'Bodu', 'Bosona',
              'Cexing', 'Chechia', 'Chaophraya', 'Chalawan', 'Detroit',
-             'Deltoton', 'Plymouth', 'Danfeng', 'Ocean', 'Dombay', 'Dofida',
+             'Deltoton', 'Plymouth', 'Danfeng', 'Oceanic', 'Dombay', 'Dofida',
              'Diya', 'Dazzle', 'Blazes', 'Sparkle', 'Yll', 'Ebla', 'Izarra',
              'Dziban', 'Electra', 'Alnath', 'Hubble', 'Tycho', 'Elnath',
              'Edwin', 'Eltanin', 'Elkurud', 'Discovery', 'Oumuamua',
@@ -58,7 +58,7 @@ class StarNamer():
              'London', 'Mesarthim', 'Mimosa', 'Mira', 'Mirach', 'Miram',
              'Mirzam', 'Muphrid', 'Musica', 'Goliath', 'Sparta', 'Dante',
              'Rana', 'Rama', 'Heka', 'Hoedus', 'Tyr', 'Tyl', 'Tip', 'Top',
-             'Free', 'Lush', 'Fire', 'Wolf', 'Smith', 'Coronis', 'Libra',
+             'Lush', 'Fire', 'Wolf', 'Smith', 'Coronis', 'Libra', 'Gert'
              'Librae', 'Chomsky', 'Atlas', 'Apache', 'Io', 'Euridae', 'Cassa',
              'Ganymede', 'Callisto', 'Proxima', 'Makemake', 'Haumea', 'Churn',
              'Chronus', 'Brea', 'Sol', 'Tellar', 'Hydroxus', 'Tallux',
