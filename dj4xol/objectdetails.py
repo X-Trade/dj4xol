@@ -272,6 +272,7 @@ class DetailBuilder():
                      ),
                      'fleet_inventory': self.build_fleet_inventory(),
                      'transfer_targets': self.get_transfer_targets(),
+                     'refuel_targets': self.get_refuel_targets(),
                      'transfer_recipients': self.get_transfer_recipients(),
                      'colonise_targets': self.get_colonise_targets(),
                      'bomb_targets': self.get_bomb_targets(),
@@ -1815,6 +1816,7 @@ class DetailBuilder():
                 'transfer_resource_y': o.transfer_resource_y,
                 'transfer_resource_z': o.transfer_resource_z,
                 'transfer_colonists': o.transfer_colonists,
+                'transfer_fuel': o.transfer_fuel,
                 'target_star': obj if kind == 'star' else None,  # For template access
                 'target_salvage': obj if kind == 'salvage' else None,  # For template access
             }
@@ -2179,7 +2181,7 @@ class DetailBuilder():
         orders = fleet.orders.filter(
             order_type__in=['MOVE', 'TRANSFER', 'INTERCEPT', 'PATROL']
         ).order_by('id')
-        
+
         for order in orders:
             if order.order_type in ['MOVE', 'INTERCEPT', 'PATROL']:
                 _, x, y, kind = order.get_actual_target()
@@ -2823,4 +2825,57 @@ class DetailBuilder():
             'location': (effective_x, effective_y),
             'display_mode': 'multiple',
             'default_target': targets[0]
+        }
+
+    def get_refuel_targets(self):
+        """Get available same-location fleets for refuel orders."""
+        if not isinstance(self.selected_obj, Fleet):
+            return {
+                'targets': [],
+                'location': (0, 0),
+                'display_mode': 'empty',
+                'default_target': None,
+            }
+
+        if not self.player or self.selected_obj.player != self.player:
+            return {
+                'targets': [],
+                'location': (0, 0),
+                'display_mode': 'empty',
+                'default_target': None,
+            }
+
+        effective_x, effective_y = self.get_fleet_effective_location()
+        targets = self._build_location_targets(
+            effective_x,
+            effective_y,
+            include_stars=False,
+            include_fleets=True,
+            include_salvage=False,
+            include_empty=False,
+            include_future_fleets=True,
+            exclude_fleet_id=self.selected_obj.id,
+            include_order_types=['MOVE', 'INTERCEPT', 'PATROL'],
+        )
+        targets = [target for target in targets if target.get('type') == 'fleet']
+
+        if not targets:
+            return {
+                'targets': [],
+                'location': (effective_x, effective_y),
+                'display_mode': 'empty',
+                'default_target': None,
+            }
+        if len(targets) == 1:
+            return {
+                'targets': targets,
+                'location': (effective_x, effective_y),
+                'display_mode': 'single',
+                'default_target': targets[0],
+            }
+        return {
+            'targets': targets,
+            'location': (effective_x, effective_y),
+            'display_mode': 'multiple',
+            'default_target': targets[0],
         }

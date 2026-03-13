@@ -16,6 +16,9 @@
                         {% if order.eta_years is not None %}
                         <div class="order-tooltip"><span>ETA: {{ order.eta_years }} year{{ order.eta_years|pluralize }}</span></div>
                         {% endif %}
+                    {% elif order.order_type == 'REFUEL' %}
+                        <span>Refuel {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
+                        <div class="order-tooltip"><span>Give {{ order.transfer_fuel|floatformat:1 }}mg fuel</span></div>
                     {% elif order.order_type == 'TRANSFER' %}
                         {% if order.transfer_type == 'UNLOAD_ALL' %}
                         <span>Unload All at {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
@@ -146,6 +149,7 @@
             <input type="hidden" name="transfer_resource_y" id="transfer-resource_y-input" value="0">
             <input type="hidden" name="transfer_resource_z" id="transfer-resource_z-input" value="0">
             <input type="hidden" name="transfer_colonists" id="transfer-colonists-input" value="0">
+            <input type="hidden" name="transfer_fuel" id="transfer-fuel-input" value="0">
             <input type="hidden" name="colonise_target" id="colonise-target-input" value="">
             <input type="hidden" name="bomb_target" id="bomb-target-input" value="">
             <input type="hidden" name="bomb_until" id="bomb-until-input" value="COLONISTS_ZERO">
@@ -160,6 +164,7 @@
                 <select id="order-type" class="order-select">
                     <option value="MOVE"{% if not request.GET.order_type or request.GET.order_type == 'MOVE' %} selected{% endif %}>Move to</option>
                     <option value="INTERCEPT"{% if request.GET.order_type == 'INTERCEPT' %} selected{% endif %}>Intercept</option>
+                    <option value="REFUEL"{% if request.GET.order_type == 'REFUEL' %} selected{% endif %}>Refuel</option>
                     <option value="TRANSFER"{% if request.GET.order_type == 'TRANSFER' %} selected{% endif %}>Transfer</option>
                     <option value="GIVE"{% if request.GET.order_type == 'GIVE' %} selected{% endif %}>Give Fleet</option>
                     <option value="COLONISE"{% if request.GET.order_type == 'COLONISE' %} selected{% endif %}>Colonise</option>
@@ -334,6 +339,21 @@
                             </select>
                         {% endif %}
                     </div>
+                    <div class="dest-display-row" id="refuel-destination" style="display: none;">
+                        {% if detail.refuel_targets.display_mode == 'single' %}
+                            <span class="dest-display">{{ detail.refuel_targets.default_target.display_label }}</span>
+                            <input type="hidden" id="refuel-single-target-value" data-target="{{ detail.refuel_targets.default_target.short_id }}">
+                        {% elif detail.refuel_targets.display_mode == 'empty' %}
+                            <span class="dest-display"><em>No friendly fleets here</em></span>
+                            <input type="hidden" id="refuel-empty-target-value" data-target="">
+                        {% else %}
+                            <select id="refuel-target" class="transfer-target-select">
+                                {% for obj in detail.refuel_targets.targets %}
+                                    <option value="{{ obj.short_id }}"{% if forloop.first %} selected{% endif %}>{{ obj.display_label }}</option>
+                                {% endfor %}
+                            </select>
+                        {% endif %}
+                    </div>
                 </div>
 
                 <!-- Move-specific parameters -->
@@ -345,6 +365,19 @@
                             <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.move_default_warp|default:5 }}</span>
                         </div>
                         <div id="warp-cloak-note" class="order-param-hint"{% if not detail.fleet_cargo.move_default_cloaked %} hidden{% endif %}>This vessel will be cloaked at this speed.</div>
+                    </div>
+                </div>
+
+                <div id="refuel-params" class="order-type-params" style="display: none;">
+                    <div class="order-param-row">
+                        <label for="refuel-slider">Fuel</label>
+                        <div class="transfer-slider-row">
+                            <input type="range" id="refuel-slider" min="0" max="{{ detail.fleet_cargo.fuel|floatformat:1 }}" step="0.1" value="0" class="transfer-slider">
+                            <span id="refuel-value" class="transfer-value">0.0mg</span>
+                        </div>
+                    </div>
+                    <div class="colonise-warning" style="color: #888; font-style: italic; padding: 4px 0 0 0;">
+                        Select a fleet target. Fuel given is limited by your current fuel and the target's missing capacity.
                     </div>
                 </div>
 
@@ -550,6 +583,7 @@
     var editOrderInput = document.getElementById('edit-order-input');
     var orderTypeInput = document.getElementById('order-type-input');
     var moveParams = document.getElementById('move-params');
+    var refuelParams = document.getElementById('refuel-params');
     var transferParams = document.getElementById('transfer-params');
     var giveParams = document.getElementById('give-params');
     var coloniseParams = document.getElementById('colonise-params');
@@ -579,6 +613,10 @@
     var warpDisplay = document.getElementById('warp-value');
     var warpInput = document.getElementById('warpfactor-input');
     var warpCloakNote = document.getElementById('warp-cloak-note');
+    var refuelSlider = document.getElementById('refuel-slider');
+    var refuelDisplay = document.getElementById('refuel-value');
+    var refuelInput = document.getElementById('transfer-fuel-input');
+    var refuelTargetInput = document.querySelector('input[name="target_fleet"]');
 
     // Patrol inputs
     var patrolRadiusInput = document.getElementById('patrol-radius');
@@ -690,6 +728,13 @@
 
     function updateAddButtonStateGive() {
         addBtn.disabled = false;
+    }
+
+    function updateAddButtonStateRefuel() {
+        var targetFleet = document.querySelector('input[name="target_fleet"]');
+        var targetFleetId = targetFleet ? targetFleet.value : '';
+        var requestedFuel = refuelInput ? parseFloat(refuelInput.value || '0') : 0;
+        addBtn.disabled = !targetFleetId || !(requestedFuel > 0);
     }
 
     function restoreOrderForm() {
@@ -873,6 +918,17 @@
                 setDestinationText('merge-destination', targetLabel, false);
             }
         }
+
+        var refuelTargetSelect = document.getElementById('refuel-target');
+        if (refuelTargetSelect && kind === 'fleet') {
+            ensureSelectHasOption(refuelTargetSelect, shortId, targetLabel);
+        } else if (kind === 'fleet') {
+            var refuelSingle = document.getElementById('refuel-single-target-value');
+            if (refuelSingle) {
+                refuelSingle.setAttribute('data-target', shortId);
+                setDestinationText('refuel-destination', targetLabel, false);
+            }
+        }
     }
 
     function populateEditForm(button) {
@@ -970,6 +1026,7 @@
         var labels = {
             MOVE: 'Move Order',
             INTERCEPT: 'Intercept Order',
+            REFUEL: 'Refuel Order',
             TRANSFER: 'Transfer Order',
             GIVE: 'Give Fleet Order',
             COLONISE: 'Colonise Order',
@@ -1285,6 +1342,27 @@
         addBtn.disabled = !hasTarget;
     }
 
+    function initializeRefuelTarget() {
+        if (!refuelTargetInput) return;
+
+        var refuelTargetSelect = document.getElementById('refuel-target');
+        if (refuelTargetSelect) {
+            refuelTargetInput.value = refuelTargetSelect.value;
+            return;
+        }
+
+        var singleTargetValue = document.getElementById('refuel-single-target-value');
+        if (singleTargetValue) {
+            refuelTargetInput.value = singleTargetValue.getAttribute('data-target');
+            return;
+        }
+
+        var emptyTargetValue = document.getElementById('refuel-empty-target-value');
+        if (emptyTargetValue) {
+            refuelTargetInput.value = '';
+        }
+    }
+
     function updateAddButtonStatePatrol() {
         var patrolTargetValue = patrolTargetInput ? patrolTargetInput.value : '';
         addBtn.disabled = patrolTargetValue === '';
@@ -1392,10 +1470,12 @@
         var bombDestination = document.getElementById('bomb-destination');
         var remotemineDestination = document.getElementById('remotemine-destination');
         var mergeDestination = document.getElementById('merge-destination');
+        var refuelDestination = document.getElementById('refuel-destination');
         var patrolDestination = document.getElementById('patrol-destination');
         var destRow = document.getElementById('destination-row');
 
         moveParams.style.display = 'none';
+        if (refuelParams) refuelParams.style.display = 'none';
         transferParams.style.display = 'none';
         if (giveParams) giveParams.style.display = 'none';
         if (coloniseParams) coloniseParams.style.display = 'none';
@@ -1404,6 +1484,7 @@
         if (mergeParams) mergeParams.style.display = 'none';
         if (scuttleParams) scuttleParams.style.display = 'none';
         if (patrolParams) patrolParams.style.display = 'none';
+        if (refuelDestination) refuelDestination.style.display = 'none';
 
         if (destRow && currentType !== 'SCUTTLE' && currentType !== 'GIVE') {
             destRow.style.display = '';
@@ -1411,6 +1492,7 @@
 
         if (currentType === 'TRANSFER') {
             moveParams.style.display = 'none';
+            if (refuelParams) refuelParams.style.display = 'none';
             transferParams.style.display = 'block';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (bombParams) bombParams.style.display = 'none';
@@ -1433,6 +1515,7 @@
             initializeTransferTarget();
             updateAddButtonStateTransfer();
         } else if (currentType === 'GIVE') {
+            if (refuelParams) refuelParams.style.display = 'none';
             if (giveParams) giveParams.style.display = 'block';
 
             if (destRow) destRow.style.display = 'none';
@@ -1449,6 +1532,7 @@
             updateAddButtonStateGive();
         } else if (currentType === 'COLONISE') {
             moveParams.style.display = 'none';
+            if (refuelParams) refuelParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'block';
             if (bombParams) bombParams.style.display = 'none';
@@ -1472,6 +1556,7 @@
             updateAddButtonStateColonise();
         } else if (currentType === 'BOMB') {
             moveParams.style.display = 'none';
+            if (refuelParams) refuelParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (bombParams) bombParams.style.display = 'block';
@@ -1494,6 +1579,7 @@
             updateAddButtonStateBomb();
         } else if (currentType === 'REMOTEMINE') {
             moveParams.style.display = 'none';
+            if (refuelParams) refuelParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (bombParams) bombParams.style.display = 'none';
@@ -1517,6 +1603,7 @@
             updateAddButtonStateRemoteMine();
         } else if (currentType === 'MERGE') {
             moveParams.style.display = 'none';
+            if (refuelParams) refuelParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (bombParams) bombParams.style.display = 'none';
@@ -1540,6 +1627,7 @@
             updateAddButtonStateMerge();
         } else if (currentType === 'SCUTTLE') {
             moveParams.style.display = 'none';
+            if (refuelParams) refuelParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (bombParams) bombParams.style.display = 'none';
@@ -1558,6 +1646,7 @@
             if (patrolDestination) patrolDestination.style.display = 'none';
         } else if (currentType === 'PATROL') {
             moveParams.style.display = 'none';
+            if (refuelParams) refuelParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (bombParams) bombParams.style.display = 'none';
@@ -1582,6 +1671,7 @@
             updateAddButtonStatePatrol();
         } else if (currentType === 'INTERCEPT') {
             moveParams.style.display = 'block';
+            if (refuelParams) refuelParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (bombParams) bombParams.style.display = 'none';
@@ -1603,8 +1693,32 @@
                 setMoveTargetInputs(moveTargetSelect.value, moveTargetSelect.options[moveTargetSelect.selectedIndex]);
             }
             updateAddButtonState();
+        } else if (currentType === 'REFUEL') {
+            moveParams.style.display = 'none';
+            if (refuelParams) refuelParams.style.display = 'block';
+            transferParams.style.display = 'none';
+            if (coloniseParams) coloniseParams.style.display = 'none';
+            if (bombParams) bombParams.style.display = 'none';
+            if (remotemineParams) remotemineParams.style.display = 'none';
+            if (mergeParams) mergeParams.style.display = 'none';
+            if (scuttleParams) scuttleParams.style.display = 'none';
+            if (patrolParams) patrolParams.style.display = 'none';
+
+            if (destTargetLabel) destTargetLabel.textContent = 'Target Fleet';
+            if (moveDestination) moveDestination.style.display = 'none';
+            if (transferDestination) transferDestination.style.display = 'none';
+            if (coloniseDestination) coloniseDestination.style.display = 'none';
+            if (bombDestination) bombDestination.style.display = 'none';
+            if (remotemineDestination) remotemineDestination.style.display = 'none';
+            if (mergeDestination) mergeDestination.style.display = 'none';
+            if (refuelDestination) refuelDestination.style.display = 'flex';
+            if (patrolDestination) patrolDestination.style.display = 'none';
+
+            initializeRefuelTarget();
+            updateAddButtonStateRefuel();
         } else {
             moveParams.style.display = 'block';
+            if (refuelParams) refuelParams.style.display = 'none';
             transferParams.style.display = 'none';
             if (coloniseParams) coloniseParams.style.display = 'none';
             if (bombParams) bombParams.style.display = 'none';
@@ -1649,6 +1763,9 @@
             if (warpSlider) {
                 warpSlider.dispatchEvent(new Event('input'));
             }
+            if (refuelSlider) {
+                refuelSlider.dispatchEvent(new Event('input'));
+            }
         });
     }
 
@@ -1692,6 +1809,16 @@
         });
         var initialSelected = moveTargetSelect.options[moveTargetSelect.selectedIndex];
         setMoveTargetInputs(moveTargetSelect.value, initialSelected);
+    }
+
+    if (refuelSlider && refuelDisplay && refuelInput) {
+        refuelSlider.addEventListener('input', function() {
+            var value = parseFloat(refuelSlider.value || '0');
+            refuelInput.value = value.toFixed(1);
+            refuelDisplay.textContent = value.toFixed(1) + 'mg';
+            updateAddButtonStateRefuel();
+        });
+        refuelSlider.dispatchEvent(new Event('input'));
     }
 
     // Transfer target dropdown (only exists in multiple targets mode)
@@ -1789,6 +1916,14 @@
         mergeTargetSelect.addEventListener('change', function() {
             mergeTargetInput.value = this.value;
             updateAddButtonStateMerge();
+        });
+    }
+
+    var refuelTargetSelect = document.getElementById('refuel-target');
+    if (refuelTargetSelect && refuelTargetInput) {
+        refuelTargetSelect.addEventListener('change', function() {
+            refuelTargetInput.value = this.value;
+            updateAddButtonStateRefuel();
         });
     }
 

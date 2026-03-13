@@ -5461,6 +5461,69 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(order.transfer_colonists, 56)
         self.assertTrue(order.repeat)
 
+    def test_add_fleet_order_creates_refuel_order_for_friendly_fleet(self):
+        game = default_game(stars=5, fleets=2)
+        player = game.players.first()
+        fleet = player.fleets.order_by('id').first()
+        target_fleet = player.fleets.exclude(id=fleet.id).first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'REFUEL',
+                'target_fleet': target_fleet.short_id,
+                'warpfactor': '6',
+                'transfer_fuel': '12.5',
+                'repeat': 'on',
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+            }
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order = fleet.orders.get(order_type='REFUEL')
+        self.assertEqual(order.target_fleet_id, target_fleet.id)
+        self.assertAlmostEqual(order.transfer_fuel, 12.5, places=4)
+        self.assertTrue(order.repeat)
+
+    def test_add_fleet_order_allows_refuel_to_enemy_fleet(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        other_user = User.objects.create_user('refuel_enemy', 'refuel_enemy@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='RFE')
+        enemy_player = GameFactory(game).join_player(other_account, get_default_race())
+        target_fleet = enemy_player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'REFUEL',
+                'target_fleet': target_fleet.short_id,
+                'warpfactor': '6',
+                'transfer_fuel': '12.5',
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+            }
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order = fleet.orders.get(order_type='REFUEL')
+        self.assertEqual(order.target_fleet_id, target_fleet.id)
+        self.assertAlmostEqual(order.transfer_fuel, 12.5, places=4)
+
     def test_add_fleet_order_does_not_edit_move_orders(self):
         game = default_game(stars=5, fleets=2)
         player = game.players.first()

@@ -1113,6 +1113,7 @@ class FleetOrders(AbstractGameObject):
     ORDER_TYPE_CHOICES = [
         ('MOVE', 'Move'),
         ('INTERCEPT', 'Intercept'),
+        ('REFUEL', 'Refuel'),
         ('TRANSFER', 'Transfer'),
         ('GIVE', 'Transfer Fleet'),
         ('COLONISE', 'Colonise'),
@@ -1170,6 +1171,7 @@ class FleetOrders(AbstractGameObject):
     transfer_resource_y = models.IntegerField(default=0)
     transfer_resource_z = models.IntegerField(default=0)
     transfer_colonists = models.IntegerField(default=0)
+    transfer_fuel = models.FloatField(default=0.0)
     transfer_player = models.ForeignKey(
         Player,
         null=True,
@@ -1182,6 +1184,7 @@ class FleetOrders(AbstractGameObject):
     patrol_radius = models.IntegerField(default=0)
     intercept_speed = models.IntegerField(default=5)
     patrol_generated = models.BooleanField(default=False)
+    last_contact_year = models.IntegerField(null=True, blank=True)
 
     # Bombing/remotemining completion parameters
     BOMB_UNTIL_CHOICES = [

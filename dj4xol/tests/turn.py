@@ -7527,6 +7527,199 @@ class TestSecretResourceSalvageDiscovery(TestCase):
 class TestFleetOrderExecution(TestCase):
     """Test fleet order execution behavior fixes."""
 
+    def test_refuel_order_intercepts_friendly_fleet_and_transfers_fuel(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        source = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Tanker',
+            x=10,
+            y=10,
+            ship_count=1,
+            integrity=100,
+            fuel=30.0,
+            max_fuel=50.0,
+            max_safe_warp=9,
+        )
+        target = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Escort',
+            x=10,
+            y=10,
+            ship_count=1,
+            integrity=100,
+            fuel=5.0,
+            max_fuel=20.0,
+            max_safe_warp=9,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=source,
+            order_type='REFUEL',
+            target_fleet=target,
+            transfer_fuel=10.0,
+        )
+
+        turn = GameTurn(game)
+        turn.fleet_movements()
+
+        source.refresh_from_db()
+        target.refresh_from_db()
+        self.assertAlmostEqual(source.fuel, 20.0, places=4)
+        self.assertAlmostEqual(target.fuel, 15.0, places=4)
+        self.assertFalse(source.orders.filter(order_type='REFUEL').exists())
+
+    def test_refuel_order_waits_while_target_is_out_of_range(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        source = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Tanker',
+            x=10,
+            y=10,
+            ship_count=1,
+            integrity=100,
+            fuel=30.0,
+            max_fuel=50.0,
+            max_safe_warp=3,
+        )
+        target = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Escort',
+            x=30,
+            y=10,
+            ship_count=1,
+            integrity=100,
+            fuel=5.0,
+            max_fuel=20.0,
+            max_safe_warp=9,
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=source,
+            order_type='REFUEL',
+            target_fleet=target,
+            transfer_fuel=10.0,
+        )
+
+        turn = GameTurn(game)
+        turn.fleet_movements()
+
+        source.refresh_from_db()
+        target.refresh_from_db()
+        self.assertNotEqual((source.x, source.y), (target.x, target.y))
+        self.assertAlmostEqual(source.fuel, 30.0, places=4)
+        self.assertAlmostEqual(target.fuel, 5.0, places=4)
+        self.assertTrue(source.orders.filter(id=order.id).exists())
+
+    def test_refuel_order_executes_after_preceding_intercept_reaches_target(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        source = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Tanker',
+            x=10,
+            y=10,
+            ship_count=1,
+            integrity=100,
+            fuel=30.0,
+            max_fuel=50.0,
+            max_safe_warp=9,
+        )
+        target = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Escort',
+            x=12,
+            y=10,
+            ship_count=1,
+            integrity=100,
+            fuel=5.0,
+            max_fuel=20.0,
+            max_safe_warp=9,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=source,
+            position=1,
+            order_type='INTERCEPT',
+            target_fleet=target,
+            warpfactor=5,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=source,
+            position=2,
+            order_type='REFUEL',
+            target_fleet=target,
+            transfer_fuel=10.0,
+        )
+
+        turn = GameTurn(game)
+        expected_move_cost = turn._movement_fuel_cost(source, 5)
+        turn.fleet_movements()
+
+        source.refresh_from_db()
+        target.refresh_from_db()
+        self.assertEqual((source.x, source.y), (target.x, target.y))
+        self.assertAlmostEqual(source.fuel, 30.0 - expected_move_cost - 10.0, places=4)
+        self.assertAlmostEqual(target.fuel, 15.0, places=4)
+        self.assertFalse(source.orders.filter(order_type='REFUEL').exists())
+
+    def test_refuel_order_can_transfer_fuel_to_other_players_fleet(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        other_user = User.objects.create_user('refuel_target', 'refuel_target@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='RFT')
+        other_player = GameFactory(game).join_player(other_account, get_default_race())
+        source = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Tanker',
+            x=10,
+            y=10,
+            ship_count=1,
+            integrity=100,
+            fuel=30.0,
+            max_fuel=50.0,
+            max_safe_warp=9,
+        )
+        target = Fleet.objects.create(
+            game=game,
+            player=other_player,
+            name='Foreign Escort',
+            x=10,
+            y=10,
+            ship_count=1,
+            integrity=100,
+            fuel=5.0,
+            max_fuel=20.0,
+            max_safe_warp=9,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=source,
+            order_type='REFUEL',
+            target_fleet=target,
+            transfer_fuel=10.0,
+        )
+
+        turn = GameTurn(game)
+        turn.fleet_movements()
+
+        source.refresh_from_db()
+        target.refresh_from_db()
+        self.assertAlmostEqual(source.fuel, 20.0, places=4)
+        self.assertAlmostEqual(target.fuel, 15.0, places=4)
+        self.assertFalse(source.orders.filter(order_type='REFUEL').exists())
+
     def test_transfer_orders_execute_once_per_turn(self):
         """Test that repeating transfer orders only execute once per turn."""
         game = default_game(stars=5, fleets=1)
@@ -9858,6 +10051,37 @@ class TestCombat(TestCase):
         ])
         self.assertEqual(calculate_effective_defenses(star), 15.0)
 
+    def test_ambush_bonus_increases_combat_strength_for_marked_fleet(self):
+        game, player1, player2 = self._create_two_player_game()
+        ambusher = Fleet.objects.create(
+            game=game, player=player1, name="Ambusher",
+            x=10, y=10, ship_count=2, integrity=100
+        )
+        defender = Fleet.objects.create(
+            game=game, player=player2, name="Defender",
+            x=10, y=10, ship_count=2, integrity=100
+        )
+        turn = GameTurn(game)
+        turn._ambush_fleet_ids_for_year = {ambusher.id}
+
+        captured = {}
+
+        def capture_strengths(players, strength_by_player):
+            captured.update(strength_by_player)
+            return players[0]
+
+        with patch.object(turn, '_choose_combat_winner', side_effect=capture_strengths), \
+                patch.object(turn, '_calculate_combat_damage', return_value={
+                    player1: 0.0,
+                    player2: 0.0,
+                }), \
+                patch('dj4xol.turn.roll_attack_scale', return_value=1.0), \
+                patch('dj4xol.turn.roll_defense_scale', return_value=1.0), \
+                patch('dj4xol.turn.roll_ambush_attack_multiplier', return_value=1.25):
+            turn._resolve_battle_at_location(10, 10, [ambusher, defender])
+
+        self.assertGreater(captured[player1], captured[player2])
+
     def test_combat_destruction_creates_salvage_and_messages(self):
         """Combat destroys fleets, creates salvage, and sends combat messages."""
         game, player1, player2 = self._create_two_player_game()
@@ -10323,6 +10547,93 @@ class TestInterceptPatrolOrders(TestCase):
         # Target should have moved; stacked start must not lock it in place.
         self.assertNotEqual((target.x, target.y), (10, 10))
         self.assertNotEqual((interceptor.x, interceptor.y), (target.x, target.y))
+
+    def test_cloaked_enemy_intercept_marks_fresh_ambush_and_persists_contact_year(self):
+        game, player1, player2 = self._create_two_player_game()
+
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Shadow Interceptor",
+            x=20, y=10, ship_count=1, integrity=100, max_safe_warp=13,
+            max_cloaked_warp=5,
+        )
+        target = Fleet.objects.create(
+            game=game, player=player2, name="Target",
+            x=20, y=10, ship_count=1, integrity=100, max_safe_warp=13
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='INTERCEPT',
+            target_fleet=target, warpfactor=5, repeat=True,
+        )
+
+        turn = GameTurn(game)
+        order = interceptor.orders.get()
+        turn._mark_cloaked_intercept_ambush(interceptor, order)
+        turn._handle_repeating_order(order)
+
+        repeat_order = interceptor.orders.exclude(id=order.id).get()
+        self.assertIn(interceptor.id, turn._ambush_fleet_ids_for_year)
+        self.assertEqual(repeat_order.last_contact_year, game.year)
+
+    def test_cloaked_intercept_ambush_requires_a_gap_year(self):
+        game, player1, player2 = self._create_two_player_game()
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Shadow Interceptor",
+            x=20, y=10, ship_count=1, integrity=100, max_cloaked_warp=5, travel_warp=5
+        )
+        target = Fleet.objects.create(
+            game=game, player=player2, name="Target",
+            x=20, y=10, ship_count=1, integrity=100
+        )
+        order = FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='INTERCEPT',
+            target_fleet=target, warpfactor=5, last_contact_year=game.year - 1,
+        )
+
+        turn = GameTurn(game)
+        turn._locked_fleet_ids_for_year = set()
+        turn._ambush_fleet_ids_for_year = set()
+        turn._fleet_start_positions_for_year = {
+            interceptor.id: (15, 11),
+            target.id: (20, 10),
+        }
+        turn._lock_successful_enemy_intercept(interceptor, order)
+        self.assertNotIn(interceptor.id, turn._ambush_fleet_ids_for_year)
+        self.assertEqual(order.last_contact_year, game.year)
+
+        order.last_contact_year = game.year - 2
+        turn._ambush_fleet_ids_for_year = set()
+        turn._lock_successful_enemy_intercept(interceptor, order)
+        self.assertIn(interceptor.id, turn._ambush_fleet_ids_for_year)
+        self.assertEqual(order.last_contact_year, game.year)
+
+    def test_cloaked_intercept_continuing_stacked_encounter_updates_contact_year_without_ambush(self):
+        game, player1, player2 = self._create_two_player_game()
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Shadow Interceptor",
+            x=20, y=10, ship_count=1, integrity=100, max_cloaked_warp=5, travel_warp=5
+        )
+        target = Fleet.objects.create(
+            game=game, player=player2, name="Target",
+            x=20, y=10, ship_count=1, integrity=100
+        )
+        order = FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='INTERCEPT',
+            target_fleet=target, warpfactor=5, last_contact_year=game.year - 2,
+        )
+
+        turn = GameTurn(game)
+        turn._locked_fleet_ids_for_year = set()
+        turn._ambush_fleet_ids_for_year = set()
+        turn._fleet_start_positions_for_year = {
+            interceptor.id: (20, 10),
+            target.id: (20, 10),
+        }
+
+        turn._lock_successful_enemy_intercept(interceptor, order)
+
+        self.assertNotIn(interceptor.id, turn._ambush_fleet_ids_for_year)
+        self.assertEqual(order.last_contact_year, game.year)
+        self.assertEqual(turn._locked_fleet_ids_for_year, set())
 
     def test_intercept_destination_predicts_comet_heading(self):
         from ..models import FleetOrders
