@@ -3431,6 +3431,10 @@ def diplomacy(request, game_short_id):
             if contract.offer_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY and contract.recipient_id == player.id:
                 ensure_specific_colony_report(contract)
             progress = _diplomacy_contract_progress(contract, player)
+            if contract.status == DiplomaticContract.STATUS_SENT and contract.recipient_id == player.id:
+                status_label = 'Received'
+            else:
+                status_label = contract.get_status_display()
             contract_rows.append({
                 'short_id': contract.short_id,
                 'summary_html': format_contract_statement(
@@ -3440,7 +3444,7 @@ def diplomacy(request, game_short_id):
                     include_sender_account=False,
                     emphasize_actions=True,
                 ),
-                'status': contract.get_status_display(),
+                'status': status_label,
                 'status_raw': contract.status,
                 'request_clause_type': contract.request_clause_type,
                 'expires_year': int(contract.expires_year or 0),

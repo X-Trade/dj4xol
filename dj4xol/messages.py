@@ -1294,7 +1294,7 @@ class FleetMergedMessageFactory(MessageFactory):
 class FleetTransferredMessageFactory(MessageFactory):
     """Messages for fleet ownership transfers initiated by the current owner."""
     category = 'GENERAL'
-    priority = False
+    priority = True
     templates_to_player = [
         "{fleet} was transferred to {recipient}.",
         "Transfer complete: {fleet} now belongs to {recipient}.",
@@ -1325,7 +1325,7 @@ class FleetTransferredMessageFactory(MessageFactory):
 class FleetReceivedMessageFactory(MessageFactory):
     """Messages for players receiving a transferred fleet."""
     category = 'GENERAL'
-    priority = False
+    priority = True
     templates = [
         "{fleet} was transferred to us by {sender}.",
         "We received {fleet} from {sender}.",
@@ -1340,6 +1340,50 @@ class FleetReceivedMessageFactory(MessageFactory):
     def format_message(self):
         return random.choice(self.templates).format(
             fleet=format_map_object_reference(self.fleet),
+            sender=self.sender_name,
+        )
+
+
+class ColonyTransferredMessageFactory(MessageFactory):
+    """Messages for colony ownership transfers initiated by the current owner."""
+    category = 'GENERAL'
+    priority = True
+    templates = [
+        "{star} was transferred to {recipient}.",
+        "Transfer complete: {star} now belongs to {recipient}.",
+        "{star} was handed over to {recipient}.",
+    ]
+
+    def __init__(self, game, player, star, recipient_name, message=None):
+        super().__init__(game, player, message, intensity=0.0)
+        self.star = star
+        self.recipient_name = recipient_name
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=format_map_object(self.star),
+            recipient=self.recipient_name,
+        )
+
+
+class ColonyReceivedMessageFactory(MessageFactory):
+    """Messages for players receiving a colony transfer."""
+    category = 'GENERAL'
+    priority = True
+    templates = [
+        "{star} was transferred to us by {sender}.",
+        "We received control of {star} from {sender}.",
+        "{sender} transferred ownership of {star} to us.",
+    ]
+
+    def __init__(self, game, player, star, sender_name, message=None):
+        super().__init__(game, player, message, intensity=0.0)
+        self.star = star
+        self.sender_name = sender_name
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=format_map_object(self.star),
             sender=self.sender_name,
         )
 

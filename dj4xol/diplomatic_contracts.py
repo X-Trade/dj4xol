@@ -899,9 +899,27 @@ def _transfer_specific_colony_clause(contract, prefix, handle_homeworld_loss=Tru
     if not _specific_colony_clause_available(contract, prefix):
         return False
 
+    from .messages import ColonyReceivedMessageFactory, ColonyTransferredMessageFactory
+
     _evacuate_colony_to_owner_fleets(star, grant_source)
     star.player = grant_target
     star.save(update_fields=['player'])
+    sender_msg = ColonyTransferredMessageFactory(
+        contract.game,
+        grant_source,
+        star,
+        grant_target.name,
+    ).new_message()
+    sender_msg.year = contract.game.year
+    sender_msg.save()
+    recipient_msg = ColonyReceivedMessageFactory(
+        contract.game,
+        grant_target,
+        star,
+        grant_source.name,
+    ).new_message()
+    recipient_msg.year = contract.game.year
+    recipient_msg.save()
     if handle_homeworld_loss:
         _handle_diplomatic_homeworld_loss(contract.game, grant_source, star)
     return True
@@ -985,6 +1003,8 @@ def _apply_clause_immediately(contract, prefix, year):
         _set_pending_stance(grant_source, grant_target, stance)
         return True
     if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_FLEET:
+        from .messages import FleetReceivedMessageFactory, FleetTransferredMessageFactory
+
         fleet = getattr(contract, '%s_fleet' % prefix)
         if fleet is None or fleet.game_id != contract.game_id or fleet.player_id != grant_source.id:
             return False
@@ -992,6 +1012,22 @@ def _apply_clause_immediately(contract, prefix, year):
         fleet.player = grant_target
         fleet.travel_warp = 0
         fleet.save(update_fields=['player', 'travel_warp'])
+        sender_msg = FleetTransferredMessageFactory(
+            contract.game,
+            grant_source,
+            fleet,
+            recipient_name=grant_target.name,
+        ).new_message()
+        sender_msg.year = contract.game.year
+        sender_msg.save()
+        recipient_msg = FleetReceivedMessageFactory(
+            contract.game,
+            grant_target,
+            fleet,
+            grant_source.name,
+        ).new_message()
+        recipient_msg.year = contract.game.year
+        recipient_msg.save()
         return True
     if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
         return _transfer_specific_colony_clause(contract, prefix, handle_homeworld_loss=True)
@@ -1023,21 +1059,29 @@ def _mark_contract_fulfilled(contract, year):
     contract.fulfilled_year = year
     contract.handled_year = year
     contract.save(update_fields=['status', 'fulfilled_year', 'handled_year', 'updated_at'])
-    summary = format_contract_summary(
+    sender_summary = format_contract_summary(
         contract,
         viewer=contract.sender,
+        include_links=False,
+        include_sender_account=False,
+    )
+    recipient_summary = format_contract_summary(
+        contract,
+        viewer=contract.recipient,
         include_links=False,
         include_sender_account=False,
     )
     _create_contract_status_message(
         contract.sender,
         contract,
-        'Diplomatic request fulfilled: %s' % summary,
+        'Diplomatic request fulfilled: %s' % sender_summary,
+        priority=True,
     )
     _create_contract_status_message(
         contract.recipient,
         contract,
-        'Diplomatic request fulfilled: %s' % summary,
+        'Diplomatic request fulfilled: %s' % recipient_summary,
+        priority=True,
     )
 
 
@@ -1268,21 +1312,27 @@ def mark_countered(original_contract, new_contract):
     original_contract.status = DiplomaticContract.STATUS_COUNTERED
     original_contract.handled_year = original_contract.game.year
     original_contract.save(update_fields=['status', 'handled_year', 'updated_at'])
-    summary = format_contract_summary(
+    sender_summary = format_contract_summary(
         original_contract,
         viewer=original_contract.sender,
+        include_links=False,
+        include_sender_account=False,
+    )
+    recipient_summary = format_contract_summary(
+        original_contract,
+        viewer=original_contract.recipient,
         include_links=False,
         include_sender_account=False,
     )
     _create_contract_status_message(
         original_contract.sender,
         original_contract,
-        'Diplomatic request countered: %s' % summary,
+        'Diplomatic request countered: %s' % sender_summary,
     )
     _create_contract_status_message(
         original_contract.recipient,
         original_contract,
-        'Diplomatic request countered: %s' % summary,
+        'Diplomatic request countered: %s' % recipient_summary,
     )
 
 
