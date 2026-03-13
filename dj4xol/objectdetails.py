@@ -605,6 +605,8 @@ class DetailBuilder():
                     detail['fleet_capabilities'] = self._build_fleet_capabilities(
                         data.get('max_safe_warp'),
                         data.get('warp_advantage'),
+                        data.get('max_cloaked_warp', -1),
+                        bool(data.get('advanced_cloak')),
                         data.get('has_bombs'),
                         data.get('has_miners'),
                         bool(data.get('has_fuel_factory')),
@@ -1880,6 +1882,12 @@ class DetailBuilder():
         # Cargo/inventory remains owner-only.
         cargo = self._build_fleet_composition(self.selected_obj)
         cargo['max_safe_warp'] = getattr(self.selected_obj, 'max_safe_warp', None)
+        cargo['max_cloaked_warp'] = getattr(self.selected_obj, 'max_cloaked_warp', -1)
+        cargo['move_default_warp'] = self._fleet_default_move_warp(self.selected_obj)
+        cargo['move_default_cloaked'] = self._fleet_move_speed_is_cloaked(
+            self.selected_obj,
+            cargo['move_default_warp'],
+        )
         if include_cargo or (self.player and self.selected_obj.player == self.player):
             cargo.update({
                 'capacity': self.selected_obj.cargo_capacity,
@@ -1914,6 +1922,8 @@ class DetailBuilder():
         return self._build_fleet_capabilities(
             getattr(self.selected_obj, 'max_safe_warp', None),
             getattr(self.selected_obj, 'warp_advantage', 0.0),
+            getattr(self.selected_obj, 'max_cloaked_warp', -1),
+            bool(getattr(self.selected_obj, 'advanced_cloak', False)),
             self.selected_obj.has_bombs,
             self.selected_obj.has_miners,
             bool(self.selected_obj.has_fuel_factory),
@@ -1958,6 +1968,8 @@ class DetailBuilder():
         self,
         max_safe_warp,
         warp_advantage,
+        max_cloaked_warp,
+        advanced_cloak,
         bombs,
         miners,
         has_fuel_factory,
@@ -1983,6 +1995,15 @@ class DetailBuilder():
             capabilities.append({
                 'label': 'Max Warp',
                 'value': max_warp_value,
+            })
+        cloak_capability = self._fleet_cloak_capability_value(
+            max_cloaked_warp,
+            advanced_cloak,
+        )
+        if cloak_capability:
+            capabilities.append({
+                'label': 'Stealth',
+                'value': cloak_capability,
             })
         if bombs:
             capabilities.append({
@@ -2016,6 +2037,45 @@ class DetailBuilder():
                     'value': scanner_display,
                 })
         return capabilities or None
+
+    def _fleet_cloak_capability_value(self, max_cloaked_warp, advanced_cloak):
+        try:
+            max_cloaked_warp = int(max_cloaked_warp)
+        except (TypeError, ValueError):
+            max_cloaked_warp = -1
+        if advanced_cloak:
+            return 'Advanced'
+        if max_cloaked_warp >= 0:
+            return 'Basic'
+        return None
+
+    def _fleet_default_move_warp(self, fleet):
+        if not fleet:
+            return None
+        try:
+            max_safe_warp = int(getattr(fleet, 'max_safe_warp', 0) or 0)
+        except (TypeError, ValueError):
+            max_safe_warp = 0
+        try:
+            max_cloaked_warp = int(getattr(fleet, 'max_cloaked_warp', -1) or 0)
+        except (TypeError, ValueError):
+            max_cloaked_warp = -1
+        if max_cloaked_warp >= 0:
+            return min(max_safe_warp, max_cloaked_warp)
+        return max_safe_warp
+
+    def _fleet_move_speed_is_cloaked(self, fleet, speed):
+        if not fleet:
+            return False
+        try:
+            speed = int(speed)
+        except (TypeError, ValueError):
+            return False
+        try:
+            max_cloaked_warp = int(getattr(fleet, 'max_cloaked_warp', -1) or 0)
+        except (TypeError, ValueError):
+            max_cloaked_warp = -1
+        return bool(getattr(fleet, 'player_id', None)) and max_cloaked_warp >= 0 and speed <= max_cloaked_warp
 
     def _format_scanner_range(self, basic, advanced, suffix=''):
         """Format scanner range display or return None when no scanners are present."""

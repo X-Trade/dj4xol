@@ -6855,6 +6855,16 @@ class GameTurn():
             ),
         )
         planned_runs = compress_micromanager_order_runs(planned)
+        if preserved and planned_runs:
+            last_preserved = preserved[-1]
+            first_type, first_quantity = planned_runs[0]
+            if last_preserved.order_type == first_type:
+                last_preserved.quantity = (
+                    int(last_preserved.quantity or 0) +
+                    int(first_quantity or 0)
+                )
+                last_preserved.save(update_fields=['quantity'])
+                planned_runs = planned_runs[1:]
 
         tail_base = star.production_orders.exclude(
             id__in=[order.id for order in editable]

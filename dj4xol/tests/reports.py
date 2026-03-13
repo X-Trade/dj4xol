@@ -1388,6 +1388,97 @@ class ScannerReportTest(TestCase):
             'Travelling at Warp 4 | Heading 90.0° | cloaked',
         )
 
+    def test_abandoned_fleet_with_cloak_stats_is_not_treated_as_cloaked(self):
+        scanner = self._create_scanner_fleet(basic=6, advanced=0, x=20, y=20)
+        derelict = Fleet.objects.create(
+            game=self.game,
+            player=None,
+            name='Silent Wreck',
+            x=scanner.x + 3,
+            y=scanner.y,
+            ship_count=1,
+            integrity=40,
+            max_cloaked_warp=0,
+            travel_warp=0,
+        )
+
+        GameTurn(self.game).generate_scanner_reports()
+
+        report = Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=derelict.id,
+        ).first()
+        self.assertIsNotNone(report)
+        self.assertEqual(report.get_report_data().get('report_tier'), 'basic')
+
+    def test_fleet_capabilities_show_basic_or_advanced_stealth_without_cloak_speed(self):
+        basic_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Basic Veil',
+            x=41,
+            y=41,
+            ship_count=1,
+            integrity=100,
+            max_cloaked_warp=5,
+            advanced_cloak=False,
+        )
+        advanced_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Advanced Veil',
+            x=42,
+            y=42,
+            ship_count=1,
+            integrity=100,
+            max_cloaked_warp=6,
+            advanced_cloak=True,
+        )
+
+        basic_detail = DetailBuilder(
+            self.game,
+            selected=basic_fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+        advanced_detail = DetailBuilder(
+            self.game,
+            selected=advanced_fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+
+        self.assertIn(
+            {'label': 'Stealth', 'value': 'Basic'},
+            basic_detail.get('fleet_capabilities') or [],
+        )
+        self.assertIn(
+            {'label': 'Stealth', 'value': 'Advanced'},
+            advanced_detail.get('fleet_capabilities') or [],
+        )
+
+    def test_move_defaults_to_cloaked_speed_when_available(self):
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Stealth Courier',
+            x=55,
+            y=55,
+            ship_count=1,
+            integrity=100,
+            max_safe_warp=9,
+            max_cloaked_warp=5,
+        )
+
+        detail = DetailBuilder(
+            self.game,
+            selected=fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+
+        self.assertEqual(detail['fleet_cargo']['move_default_warp'], 5)
+        self.assertTrue(detail['fleet_cargo']['move_default_cloaked'])
+
     def test_advanced_scanner_reports_salvage_and_anomaly(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=6, x=20, y=20)
         salvage = Salvage.objects.create(
