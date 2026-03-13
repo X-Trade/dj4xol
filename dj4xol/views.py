@@ -4029,6 +4029,49 @@ def resend_email_verification(request):
     return redirect('dj4xol:profile')
 
 
+@registration_required()
+def send_unverified_email_verifications(request):
+    if not request.user.is_staff:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Staff access is required.',
+        }, status=403)
+
+    if request.method != 'POST':
+        return redirect('dj4xol:server_settings')
+
+    sent_count = 0
+    failed_count = 0
+    accounts = Account.objects.filter(email_verified=False).exclude(email='')
+    for account in accounts.iterator():
+        sent, reason = send_email_verification_for_account(account)
+        if sent:
+            sent_count += 1
+        else:
+            failed_count += 1
+
+    total_count = sent_count + failed_count
+    if total_count == 0:
+        messages.success(request, 'No unverified accounts with email addresses.')
+    elif failed_count:
+        messages.warning(
+            request,
+            'Sent verification email to %s unverified account%s; %s failed.' % (
+                sent_count,
+                '' if sent_count == 1 else 's',
+                failed_count,
+            ),
+        )
+    else:
+        messages.success(
+            request,
+            'Sent verification email to %s unverified account%s.' % (
+                sent_count,
+                '' if sent_count == 1 else 's',
+            ),
+        )
+    return redirect('dj4xol:server_settings')
+
+
 @staff_member_required
 def test_email_rollup(request):
     """Trigger a one-off rollup email for the current staff account."""

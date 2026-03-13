@@ -68,6 +68,11 @@ label {
     margin-top: 1em;
 }
 
+.classic .order-param-hint,
+body:not(.lcars):not(.win95) .order-param-hint {
+    font-size: 0.8em;
+}
+
 /* ============================================
    Title Bar
    ============================================ */

@@ -358,19 +358,21 @@
 
                 <!-- Move-specific parameters -->
                 <div id="move-params" class="order-type-params">
-                    <div class="order-param-row">
+                    <div class="order-param-row order-param-row--with-hint">
                         <label for="warp-slider">Speed</label>
                         <div class="speed-row">
                             <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{{ detail.fleet_cargo.move_default_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}">
                             <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.move_default_warp|default:5 }}</span>
                         </div>
-                        <div id="warp-cloak-note" class="order-param-hint"{% if not detail.fleet_cargo.move_default_cloaked %} hidden{% endif %}>Cloaked at this speed.</div>
-                        <div id="warp-fuel-factory-note" class="order-param-hint"{% if not detail.fleet_cargo.move_default_fuel_factory_active %} hidden{% endif %}>Fuel factory runs at this speed.</div>
+                        <div class="order-param-hints">
+                            <div id="warp-cloak-note" class="order-param-hint{% if not detail.fleet_cargo.move_default_cloaked %} is-hidden{% endif %}">Cloaked at this speed.</div>
+                            <div id="warp-fuel-factory-note" class="order-param-hint{% if not detail.fleet_cargo.move_default_fuel_factory_active %} is-hidden{% endif %}">Fuel factory runs at this speed.</div>
+                        </div>
                     </div>
                 </div>
 
                 <div id="refuel-params" class="order-type-params" style="display: none;">
-                    <div class="order-param-row">
+                    <div class="order-param-row order-param-row--with-hint">
                         <label for="refuel-slider">Fuel</label>
                         <div class="transfer-slider-row">
                             <input type="range" id="refuel-slider" min="0" max="{{ detail.fleet_cargo.fuel|floatformat:1 }}" step="0.1" value="0" class="transfer-slider">
@@ -391,14 +393,16 @@
                             <span id="patrol-radius-value" class="warp-value">15 ly</span>
                         </div>
                     </div>
-                    <div class="order-param-row">
+                    <div class="order-param-row order-param-row--with-hint">
                         <label for="intercept-speed-slider">Intercept Speed</label>
                         <div class="speed-row">
                             <input type="range" id="intercept-speed-slider" min="0" max="13" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}">
                             <span id="intercept-speed-value" class="warp-value">Warp {{ detail.fleet_cargo.max_safe_warp|default:5 }}</span>
                         </div>
-                        <div id="intercept-cloak-note" class="order-param-hint"{% if not detail.fleet_cargo.intercept_default_cloaked %} hidden{% endif %}>Cloaked at this speed.</div>
-                        <div id="intercept-fuel-factory-note" class="order-param-hint"{% if not detail.fleet_cargo.intercept_default_fuel_factory_active %} hidden{% endif %}>Fuel factory runs at this speed.</div>
+                        <div class="order-param-hints">
+                            <div id="intercept-cloak-note" class="order-param-hint{% if not detail.fleet_cargo.intercept_default_cloaked %} is-hidden{% endif %}">Cloaked at this speed.</div>
+                            <div id="intercept-fuel-factory-note" class="order-param-hint{% if not detail.fleet_cargo.intercept_default_fuel_factory_active %} is-hidden{% endif %}">Fuel factory runs at this speed.</div>
+                        </div>
                     </div>
                 </div>
 
@@ -2047,10 +2051,13 @@
                 }
             }
             if (warpCloakNote) {
-                warpCloakNote.hidden = !cloakedAtSpeed;
+                warpCloakNote.classList.toggle('is-hidden', !cloakedAtSpeed);
             }
             if (warpFuelFactoryNote) {
-                warpFuelFactoryNote.hidden = !fuelFactoryAtSpeed;
+                warpFuelFactoryNote.classList.toggle(
+                    'is-hidden',
+                    !fuelFactoryAtSpeed
+                );
             }
         }
         warpSlider.addEventListener('input', updateWarpDisplay);
@@ -2114,10 +2121,16 @@
                 }
             }
             if (interceptCloakNote) {
-                interceptCloakNote.hidden = !cloakedAtSpeed;
+                interceptCloakNote.classList.toggle(
+                    'is-hidden',
+                    !cloakedAtSpeed
+                );
             }
             if (interceptFuelFactoryNote) {
-                interceptFuelFactoryNote.hidden = !fuelFactoryAtSpeed;
+                interceptFuelFactoryNote.classList.toggle(
+                    'is-hidden',
+                    !fuelFactoryAtSpeed
+                );
             }
         }
         interceptSpeedSlider.addEventListener('input', updateInterceptDisplay);

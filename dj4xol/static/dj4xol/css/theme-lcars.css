@@ -949,6 +949,10 @@ input[type="range"]::-webkit-slider-thumb {
     color: #cc6699;
 }
 
+.lcars .order-param-hint {
+    font-size: 0.78em;
+}
+
 /* Messages */
 .panel #messages {
     background: transparent;
