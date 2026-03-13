@@ -50,26 +50,54 @@
                                 </div>
                             </div>
                             <hr class="detail-divider">
-                            {% if effect_rows %}
-                            <table class="detail-table">
-                                <thead>
-                                    <tr class="detail-table-section">
-                                        <th>Effect</th>
-                                        <th>Value</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for row in effect_rows %}
-                                    <tr>
-                                        <td>{{ row.name }}</td>
-                                        <td>{{ row.value }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                            {% else %}
-                            <p>No non-default effects are defined for this race type.</p>
-                            {% endif %}
+                            <div class="race-type-browser-grid">
+                                <section class="race-type-subpanel">
+                                    <h3 class="race-type-subpanel-title">Race Traits</h3>
+                                    {% if effect_rows %}
+                                    <table class="detail-table race-type-traits-table">
+                                        <thead>
+                                            <tr class="detail-table-section">
+                                                <th>Effect</th>
+                                                <th>Value</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for row in effect_rows %}
+                                            <tr>
+                                                <td>{{ row.name }}</td>
+                                                <td>{{ row.value }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                    {% else %}
+                                    <p>No non-default effects are defined for this race type.</p>
+                                    {% endif %}
+                                </section>
+                                <section class="race-type-subpanel">
+                                    <h3 class="race-type-subpanel-title">Special Technologies</h3>
+                                    {% if special_technology_rows %}
+                                    <div class="race-type-tech-list">
+                                        {% for tech in special_technology_rows %}
+                                        <div class="race-type-tech-item{% if tech.is_excluded %} race-type-tech-item--excluded{% endif %}">
+                                            <div class="race-type-tech-thumb-wrap{% if tech.is_excluded %} race-type-tech-thumb-wrap--excluded{% endif %}">
+                                                <img class="race-type-tech-thumb" src="{% static tech.thumbnail_path %}" alt="{{ tech.type }}">
+                                                {% if tech.is_excluded %}
+                                                <span class="race-type-tech-excluded-mark" aria-hidden="true">&times;</span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="race-type-tech-body">
+                                                <strong>{{ tech.name }}</strong>
+                                                <span>{{ tech.type }} / L{{ tech.level }}</span>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% else %}
+                                    <p>No special technologies are uniquely available for this race type.</p>
+                                    {% endif %}
+                                </section>
+                            </div>
                             {% endif %}
                         </section>
                         <div class="panel-footer">

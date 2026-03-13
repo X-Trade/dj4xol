@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 class TestHabitabilityMixin(TestCase):
     def setUp(self):
         self.race_type = ServerRaceType.objects.create(
-            code='TEST', name='Test', description='Test'
+            code='TEST', name='Test', description='Test', enabled=False
         )
         self.race = ServerRace.objects.create(
             name='Testling', plural_name='Testlings',

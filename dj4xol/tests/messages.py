@@ -22,7 +22,11 @@ class testDiplomaticMessageFactory(TestCase):
     def setUp(self):
         self.race_type, _ = ServerRaceType.objects.get_or_create(
             code='TEST',
-            defaults={'name': 'Test Race', 'description': 'Default test race type'}
+            defaults={
+                'name': 'Test Race',
+                'description': 'Default test race type',
+                'enabled': False,
+            }
         )
 
     def test_message_is_created(self):

@@ -122,11 +122,13 @@
     display_order: 0
     name: 'Jack of All Trades'
     description: 'A normal race with no special abilities.'
+    has_no_stealth: False
 - model: dj4xol.ServerRaceType
   fields:
     code: 'SCI'
     name: 'Scientists'
     description: 'A race that excels at research.'
+    has_no_stealth: False
     race_creation_points_balance: 6.0
     research_multiplier: 1.5
     manufacturing_multiplier: 0.6
@@ -143,7 +145,7 @@
     name: 'Warmongers'
     has_superweapon: True
     has_advanced_mines: True
-    has_stealth: False
+    has_no_stealth: True
     warp_advantage: -0.2
     scan_multiplier: 0.9
     defence_multiplier: 1.1
@@ -162,6 +164,7 @@
     code: 'MECH'
     name: 'Mechanical'
     race_creation_points_balance: 12.0
+    has_no_stealth: False
     ignores_radiation: True
     ignores_gravity: True
     ignores_temperature: True
@@ -194,7 +197,7 @@
     ignores_temperature: True
     population_cap_multiplier: 1000
     has_terraforming: False
-    has_stealth: True
+    has_no_stealth: False
     stealth_multiplier: 1.6
     population_growth_multiplier: 1.2
     has_advanced_hulls: True
@@ -206,11 +209,13 @@
     code: 'SPRT'
     name: 'Spiritual'
     enabled: False
+    has_no_stealth: False
 - model: dj4xol.ServerRaceType
   fields:
     code: 'TERA'
     name: 'Terraformers'
     enabled: False
+    has_no_stealth: False
     has_advanced_remoteminers: False
     terraforming_multiplier: 2.0
     has_metalurgy: True
@@ -224,6 +229,7 @@
   fields:
     code: 'EXPL'
     name: 'Explorers'
+    has_no_stealth: False
     race_creation_points_balance: 10.0
     ignores_radiation: False
     ignores_temperature: True
@@ -258,7 +264,7 @@
     manufacturing_multiplier: 1.6
     research_multiplier: 1.2
     has_advanced_hulls: True
-    has_stealth: False
+    has_no_stealth: True
 - model: dj4xol.ServerRaceType
   fields:
     code: 'TRAD'
@@ -269,7 +275,7 @@
     combat_multiplier: 0.75
     trade_multiplier: 1.6
     starting_economy: 3
-    has_stealth: False
+    has_no_stealth: True
     cargo_multiplier: 1.6
     diplomacy_multiplier: 1.2
     has_bombs: False
@@ -285,6 +291,7 @@
     code: 'PARA'
     name: 'Parasites'
     description: 'Parasitic races are not very good at research or manufacturing, but they are very good at stealing from and trading with other races.'
+    has_no_stealth: False
     starting_economy: 1
     is_parasitic: True
     population_growth_multiplier: 0.8
@@ -304,6 +311,7 @@
     code: 'BRED'
     name: 'Breeders'
     race_creation_points_balance: 10.0
+    has_no_stealth: True
     population_growth_multiplier: 2.0
     defence_multiplier: 0.6
     ground_force_multiplier: 1.64
@@ -1307,7 +1315,7 @@
     name: 'City Hull'
     description: 'Mobile megastructure for empires at scale.'
     tech_type: 'HULL'
-    params_json: '{"max_cargo_capacity": 10000, "max_fuel": 10000, "hull_thumbnail_class": "city", "defense_level": 1.2}'
+    params_json: '{"max_cargo_capacity": 10000, "max_fuel": 10000, "hull_thumbnail_class": "city", "defense_level": 1.2, "race_type": "has has_advanced_hulls"}'
     display_order: 240
     enabled: True
 
@@ -1762,7 +1770,7 @@
     name: 'Chameleon Cloak'
     description: 'Adaptive masking keeps stealth fleets hidden at moderate warp.'
     tech_type: 'SPECIAL'
-    params_json: '{"max_cloaked_warp": 5, "advanced_cloak": false, "defense_level": -1.00, "race_type": "has has_stealth"}'
+    params_json: '{"max_cloaked_warp": 5, "advanced_cloak": false, "defense_level": -1.00, "race_type": "WAR"}'
     display_order: 400
     enabled: True
 
@@ -1775,7 +1783,7 @@
     name: 'Advanced Cloak'
     description: 'Exotic phase masking defeats ordinary and advanced scanner sweeps alike.'
     tech_type: 'SPECIAL'
-    params_json: '{"max_cloaked_warp": 6, "advanced_cloak": true, "defense_level": -1.60, "race_type": "has has_stealth"}'
+    params_json: '{"max_cloaked_warp": 6, "advanced_cloak": true, "defense_level": -1.60, "race_type": "WAR"}'
     display_order: 405
     enabled: True
 
@@ -1788,7 +1796,7 @@
     name: 'Tactical Cloak'
     description: 'Combat-tuned shrouding preserves stealth at high tactical warp.'
     tech_type: 'SPECIAL'
-    params_json: '{"max_cloaked_warp": 7, "advanced_cloak": true, "defense_level": -2.80, "race_type": "has has_stealth"}'
+    params_json: '{"max_cloaked_warp": 7, "advanced_cloak": true, "defense_level": -1.20, "race_type": "WAR"}'
     display_order: 410
     enabled: True
 
@@ -1801,7 +1809,7 @@
     name: 'Super Cloak'
     description: 'Near-perfect stealth fields keep specialist fleets cloaked at extreme warp.'
     tech_type: 'SPECIAL'
-    params_json: '{"max_cloaked_warp": 9, "advanced_cloak": true, "defense_level": -3.90, "race_type": "has has_stealth"}'
+    params_json: '{"max_cloaked_warp": 9, "advanced_cloak": true, "defense_level": -0.80, "race_type": "WAR"}'
     display_order: 415
     enabled: True
 
@@ -1814,7 +1822,7 @@
     name: 'Prototype Cloak'
     description: 'Early cloak generators only conceal a fleet while holding still.'
     tech_type: 'SPECIAL'
-    params_json: '{"max_cloaked_warp": 0, "advanced_cloak": false, "defense_level": -3.90, "race_type": "has_stealth == False"}'
+    params_json: '{"max_cloaked_warp": 0, "advanced_cloak": false, "defense_level": -3.90, "race_type": "has has_no_stealth == False"}'
     display_order: 420
     enabled: True
 
@@ -1827,7 +1835,7 @@
     name: 'Standard Cloak'
     description: 'Mature civilian cloak fields allow steady hidden travel for non-stealth races.'
     tech_type: 'SPECIAL'
-    params_json: '{"max_cloaked_warp": 5, "advanced_cloak": false, "defense_level": -3.90, "race_type": "has_stealth == False"}'
+    params_json: '{"max_cloaked_warp": 5, "advanced_cloak": false, "defense_level": -2.80, "race_type": "has has_no_stealth == False"}'
     display_order: 425
     enabled: True
 
@@ -1840,6 +1848,6 @@
     name: 'Advanced Cloak Projector'
     description: 'Late-generation cloak projectors give non-stealth races true advanced masking.'
     tech_type: 'SPECIAL'
-    params_json: '{"max_cloaked_warp": 6, "advanced_cloak": true, "defense_level": -3.90, "race_type": "has_stealth == False"}'
+    params_json: '{"max_cloaked_warp": 6, "advanced_cloak": true, "defense_level": -1.80, "race_type": "has has_no_stealth == False"}'
     display_order: 430
     enabled: True

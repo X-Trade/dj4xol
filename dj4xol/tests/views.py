@@ -944,6 +944,8 @@ class TestRaceCreationView(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
         self.race_type = get_default_race_type()
+        self.race_type.enabled = True
+        self.race_type.save(update_fields=['enabled'])
 
     def _race_payload(self, name):
         return {
@@ -1128,6 +1130,8 @@ class TestOnboardingRaceView(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
         self.race_type = get_default_race_type()
+        self.race_type.enabled = True
+        self.race_type.save(update_fields=['enabled'])
 
     def test_onboarding_race_hides_skip_without_public_server_races(self):
         response = self.client.get(reverse('dj4xol:onboarding_race'))
@@ -1171,6 +1175,8 @@ class TestRaceTypeHelpView(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
         self.race_type = get_default_race_type()
+        self.race_type.enabled = True
+        self.race_type.save(update_fields=['enabled'])
 
     def test_help_race_types_renders_single_panel_with_effects(self):
         self.race_type.diplomacy_multiplier = 1.2
@@ -1192,6 +1198,98 @@ class TestRaceTypeHelpView(TestCase):
         self.assertContains(response, '-20%')
         self.assertContains(response, 'Race Balance Points')
         self.assertContains(response, '-4.00 pts')
+        self.assertContains(response, 'Race Traits')
+        self.assertContains(response, 'Special Technologies')
+
+    def test_help_race_types_lists_matching_race_gated_technologies_for_selected_type(self):
+        sci = ServerRaceType.objects.get(code='SCI')
+
+        response = self.client.get(
+            reverse('dj4xol:help_race_types'),
+            {'race_type': sci.code},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.context['special_technology_rows']
+        names = [row['name'] for row in rows]
+        self.assertIn('Mini Cloak', names)
+        self.assertIn('Prototype Wormhole Drive', names)
+
+    def test_help_race_types_joat_lists_cloak_technologies_when_not_no_stealth(self):
+        joat = ServerRaceType.objects.get(code='JOAT')
+
+        response = self.client.get(
+            reverse('dj4xol:help_race_types'),
+            {'race_type': joat.code},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        names = [row['name'] for row in response.context['special_technology_rows']]
+        self.assertNotIn('Chameleon Cloak', names)
+        self.assertNotIn('Advanced Cloak', names)
+        self.assertNotIn('Tactical Cloak', names)
+        self.assertNotIn('Super Cloak', names)
+        self.assertNotIn('Prototype Cloak', names)
+        self.assertNotIn('Standard Cloak', names)
+        self.assertNotIn('Advanced Cloak Projector', names)
+
+    def test_help_race_types_no_stealth_race_shows_civilian_cloaks_as_excluded(self):
+        breeders = ServerRaceType.objects.get(code='BRED')
+
+        response = self.client.get(
+            reverse('dj4xol:help_race_types'),
+            {'race_type': breeders.code},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.context['special_technology_rows']
+        names = [row['name'] for row in rows]
+        self.assertNotIn('Chameleon Cloak', names)
+        self.assertNotIn('Advanced Cloak', names)
+        self.assertNotIn('Tactical Cloak', names)
+        self.assertNotIn('Super Cloak', names)
+        prototype = next(row for row in rows if row['name'] == 'Prototype Cloak')
+        standard = next(row for row in rows if row['name'] == 'Standard Cloak')
+        projector = next(row for row in rows if row['name'] == 'Advanced Cloak Projector')
+        self.assertTrue(prototype['is_excluded'])
+        self.assertTrue(standard['is_excluded'])
+        self.assertTrue(projector['is_excluded'])
+
+    def test_help_race_types_war_shows_not_war_technologies_as_excluded(self):
+        war = ServerRaceType.objects.get(code='WAR')
+
+        response = self.client.get(
+            reverse('dj4xol:help_race_types'),
+            {'race_type': war.code},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.context['special_technology_rows']
+        frigate = next(row for row in rows if row['name'] == 'Frigate Hull')
+        self.assertTrue(frigate['is_excluded'])
+        self.assertContains(response, 'race-type-tech-item--excluded')
+
+    def test_help_race_types_war_lists_war_cloaks_and_excludes_civilian_cloaks(self):
+        war = ServerRaceType.objects.get(code='WAR')
+
+        response = self.client.get(
+            reverse('dj4xol:help_race_types'),
+            {'race_type': war.code},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rows = response.context['special_technology_rows']
+        names = [row['name'] for row in rows]
+        self.assertIn('Chameleon Cloak', names)
+        self.assertIn('Advanced Cloak', names)
+        self.assertIn('Tactical Cloak', names)
+        self.assertIn('Super Cloak', names)
+        prototype = next(row for row in rows if row['name'] == 'Prototype Cloak')
+        standard = next(row for row in rows if row['name'] == 'Standard Cloak')
+        projector = next(row for row in rows if row['name'] == 'Advanced Cloak Projector')
+        self.assertTrue(prototype['is_excluded'])
+        self.assertTrue(standard['is_excluded'])
+        self.assertTrue(projector['is_excluded'])
 
     def test_help_race_types_use_type_link_returns_to_create_race(self):
         response = self.client.get(

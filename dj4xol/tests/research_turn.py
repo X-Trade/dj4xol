@@ -145,6 +145,27 @@ class ResearchTurnTest(TestCase):
         effects = get_player_tech_effects(self.player)
         self.assertEqual(effects['has_miners'], 'LARGE')
 
+    def test_warmongers_unlock_only_war_cloak_branch(self):
+        from ..models import ServerRaceType
+
+        self.player.race_type = ServerRaceType.objects.get(code='WAR')
+        self.player.save(update_fields=['race_type'])
+        self._unlock_all_research_for_player()
+
+        unlocked_names = {tech.name for tech in get_player_unlocked_technologies(self.player)}
+
+        self.assertIn('Chameleon Cloak', unlocked_names)
+        self.assertIn('Advanced Cloak', unlocked_names)
+        self.assertIn('Tactical Cloak', unlocked_names)
+        self.assertIn('Super Cloak', unlocked_names)
+        self.assertNotIn('Prototype Cloak', unlocked_names)
+        self.assertNotIn('Standard Cloak', unlocked_names)
+        self.assertNotIn('Advanced Cloak Projector', unlocked_names)
+
+        effects = get_player_tech_effects(self.player)
+        self.assertEqual(effects['max_cloaked_warp'], 9)
+        self.assertTrue(effects['advanced_cloak'])
+
     def test_research_mineral_progress_persists(self):
         self._reset_research_catalog()
         category = ResearchCategory.objects.create(

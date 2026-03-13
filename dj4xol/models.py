@@ -573,7 +573,7 @@ class ServerRaceType(models.Model):
     has_superweapon = models.BooleanField(default=False)
     has_bombs = models.BooleanField(default=True)
     has_metalurgy = models.BooleanField(default=True)
-    has_stealth = models.BooleanField(default=True)
+    has_no_stealth = models.BooleanField(default=False)
     has_generalised_research = models.BooleanField(default=False)
     is_parasitic = models.BooleanField(default=False)
     is_cybernetic = models.BooleanField(default=False)

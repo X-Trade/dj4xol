@@ -81,7 +81,10 @@ from .technology_thumbnails import (
     get_technology_thumbnail_path,
     get_technology_thumbnail_paths,
 )
-from .technology_gate_rules import describe_race_type_requirement
+from .technology_gate_rules import (
+    describe_race_type_requirement,
+    race_type_requirement_viewer_status,
+)
 from .ship_thumbnail_catalog import SHIP_THUMBNAILS_BY_CLASS
 from .starmap import StarMap
 from .factory import GameFactory
@@ -140,7 +143,7 @@ RACE_TYPE_BOOLEAN_FIELDS = [
     ('has_superweapon', 'Superweapon', True, False),
     ('has_bombs', 'Bombs', False, True),
     ('has_metalurgy', 'Metallurgy', False, True),
-    ('has_stealth', 'Stealth Systems', False, True),
+    ('has_no_stealth', 'No Stealth Systems', True, False),
     ('has_generalised_research', 'Generalised Research', True, False),
     ('is_parasitic', 'Parasitic', True, False),
     ('is_cybernetic', 'Cybernetic', True, False),
@@ -197,6 +200,37 @@ def _race_type_detail_rows(race_type):
         if abs(value) < 1e-9:
             continue
         rows.append({'name': label, 'value': '%+g' % value})
+    return rows
+
+
+def _race_type_special_technology_rows(race_type):
+    rows = []
+    if not race_type:
+        return rows
+    tech_type_labels = dict(Technology.TECH_TYPE_CHOICES)
+    technologies = Technology.objects.select_related('category').filter(
+        enabled=True,
+    ).order_by('level', 'display_order', 'name', 'id')
+    for tech in technologies:
+        try:
+            params = json.loads(getattr(tech, 'params_json', '') or '{}')
+        except (TypeError, ValueError):
+            params = {}
+        if not isinstance(params, dict):
+            params = {}
+        expression = params.get('race_type')
+        if expression in (None, ''):
+            continue
+        status = race_type_requirement_viewer_status(expression, race_type)
+        if status is None:
+            continue
+        rows.append({
+            'name': tech.name,
+            'level': int(getattr(tech, 'level', 0) or 0),
+            'type': tech_type_labels.get(tech.tech_type, tech.tech_type),
+            'thumbnail_path': get_technology_thumbnail_path(tech),
+            'is_excluded': status == 'excluded',
+        })
     return rows
 
 
@@ -2214,6 +2248,7 @@ def help_race_types(request):
         'race_types': race_types,
         'selected_race_type': selected_race_type,
         'effect_rows': _race_type_detail_rows(selected_race_type),
+        'special_technology_rows': _race_type_special_technology_rows(selected_race_type),
         'return_url_name': return_url_name,
         'return_label': return_label,
         'use_type_url': use_type_url,
