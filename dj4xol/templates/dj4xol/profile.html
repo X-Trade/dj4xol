@@ -15,6 +15,7 @@
             <span class="tagline">{{ account.alias }}</span>
             {% include 'dj4xol/_nav_menu.html' with current_page='profile' %}
         </div>
+        {% include 'dj4xol/_form_message_banner.html' %}
         <div class="columns two-column">
             <div class="column column-left">
                 <div class="panel no-transition open" data-panel="account">
@@ -36,7 +37,18 @@
                             </tr>
                             <tr>
                                 <th>Email</th>
-                                <td>{{ account.email }}</td>
+                                <td>
+                                    {{ account.email }}
+                                    {% if account.email_verified %}
+                                    <span class="game-meta">Verified</span>
+                                    {% else %}
+                                    <span class="game-meta">Not verified</span>
+                                    <form method="post" action="{% url 'dj4xol:resend_email_verification' %}" class="inline-form" style="display:inline-block; margin-left:8px;">
+                                        {% csrf_token %}
+                                        <button type="submit" class="action-link">Resend verification</button>
+                                    </form>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% if account.website_url %}
                             <tr>

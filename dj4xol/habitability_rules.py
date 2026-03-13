@@ -62,7 +62,7 @@ class HabitabilityRules:
 
 
 class RaceCreationRules(HabitabilityRules):
-    HABITABILITY_BUDGET = 118.0
+    HABITABILITY_BUDGET = 120.0
     HABITABILITY_COST_MULTIPLIER = 4.0
     WIDTH_COST_MULTIPLIER = 2.0
     MIN_WIDTH = 0.1
@@ -162,7 +162,7 @@ class RaceCreationRules(HabitabilityRules):
         return max(0, self.starting_factories) * 2
 
     def labs_cost(self):
-        return max(0, self.starting_labs) * 8
+        return max(0, self.starting_labs) * 4
 
     def shipyards_cost(self):
         return max(0, self.starting_shipyards) * 4

@@ -138,6 +138,74 @@
                     emailUpdates.addEventListener('change', syncRollups);
                 }
                 syncRollups();
+
+                var websiteInput = document.querySelector('input[name="website_url"]');
+                function websitePrefix() {
+                    return (
+                        (websiteInput && websiteInput.getAttribute('data-url-prefix')) ||
+                        'https://'
+                    );
+                }
+                function syncWebsitePlaceholder() {
+                    if (!websiteInput) {
+                        return;
+                    }
+                    if (!websiteInput.value) {
+                        websiteInput.setAttribute('placeholder', 'optional');
+                    } else {
+                        websiteInput.setAttribute('placeholder', '');
+                    }
+                }
+                if (websiteInput) {
+                    websiteInput.addEventListener('focus', function() {
+                        var prefix = websitePrefix();
+                        var value = (websiteInput.value || '').trim();
+                        if (!value) {
+                            websiteInput.value = prefix;
+                        }
+                        syncWebsitePlaceholder();
+                    });
+                    websiteInput.addEventListener('blur', function() {
+                        var prefix = websitePrefix();
+                        var value = (websiteInput.value || '').trim();
+                        if (!value || value === prefix) {
+                            websiteInput.value = '';
+                        }
+                        syncWebsitePlaceholder();
+                    });
+                    syncWebsitePlaceholder();
+                }
+
+                var fullNameInput = document.querySelector('input[name="full_name"]');
+                function capitaliseNameWords(text) {
+                    var chars = String(text || '').split('');
+                    var shouldUpper = true;
+                    var i;
+                    for (i = 0; i < chars.length; i += 1) {
+                        if (
+                            shouldUpper &&
+                            chars[i].toLowerCase() !== chars[i].toUpperCase()
+                        ) {
+                            chars[i] = chars[i].toUpperCase();
+                            shouldUpper = false;
+                            continue;
+                        }
+                        shouldUpper = /\s/.test(chars[i]);
+                    }
+                    return chars.join('');
+                }
+                if (fullNameInput) {
+                    fullNameInput.addEventListener('blur', function() {
+                        fullNameInput.value = capitaliseNameWords(
+                            fullNameInput.value
+                        );
+                    });
+                    fullNameInput.addEventListener('change', function() {
+                        fullNameInput.value = capitaliseNameWords(
+                            fullNameInput.value
+                        );
+                    });
+                }
             })();
         </script>
         <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>

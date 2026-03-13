@@ -263,6 +263,41 @@ def profanity_filter_settings():
     }
 
 
+class CustomHelpPage(models.Model):
+    slug = models.SlugField(max_length=60, unique=True)
+    title = models.CharField(max_length=120)
+    tagline = models.CharField(max_length=120, blank=True, default='')
+    summary = models.CharField(max_length=255, blank=True, default='')
+    nav_order = models.IntegerField(default=100)
+    published = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nav_order', 'title', 'id']
+
+    def __str__(self):
+        return '%s' % (self.title or self.slug)
+
+
+class CustomHelpPageBlock(models.Model):
+    page = models.ForeignKey(
+        CustomHelpPage,
+        related_name='blocks',
+        on_delete=models.CASCADE,
+    )
+    display_order = models.IntegerField(default=10)
+    heading = models.CharField(max_length=120, blank=True, default='')
+    body = models.TextField(blank=True, default='')
+
+    class Meta:
+        ordering = ['display_order', 'id']
+
+    def __str__(self):
+        heading = self.heading or 'Block'
+        return '%s: %s' % (self.page.title, heading)
+
+
 class Account(models.Model):
     """A dj4xol account linked to a Django user."""
     THEME_CHOICES = [
@@ -287,6 +322,8 @@ class Account(models.Model):
     email_game_updates = models.BooleanField(default=True)
     email_game_rollups_per_day = models.IntegerField(default=1)
     email_newsletter = models.BooleanField(default=True)
+    email_verified = models.BooleanField(default=False)
+    email_verification_key = models.CharField(max_length=64, blank=True, default='')
     email_unsubscribe_key = models.CharField(max_length=64, blank=True, default='')
     theme = models.CharField(max_length=20, choices=THEME_CHOICES, default='classic')
     onboarding_step = models.CharField(
@@ -317,6 +354,8 @@ class Account(models.Model):
             profanity_whitelist=profanity_filter['whitelist'],
             profanity_blacklist=profanity_filter['blacklist'],
         )
+        if not self.email_verification_key:
+            self.email_verification_key = uuid.uuid4().hex
         if not self.email_unsubscribe_key:
             self.email_unsubscribe_key = uuid.uuid4().hex
         super(Account, self).save(*args, **kwargs)
