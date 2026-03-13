@@ -22,7 +22,7 @@ from .models import (
     Game, Player, ServerSettings, ServerRace, ServerRaceType, Account, GameInvitation, Fleet,
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology,
     ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
-    Spectator, PlayerStarMarker, profanity_filter_settings, server_setting_enabled,
+    Spectator, PlayerDiplomaticStance, PlayerStarMarker, profanity_filter_settings, server_setting_enabled,
     server_setting_int, DiplomaticContract,
 )
 from .email_rollups import (
@@ -45,6 +45,7 @@ from .research import (
     get_player_available_production_orders, get_player_unlocked_technologies,
 )
 from .diplomacy import (
+    STANCE_ALLIED,
     STANCE_CHOICES,
     STANCE_COLD,
     STANCE_HOSTILE,
@@ -2248,6 +2249,8 @@ def _format_tech_param_key(key):
         'offense_level': 'Offense Level',
         'defense_level': 'Defense Level',
         'colony_defense_level': 'Colony Defense Level',
+        'max_cloaked_warp': 'Max Cloaked Warp',
+        'advanced_cloak': 'Advanced Cloak',
         'terraforming_rate': 'Terraforming Rate',
         'race_type': 'Race Type',
     }
@@ -2281,6 +2284,8 @@ def _format_tech_param_value(key, value):
             return '{}%'.format(int(round(float(value) * 100.0)))
         except (TypeError, ValueError):
             return value
+    if key == 'advanced_cloak':
+        return 'Yes' if bool(value) else 'No'
     if key == 'race_type':
         return describe_race_type_requirement(value)
     return value
@@ -2292,6 +2297,8 @@ def _should_show_tech_param(key, value):
             return float(value) > 0
         except (TypeError, ValueError):
             return True
+    if key == 'advanced_cloak':
+        return bool(value)
     if key == 'production_cost_overrides':
         return False
     return True
@@ -3127,12 +3134,6 @@ def _diplomacy_parse_contract(player, target_player, post_data, available_offer_
         contract.offer_fleet_include_report = bool(post_data.get('offer_fleet_include_report'))
 
     if (
-        contract.offer_condition_type == DiplomaticContract.CONDITION_OR_ELSE and
-        contract.request_clause_type == DiplomaticContract.CLAUSE_NOTHING
-    ):
-        errors.append('An "or else" consequence must be paired with something they owe.')
-
-    if (
         contract.request_clause_type == DiplomaticContract.CLAUSE_NOTHING and
         contract.offer_clause_type == DiplomaticContract.CLAUSE_NOTHING
     ):
@@ -3191,6 +3192,29 @@ def diplomacy(request, game_short_id):
                     request.POST.get('stance_default'),
                     stance_updates,
                 )
+                return redirect(_diplomacy_redirect_url(game.short_id, target=selected_target))
+        elif action == 'toggle_reveal_cloaked':
+            if selected_player is None:
+                contract_errors.append('Select a discovered race first.')
+            elif locked:
+                contract_errors.append(lock_reason)
+            else:
+                default_stance = player_pending_default_stance(player)
+                row, _created = PlayerDiplomaticStance.objects.get_or_create(
+                    player=player,
+                    target_player=selected_player,
+                    defaults={
+                        'stance': default_stance,
+                        'pending_stance': default_stance,
+                    },
+                )
+                current_stance = normalise_stance(
+                    getattr(row, 'pending_stance', None) or getattr(row, 'stance', None)
+                )
+                row.reveal_cloaked_fleets = bool(
+                    request.POST.get('reveal_cloaked_fleets')
+                ) and current_stance == STANCE_ALLIED
+                row.save(update_fields=['reveal_cloaked_fleets'])
                 return redirect(_diplomacy_redirect_url(game.short_id, target=selected_target))
         elif action in ('accept_contract', 'decline_contract', 'revoke_contract'):
             contract = DiplomaticContract.objects.filter(
@@ -3361,6 +3385,10 @@ def diplomacy(request, game_short_id):
             })
 
     if selected_player:
+        stance_row = PlayerDiplomaticStance.objects.filter(
+            player=player,
+            target_player=selected_player,
+        ).first()
         their_stance = stance_towards(selected_player, player)
         our_stance = own_stance_map.get(selected_player.id, pending_default_stance)
         combat_chance_base = combat_chance_percent(our_stance, their_stance)
@@ -3376,6 +3404,10 @@ def diplomacy(request, game_short_id):
             'is_default': False,
             'delivery_warning': our_stance in (STANCE_HOSTILE, STANCE_COLD),
             'colony_transfer_warning': True,
+            'show_reveal_cloaked_toggle': our_stance == STANCE_ALLIED,
+            'reveal_cloaked_fleets_checked': bool(
+                stance_row and getattr(stance_row, 'reveal_cloaked_fleets', False)
+            ),
         }
     else:
         detail = {

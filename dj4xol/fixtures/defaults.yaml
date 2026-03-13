@@ -1739,3 +1739,107 @@
     params_json: '{"basic_scanner_range": 390, "advanced_scanner_range": 70}'
     display_order: 390
     enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000801"
+  fields:
+    short_id: "tech00000801"
+    category: 3
+    level: 3
+    name: 'Mini Cloak'
+    description: 'Compact field shrouding hides slow-moving fleets from ordinary scans.'
+    tech_type: 'SPECIAL'
+    params_json: '{"max_cloaked_warp": 1, "advanced_cloak": false, "defense_level": -0.50, "race_type": "SCI"}'
+    display_order: 395
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000802"
+  fields:
+    short_id: "tech00000802"
+    category: 5
+    level: 6
+    name: 'Chameleon Cloak'
+    description: 'Adaptive masking keeps stealth fleets hidden at moderate warp.'
+    tech_type: 'SPECIAL'
+    params_json: '{"max_cloaked_warp": 5, "advanced_cloak": false, "defense_level": -1.00, "race_type": "has has_stealth"}'
+    display_order: 400
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000803"
+  fields:
+    short_id: "tech00000803"
+    category: 4
+    level: 8
+    name: 'Advanced Cloak'
+    description: 'Exotic phase masking defeats ordinary and advanced scanner sweeps alike.'
+    tech_type: 'SPECIAL'
+    params_json: '{"max_cloaked_warp": 6, "advanced_cloak": true, "defense_level": -1.60, "race_type": "has has_stealth"}'
+    display_order: 405
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000804"
+  fields:
+    short_id: "tech00000804"
+    category: 3
+    level: 11
+    name: 'Tactical Cloak'
+    description: 'Combat-tuned shrouding preserves stealth at high tactical warp.'
+    tech_type: 'SPECIAL'
+    params_json: '{"max_cloaked_warp": 7, "advanced_cloak": true, "defense_level": -2.80, "race_type": "has has_stealth"}'
+    display_order: 410
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000805"
+  fields:
+    short_id: "tech00000805"
+    category: 3
+    level: 19
+    name: 'Super Cloak'
+    description: 'Near-perfect stealth fields keep specialist fleets cloaked at extreme warp.'
+    tech_type: 'SPECIAL'
+    params_json: '{"max_cloaked_warp": 9, "advanced_cloak": true, "defense_level": -3.90, "race_type": "has has_stealth"}'
+    display_order: 415
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000806"
+  fields:
+    short_id: "tech00000806"
+    category: 3
+    level: 19
+    name: 'Prototype Cloak'
+    description: 'Early cloak generators only conceal a fleet while holding still.'
+    tech_type: 'SPECIAL'
+    params_json: '{"max_cloaked_warp": 0, "advanced_cloak": false, "defense_level": -3.90, "race_type": "has_stealth == False"}'
+    display_order: 420
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000807"
+  fields:
+    short_id: "tech00000807"
+    category: 3
+    level: 21
+    name: 'Standard Cloak'
+    description: 'Mature civilian cloak fields allow steady hidden travel for non-stealth races.'
+    tech_type: 'SPECIAL'
+    params_json: '{"max_cloaked_warp": 5, "advanced_cloak": false, "defense_level": -3.90, "race_type": "has_stealth == False"}'
+    display_order: 425
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000808"
+  fields:
+    short_id: "tech00000808"
+    category: 5
+    level: 26
+    name: 'Advanced Cloak Projector'
+    description: 'Late-generation cloak projectors give non-stealth races true advanced masking.'
+    tech_type: 'SPECIAL'
+    params_json: '{"max_cloaked_warp": 6, "advanced_cloak": true, "defense_level": -3.90, "race_type": "has_stealth == False"}'
+    display_order: 430
+    enabled: True

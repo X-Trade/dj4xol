@@ -1,6 +1,7 @@
 from django.db import models
 from dj4xol.models import Fleet, Star, Salvage, Anomaly, Report, PlayerStarMarker
 from dj4xol.scanners import (
+    fleet_is_cloaked,
     get_scanner_sources_for_player,
     fleet_visible_to_player,
     position_in_scanner_range,
@@ -251,6 +252,10 @@ class DetailBuilder():
                          self._fleet_warp_advantage(self.selected_obj)
                          if isinstance(self.selected_obj, Fleet) else None
                      ),
+                     'is_cloaked': (
+                         fleet_is_cloaked(self.selected_obj)
+                         if isinstance(self.selected_obj, Fleet) else False
+                     ),
                      'position_status': 'current',
                      'last_known_position': None,
                      'last_known_report_year': None,
@@ -338,6 +343,9 @@ class DetailBuilder():
             ),
             'warp_advantage': (
                 self._fleet_warp_advantage(obj) if isinstance(obj, Fleet) else None
+            ),
+            'is_cloaked': (
+                fleet_is_cloaked(obj) if isinstance(obj, Fleet) else False
             ),
             'position_status': 'current',
             'last_known_position': None,
@@ -551,6 +559,7 @@ class DetailBuilder():
             detail['fleet_short_id'] = self.selected_obj.short_id
             stale_fleet_report = not self._is_fleet_currently_visible(self.selected_obj)
             detail['position_status'] = 'last_known' if stale_fleet_report else 'report'
+            detail['is_cloaked'] = bool(data.get('is_cloaked'))
             if stale_fleet_report and detail.get('x') is not None and detail.get('y') is not None:
                 detail['last_known_position'] = self.format_empty_space(
                     detail.get('x'),
@@ -576,6 +585,7 @@ class DetailBuilder():
                 detail['heading'] = self.selected_obj.heading
                 detail['travel_warp'] = self._fleet_travel_warp(self.selected_obj)
                 detail['warp_advantage'] = self._fleet_warp_advantage(self.selected_obj)
+                detail['is_cloaked'] = fleet_is_cloaked(self.selected_obj)
             if self._should_show_live_fleet_identity(self.selected_obj, data):
                 detail['name'] = self.selected_obj.name
                 detail['player'] = self.selected_obj.owner_display_name
@@ -711,9 +721,10 @@ class DetailBuilder():
             detail.get('heading'),
             detail.get('x'),
             detail.get('y'),
+            detail.get('is_cloaked'),
         )
 
-    def _build_fleet_motion_summary(self, travel_warp, heading, x, y):
+    def _build_fleet_motion_summary(self, travel_warp, heading, x, y, is_cloaked=False):
         """Return readable motion status for fleet detail header."""
         speed = None
         if travel_warp is not None:
@@ -725,24 +736,35 @@ class DetailBuilder():
         if speed is None:
             summary = 'Travelling at Warp Unknown'
             if heading is None:
-                return summary
+                return self._append_cloaked_status(summary, is_cloaked)
             try:
-                return '%s | Heading %.1f°' % (summary, float(heading))
+                return self._append_cloaked_status(
+                    '%s | Heading %.1f°' % (summary, float(heading)),
+                    is_cloaked,
+                )
             except (TypeError, ValueError):
-                return summary
+                return self._append_cloaked_status(summary, is_cloaked)
 
         if speed <= 0.0:
             if self._has_star_at_position(x, y):
-                return 'In orbit'
-            return 'Stopped'
+                return self._append_cloaked_status('In orbit', is_cloaked)
+            return self._append_cloaked_status('Stopped', is_cloaked)
 
         summary = 'Travelling at Warp %s' % self._format_warp_value(speed)
         if heading is None:
-            return summary
+            return self._append_cloaked_status(summary, is_cloaked)
         try:
-            return '%s | Heading %.1f°' % (summary, float(heading))
+            return self._append_cloaked_status(
+                '%s | Heading %.1f°' % (summary, float(heading)),
+                is_cloaked,
+            )
         except (TypeError, ValueError):
-            return summary
+            return self._append_cloaked_status(summary, is_cloaked)
+
+    def _append_cloaked_status(self, summary, is_cloaked):
+        if is_cloaked:
+            return '%s | cloaked' % summary
+        return summary
 
     def _has_star_at_position(self, x, y):
         """Return True if any star exists at the given coordinates."""
@@ -2238,6 +2260,15 @@ class DetailBuilder():
             if exclude_fleet_id is not None:
                 fleets_qs = fleets_qs.exclude(id=exclude_fleet_id)
             for fleet in fleets_qs:
+                if (
+                    not self.admin_view and
+                    not fleet_visible_to_player(
+                        fleet,
+                        self.player,
+                        sources=self._scanner_sources,
+                    )
+                ):
+                    continue
                 add_target({
                     'name': self._display_name_for_target(fleet, 'fleet'),
                     'short_id': fleet.short_id,
@@ -2290,6 +2321,15 @@ class DetailBuilder():
                     fleets_qs = fleets_qs.filter(player=fleet_player)
                 for fleet in fleets_qs:
                     if exclude_fleet_id is not None and fleet.id == exclude_fleet_id:
+                        continue
+                    if (
+                        not self.admin_view and
+                        not fleet_visible_to_player(
+                            fleet,
+                            self.player,
+                            sources=self._scanner_sources,
+                        )
+                    ):
                         continue
                     add_target({
                         'name': self._display_name_for_target(fleet, 'fleet'),

@@ -86,22 +86,62 @@ def position_in_scanner_range(x, y, sources, range_key='basic'):
     return False
 
 
+def fleet_is_cloaked(fleet):
+    if not fleet:
+        return False
+    try:
+        max_cloaked_warp = int(getattr(fleet, 'max_cloaked_warp', -1) or 0)
+    except (TypeError, ValueError):
+        max_cloaked_warp = -1
+    if max_cloaked_warp < 0:
+        return False
+    try:
+        travel_warp = int(getattr(fleet, 'travel_warp', 0) or 0)
+    except (TypeError, ValueError):
+        travel_warp = 0
+    return travel_warp <= max_cloaked_warp
+
+
+def fleet_revealed_by_advanced_scanners(fleet, sources):
+    if not fleet:
+        return False
+    if bool(getattr(fleet, 'advanced_cloak', False)):
+        return False
+    return position_in_scanner_range(fleet.x, fleet.y, sources, range_key='advanced')
+
+
+def fleet_targetable_by_patrol(fleet, player, sources=None):
+    if not fleet or not player:
+        return False
+    if fleet.player_id == player.id:
+        return False
+    sources = sources if sources is not None else get_scanner_sources_for_player(fleet.game, player)
+    if fleet_is_cloaked(fleet):
+        return fleet_revealed_by_advanced_scanners(fleet, sources)
+    return fleet_visible_to_player(fleet, player, sources=sources)
+
+
 def fleet_visible_to_player(fleet, player, sources=None):
     if not player:
         return False
-    if getattr(fleet.game, 'no_scanners', False):
-        return True
     if fleet.player_id == player.id:
         return True
     from .diplomacy import (
         PERMISSION_SHARE_INTEL,
         player_grants_permission,
+        player_reveals_cloaked_fleets,
     )
+    cloaked = fleet_is_cloaked(fleet)
     if player_grants_permission(
         getattr(fleet, 'player', None),
         player,
         PERMISSION_SHARE_INTEL,
     ):
-        return True
+        if not cloaked or player_reveals_cloaked_fleets(getattr(fleet, 'player', None), player):
+            return True
     sources = sources if sources is not None else get_scanner_sources_for_player(fleet.game, player)
+    if cloaked:
+        return fleet_revealed_by_advanced_scanners(fleet, sources)
+    if getattr(fleet.game, 'no_scanners', False):
+        return True
     return position_in_scanner_range(fleet.x, fleet.y, sources, range_key='basic')
