@@ -228,6 +228,11 @@ body {
     color: #000;
     border: none;
     border-radius: 0;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
+    font-size: 11px;
     box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
 }
 
