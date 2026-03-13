@@ -516,6 +516,7 @@ class GameTurn():
         self.resolve_combat()
         self.resolve_derelict_encounters()
         self.resolve_orbital_defense_hazards()
+        self.apply_fuel_factories()
         self.mining()
         self.production()
         self.research()
@@ -2209,6 +2210,12 @@ class GameTurn():
                     'has_bombs': obj.has_bombs,
                     'has_miners': obj.has_miners,
                     'has_fuel_factory': bool(obj.has_fuel_factory),
+                    'fuel_factory_mg_per_year': getattr(
+                        obj, 'fuel_factory_mg_per_year', 0.0
+                    ),
+                    'fuel_factory_max_warp': getattr(
+                        obj, 'fuel_factory_max_warp', -1
+                    ),
                     'has_wormhole_drive': bool(obj.has_wormhole_drive),
                     'max_cloaked_warp': getattr(obj, 'max_cloaked_warp', -1),
                     'advanced_cloak': bool(getattr(obj, 'advanced_cloak', False)),
@@ -3478,6 +3485,54 @@ class GameTurn():
         msg = factory.new_message()
         msg.year = self.game.year
         msg.save()
+
+    def _fleet_has_active_fuel_factory(self, fleet, warp_speed):
+        try:
+            fuel_factory_rate = float(
+                getattr(fleet, 'fuel_factory_mg_per_year', 0.0) or 0.0
+            )
+        except (TypeError, ValueError):
+            fuel_factory_rate = 0.0
+        if fuel_factory_rate <= 0.0:
+            return False
+        try:
+            fuel_factory_max_warp = int(
+                getattr(fleet, 'fuel_factory_max_warp', -1)
+            )
+        except (TypeError, ValueError):
+            fuel_factory_max_warp = -1
+        try:
+            warp_speed = int(warp_speed)
+        except (TypeError, ValueError):
+            warp_speed = -1
+        return fuel_factory_max_warp >= 0 and warp_speed <= fuel_factory_max_warp
+
+    def apply_fuel_factories(self):
+        """Apply yearly fuel-factory output after movement and combat."""
+        for fleet in self.game.fleets.filter(
+            player__isnull=False,
+            player__defeated=False,
+        ):
+            if not self._fleet_has_active_fuel_factory(
+                fleet,
+                getattr(fleet, 'travel_warp', 0),
+            ):
+                continue
+            try:
+                fuel_factory_rate = float(
+                    getattr(fleet, 'fuel_factory_mg_per_year', 0.0) or 0.0
+                )
+            except (TypeError, ValueError):
+                fuel_factory_rate = 0.0
+            if fuel_factory_rate <= 0.0:
+                continue
+            old_fuel = float(getattr(fleet, 'fuel', 0.0) or 0.0)
+            max_fuel = float(getattr(fleet, 'max_fuel', 0.0) or 0.0)
+            if old_fuel >= max_fuel:
+                continue
+            fleet.fuel = min(max_fuel, old_fuel + fuel_factory_rate)
+            if float(fleet.fuel) != old_fuel:
+                fleet.save(update_fields=['fuel'])
 
     def _lock_successful_enemy_intercept(self, interceptor, order):
         """Lock both fleets in place after a successful enemy intercept."""
@@ -5844,8 +5899,16 @@ class GameTurn():
         miner_priority = {'SMALL': 1, 'MEDIUM': 2, 'LARGE': 3}
         if miner_priority.get(source_miner, 0) > miner_priority.get(target_miner, 0):
             target_fleet.has_miners = source_miner
+        target_fleet.fuel_factory_mg_per_year = max(
+            float(getattr(target_fleet, 'fuel_factory_mg_per_year', 0.0) or 0.0),
+            float(getattr(source_fleet, 'fuel_factory_mg_per_year', 0.0) or 0.0),
+        )
+        target_fleet.fuel_factory_max_warp = max(
+            int(getattr(target_fleet, 'fuel_factory_max_warp', -1) or 0),
+            int(getattr(source_fleet, 'fuel_factory_max_warp', -1) or 0),
+        )
         target_fleet.has_fuel_factory = bool(
-            source_fleet.has_fuel_factory or target_fleet.has_fuel_factory
+            target_fleet.fuel_factory_mg_per_year > 0.0
         )
         target_fleet.has_wormhole_drive = merged_has_wormhole_drive
         target_fleet.max_cloaked_warp = max(
@@ -6693,6 +6756,12 @@ class GameTurn():
             has_bombs=tech_effects.get('has_bombs'),
             has_miners=tech_effects.get('has_miners'),
             has_fuel_factory=bool(tech_effects.get('has_fuel_factory')),
+            fuel_factory_mg_per_year=tech_effects.get(
+                'fuel_factory_mg_per_year', 0.0
+            ),
+            fuel_factory_max_warp=tech_effects.get(
+                'fuel_factory_max_warp', -1
+            ),
             has_wormhole_drive=bool(tech_effects.get('has_wormhole_drive')),
             max_cloaked_warp=tech_effects.get('max_cloaked_warp', -1),
             advanced_cloak=bool(tech_effects.get('advanced_cloak')),

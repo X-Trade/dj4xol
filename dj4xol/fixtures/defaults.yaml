@@ -1851,3 +1851,55 @@
     params_json: '{"max_cloaked_warp": 6, "advanced_cloak": true, "defense_level": -1.80, "race_type": "has has_no_stealth == False"}'
     display_order: 430
     enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000809"
+  fields:
+    short_id: "tech00000809"
+    category: 1
+    level: 18
+    name: 'Fuel Factory'
+    description: 'Stationary processing condenses a trickle of fuel while the fleet is stopped.'
+    tech_type: 'ELECTRICAL'
+    params_json: '{"fuel_factory_mg_per_year": 1.0, "fuel_factory_max_warp": 0}'
+    display_order: 435
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000810"
+  fields:
+    short_id: "tech00000810"
+    category: 1
+    level: 22
+    name: 'Advanced Fuel Factory'
+    description: 'Improved catalytic chambers keep producing fuel at low warp.'
+    tech_type: 'ELECTRICAL'
+    params_json: '{"fuel_factory_mg_per_year": 1.0, "fuel_factory_max_warp": 5}'
+    display_order: 440
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000811"
+  fields:
+    short_id: "tech00000811"
+    category: 1
+    level: 25
+    name: 'Super Fuel Factory'
+    description: 'Massive industrial refineries produce fuel quickly even during brisk travel.'
+    tech_type: 'ELECTRICAL'
+    params_json: '{"fuel_factory_mg_per_year": 2.0, "fuel_factory_max_warp": 6}'
+    display_order: 445
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000812"
+  fields:
+    short_id: "tech00000812"
+    category: 1
+    level: 26
+    name: 'SuperMax Fuel Factory'
+    description: 'Late-generation refinery cores sustain top-tier fuel production at fast warp.'
+    tech_type: 'ELECTRICAL'
+    params_json: '{"fuel_factory_mg_per_year": 2.0, "fuel_factory_max_warp": 8}'
+    display_order: 450
+    enabled: True

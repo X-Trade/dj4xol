@@ -272,6 +272,62 @@ class DefaultSyncTest(TestCase):
             -2.8,
         )
 
+    def test_sync_adds_fuel_factory_technologies(self):
+        sync_factory_defaults(force=True)
+
+        fuel_factory = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000809'
+        )
+        self.assertEqual(fuel_factory.tech_type, 'ELECTRICAL')
+        self.assertEqual(fuel_factory.category.code, 'ENERGY')
+        self.assertEqual(fuel_factory.level, 18)
+        self.assertEqual(
+            json.loads(fuel_factory.params_json),
+            {
+                'fuel_factory_mg_per_year': 1.0,
+                'fuel_factory_max_warp': 0,
+            },
+        )
+
+        advanced_fuel_factory = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000810'
+        )
+        self.assertEqual(advanced_fuel_factory.category.code, 'ENERGY')
+        self.assertEqual(advanced_fuel_factory.level, 22)
+        self.assertEqual(
+            json.loads(advanced_fuel_factory.params_json),
+            {
+                'fuel_factory_mg_per_year': 1.0,
+                'fuel_factory_max_warp': 5,
+            },
+        )
+
+        super_fuel_factory = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000811'
+        )
+        self.assertEqual(super_fuel_factory.category.code, 'ENERGY')
+        self.assertEqual(super_fuel_factory.level, 25)
+        self.assertEqual(
+            json.loads(super_fuel_factory.params_json),
+            {
+                'fuel_factory_mg_per_year': 2.0,
+                'fuel_factory_max_warp': 6,
+            },
+        )
+
+        supermax_fuel_factory = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000812'
+        )
+        self.assertEqual(supermax_fuel_factory.category.code, 'ENERGY')
+        self.assertEqual(supermax_fuel_factory.level, 26)
+        self.assertEqual(
+            json.loads(supermax_fuel_factory.params_json),
+            {
+                'fuel_factory_mg_per_year': 2.0,
+                'fuel_factory_max_warp': 8,
+            },
+        )
+
     def test_sync_reconciles_technology_by_short_id_when_uuid_differs(self):
         sync_factory_defaults(force=True)
 

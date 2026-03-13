@@ -1087,6 +1087,12 @@ class GameFactory():
                 has_bombs=tech_effects.get('has_bombs'),
                 has_miners=tech_effects.get('has_miners'),
                 has_fuel_factory=bool(tech_effects.get('has_fuel_factory')),
+                fuel_factory_mg_per_year=tech_effects.get(
+                    'fuel_factory_mg_per_year', 0.0
+                ),
+                fuel_factory_max_warp=tech_effects.get(
+                    'fuel_factory_max_warp', -1
+                ),
                 has_wormhole_drive=bool(tech_effects.get('has_wormhole_drive')),
                 max_cloaked_warp=tech_effects.get('max_cloaked_warp', -1),
                 advanced_cloak=bool(tech_effects.get('advanced_cloak')),

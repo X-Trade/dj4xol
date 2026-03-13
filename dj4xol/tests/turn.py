@@ -9453,6 +9453,89 @@ class TestFleetFuel(TestCase):
         turn = GameTurn(game)
         self.assertAlmostEqual(turn._wormhole_jump_fuel_cost(fleet, 10.0), 40.0, places=4)
 
+    def test_fuel_factory_generates_fuel_when_stopped(self):
+        from ..models import Fleet
+
+        game = default_game()
+        player = game.players.first()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Stopped Refinery",
+            x=1,
+            y=1,
+            fuel=3.0,
+            max_fuel=10.0,
+            fuel_factory_mg_per_year=1.0,
+            fuel_factory_max_warp=0,
+            travel_warp=0,
+        )
+
+        GameTurn(game).apply_fuel_factories()
+
+        fleet.refresh_from_db()
+        self.assertAlmostEqual(fleet.fuel, 4.0, places=4)
+
+    def test_fuel_factory_generates_fuel_at_max_warp_threshold(self):
+        from ..models import Fleet
+
+        game = default_game()
+        player = game.players.first()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Cruising Refinery",
+            x=1,
+            y=1,
+            fuel=3.0,
+            max_fuel=10.0,
+            fuel_factory_mg_per_year=1.0,
+            fuel_factory_max_warp=5,
+            travel_warp=5,
+        )
+
+        GameTurn(game).apply_fuel_factories()
+
+        fleet.refresh_from_db()
+        self.assertAlmostEqual(fleet.fuel, 4.0, places=4)
+
+    def test_fuel_factory_stops_above_limit_and_caps_at_max_fuel(self):
+        from ..models import Fleet
+
+        game = default_game()
+        player = game.players.first()
+        above_limit = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Fast Refinery",
+            x=1,
+            y=1,
+            fuel=3.0,
+            max_fuel=10.0,
+            fuel_factory_mg_per_year=1.0,
+            fuel_factory_max_warp=5,
+            travel_warp=6,
+        )
+        capped = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Full Refinery",
+            x=2,
+            y=2,
+            fuel=9.5,
+            max_fuel=10.0,
+            fuel_factory_mg_per_year=2.0,
+            fuel_factory_max_warp=6,
+            travel_warp=4,
+        )
+
+        GameTurn(game).apply_fuel_factories()
+
+        above_limit.refresh_from_db()
+        capped.refresh_from_db()
+        self.assertAlmostEqual(above_limit.fuel, 3.0, places=4)
+        self.assertAlmostEqual(capped.fuel, 10.0, places=4)
+
     def test_wormhole_jump_blocks_when_insufficient_fuel_for_distance(self):
         from ..models import FleetOrders, Fleet
 

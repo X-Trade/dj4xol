@@ -166,6 +166,15 @@ class ResearchTurnTest(TestCase):
         self.assertEqual(effects['max_cloaked_warp'], 9)
         self.assertTrue(effects['advanced_cloak'])
 
+    def test_highest_fuel_factory_tech_sets_output_and_max_warp(self):
+        self._unlock_all_research_for_player()
+
+        effects = get_player_tech_effects(self.player)
+
+        self.assertTrue(effects['has_fuel_factory'])
+        self.assertEqual(effects['fuel_factory_mg_per_year'], 2.0)
+        self.assertEqual(effects['fuel_factory_max_warp'], 8)
+
     def test_research_mineral_progress_persists(self):
         self._reset_research_catalog()
         category = ResearchCategory.objects.create(

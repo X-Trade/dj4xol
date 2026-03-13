@@ -7,6 +7,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/research/css/research.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/help/css/help_editor.css' %}">
         {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
         {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
@@ -19,11 +20,11 @@
             {% include 'dj4xol/_nav_menu.html' with current_page='help_pages_cms' %}
         </div>
         {% include 'dj4xol/_form_message_banner.html' with errors=page_form.non_field_errors %}
-        <div class="columns two-column help-editor-columns">
-            <div class="column column-left">
+        <div class="research-columns help-editor-columns">
+            <div class="research-left">
                 <div class="panel no-transition open" data-panel="help-pages-list">
                     <h2><span>Pages</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content panel-stack">
+                    <div class="panel-content panel-stack research-panel-body">
                         <section class="panel-scrollable-list">
                         <ul class="game-list">
                             <li>
@@ -57,7 +58,7 @@
 
                 <div class="panel no-transition open" data-panel="help-formatting-guide">
                     <h2><span>Formatting Guide</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content panel-stack">
+                    <div class="panel-content panel-stack research-panel-body">
                         <section class="panel-scrollable-text">
                         <p>Use blank lines between paragraphs.</p>
                         <p>Start bullet lines with <code>- </code>.</p>
@@ -69,90 +70,106 @@
                 </div>
             </div>
 
-            <div class="column column-right">
+            <div class="research-right">
                 <div class="panel no-transition open" data-panel="help-page-editor">
-                    <h2><span>{% if selected_page %}Edit Page{% else %}New Page{% endif %}</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content panel-stack">
-                        <section class="panel-scrollable-text">
-                        <form method="post" class="game-form help-page-form">
-                            {% csrf_token %}
-                            <input type="hidden" name="page_id" value="{% if selected_page %}{{ selected_page.id }}{% else %}new{% endif %}">
-                            <div class="detail-subpanel">
-                                <h3 class="settings-section-title">Page Details</h3>
-                                <table class="profile-table">
-                                    {% for field in page_form %}
-                                    <tr>
-                                        <th>{{ field.label_tag }}</th>
-                                        <td>
-                                            {{ field }}
-                                            {{ field.errors }}
-                                            {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </table>
-                            </div>
-
-                            <div class="detail-subpanel">
-                                <h3 class="settings-section-title">Blocks</h3>
-                                {{ block_formset.management_form }}
-                                {% for block_form in block_formset %}
-                                <div class="help-editor-block" data-help-block>
-                                    {% for hidden in block_form.hidden_fields %}{{ hidden }}{% endfor %}
-                                    <div class="help-editor-block-header">
-                                        <strong>Block {{ forloop.counter }}</strong>
-                                        {% if block_form.instance.pk %}
-                                        <label class="help-editor-delete">{{ block_form.DELETE }} Delete block</label>
-                                        {% endif %}
-                                    </div>
+                    <h2>
+                        <span>{% if selected_page %}Edit Page{% else %}New Page{% endif %}</span>
+                        <span class="panel-header-actions help-editor-header-actions">
+                            <button
+                                type="button"
+                                class="help-editor-tab is-active"
+                                data-help-editor-tab="edit"
+                            >Edit</button>
+                            <button
+                                type="button"
+                                class="help-editor-tab"
+                                data-help-editor-tab="preview"
+                            >Preview</button>
+                        </span>
+                        <span class="panel-toggle"></span>
+                    </h2>
+                    <div class="panel-content panel-stack research-panel-body">
+                        <section
+                            class="panel-scrollable-text research-detail-body help-editor-workspace is-active"
+                            data-help-editor-view="edit"
+                        >
+                            <form method="post" class="game-form help-page-form">
+                                {% csrf_token %}
+                                <input type="hidden" name="page_id" value="{% if selected_page %}{{ selected_page.id }}{% else %}new{% endif %}">
+                                <div class="detail-subpanel">
+                                    <h3 class="settings-section-title">Page Details</h3>
                                     <table class="profile-table">
-                                        {% for field in block_form.visible_fields %}
+                                        {% for field in page_form %}
                                         <tr>
                                             <th>{{ field.label_tag }}</th>
                                             <td>
-                                                {% if field.name == 'body' %}
-                                                <div class="rich-text-toolbar">
-                                                    <button type="button" class="nav-button rich-text-insert" data-insert-template="[Label](https://example.com)">Link</button>
-                                                    <button type="button" class="nav-button rich-text-insert" data-insert-template="![Alt text](https://example.com/image.png)">Image</button>
-                                                    <button type="button" class="nav-button rich-text-insert" data-insert-template="- Bullet item">Bullet</button>
-                                                </div>
-                                                {% endif %}
                                                 {{ field }}
                                                 {{ field.errors }}
                                                 {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
-                                                {% if field.name == 'body' %}
-                                                <div class="help-editor-preview-wrap">
-                                                    <div class="help-editor-preview-label">Live Preview</div>
-                                                    <div class="help-editor-preview panel-scrollable-text" data-rich-text-role="preview"></div>
-                                                </div>
-                                                {% endif %}
                                             </td>
                                         </tr>
                                         {% endfor %}
                                     </table>
                                 </div>
-                                {% endfor %}
-                            </div>
 
-                            <div class="form-nav">
-                                <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:server_settings' %}'">Back to Server Settings</button>
-                                {% if selected_page %}
-                                <button type="submit" name="action" value="delete_page" class="nav-button" onclick="return confirm('Delete this help page?');">Delete Page</button>
-                                {% endif %}
-                                {% if public_preview_url %}
-                                <a href="{{ public_preview_url }}" class="nav-button" target="_blank" rel="noopener">Open Public Preview</a>
-                                {% endif %}
-                                <button type="submit" name="action" value="save" class="nav-button primary">Save Page</button>
-                            </div>
-                        </form>
+                                <div class="detail-subpanel">
+                                    <h3 class="settings-section-title">Blocks</h3>
+                                    {{ block_formset.management_form }}
+                                    {% for block_form in block_formset %}
+                                    <div class="help-editor-block" data-help-block>
+                                        {% for hidden in block_form.hidden_fields %}{{ hidden }}{% endfor %}
+                                        <div class="help-editor-block-header">
+                                            <strong>Block {{ forloop.counter }}</strong>
+                                            {% if block_form.instance.pk %}
+                                            <label class="help-editor-delete">{{ block_form.DELETE }} Delete block</label>
+                                            {% endif %}
+                                        </div>
+                                        <table class="profile-table">
+                                            {% for field in block_form.visible_fields %}
+                                            <tr>
+                                                <th>{{ field.label_tag }}</th>
+                                                <td>
+                                                    {% if field.name == 'body' %}
+                                                    <div class="rich-text-toolbar">
+                                                        <button type="button" class="nav-button rich-text-insert" data-insert-template="[Label](https://example.com)">Link</button>
+                                                        <button type="button" class="nav-button rich-text-insert" data-insert-template="![Alt text](https://example.com/image.png)">Image</button>
+                                                        <button type="button" class="nav-button rich-text-insert" data-insert-template="- Bullet item">Bullet</button>
+                                                    </div>
+                                                    {% endif %}
+                                                    {{ field }}
+                                                    {{ field.errors }}
+                                                    {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
+                                                    {% if field.name == 'body' %}
+                                                    <div class="help-editor-preview-wrap">
+                                                        <div class="help-editor-preview-label">Live Preview</div>
+                                                        <div class="help-editor-preview panel-scrollable-text" data-rich-text-role="preview"></div>
+                                                    </div>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </table>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+
+                                <div class="form-nav">
+                                    <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:server_settings' %}'">Back to Server Settings</button>
+                                    {% if selected_page %}
+                                    <button type="submit" name="action" value="delete_page" class="nav-button" onclick="return confirm('Delete this help page?');">Delete Page</button>
+                                    {% endif %}
+                                    {% if public_preview_url %}
+                                    <a href="{{ public_preview_url }}" class="nav-button" target="_blank" rel="noopener">Open Public Preview</a>
+                                    {% endif %}
+                                    <button type="submit" name="action" value="save" class="nav-button primary">Save Page</button>
+                                </div>
+                            </form>
                         </section>
-                    </div>
-                </div>
-
-                <div class="panel no-transition open" data-panel="help-page-render-preview">
-                    <h2><span>Saved Page Preview</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content panel-stack">
-                        <section class="panel-scrollable-text help-page-blocks">
+                        <section
+                            class="panel-scrollable-text research-detail-body help-page-blocks help-editor-workspace"
+                            data-help-editor-view="preview"
+                            hidden
+                        >
                         {% if preview_page and preview_page.pk %}
                         <h3 class="help-editor-saved-title">{{ preview_page.title|default:'Untitled Page' }}</h3>
                         {% if preview_page.tagline %}<p class="help-caption">{{ preview_page.tagline }}</p>{% endif %}
@@ -204,6 +221,33 @@
                 if (window.DJ4XOLRichTextEditor) {
                     window.DJ4XOLRichTextEditor.init(document);
                 }
+
+                var helpEditorTabs = document.querySelectorAll('[data-help-editor-tab]');
+                var helpEditorViews = document.querySelectorAll('[data-help-editor-view]');
+
+                function setHelpEditorView(nextView) {
+                    helpEditorTabs.forEach(function(tab) {
+                        var isActive = tab.getAttribute('data-help-editor-tab') === nextView;
+                        tab.classList.toggle('is-active', isActive);
+                    });
+                    helpEditorViews.forEach(function(view) {
+                        view.hidden = view.getAttribute('data-help-editor-view') !== nextView;
+                        view.classList.toggle(
+                            'is-active',
+                            view.getAttribute('data-help-editor-view') === nextView
+                        );
+                    });
+                }
+
+                helpEditorTabs.forEach(function(tab) {
+                    tab.addEventListener('click', function(event) {
+                        event.stopPropagation();
+                        if (tab.disabled) {
+                            return;
+                        }
+                        setHelpEditorView(tab.getAttribute('data-help-editor-tab'));
+                    });
+                });
             })();
         </script>
         <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>

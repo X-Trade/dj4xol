@@ -54,6 +54,8 @@ TECH_PARAM_LABELS = {
     'colony_defense_level': 'Colony Defense Level',
     'basic_scanner_range': 'Basic Scanner Range',
     'advanced_scanner_range': 'Advanced Scanner Range',
+    'fuel_factory_mg_per_year': 'Fuel Factory Output',
+    'fuel_factory_max_warp': 'Fuel Factory Max Warp',
     'max_cloaked_warp': 'Max Cloaked Warp',
     'advanced_cloak': 'Advanced Cloak',
     'terraforming_rate': 'Terraforming Rate',
@@ -1252,6 +1254,8 @@ def get_player_tech_effects(player):
         'has_bombs': None,
         'has_miners': None,
         'has_fuel_factory': False,
+        'fuel_factory_mg_per_year': 0.0,
+        'fuel_factory_max_warp': -1,
         'has_wormhole_drive': False,
         'max_cloaked_warp': -1,
         'advanced_cloak': False,
@@ -1330,8 +1334,33 @@ def get_player_tech_effects(player):
         miner_type = normalize_miner_type(params.get('has_miners'))
         if miner_type is not None:
             effects['has_miners'] = miner_type
+        fuel_factory_rate = params.get('fuel_factory_mg_per_year')
+        if fuel_factory_rate is not None:
+            try:
+                fuel_factory_rate = max(
+                    effects['fuel_factory_mg_per_year'],
+                    float(fuel_factory_rate),
+                )
+                effects['fuel_factory_mg_per_year'] = fuel_factory_rate
+                if fuel_factory_rate > 0.0:
+                    effects['has_fuel_factory'] = True
+            except (TypeError, ValueError):
+                pass
+        fuel_factory_max_warp = params.get('fuel_factory_max_warp')
+        if fuel_factory_max_warp is not None:
+            try:
+                effects['fuel_factory_max_warp'] = max(
+                    effects['fuel_factory_max_warp'],
+                    int(fuel_factory_max_warp),
+                )
+            except (TypeError, ValueError):
+                pass
         if bool(params.get('has_fuel_factory')):
             effects['has_fuel_factory'] = True
+            if effects['fuel_factory_mg_per_year'] <= 0.0:
+                effects['fuel_factory_mg_per_year'] = 1.0
+            if effects['fuel_factory_max_warp'] < 0:
+                effects['fuel_factory_max_warp'] = 0
         if bool(params.get('has_wormhole_drive')):
             effects['has_wormhole_drive'] = True
         max_cloaked_warp = params.get('max_cloaked_warp')

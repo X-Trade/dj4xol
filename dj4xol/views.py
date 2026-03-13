@@ -13,6 +13,7 @@ from datetime import timedelta
 import os
 import json
 import random
+import uuid
 from urllib.parse import urlencode, urlparse
 
 from dj4xol.objectdetails import DetailBuilder
@@ -94,6 +95,7 @@ from .forms import (
     ServerRaceForm,
     NewGameForm,
     RegistrationForm,
+    ChangeEmailForm,
     JoinGameForm,
     ServerSettingsForm,
     CustomHelpPageForm,
@@ -3830,6 +3832,47 @@ def onboarding_race(request):
 def profile(request):
     """View user's account profile."""
     account = request.user.dj4xol_account
+    change_email_form = ChangeEmailForm(
+        account,
+        initial={'email': account.email},
+    )
+    change_email_open = False
+
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+        if action == 'change_email':
+            change_email_form = ChangeEmailForm(account, request.POST)
+            change_email_open = True
+            if change_email_form.is_valid():
+                new_email = change_email_form.cleaned_data['email']
+                with transaction.atomic():
+                    account.email = new_email
+                    account.email_verified = False
+                    account.email_verification_key = uuid.uuid4().hex
+                    account.save(update_fields=[
+                        'email',
+                        'email_verified',
+                        'email_verification_key',
+                    ])
+                    account.django_user.email = new_email
+                    account.django_user.save(update_fields=['email'])
+                sent, reason = send_email_verification_for_account(account)
+                if sent:
+                    messages.success(
+                        request,
+                        'Email address updated. Verification email sent.',
+                    )
+                else:
+                    messages.warning(
+                        request,
+                        'Email address updated, but verification email was not sent: %s.'
+                        % reason,
+                    )
+                return redirect('dj4xol:profile')
+            messages.error(
+                request,
+                'Please correct the highlighted email field.',
+            )
 
     # Get games the user is playing in
     playing = list(
@@ -3854,6 +3897,8 @@ def profile(request):
         'games_owned_entries': _build_game_list_entries(games_owned),
         'races': races,
         'theme_choices': Account.THEME_CHOICES,
+        'change_email_form': change_email_form,
+        'change_email_open': change_email_open,
     })
 
 

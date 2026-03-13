@@ -782,6 +782,8 @@ class Fleet(AbstractMapObject):
     has_miners = models.CharField(max_length=16, choices=MINER_TYPE_CHOICES,
                                   null=True, blank=True, default=None)
     has_fuel_factory = models.BooleanField(default=False)
+    fuel_factory_mg_per_year = models.FloatField(default=0.0)
+    fuel_factory_max_warp = models.IntegerField(default=-1)
     has_wormhole_drive = models.BooleanField(default=False)
     max_cloaked_warp = models.IntegerField(default=-1)
     advanced_cloak = models.BooleanField(default=False)
@@ -825,7 +827,23 @@ class Fleet(AbstractMapObject):
             cloaked_warp = int(self.max_cloaked_warp or 0)
         except (TypeError, ValueError):
             cloaked_warp = 0
+        try:
+            fuel_factory_rate = float(self.fuel_factory_mg_per_year or 0.0)
+        except (TypeError, ValueError):
+            fuel_factory_rate = 0.0
+        try:
+            fuel_factory_max_warp = int(self.fuel_factory_max_warp)
+        except (TypeError, ValueError):
+            fuel_factory_max_warp = -1
+        if fuel_factory_rate <= 0.0:
+            fuel_factory_rate = 0.0
+            fuel_factory_max_warp = -1
+        elif fuel_factory_max_warp < 0:
+            fuel_factory_max_warp = 0
         self.max_cloaked_warp = max(-1, cloaked_warp)
+        self.fuel_factory_mg_per_year = fuel_factory_rate
+        self.fuel_factory_max_warp = max(-1, fuel_factory_max_warp)
+        self.has_fuel_factory = fuel_factory_rate > 0.0
         self.advanced_cloak = bool(self.advanced_cloak)
         self.basic_scanner_range = max(0, basic)
         self.advanced_scanner_range = max(0, advanced)
