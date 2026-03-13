@@ -1611,15 +1611,16 @@ class SalvageCollectedMessageFactory(MessageFactory):
     """Messages for salvage collection via Transfer."""
     category = 'GENERAL'
     templates = [
-        "{fleet} collected salvage: {cargo}.",
-        "{fleet} recovered {cargo} from the debris field.",
-        "Salvage operation complete. {fleet} loaded {cargo}.",
+        "{fleet} collected salvage from {source}: {cargo}.",
+        "{fleet} recovered {cargo} from {source}.",
+        "Salvage operation complete. {fleet} loaded {cargo} from {source}.",
     ]
 
-    def __init__(self, game, player, fleet, transfers, message=None):
+    def __init__(self, game, player, fleet, transfers, source, message=None):
         super().__init__(game, player, message, intensity=0.2)
         self.fleet = fleet
         self.transfers = transfers or {}
+        self.source = source
 
     def _format_cargo(self):
         parts = []
@@ -1631,7 +1632,8 @@ class SalvageCollectedMessageFactory(MessageFactory):
     def format_message(self):
         return random.choice(self.templates).format(
             fleet=format_map_object(self.fleet),
-            cargo=self._format_cargo()
+            cargo=self._format_cargo(),
+            source=self.source,
         )
 
 

@@ -58,10 +58,11 @@ A Django-based 4X space strategy game inspired by Stars!
 - Add actionable follow-up items to `todo.txt` when a doc introduces concrete cleanup or feature work.
 - `doc/plan.txt` is mainly reserved for broader future gameplay-device ideas and exploratory design notes, not general implementation cleanup tracking.
 
-## Technology Sync Policy
+## Defaults Sync Policy
 
-- Until version `1.0`, expect regular technology-tree churn. When fixture-backed research categories, technologies, or research prerequisites change in `dj4xol/fixtures/defaults.yaml`, also add a technology synchronization migration so `migrate` brings existing databases forward.
+- Until version `1.0`, expect regular fixture-backed defaults churn. When defaults-backed server race types, server races, research categories, technologies, or research prerequisites change in `dj4xol/fixtures/defaults.yaml`, also add a synchronization migration so `migrate` brings existing databases forward.
 - Prefer the existing reusable sync helper in `dj4xol/default_sync.py`: `sync_factory_defaults(force=True)`, wrapped in a migration `RunPython` function, rather than copying another one-off fixture sync implementation unless there is a migration-safety reason to do otherwise.
+- Use `pyenv exec python manage.py sync_defaults` for manual refreshes against an existing database; `sync_tech_tree` remains as a legacy alias but should not be the preferred name going forward.
 - When a newer fixture-sync migration fully supersedes older technology/defaults resync migrations, no-op the older resync bodies instead of replaying current fixtures through historical schemas on every fresh install. Keep the migration nodes for graph stability, but only the latest canonical defaults sync should actually load `defaults.yaml`; older code checkouts already provide the correct historical migration behavior for that revision.
 
 ## Research Stage Bands
