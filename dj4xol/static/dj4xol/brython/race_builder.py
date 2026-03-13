@@ -6,6 +6,7 @@ STEP = 0.1
 CENTER_STEP = 0.05
 WIDTH_STEP = 0.1
 FIXED_HOMEWORLD_HINT = None
+RACE_TYPE_BEHAVIORS = {}
 
 
 def _round_step(value, step):
@@ -93,10 +94,12 @@ def _build_env_ui(env, center_input, width_input):
     hint_cell <= points
 
     return {
+        'root': ui,
         'env': env,
         'center': center_input,
         'width': width_input,
         'bar': bar,
+        'controls': controls,
         'range_marker': range_marker,
         'marker': marker,
         'points': points,
@@ -110,7 +113,52 @@ def _build_env_ui(env, center_input, width_input):
     }
 
 
-def _apply_bar(ui, rules):
+def _load_race_type_behaviors():
+    global RACE_TYPE_BEHAVIORS
+    config_el = document.getElementById('race-type-behaviors-json')
+    if not config_el:
+        RACE_TYPE_BEHAVIORS = {}
+        return
+    try:
+        parsed = json.loads(config_el.textContent or '{}')
+        RACE_TYPE_BEHAVIORS = parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        RACE_TYPE_BEHAVIORS = {}
+
+
+def _selected_race_type_behavior():
+    race_type_input = document.getElementById('id_race_type')
+    if not race_type_input:
+        return {}
+    return RACE_TYPE_BEHAVIORS.get(race_type_input.value, {}) or {}
+
+
+def _is_env_ignored(env):
+    behavior = _selected_race_type_behavior()
+    return bool(behavior.get(f'ignores_{env}', False))
+
+
+def _race_type_points_balance():
+    behavior = _selected_race_type_behavior()
+    try:
+        return float(behavior.get('race_creation_points_balance', 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _apply_ignore_state(ui, ignored):
+    ui['root'].classList.toggle('habitability-ignored-row', ignored)
+    ui['bar'].classList.toggle('habitability-ignored', ignored)
+    ui['bar'].style.pointerEvents = 'none' if ignored else ''
+    ui['center'].readOnly = ignored
+    ui['width'].readOnly = ignored
+    ui['center'].classList.toggle('habitability-disabled-input', ignored)
+    ui['width'].classList.toggle('habitability-disabled-input', ignored)
+    for key in ['shrink', 'grow', 'down', 'up']:
+        ui[key].disabled = ignored
+
+
+def _apply_bar(ui, rules, ignored=False):
     env = ui['env']
     center = rules.centers[env]
     width = rules.widths[env]
@@ -124,11 +172,19 @@ def _apply_bar(ui, rules):
     max_pct = pct(hab_max)
     center_pct = pct(center)
 
+    if ignored:
+        ui['bar'].style.background = '#2f9f55'
+        ui['range_marker'].style.display = 'none'
+        ui['marker'].style.display = 'none'
+        return
+
     ui['bar'].style.background = (
         f"linear-gradient(to right, #400000 0%, #400000 {min_pct:.1f}%, "
         f"#00aa00 {min_pct:.1f}%, #00aa00 {max_pct:.1f}%, "
         f"#400000 {max_pct:.1f}%, #400000 100%)"
     )
+    ui['range_marker'].style.display = ''
+    ui['marker'].style.display = ''
     ui['range_marker'].style.left = f"{min_pct:.1f}%"
     ui['range_marker'].style.width = f"{max_pct - min_pct:.1f}%"
     ui['marker'].style.left = f"{center_pct:.1f}%"
@@ -137,6 +193,7 @@ def _apply_bar(ui, rules):
 def _update_all(ui_rows, summary_value, error_box):
     centers = {ui['env']: _read_float(ui['center']) for ui in ui_rows}
     widths = {ui['env']: _read_float(ui['width']) for ui in ui_rows}
+    ignored_envs = {ui['env']: _is_env_ignored(ui['env']) for ui in ui_rows}
     starting_input = document.getElementById('id_starting_colonists')
     starting_colonists = 0
     if starting_input:
@@ -194,10 +251,14 @@ def _update_all(ui_rows, summary_value, error_box):
     )
     singular_research = bool(singular_checkbox and singular_checkbox.checked)
     fixed_homeworld = bool(fixed_homeworld_checkbox and fixed_homeworld_checkbox.checked)
+    race_type_points_balance = _race_type_points_balance()
     if FIXED_HOMEWORLD_HINT is not None:
         FIXED_HOMEWORLD_HINT.style.display = 'block' if fixed_homeworld else 'none'
     for ui in ui_rows:
         env = ui['env']
+        if ignored_envs.get(env):
+            widths[env] = 1.0
+            centers[env] = 1.0
         widths[env] = _clamp(widths[env], 0.1, 2.0)
         min_center = widths[env] / 2.0
         max_center = 2.0 - widths[env] / 2.0
@@ -215,15 +276,21 @@ def _update_all(ui_rows, summary_value, error_box):
         starting_fleets=starting_fleets,
         starting_tech_level=starting_tech_level,
         starting_tech_level_cost=starting_tech_level_cost,
+        race_type_points_balance=race_type_points_balance,
         convert_unused_buildpoints_to_research=convert_unused_buildpoints_to_research,
         singular_research=singular_research,
         fixed_homeworld=fixed_homeworld,
     )
 
     for ui in ui_rows:
-        _apply_bar(ui, rules)
+        ignored = ignored_envs.get(ui['env'], False)
+        _apply_ignore_state(ui, ignored)
+        _apply_bar(ui, rules, ignored=ignored)
         points = rules.per_env_cost(ui['env'])
-        ui['points'].text = f"{points:.2f} pts"
+        ui['points'].text = (
+            f"{points:.2f} pts overridden by race type"
+            if ignored else f"{points:.2f} pts"
+        )
         ui['range'].text = f"Range {rules.hab_min(ui['env']):.1f}–{rules.hab_max(ui['env']):.1f}"
         ui['width_value'].text = f"{rules.widths[ui['env']]:.2f}"
         ui['center_value'].text = f"{rules.centers[ui['env']]:.2f}"
@@ -260,6 +327,7 @@ def _update_all(ui_rows, summary_value, error_box):
     set_points('shipyard-row', rules.shipyards_cost())
     set_points('fleet-row', rules.fleets_cost())
     set_points('starting-tech-row', rules.starting_tech_level_cost())
+    set_points('race-type-row', rules.race_type_balance_cost())
     set_points('convert-bp-row', rules.convert_unused_buildpoints_cost())
     set_points('singular-row', -rules.singular_research_savings())
     set_points('fixed-homeworld-row', -rules.fixed_homeworld_savings())
@@ -282,21 +350,29 @@ def _wire_controls(ui_rows, summary_value, error_box):
 
     for ui in ui_rows:
         def shrink(ev, ui=ui):
+            if ui['shrink'].disabled:
+                return
             value = _read_float(ui['width']) - WIDTH_STEP
             _set_input(ui['width'], _clamp(value, 0.1, 2.0), WIDTH_STEP)
             refresh()
 
         def grow(ev, ui=ui):
+            if ui['grow'].disabled:
+                return
             value = _read_float(ui['width']) + WIDTH_STEP
             _set_input(ui['width'], _clamp(value, 0.1, 2.0), WIDTH_STEP)
             refresh()
 
         def down(ev, ui=ui):
+            if ui['down'].disabled:
+                return
             value = _read_float(ui['center']) - CENTER_STEP
             _set_input(ui['center'], _clamp(value, 0.0, 2.0), CENTER_STEP)
             refresh()
 
         def up(ev, ui=ui):
+            if ui['up'].disabled:
+                return
             value = _read_float(ui['center']) + CENTER_STEP
             _set_input(ui['center'], _clamp(value, 0.0, 2.0), CENTER_STEP)
             refresh()
@@ -309,6 +385,8 @@ def _wire_controls(ui_rows, summary_value, error_box):
         ui['width'].bind('input', refresh)
 
         def _start_drag(ev, ui=ui, is_touch=False):
+            if ui['bar'].classList.contains('habitability-ignored'):
+                return
             ev.preventDefault()
             bar = ui['bar']
             rect = bar.getBoundingClientRect()
@@ -360,8 +438,16 @@ def _wire_controls(ui_rows, summary_value, error_box):
         def drag_start_touch(ev, ui=ui):
             _start_drag(ev, ui=ui, is_touch=True)
 
+        def reset_to_default(ev, ui=ui):
+            if ui['bar'].classList.contains('habitability-ignored'):
+                return
+            _set_input(ui['center'], 1.0, CENTER_STEP)
+            _set_input(ui['width'], 1.0, WIDTH_STEP)
+            refresh()
+
         ui['bar'].bind('mousedown', drag_start)
         ui['bar'].bind('touchstart', drag_start_touch)
+        ui['bar'].bind('dblclick', reset_to_default)
 
 
 def init_habitability_form():
@@ -438,6 +524,7 @@ def init_habitability_form():
     attach_points('id_starting_shipyards', 'shipyard-row', 'shipyard-row-points')
     attach_points('id_starting_fleets', 'fleet-row', 'fleet-row-points')
     attach_points('id_starting_tech_level', 'starting-tech-row', 'starting-tech-row-points')
+    attach_points('id_race_type', 'race-type-row', 'race-type-row-points')
     attach_points(
         'id_convert_unused_buildpoints_to_research',
         'convert-bp-row',
@@ -489,6 +576,9 @@ def init_habitability_form():
             table <= summary_row
 
     _wire_controls(ui_rows, summary_value, error_box)
+    race_type_input = document.getElementById('id_race_type')
+    if race_type_input:
+        race_type_input.bind('change', lambda ev: _update_all(ui_rows, summary_value, error_box))
     for field_id in [
         'id_starting_colonists',
         'id_starting_mines',
@@ -529,4 +619,5 @@ def init_habitability_form():
     _update_all(ui_rows, summary_value, error_box)
 
 
+_load_race_type_behaviors()
 init_habitability_form()

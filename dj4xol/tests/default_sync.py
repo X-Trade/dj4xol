@@ -165,6 +165,30 @@ class DefaultSyncTest(TestCase):
         prerequisite.refresh_from_db()
         self.assertEqual(prerequisite.min_level, 5)
 
+    def test_sync_applies_race_creation_points_balances_for_default_race_types(self):
+        sync_factory_defaults(force=True)
+
+        self.assertEqual(
+            ServerRaceType.objects.get(code='SCI').race_creation_points_balance,
+            6.0,
+        )
+        self.assertEqual(
+            ServerRaceType.objects.get(code='MECH').race_creation_points_balance,
+            12.0,
+        )
+        self.assertEqual(
+            ServerRaceType.objects.get(code='EXPL').race_creation_points_balance,
+            10.0,
+        )
+        self.assertEqual(
+            ServerRaceType.objects.get(code='BULD').race_creation_points_balance,
+            5.0,
+        )
+        self.assertEqual(
+            ServerRaceType.objects.get(code='BRED').race_creation_points_balance,
+            10.0,
+        )
+
     def test_sync_reconciles_technology_by_short_id_when_uuid_differs(self):
         sync_factory_defaults(force=True)
 

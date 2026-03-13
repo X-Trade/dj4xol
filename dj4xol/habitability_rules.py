@@ -74,6 +74,7 @@ class RaceCreationRules(HabitabilityRules):
     DEFAULT_STARTING_SHIPYARDS = 1
     DEFAULT_STARTING_FLEETS = 2
     DEFAULT_STARTING_TECH_LEVEL = 3
+    DEFAULT_RACE_TYPE_POINTS_BALANCE = 0.0
 
     def __init__(
         self,
@@ -87,6 +88,7 @@ class RaceCreationRules(HabitabilityRules):
         starting_fleets=None,
         starting_tech_level=None,
         starting_tech_level_cost=None,
+        race_type_points_balance=None,
         convert_unused_buildpoints_to_research=False,
         singular_research=False,
         fixed_homeworld=False,
@@ -108,6 +110,8 @@ class RaceCreationRules(HabitabilityRules):
             starting_fleets = self.DEFAULT_STARTING_FLEETS
         if starting_tech_level is None:
             starting_tech_level = self.DEFAULT_STARTING_TECH_LEVEL
+        if race_type_points_balance is None:
+            race_type_points_balance = self.DEFAULT_RACE_TYPE_POINTS_BALANCE
         self.starting_colonists = int(starting_colonists)
         self.starting_mines = int(starting_mines)
         self.starting_factories = int(starting_factories)
@@ -115,6 +119,7 @@ class RaceCreationRules(HabitabilityRules):
         self.starting_shipyards = int(starting_shipyards)
         self.starting_fleets = int(starting_fleets)
         self.starting_tech_level = int(starting_tech_level)
+        self.race_type_points_balance = float(race_type_points_balance or 0.0)
         if starting_tech_level_cost is None:
             starting_tech_level_cost = self._default_starting_tech_level_cost(
                 self.starting_tech_level
@@ -126,7 +131,8 @@ class RaceCreationRules(HabitabilityRules):
 
     def width_cost(self):
         # Keep width=1.0 unchanged, but increase cost curve as width approaches 2.0.
-        # Effective width: w + 0.5*(w-1)^2 => w=1.0 -> 1.0, w=2.0 -> 2.5
+        # Narrower-than-default ranges stay linear; only wider-than-default ranges
+        # get the surcharge curve.
         width_total = sum(
             self._effective_width_cost(self.widths[env]) for env in self.envs
         )
@@ -142,6 +148,8 @@ class RaceCreationRules(HabitabilityRules):
     @staticmethod
     def _effective_width_cost(width):
         width = float(width)
+        if width <= 1.0:
+            return width
         return width + 0.5 * ((width - 1.0) ** 2)
 
     def colonist_cost(self):
@@ -164,6 +172,9 @@ class RaceCreationRules(HabitabilityRules):
 
     def starting_tech_level_cost(self):
         return self.starting_tech_level_cost_value
+
+    def race_type_balance_cost(self):
+        return self.race_type_points_balance
 
     @staticmethod
     def _default_starting_tech_level_cost(level):
@@ -198,7 +209,7 @@ class RaceCreationRules(HabitabilityRules):
         return (self.habitability_cost() + self.colonist_cost() +
                 self.mines_cost() + self.factories_cost() +
                 self.labs_cost() + self.shipyards_cost() + self.fleets_cost() +
-                self.starting_tech_level_cost() +
+                self.starting_tech_level_cost() + self.race_type_balance_cost() +
                 self.convert_unused_buildpoints_cost() - self.singular_research_savings() -
                 self.fixed_homeworld_savings())
 

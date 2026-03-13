@@ -122,6 +122,9 @@ RACE_TYPE_INTEGER_FIELDS = [
     ('economy_offset', 'Economy Offset', 0),
     ('population_cap_multiplier', 'Population Cap', 1),
 ]
+RACE_TYPE_POINT_FIELDS = [
+    ('race_creation_points_balance', 'Race Balance Points'),
+]
 RACE_TYPE_BOOLEAN_FIELDS = [
     ('population_growth_uses_resources', 'Growth Uses Resources', True, False),
     ('starting_planet_has_stargate', 'Start With Stargate', True, False),
@@ -172,6 +175,14 @@ def _race_type_detail_rows(race_type):
             rows.append({'name': label, 'value': '%dx' % value})
         else:
             rows.append({'name': label, 'value': str(value)})
+    for field_name, label in RACE_TYPE_POINT_FIELDS:
+        try:
+            value = float(getattr(race_type, field_name, 0.0) or 0.0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if abs(value) < 1e-9:
+            continue
+        rows.append({'name': label, 'value': '%+.2f pts' % value})
     for field_name, label, active_value, default_value in RACE_TYPE_BOOLEAN_FIELDS:
         value = bool(getattr(race_type, field_name, default_value))
         if value != active_value:
@@ -186,6 +197,20 @@ def _race_type_detail_rows(race_type):
             continue
         rows.append({'name': label, 'value': '%+g' % value})
     return rows
+
+
+def _race_type_behavior_map():
+    return {
+        race_type.code: {
+            'ignores_gravity': bool(getattr(race_type, 'ignores_gravity', False)),
+            'ignores_temperature': bool(getattr(race_type, 'ignores_temperature', False)),
+            'ignores_radiation': bool(getattr(race_type, 'ignores_radiation', False)),
+            'race_creation_points_balance': float(
+                getattr(race_type, 'race_creation_points_balance', 0.0) or 0.0
+            ),
+        }
+        for race_type in ServerRaceType.objects.filter(enabled=True)
+    }
 
 
 def _race_type_return_target(return_to):
@@ -1744,6 +1769,7 @@ def _render_race_form_page(request, account, race=None):
     return render(request, 'dj4xol/create_race.html', {
         'form': form,
         'selected_theme': selected_theme,
+        'race_type_behaviors_json': json.dumps(_race_type_behavior_map()),
         'race_type_browser_url': '%s?%s' % (
             reverse('dj4xol:help_race_types'),
             urlencode({'return_to': 'create_race'}),
@@ -3513,6 +3539,7 @@ def onboarding_race(request):
     return render(request, 'dj4xol/onboarding_race.html', {
         'form': form,
         'selected_theme': account.theme,
+        'race_type_behaviors_json': json.dumps(_race_type_behavior_map()),
         'can_skip_race_creation': can_skip_race_creation,
         'race_type_browser_url': '%s?%s' % (
             reverse('dj4xol:help_race_types'),
