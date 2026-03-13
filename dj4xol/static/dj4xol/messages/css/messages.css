@@ -57,29 +57,35 @@
     line-height: 1.2;
 }
 
+.message-header-actions {
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+.message-header-actions .panel-header-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.message-header-actions .panel-header-button.disabled {
+    pointer-events: none;
+    opacity: 0.55;
+}
+
+.message-header-range {
+    min-width: 54px;
+    text-align: center;
+    font-size: 0.85em;
+}
+
 .message-history .message-text {
     margin-top: 6px;
 }
 
 .message-empty-copy {
     margin: 0;
-}
-
-.message-pagination {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.message-pagination .action-link.disabled {
-    pointer-events: none;
-    opacity: 0.55;
-}
-
-.message-pagination-current {
-    font-weight: bold;
 }
 
 @media (max-width: 900px) {

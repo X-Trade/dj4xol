@@ -1322,6 +1322,10 @@ input[type="range"]::-webkit-slider-thumb {
     border: none;
 }
 
+.lcars .message-header-actions {
+    margin-right: 24px;
+}
+
 .message-history .message-category.RANDOM { background: #cc6633; color: #000; }
 .message-history .message-category.ENVIRONMENTAL { background: #66cccc; color: #000; }
 .message-history .message-category.POPULATION { background: #9999cc; color: #000; }

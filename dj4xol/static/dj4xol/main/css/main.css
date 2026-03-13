@@ -1401,6 +1401,9 @@ body.floating-tooltips-enabled .has-tooltip::after {
 }
 
 .panel-header-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 24px;
     height: 24px;
     padding: 0;
@@ -1411,6 +1414,8 @@ body.floating-tooltips-enabled .has-tooltip::after {
     font: inherit;
     font-weight: bold;
     line-height: 1;
+    text-align: center;
+    overflow: clip;
     cursor: pointer;
 }
 

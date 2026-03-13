@@ -89,7 +89,49 @@
             </div>
             <div class="research-right message-history-right">
                 <div class="panel no-transition open" data-panel="messages">
-                    <h2><span>Messages</span><span class="panel-toggle"></span></h2>
+                    <h2>
+                        <span>Messages</span>
+                        {% if page_obj and page_obj.has_other_pages %}
+                        <span class="panel-header-actions message-header-actions">
+                            {% if page_obj.has_previous %}
+                            <a
+                                class="panel-header-button"
+                                href="?page=1{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
+                                onclick="event.stopPropagation();"
+                                title="First page"
+                            >&vert;&lt;</a>
+                            <a
+                                class="panel-header-button"
+                                href="?page={{ page_obj.previous_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
+                                onclick="event.stopPropagation();"
+                                title="Previous page"
+                            >&lt;</a>
+                            {% else %}
+                            <span class="panel-header-button disabled" title="First page">&vert;&lt;</span>
+                            <span class="panel-header-button disabled" title="Previous page">&lt;</span>
+                            {% endif %}
+                            <span class="message-header-range">{{ page_obj.start_index }}-{{ page_obj.end_index }}</span>
+                            {% if page_obj.has_next %}
+                            <a
+                                class="panel-header-button"
+                                href="?page={{ page_obj.next_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
+                                onclick="event.stopPropagation();"
+                                title="Next page"
+                            >&gt;</a>
+                            <a
+                                class="panel-header-button"
+                                href="?page={{ page_obj.paginator.num_pages }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
+                                onclick="event.stopPropagation();"
+                                title="Last page"
+                            >&gt;&vert;</a>
+                            {% else %}
+                            <span class="panel-header-button disabled" title="Next page">&gt;</span>
+                            <span class="panel-header-button disabled" title="Last page">&gt;&vert;</span>
+                            {% endif %}
+                        </span>
+                        {% endif %}
+                        <span class="panel-toggle"></span>
+                    </h2>
                     <div class="panel-content panel-stack research-panel-body">
                         <section class="research-detail-body messages-scroll panel-scrollable-list" data-year="{{ game.year }}">
                             {% if page_obj and page_obj.object_list %}
@@ -110,30 +152,6 @@
                         </section>
                     </div>
                 </div>
-                {% if page_obj and page_obj.has_other_pages %}
-                <div class="panel no-transition open" data-panel="pagination">
-                    <h2><span>Pages</span><span class="panel-toggle"></span></h2>
-                    <div class="panel-content panel-stack research-panel-body">
-                        <div class="message-pagination">
-                            {% if page_obj.has_previous %}
-                            <a class="action-link" href="?page=1{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">&laquo; First</a>
-                            <a class="action-link" href="?page={{ page_obj.previous_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">&lsaquo; Prev</a>
-                            {% else %}
-                            <span class="action-link disabled">&laquo; First</span>
-                            <span class="action-link disabled">&lsaquo; Prev</span>
-                            {% endif %}
-                            <span class="message-pagination-current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
-                            {% if page_obj.has_next %}
-                            <a class="action-link" href="?page={{ page_obj.next_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">Next &rsaquo;</a>
-                            <a class="action-link" href="?page={{ page_obj.paginator.num_pages }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">Last &raquo;</a>
-                            {% else %}
-                            <span class="action-link disabled">Next &rsaquo;</span>
-                            <span class="action-link disabled">Last &raquo;</span>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
             </div>
         </div>
         <script>
