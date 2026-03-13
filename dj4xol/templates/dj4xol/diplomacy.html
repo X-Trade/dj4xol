@@ -429,6 +429,31 @@
                 }
             });
         })();
+        (function() {
+            var panels = document.querySelectorAll('.panel');
+            panels.forEach(function(panel) {
+                var header = panel.querySelector('h2');
+                if (!header) {
+                    return;
+                }
+                header.addEventListener('click', function() {
+                    panel.classList.remove('no-transition');
+                    panel.classList.toggle('open');
+                });
+            });
+        })();
+        (function() {
+            var columns = document.querySelector('.research-columns');
+            if (!columns) {
+                return;
+            }
+            var variants = ['lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3'];
+            var panels = columns.querySelectorAll('.panel');
+            Array.prototype.forEach.call(panels, function(panel, index) {
+                panel.classList.remove('lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3');
+                panel.classList.add(variants[index % variants.length]);
+            });
+        })();
         (function nextTurnCountdown() {
             var countdownEl = document.getElementById('next-turn-countdown');
             if (!countdownEl) {

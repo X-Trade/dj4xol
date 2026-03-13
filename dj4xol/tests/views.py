@@ -2283,6 +2283,18 @@ class TestDiplomacyView(TestCase):
         self.assertContains(response, 'window.currentYear = %s;' % game.year)
         self.assertContains(response, 'window.gameStatusUrl =')
 
+    def test_diplomacy_page_includes_panel_toggle_and_lcars_variant_scripts(self):
+        game = default_game(stars=5, fleets=0)
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:diplomacy', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "panel.classList.toggle('open');", html=False)
+        self.assertContains(response, "lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3", html=False)
+
     def test_diplomacy_disables_draft_negotiation_button_when_turned_in(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
