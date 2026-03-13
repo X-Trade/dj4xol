@@ -5226,6 +5226,30 @@ class TestFleetTransferOrders(TestCase):
         self.assertEqual(contract_old.status, DiplomaticContract.STATUS_FULFILLED)
         self.assertEqual(contract_new.status, DiplomaticContract.STATUS_ACCEPTED)
         self.assertEqual(contract_new.progress_ship_count, 2)
+        self.assertTrue(
+            player1.messages.filter(message__icontains='Gift Fleet').exists()
+        )
+        self.assertTrue(
+            player2.messages.filter(message__icontains='Gift Fleet').exists()
+        )
+        self.assertTrue(
+            player1.messages.filter(message__icontains='Gift Fleet', priority=True).exists()
+        )
+        self.assertTrue(
+            player2.messages.filter(message__icontains='Gift Fleet', priority=True).exists()
+        )
+        self.assertTrue(
+            player1.messages.filter(message__icontains='Diplomatic request fulfilled').exists()
+        )
+        self.assertTrue(
+            player2.messages.filter(message__icontains='Diplomatic request fulfilled').exists()
+        )
+        self.assertTrue(
+            player1.messages.filter(message__icontains='Diplomatic request fulfilled', priority=True).exists()
+        )
+        self.assertTrue(
+            player2.messages.filter(message__icontains='Diplomatic request fulfilled', priority=True).exists()
+        )
 
     def test_multiple_instant_transfers(self):
         """Test multiple transfer orders executing in same turn."""

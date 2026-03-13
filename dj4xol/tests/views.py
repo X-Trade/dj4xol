@@ -50,6 +50,7 @@ from ..diplomatic_contracts import (
     format_contract_statement,
     format_contract_summary,
     grant_player_technology,
+    mark_countered,
     vague_threat_phrase,
     VAGUE_THREAT_PHRASES,
 )
@@ -4661,6 +4662,50 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(player.homeworld_id, contract.request_star_id)
         self.assertEqual(other_player.homeworld_id, contract.offer_star_id)
 
+    def test_accept_contract_specific_colony_creates_priority_transfer_messages(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        extra_colony = game.stars.exclude(id=player.homeworld_id).order_by('id').first()
+        extra_colony.player = player
+        extra_colony.colonists = 45000
+        extra_colony.save(update_fields=['player', 'colonists'])
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_colony_msg', 'diplo_colony_msg@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DCM')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Recipient Race',
+            plural_name='Recipient Races',
+            race_type=race_type,
+        )
+
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='SPECIFIC_COLONY',
+            offer_star=extra_colony,
+        )
+
+        ok, _message = accept_contract(contract, other_player)
+
+        self.assertTrue(ok)
+        extra_colony.refresh_from_db()
+        self.assertEqual(extra_colony.player_id, other_player.id)
+        self.assertTrue(
+            player.messages.filter(message__icontains=extra_colony.name, priority=True).exists()
+        )
+        self.assertTrue(
+            other_player.messages.filter(message__icontains=extra_colony.name, priority=True).exists()
+        )
+
     def test_diplomacy_colony_names_are_clickable_in_contract_list_and_messages(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
@@ -5051,6 +5096,107 @@ class TestDiplomacyView(TestCase):
         self.assertContains(response, 'diplomacy-contract-status-accepted')
         self.assertContains(response, 'diplomacy-contract-status-countered')
         self.assertContains(response, 'diplomacy-contract-status-expired')
+
+    def test_incoming_sent_contract_displays_received_status_label(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_received_status', 'diplo_received_status@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DRS')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Sender Race',
+            plural_name='Sender Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        DiplomaticContract.objects.create(
+            game=game,
+            sender=other_player,
+            recipient=player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='WARM',
+            offer_clause_type='NOTHING',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id},
+        )
+
+        self.assertContains(response, 'Status: <span class="diplomacy-contract-status-value">Received</span>', html=True)
+        self.assertNotContains(response, 'Status: <span class="diplomacy-contract-status-value">Sent</span>', html=True)
+
+    def test_mark_countered_uses_recipient_perspective_in_recipient_message(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_counter_msg', 'diplo_counter_msg@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DCM')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Counter Race',
+            plural_name='Counter Races',
+            race_type=race_type,
+        )
+        original = DiplomaticContract.objects.create(
+            game=game,
+            sender=other_player,
+            recipient=player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='NEUTRAL',
+            offer_clause_type='NOTHING',
+        )
+        counter = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='WARM',
+            offer_clause_type='NOTHING',
+            countered_from=original,
+        )
+
+        mark_countered(original, counter)
+
+        sender_msg = other_player.messages.filter(category='DIPLOMATIC').latest('id').message
+        recipient_msg = player.messages.filter(category='DIPLOMATIC').latest('id').message
+        self.assertTrue(sender_msg.startswith('Diplomatic request countered: We '))
+        self.assertIn('Counter Race', recipient_msg)
+        self.assertNotIn('Diplomatic request countered: We ', recipient_msg)
 
     def test_main_game_messages_include_incoming_contract_alert(self):
         game = default_game(stars=5, fleets=0)

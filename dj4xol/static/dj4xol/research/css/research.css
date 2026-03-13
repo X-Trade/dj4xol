@@ -7,16 +7,6 @@
     box-sizing: border-box;
 }
 
-.lcars .research-columns {
-    height: calc(100vh - 84px);
-    height: calc(100dvh - 84px);
-}
-
-.win95 .research-columns {
-    height: calc(100vh - 48px);
-    height: calc(100dvh - 48px);
-}
-
 .research-left,
 .research-right {
     display: flex;
