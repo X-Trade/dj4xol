@@ -301,6 +301,19 @@
     line-height: 1.25;
 }
 
+.race-type-description {
+    display: none;
+    margin-top: 8px;
+    font-size: 0.95em;
+    line-height: 1.35;
+    color: var(--panel-text);
+    opacity: 0.9;
+}
+
+.race-type-description.has-text {
+    display: block;
+}
+
 .starting-tech-warning {
     display: none;
     margin-top: 3px;

@@ -27,7 +27,7 @@
                             <div class="form-nav">
                                 <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:onboarding_theme' %}'">&laquo; Prev</button>
                                 {% if can_skip_race_creation %}
-                                <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:index' %}'">Skip for now</button>
+                                <button type="submit" class="nav-button" name="action" value="skip" formnovalidate>Skip for now</button>
                                 {% endif %}
                                 <button type="submit" class="nav-button primary">Finish &raquo;</button>
                             </div>

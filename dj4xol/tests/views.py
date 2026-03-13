@@ -104,6 +104,21 @@ class TestLandingPage(TestCase):
 
 
 class TestMessageFiltering(TestCase):
+    def test_message_history_uses_panel_layout(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        GameMessage.objects.create(game=game, player=player, year=game.year, message="Panel test")
+        user = player.account.django_user
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:message_history', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'message-history-columns')
+        self.assertContains(response, 'data-panel="filters"')
+        self.assertContains(response, 'data-panel="messages"')
+
     def test_messages_filtered_by_messages_seen_year(self):
         """Messages should be filtered to year >= messages_seen_year."""
         game = default_game(stars=5)
@@ -142,8 +157,45 @@ class TestMessageFiltering(TestCase):
         for i in range(1100):
             GameMessage.objects.create(game=game, player=player, year=2400, message=f"Message {i}")
         # Apply limit as view does
-        messages = player.messages.order_by('-year', '-id')[:1000]
+        messages = player.messages.order_by('-year', '-priority', '-id')[:1000]
         self.assertEqual(len(messages), 1000)
+
+    def test_message_history_orders_priority_first_within_year(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        GameMessage.objects.create(
+            game=game,
+            player=player,
+            year=2402,
+            priority=False,
+            message="Normal current year",
+        )
+        priority_msg = GameMessage.objects.create(
+            game=game,
+            player=player,
+            year=2402,
+            priority=True,
+            message="Priority current year",
+        )
+        older_priority = GameMessage.objects.create(
+            game=game,
+            player=player,
+            year=2401,
+            priority=True,
+            message="Priority older year",
+        )
+        user = player.account.django_user
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:message_history', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        page_messages = list(response.context['page_obj'].object_list[:3])
+        self.assertEqual(page_messages[0].id, priority_msg.id)
+        self.assertEqual(page_messages[1].year, 2402)
+        self.assertEqual(page_messages[1].priority, False)
+        self.assertEqual(page_messages[2].id, older_priority.id)
 
     def test_last_seen_year_updated_on_view(self):
         """last_seen_year should be updated when viewing the game."""
@@ -984,7 +1036,8 @@ class TestRaceCreationView(TestCase):
     def test_create_race_includes_race_type_behavior_config_and_state_script(self):
         self.race_type.ignores_gravity = True
         self.race_type.race_creation_points_balance = -6.5
-        self.race_type.save(update_fields=['ignores_gravity', 'race_creation_points_balance'])
+        self.race_type.description = 'A disciplined specialist race.'
+        self.race_type.save(update_fields=['ignores_gravity', 'race_creation_points_balance', 'description'])
 
         response = self.client.get(reverse('dj4xol:create_race'))
 
@@ -993,7 +1046,13 @@ class TestRaceCreationView(TestCase):
         self.assertContains(response, '"%s"' % self.race_type.code)
         self.assertContains(response, '"ignores_gravity": true')
         self.assertContains(response, '"race_creation_points_balance": -6.5')
+        self.assertContains(response, '"description": "A disciplined specialist race."')
         self.assertContains(response, "dj4xol/js/race_form_state.js")
+
+    def test_create_race_renders_race_type_description_placeholder(self):
+        response = self.client.get(reverse('dj4xol:create_race'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="race-type-description"')
 
     def test_create_race_marks_inline_race_type_points_target(self):
         response = self.client.get(reverse('dj4xol:create_race'))
@@ -1128,6 +1187,8 @@ class TestRaceCreationView(TestCase):
 class TestOnboardingRaceView(TestCase):
     def setUp(self):
         self.user, self.account = get_default_user()
+        self.account.onboarding_step = Account.ONBOARDING_STEP_RACE
+        self.account.save(update_fields=['onboarding_step'])
         self.client = Client()
         self.client.force_login(self.user)
         self.race_type = get_default_race_type()
@@ -1159,7 +1220,8 @@ class TestOnboardingRaceView(TestCase):
 
     def test_onboarding_race_includes_race_type_behavior_config_and_state_script(self):
         self.race_type.ignores_temperature = True
-        self.race_type.save(update_fields=['ignores_temperature'])
+        self.race_type.description = 'Optimised for rapid frontier expansion.'
+        self.race_type.save(update_fields=['ignores_temperature', 'description'])
 
         response = self.client.get(reverse('dj4xol:onboarding_race'))
 
@@ -1167,7 +1229,26 @@ class TestOnboardingRaceView(TestCase):
         self.assertContains(response, 'id="race-type-behaviors-json"')
         self.assertContains(response, '"%s"' % self.race_type.code)
         self.assertContains(response, '"ignores_temperature": true')
+        self.assertContains(response, '"description": "Optimised for rapid frontier expansion."')
         self.assertContains(response, "dj4xol/js/race_form_state.js")
+
+    def test_onboarding_race_skip_marks_onboarding_complete(self):
+        self.account.onboarding_step = Account.ONBOARDING_STEP_RACE
+        self.account.save(update_fields=['onboarding_step'])
+        ServerRace.objects.create(
+            name='ServerStarter',
+            plural_name='ServerStarters',
+            race_type=self.race_type,
+            public=True,
+            owner=None,
+        )
+
+        response = self.client.post(reverse('dj4xol:onboarding_race'), {'action': 'skip'})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dj4xol:index'))
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.onboarding_step, Account.ONBOARDING_STEP_COMPLETE)
 
 
 class TestRaceTypeHelpView(TestCase):

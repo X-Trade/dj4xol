@@ -146,6 +146,11 @@ def _race_type_points_balance():
         return 0.0
 
 
+def _race_type_description():
+    behavior = _selected_race_type_behavior()
+    return str(behavior.get('description', '') or '').strip()
+
+
 def _apply_ignore_state(ui, ignored):
     ui['root'].classList.toggle('habitability-ignored-row', ignored)
     ui['bar'].classList.toggle('habitability-ignored', ignored)
@@ -252,6 +257,11 @@ def _update_all(ui_rows, summary_value, error_box):
     singular_research = bool(singular_checkbox and singular_checkbox.checked)
     fixed_homeworld = bool(fixed_homeworld_checkbox and fixed_homeworld_checkbox.checked)
     race_type_points_balance = _race_type_points_balance()
+    race_type_description = _race_type_description()
+    race_type_description_el = document.getElementById('race-type-description')
+    if race_type_description_el is not None:
+        race_type_description_el.text = race_type_description
+        race_type_description_el.classList.toggle('has-text', bool(race_type_description))
     if FIXED_HOMEWORLD_HINT is not None:
         FIXED_HOMEWORLD_HINT.style.display = 'block' if fixed_homeworld else 'none'
     for ui in ui_rows:

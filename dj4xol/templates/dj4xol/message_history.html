@@ -2,192 +2,180 @@
 <html>
     <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Messages - {{ game.name }}</title>
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/research/css/research.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/messages/css/messages.css' %}">
         {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
         {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
-        <style>
-            html, body {
-                overflow: auto;
-                height: auto;
-            }
-            .message-history {
-                max-width: 800px;
-                margin: 0 auto;
-                padding: 20px;
-            }
-            .back-link {
-                margin-bottom: 20px;
-            }
-            h1 {
-                margin-top: 0;
-            }
-            .filters {
-                display: flex;
-                gap: 15px;
-                margin-bottom: 15px;
-                align-items: center;
-                flex-wrap: wrap;
-            }
-            .filters label {
-                font-weight: bold;
-            }
-            .filters select {
-                padding: 4px 8px;
-            }
-            .filters a {
-                font-size: 0.9em;
-            }
-            .message-list {
-                border: 1px solid #808080;
-                padding: 10px;
-            }
-            .message-category {
-                font-size: 0.75em;
-                padding: 2px 6px;
-                border-radius: 3px;
-                background: #e0e0e0;
-                margin-left: 10px;
-            }
-            .message-category.RANDOM { background: #ffe0b0; }
-            .message-category.ENVIRONMENTAL { background: #b0e0b0; }
-            .message-category.POPULATION { background: #b0d0ff; }
-            .message-category.DIPLOMATIC { background: #e0b0e0; }
-            .message-category.COMBAT { background: #ffb0b0; }
-            .message-category.PRODUCTION { background: #d0d0d0; }
-            .message-category.EXCEPTION { background: #ffb0b0; }
-            .pagination {
-                display: flex;
-                gap: 10px;
-                justify-content: center;
-                margin-top: 20px;
-                flex-wrap: wrap;
-            }
-            .pagination a, .pagination span {
-                padding: 5px 10px;
-                border: 1px solid #ccc;
-                text-decoration: none;
-            }
-            .pagination a:hover {
-                background: #f0f0f0;
-            }
-            .pagination .current {
-                background: #333;
-                color: #fff;
-                border-color: #333;
-            }
-            .pagination .disabled {
-                color: #999;
-            }
-        </style>
     </head>
-    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %}">
+    <body class="message-history{% if user_theme %} {{ user_theme }}{% endif %}{% if player and player.turned_in %} turned-in{% endif %}">
         <div class="title-bar">
             <span class="title">{{ game.name }}</span>
-            <span class="tagline">Message History</span>
+            <span class="year"><span class="year-prefix">Year </span><span class="year-value">{{ game.year }}</span></span>
+            <span class="turn-status">Message History</span>
             {% include 'dj4xol/_nav_menu.html' with current_page='message_history' game=game %}
         </div>
-        <div class="message-history">
-            <div class="filters">
-                <label>Year:</label>
-                <select onchange="applyFilters();" id="year-filter">
-                    <option value="">All years</option>
-                    {% for year in all_years %}
-                    <option value="{{ year }}" {% if current_year == year|stringformat:"d" %}selected{% endif %}>{{ year }}</option>
-                    {% endfor %}
-                </select>
-
-                <label>Category:</label>
-                <select onchange="applyFilters();" id="category-filter">
-                    <option value="">All categories</option>
-                    {% for code, name in categories %}
-                    <option value="{{ code }}" {% if current_category == code %}selected{% endif %}>{{ name }}</option>
-                    {% endfor %}
-                </select>
-
-                <label class="priority-filter">
-                    <input type="checkbox" id="priority-filter" onchange="applyFilters();" {% if priority_only %}checked{% endif %}>
-                    Priority only
-                </label>
-
-                {% if current_year or current_category or priority_only %}
-                <a href="{% url 'dj4xol:message_history' game.short_id %}">Clear filters</a>
-                {% endif %}
-            </div>
-
-            {% if page_obj %}
-            <p>
-                Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }} messages.
-            </p>
-            <div class="message-list">
-                {% for msg in page_obj %}
-                <div class="message{% if msg.priority %} priority{% endif %}">
-                    <span class="message-year">Year {{ msg.year }}{% if msg.priority %} <span class="priority-flag">!</span>{% endif %}</span>
-                    <span class="message-category {{ msg.category }}">{{ msg.get_category_display }}</span>
-                    <p class="message-text">{{ msg.message|safe }}</p>
+        <div class="research-columns message-history-columns">
+            <div class="research-left message-history-left">
+                <div class="panel no-transition open" data-panel="filters">
+                    <h2><span>Filters</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack research-panel-body">
+                        <form class="panel-scrollable-text message-filters" method="get" id="message-filters-form">
+                            <div class="detail-row">
+                                <span class="env-label">Year</span>
+                                <span class="detail-value">
+                                    <select name="year" id="year-filter" onchange="this.form.submit()">
+                                        <option value="">All years</option>
+                                        {% for year in all_years %}
+                                        <option value="{{ year }}" {% if current_year == year|stringformat:"d" %}selected{% endif %}>{{ year }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="env-label">Category</span>
+                                <span class="detail-value">
+                                    <select name="category" id="category-filter" onchange="this.form.submit()">
+                                        <option value="">All categories</option>
+                                        {% for code, name in categories %}
+                                        <option value="{{ code }}" {% if current_category == code %}selected{% endif %}>{{ name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="env-label">Priority</span>
+                                <span class="detail-value">
+                                    <label class="message-priority-toggle">
+                                        <input type="checkbox" name="priority" value="1" id="priority-filter" onchange="this.form.submit()" {% if priority_only %}checked{% endif %}>
+                                        Priority only
+                                    </label>
+                                </span>
+                            </div>
+                            {% if current_year or current_category or priority_only %}
+                            <div class="message-filter-actions">
+                                <a class="action-link" href="{% url 'dj4xol:message_history' game.short_id %}">Clear</a>
+                            </div>
+                            {% endif %}
+                        </form>
+                    </div>
                 </div>
-                {% empty %}
-                <p class="no-messages">No messages found.</p>
-                {% endfor %}
+                <div class="panel no-transition open" data-panel="summary">
+                    <h2><span>Summary</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack research-panel-body">
+                        <section class="panel-scrollable-text">
+                            {% if page_obj %}
+                            <div class="detail-row">
+                                <span class="env-label">Showing</span>
+                                <span class="detail-value">{{ page_obj.start_index }}-{{ page_obj.end_index }}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="env-label">Total</span>
+                                <span class="detail-value">{{ page_obj.paginator.count }}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="env-label">Page</span>
+                                <span class="detail-value">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                            </div>
+                            {% else %}
+                            <p class="message-empty-copy">No messages yet.</p>
+                            {% endif %}
+                        </section>
+                    </div>
+                </div>
             </div>
-
-            {% if page_obj.has_other_pages %}
-            <div class="pagination">
-                {% if page_obj.has_previous %}
-                <a href="?page=1{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">&laquo; First</a>
-                <a href="?page={{ page_obj.previous_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">&lsaquo; Prev</a>
-                {% else %}
-                <span class="disabled">&laquo; First</span>
-                <span class="disabled">&lsaquo; Prev</span>
-                {% endif %}
-
-                <span class="current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
-
-                {% if page_obj.has_next %}
-                <a href="?page={{ page_obj.next_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">Next &rsaquo;</a>
-                <a href="?page={{ page_obj.paginator.num_pages }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">Last &raquo;</a>
-                {% else %}
-                <span class="disabled">Next &rsaquo;</span>
-                <span class="disabled">Last &raquo;</span>
+            <div class="research-right message-history-right">
+                <div class="panel no-transition open" data-panel="messages">
+                    <h2><span>Messages</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack research-panel-body">
+                        <section class="research-detail-body messages-scroll panel-scrollable-list" data-year="{{ game.year }}">
+                            {% if page_obj and page_obj.object_list %}
+                            <div class="message-list">
+                                {% for msg in page_obj %}
+                                <div class="message{% if msg.priority %} priority{% endif %}{% if msg.diplomatic_priority %} diplomatic-priority{% endif %}">
+                                    <div class="message-meta">
+                                        <span class="message-year">Year {{ msg.year }}{% if msg.priority %} <span class="priority-flag">!</span>{% endif %}</span>
+                                        <span class="message-category {{ msg.category }}">{{ msg.get_category_display }}</span>
+                                    </div>
+                                    <p class="message-text">{{ msg.message|safe }}</p>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <p class="message-empty-copy">No messages found.</p>
+                            {% endif %}
+                        </section>
+                    </div>
+                </div>
+                {% if page_obj and page_obj.has_other_pages %}
+                <div class="panel no-transition open" data-panel="pagination">
+                    <h2><span>Pages</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack research-panel-body">
+                        <div class="message-pagination">
+                            {% if page_obj.has_previous %}
+                            <a class="action-link" href="?page=1{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">&laquo; First</a>
+                            <a class="action-link" href="?page={{ page_obj.previous_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">&lsaquo; Prev</a>
+                            {% else %}
+                            <span class="action-link disabled">&laquo; First</span>
+                            <span class="action-link disabled">&lsaquo; Prev</span>
+                            {% endif %}
+                            <span class="message-pagination-current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                            {% if page_obj.has_next %}
+                            <a class="action-link" href="?page={{ page_obj.next_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">Next &rsaquo;</a>
+                            <a class="action-link" href="?page={{ page_obj.paginator.num_pages }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}">Last &raquo;</a>
+                            {% else %}
+                            <span class="action-link disabled">Next &rsaquo;</span>
+                            <span class="action-link disabled">Last &raquo;</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
                 {% endif %}
             </div>
-            {% endif %}
-
-            {% else %}
-            <p class="no-messages">No messages yet.</p>
-            {% endif %}
         </div>
-
         <script>
-        function applyFilters() {
-            var year = document.getElementById('year-filter').value;
-            var category = document.getElementById('category-filter').value;
-            var priority = document.getElementById('priority-filter').checked;
-            var params = new URLSearchParams();
-            if (year) params.set('year', year);
-            if (category) params.set('category', category);
-            if (priority) params.set('priority', '1');
-            window.location.search = params.toString();
-        }
-
         (function() {
             var hamburger = document.getElementById('hamburger-btn');
             var dropdown = document.getElementById('nav-dropdown');
-
-            hamburger.addEventListener('click', function(e) {
-                e.stopPropagation();
-                dropdown.classList.toggle('open');
-                hamburger.classList.toggle('open');
+            if (hamburger && dropdown) {
+                hamburger.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    dropdown.classList.toggle('open');
+                    hamburger.classList.toggle('open');
+                });
+                document.addEventListener('click', function(e) {
+                    if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                        dropdown.classList.remove('open');
+                        hamburger.classList.remove('open');
+                    }
+                });
+            }
+        })();
+        (function() {
+            var panels = document.querySelectorAll('.panel');
+            panels.forEach(function(panel) {
+                var header = panel.querySelector('h2');
+                if (!header) return;
+                header.addEventListener('click', function() {
+                    panel.classList.remove('no-transition');
+                    panel.classList.toggle('open');
+                });
             });
-
-            document.addEventListener('click', function(e) {
-                if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
-                    dropdown.classList.remove('open');
-                    hamburger.classList.remove('open');
-                }
+        })();
+        (function() {
+            var columns = document.querySelector('.message-history-columns');
+            if (!columns) return;
+            var variants = ['lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3'];
+            var panels = columns.querySelectorAll('.panel');
+            Array.prototype.forEach.call(panels, function(panel, index) {
+                panel.classList.remove('lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3');
+                panel.classList.add(variants[index % variants.length]);
             });
         })();
         </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
     </body>
 </html>

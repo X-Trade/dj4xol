@@ -1290,8 +1290,8 @@ input[type="range"]::-webkit-slider-thumb {
 
 .message-history .message-list {
     background: #000;
-    border: 3px solid #cc6633;
-    border-radius: 0 0 0 25px;
+    border: none;
+    border-radius: 0;
 }
 
 .message-history .message {
@@ -1318,6 +1318,8 @@ input[type="range"]::-webkit-slider-thumb {
     background: #333;
     color: #ff9966;
     border-radius: 10px;
+    padding: 1px 8px;
+    border: none;
 }
 
 .message-history .message-category.RANDOM { background: #cc6633; color: #000; }

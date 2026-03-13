@@ -879,6 +879,7 @@ class RegistrationForm(forms.ModelForm):
             )
         account = super().save(commit=False)
         account.django_user = user
+        account.onboarding_step = Account.ONBOARDING_STEP_THEME
         if commit:
             account.save()
         self.user = user

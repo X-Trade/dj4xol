@@ -237,6 +237,7 @@ def _race_type_special_technology_rows(race_type):
 def _race_type_behavior_map():
     return {
         race_type.code: {
+            'description': race_type.description or '',
             'ignores_gravity': bool(getattr(race_type, 'ignores_gravity', False)),
             'ignores_temperature': bool(getattr(race_type, 'ignores_temperature', False)),
             'ignores_radiation': bool(getattr(race_type, 'ignores_radiation', False)),
@@ -246,6 +247,17 @@ def _race_type_behavior_map():
         }
         for race_type in ServerRaceType.objects.filter(enabled=True)
     }
+
+
+def _account_onboarding_redirect_name(account):
+    if not account:
+        return None
+    step = getattr(account, 'onboarding_step', Account.ONBOARDING_STEP_COMPLETE)
+    if step == Account.ONBOARDING_STEP_THEME:
+        return 'dj4xol:onboarding_theme'
+    if step == Account.ONBOARDING_STEP_RACE:
+        return 'dj4xol:onboarding_race'
+    return None
 
 
 def _race_type_return_target(return_to):
@@ -476,6 +488,9 @@ def gamelist(request):
         return redirect('dj4xol:register')
 
     account = request.user.dj4xol_account
+    onboarding_redirect = _account_onboarding_redirect_name(account)
+    if onboarding_redirect:
+        return redirect(onboarding_redirect)
     playing_players = list(
         Player.objects.filter(account=account, game__ended=False).select_related('game')
     )
@@ -1834,6 +1849,9 @@ def _render_race_form_page(request, account, race=None):
             saved_race = form.save(commit=False)
             saved_race.owner = None if (request.user.is_staff and saved_race.public) else account
             saved_race.save()
+            if account and getattr(account, 'onboarding_step', Account.ONBOARDING_STEP_COMPLETE) != Account.ONBOARDING_STEP_COMPLETE:
+                account.onboarding_step = Account.ONBOARDING_STEP_COMPLETE
+                account.save(update_fields=['onboarding_step'])
             return redirect('dj4xol:profile' if is_edit_mode else 'dj4xol:index')
     else:
         form = ServerRaceForm(
@@ -2643,7 +2661,7 @@ def message_history(request, game_short_id):
             'page_obj': None,
         })
 
-    messages_qs = player.messages.order_by('-year', '-id')
+    messages_qs = player.messages.order_by('-year', '-priority', '-id')
 
     # Filter by year
     year_filter = request.GET.get('year')
@@ -3589,14 +3607,14 @@ def register(request):
 
     # Check if already registered
     if request.user.is_authenticated and hasattr(request.user, 'dj4xol_account'):
-        return redirect('dj4xol:onboarding_theme')
+        return redirect(_account_onboarding_redirect_name(request.user.dj4xol_account) or 'dj4xol:index')
     if request.method == 'POST':
         form = RegistrationForm(request.user, request.POST)
         if form.is_valid():
             form.save()
             if not request.user.is_authenticated and form.user:
                 login(request, form.user)
-            return redirect('dj4xol:onboarding_theme')
+            return redirect(_account_onboarding_redirect_name(form.instance) or 'dj4xol:index')
     else:
         form = RegistrationForm(request.user)
     return render(request, 'dj4xol/onboarding_profile.html', {
@@ -3611,12 +3629,15 @@ def onboarding_theme(request):
     if not hasattr(request.user, 'dj4xol_account'):
         return redirect('dj4xol:register')
     account = request.user.dj4xol_account
+    if getattr(account, 'onboarding_step', Account.ONBOARDING_STEP_COMPLETE) == Account.ONBOARDING_STEP_COMPLETE:
+        return redirect('dj4xol:index')
     if request.method == 'POST':
         theme = request.POST.get('theme', 'classic')
         valid_themes = [t[0] for t in Account.THEME_CHOICES]
         if theme in valid_themes:
             account.theme = theme
-            account.save(update_fields=['theme'])
+            account.onboarding_step = Account.ONBOARDING_STEP_RACE
+            account.save(update_fields=['theme', 'onboarding_step'])
             return redirect('dj4xol:onboarding_race')
     return render(request, 'dj4xol/onboarding_theme.html', {
         'theme_choices': Account.THEME_CHOICES,
@@ -3630,17 +3651,29 @@ def onboarding_race(request):
     if not hasattr(request.user, 'dj4xol_account'):
         return redirect('dj4xol:register')
     account = request.user.dj4xol_account
+    if getattr(account, 'onboarding_step', Account.ONBOARDING_STEP_COMPLETE) == Account.ONBOARDING_STEP_COMPLETE:
+        return redirect('dj4xol:index')
     if ServerRace.objects.filter(owner=account).exists():
+        account.onboarding_step = Account.ONBOARDING_STEP_COMPLETE
+        account.save(update_fields=['onboarding_step'])
         return redirect('dj4xol:index')
     show_public = _can_publish_public_races(request.user)
     can_skip_race_creation = _public_server_races_available()
     selected_race_type = request.GET.get('race_type')
     if request.method == 'POST':
+        if request.POST.get('action') == 'skip':
+            if can_skip_race_creation:
+                account.onboarding_step = Account.ONBOARDING_STEP_COMPLETE
+                account.save(update_fields=['onboarding_step'])
+                return redirect('dj4xol:index')
+            return redirect('dj4xol:onboarding_race')
         form = ServerRaceForm(request.POST, show_public=show_public)
         if form.is_valid():
             race = form.save(commit=False)
             race.owner = None if (request.user.is_staff and race.public) else account
             race.save()
+            account.onboarding_step = Account.ONBOARDING_STEP_COMPLETE
+            account.save(update_fields=['onboarding_step'])
             return redirect('dj4xol:index')
     else:
         form = ServerRaceForm(
