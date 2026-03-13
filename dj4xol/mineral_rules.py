@@ -96,8 +96,8 @@ def random_surface_mineral_init():
     return random_surface_boranium_init()
 
 
-def random_asteroid_field_minerals(total_min=1000, total_max=100000):
-    """Generate mineral totals for an asteroid field (avg ~50/30/20)."""
+def random_asteroid_field_minerals(total_min=1000, total_max=50000):
+    """Generate natural asteroid field minerals (avg ~50/30/20, reduced cap)."""
     total = random.randint(int(total_min), int(total_max))
     base = (0.50, 0.30, 0.20)
     jitters = (

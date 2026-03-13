@@ -100,6 +100,125 @@
     opacity: 0.85;
 }
 
+.race-type-browser-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: start;
+    width: 100%;
+}
+
+.race-type-subpanel {
+    flex: 1 1 calc(50% - 6px);
+    max-width: calc(50% - 6px);
+    min-width: 0;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.02);
+    box-sizing: border-box;
+    align-self: stretch;
+}
+
+.race-type-subpanel-title {
+    margin: 0 0 10px 0;
+    font-size: 1rem;
+}
+
+.race-type-tech-list {
+    display: grid;
+    gap: 10px;
+}
+
+.race-type-tech-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 0;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--panel-border);
+}
+
+.race-type-tech-item:last-child {
+    border-bottom: none;
+}
+
+.race-type-tech-thumb-wrap {
+    position: relative;
+    flex: 0 0 64px;
+    width: 64px;
+    height: 64px;
+    min-width: 64px;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.06);
+    box-sizing: border-box;
+}
+
+.race-type-tech-thumb {
+    display: block;
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+}
+
+.race-type-tech-thumb-wrap--excluded::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(140, 24, 24, 0.18);
+}
+
+.race-type-tech-excluded-mark {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #d44;
+    font-size: 3rem;
+    font-weight: bold;
+    line-height: 1;
+    z-index: 1;
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.55);
+}
+
+.race-type-tech-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.race-type-traits-table {
+    width: 100%;
+}
+
+.race-type-tech-body strong,
+.race-type-tech-body span {
+    overflow-wrap: anywhere;
+}
+
+.race-type-tech-body span {
+    opacity: 0.85;
+    font-size: 0.92em;
+}
+
+.race-type-tech-item--excluded .race-type-tech-body strong {
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+}
+
+@media (max-width: 760px) {
+    .race-type-subpanel {
+        flex-basis: 100%;
+        max-width: 100%;
+    }
+}
+
 .help-icon-list {
     margin: 0 0 16px 0;
 }

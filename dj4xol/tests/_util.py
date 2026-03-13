@@ -7,7 +7,7 @@ def get_default_race_type():
     """Get or create a default race type for testing."""
     race_type, _ = ServerRaceType.objects.get_or_create(
         code='TEST',
-        defaults={'name': 'Test Race', 'description': 'Test race type'}
+        defaults={'name': 'Test Race', 'description': 'Test race type', 'enabled': False}
     )
     return race_type
 

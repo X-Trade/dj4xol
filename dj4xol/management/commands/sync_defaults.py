@@ -9,7 +9,7 @@ from dj4xol.default_sync import sync_factory_defaults
 
 
 class Command(BaseCommand):
-    help = 'Sync fixture-backed defaults from defaults.yaml (legacy command name).'
+    help = 'Sync fixture-backed defaults from defaults.yaml.'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -30,6 +30,4 @@ class Command(BaseCommand):
             raise RuntimeError('Fixture not found: %s' % fixture_path)
 
         sync_factory_defaults(force=True, fixture_path=fixture_path)
-        self.stdout.write(
-            'Synced fixture-backed defaults from %s via sync_tech_tree.' % fixture_path
-        )
+        self.stdout.write('Synced fixture-backed defaults from %s.' % fixture_path)

@@ -6,6 +6,7 @@ from ..models import (
     Star, Fleet, random_anomaly_stability_init, random_wormhole_stability_init,
 )
 from ..research import get_player_tech_effects
+from ..mineral_rules import random_asteroid_field_minerals
 from ._util import default_game
 from django.contrib.auth.models import User
 from unittest.mock import patch
@@ -14,7 +15,7 @@ from unittest.mock import patch
 class testGameFactory(TestCase):
     def setUp(self):
         self.race_type, _ = ServerRaceType.objects.get_or_create(
-            code='TEST', defaults={'name': 'Test', 'description': 'Test'}
+            code='TEST', defaults={'name': 'Test', 'description': 'Test', 'enabled': False}
         )
         self.races = [
             ServerRace.objects.create(
@@ -31,6 +32,13 @@ class testGameFactory(TestCase):
         gf = GameFactory()
         self.assertIsInstance(gf.game, Game)
         self.assertEqual(gf.stars, [])
+
+    def test_natural_asteroid_fields_use_reduced_default_total_cap(self):
+        with patch('dj4xol.mineral_rules.random.randint', return_value=50000) as randint_mock:
+            iron, bor, germ = random_asteroid_field_minerals()
+
+        randint_mock.assert_called_once_with(1000, 50000)
+        self.assertEqual(iron + bor + germ, 50000)
 
     def test_map_size(self):
         gf = GameFactory()

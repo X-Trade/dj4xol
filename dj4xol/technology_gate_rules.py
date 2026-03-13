@@ -6,6 +6,7 @@ FIELD_LABEL_OVERRIDES = {
     'has_advanced_remoteminers': 'advanced remote miners',
     'has_advanced_stargates': 'advanced stargates',
     'has_generalised_research': 'generalised research',
+    'has_no_stealth': 'no stealth systems',
     'has_superweapon': 'superweapon',
     'starting_planet_has_stargate': 'starting planet has stargate',
 }
@@ -185,3 +186,58 @@ def race_type_requirement_matches(expression, race_type):
         if operator == '!=':
             return current_text != expected_text
     return False
+
+
+def race_type_requirement_viewer_status(expression, race_type):
+    """Return viewer status for a gated technology row.
+
+    Returns:
+    - ``'included'`` when the selected race type specifically gets the technology
+    - ``'excluded'`` when the selected race type is the one specifically blocked
+    - ``None`` when the technology is not exceptional for the selected race type
+    """
+    parsed = parse_race_type_requirement(expression)
+    if parsed is None or race_type is None:
+        return None
+
+    if parsed['kind'] == 'code':
+        current = str(getattr(race_type, 'code', '') or '').upper()
+        expected = str(parsed['code'] or '').upper()
+        if parsed.get('negate'):
+            return 'excluded' if current == expected else None
+        return 'included' if current == expected else None
+
+    if parsed['kind'] == 'has':
+        field = parsed['field']
+        if not hasattr(race_type, field):
+            return None
+        return 'included' if bool(getattr(race_type, field, False)) else None
+
+    field = parsed['field']
+    if not hasattr(race_type, field):
+        return None
+    current = getattr(race_type, field)
+    if isinstance(current, bool) or isinstance(parsed['value'], bool):
+        current_bool = bool(current)
+        expected_bool = bool(parsed['value'])
+        if parsed['operator'] in ('=', '=='):
+            if expected_bool:
+                return 'included' if current_bool else None
+            return 'excluded' if current_bool else None
+        if parsed['operator'] == '!=':
+            if expected_bool:
+                return 'excluded' if current_bool else None
+            return 'included' if current_bool else None
+        return None
+    if parsed['operator'] == '!=':
+        expected = parsed['value']
+        try:
+            return 'excluded' if float(current) == float(expected) else None
+        except (TypeError, ValueError):
+            current_text = str(current or '').strip().lower()
+            expected_text = str(expected or '').strip().lower()
+            return 'excluded' if current_text == expected_text else None
+
+    if race_type_requirement_matches(expression, race_type):
+        return 'included'
+    return None

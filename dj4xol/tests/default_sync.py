@@ -1,7 +1,9 @@
 from django.test import TestCase
+from io import StringIO
 import json
 import uuid
 
+from django.core.management import call_command
 from ..default_sync import sync_factory_defaults
 from ..models import (
     ResearchCategory,
@@ -17,6 +19,7 @@ class DefaultSyncTest(TestCase):
 
         race = ServerRaceType.objects.get(code='JOAT')
         self.assertTrue(race.name)
+        self.assertFalse(race.has_no_stealth)
 
         category = ResearchCategory.objects.get(id=1)
         self.assertEqual(category.code, 'ENERGY')
@@ -125,6 +128,13 @@ class DefaultSyncTest(TestCase):
         )
         self.assertEqual(planetary_disruptors.category.code, 'CONSTRUCTION')
         self.assertEqual(planetary_disruptors.level, 6)
+        city_hull = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000507'
+        )
+        self.assertEqual(
+            json.loads(city_hull.params_json).get('race_type'),
+            'has has_advanced_hulls',
+        )
         planetary_disruptor_gate = ResearchLevelPrerequisite.objects.get(
             category__code='CONSTRUCTION',
             level=6,
@@ -188,6 +198,14 @@ class DefaultSyncTest(TestCase):
             ServerRaceType.objects.get(code='BRED').race_creation_points_balance,
             10.0,
         )
+        self.assertTrue(ServerRaceType.objects.get(code='BRED').has_no_stealth)
+        self.assertTrue(ServerRaceType.objects.get(code='TRAD').has_no_stealth)
+        self.assertTrue(ServerRaceType.objects.get(code='BULD').has_no_stealth)
+        self.assertTrue(ServerRaceType.objects.get(code='WAR').has_no_stealth)
+        self.assertFalse(ServerRaceType.objects.get(code='SCI').has_no_stealth)
+        self.assertFalse(ServerRaceType.objects.get(code='MECH').has_no_stealth)
+        self.assertFalse(ServerRaceType.objects.get(code='EXPL').has_no_stealth)
+        self.assertFalse(ServerRaceType.objects.get(code='PARA').has_no_stealth)
 
     def test_sync_adds_special_cloak_technologies(self):
         sync_factory_defaults(force=True)
@@ -208,12 +226,17 @@ class DefaultSyncTest(TestCase):
             },
         )
 
+        chameleon_cloak = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000802'
+        )
+        self.assertEqual(json.loads(chameleon_cloak.params_json).get('race_type'), 'WAR')
+
         prototype_cloak = Technology.objects.get(
             id='00000000-0000-0000-0000-000000000806'
         )
         self.assertEqual(
             json.loads(prototype_cloak.params_json).get('race_type'),
-            'has_stealth == False',
+            'has has_no_stealth == False',
         )
 
         advanced_cloak = Technology.objects.get(
@@ -221,7 +244,33 @@ class DefaultSyncTest(TestCase):
         )
         self.assertEqual(advanced_cloak.category.code, 'CONSTRUCTION')
         self.assertEqual(advanced_cloak.level, 26)
-        self.assertTrue(json.loads(advanced_cloak.params_json).get('advanced_cloak'))
+        advanced_params = json.loads(advanced_cloak.params_json)
+        self.assertTrue(advanced_params.get('advanced_cloak'))
+        self.assertEqual(advanced_params.get('defense_level'), -1.8)
+
+        tactical_cloak = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000804'
+        )
+        self.assertEqual(
+            json.loads(tactical_cloak.params_json).get('defense_level'),
+            -1.2,
+        )
+
+        super_cloak = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000805'
+        )
+        self.assertEqual(
+            json.loads(super_cloak.params_json).get('defense_level'),
+            -0.8,
+        )
+
+        standard_cloak = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000807'
+        )
+        self.assertEqual(
+            json.loads(standard_cloak.params_json).get('defense_level'),
+            -2.8,
+        )
 
     def test_sync_reconciles_technology_by_short_id_when_uuid_differs(self):
         sync_factory_defaults(force=True)
@@ -269,3 +318,38 @@ class DefaultSyncTest(TestCase):
         self.assertGreater(warp7_penalty, 1.0)
         self.assertLess(warp8_penalty, warp7_penalty)
         self.assertLessEqual(warp9_penalty, warp8_penalty)
+
+    def test_sync_defaults_command_restores_race_type_and_technology_defaults(self):
+        sync_factory_defaults(force=True)
+
+        race = ServerRaceType.objects.get(code='WAR')
+        technology = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000604'
+        )
+        race.has_no_stealth = False
+        race.save(update_fields=['has_no_stealth'])
+        technology.level = 99
+        technology.save(update_fields=['level'])
+
+        stdout = StringIO()
+        call_command('sync_defaults', stdout=stdout)
+
+        race.refresh_from_db()
+        technology.refresh_from_db()
+        self.assertTrue(race.has_no_stealth)
+        self.assertEqual(technology.level, 12)
+        self.assertIn('Synced fixture-backed defaults', stdout.getvalue())
+
+    def test_sync_tech_tree_command_refreshes_server_race_type_defaults_too(self):
+        sync_factory_defaults(force=True)
+
+        race = ServerRaceType.objects.get(code='JOAT')
+        race.name = 'Drifted JOAT'
+        race.save(update_fields=['name'])
+
+        stdout = StringIO()
+        call_command('sync_tech_tree', stdout=stdout)
+
+        race.refresh_from_db()
+        self.assertEqual(race.name, 'Jack of All Trades')
+        self.assertIn('Synced fixture-backed defaults', stdout.getvalue())

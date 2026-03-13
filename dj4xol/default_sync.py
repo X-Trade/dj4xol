@@ -6,24 +6,31 @@ import uuid
 from django.db import connection, transaction
 
 
-_SYNC_DONE = False
-_DEFAULTS_CACHE = None
+_SYNC_DONE_PATHS = set()
+_DEFAULTS_CACHE = {}
 
 
-def _load_defaults():
-    global _DEFAULTS_CACHE
-    if _DEFAULTS_CACHE is not None:
-        return _DEFAULTS_CACHE
+def _default_fixture_path():
+    return os.path.join(os.path.dirname(__file__), 'fixtures', 'defaults.yaml')
+
+
+def _normalize_fixture_path(fixture_path=None):
+    return os.path.abspath(fixture_path or _default_fixture_path())
+
+
+def _load_defaults(fixture_path=None):
+    fixture_key = _normalize_fixture_path(fixture_path)
+    if fixture_key in _DEFAULTS_CACHE:
+        return _DEFAULTS_CACHE[fixture_key]
     import yaml
 
-    fixtures_path = os.path.join(os.path.dirname(__file__), 'fixtures', 'defaults.yaml')
-    with open(fixtures_path, 'r') as handle:
-        _DEFAULTS_CACHE = yaml.safe_load(handle) or []
-    return _DEFAULTS_CACHE
+    with open(fixture_key, 'r') as handle:
+        _DEFAULTS_CACHE[fixture_key] = yaml.safe_load(handle) or []
+    return _DEFAULTS_CACHE[fixture_key]
 
 
-def _entries_for(model_label):
-    return [row for row in _load_defaults() if row.get('model') == model_label]
+def _entries_for(model_label, fixture_path=None):
+    return [row for row in _load_defaults(fixture_path) if row.get('model') == model_label]
 
 
 def _normalize_fk_fields(model, fields):
@@ -130,6 +137,16 @@ def _upsert_server_race_type(ServerRaceType, pk, fields):
             persisted_fields['warp_advantage'] = float(fields['warp_multiplier']) - 1.0
         else:
             persisted_fields['warp_advantage'] = 0.0
+    if 'has_stealth' in table_columns and 'has_stealth' not in persisted_fields:
+        if 'has_no_stealth' in fields:
+            persisted_fields['has_stealth'] = not bool(fields['has_no_stealth'])
+        else:
+            persisted_fields['has_stealth'] = False
+    if 'has_no_stealth' in table_columns and 'has_no_stealth' not in persisted_fields:
+        if 'has_stealth' in fields:
+            persisted_fields['has_no_stealth'] = not bool(fields['has_stealth'])
+        else:
+            persisted_fields['has_no_stealth'] = False
 
     if exists:
         update_columns = [column for column in persisted_fields.keys() if column != 'code']
@@ -163,15 +180,15 @@ def _upsert_server_race_type(ServerRaceType, pk, fields):
 
 
 @transaction.atomic
-def sync_factory_defaults(force=False):
+def sync_factory_defaults(force=False, fixture_path=None):
     """Upsert fixture-backed defaults and update drifted values.
 
     Technologies are matched by UUID `pk`.
     Research categories are matched by fixture `pk` (integer id).
     Race types are matched by fixture `pk` (code).
     """
-    global _SYNC_DONE
-    if _SYNC_DONE and not force:
+    fixture_key = _normalize_fixture_path(fixture_path)
+    if fixture_key in _SYNC_DONE_PATHS and not force:
         return
 
     from .models import (
@@ -182,7 +199,7 @@ def sync_factory_defaults(force=False):
         Technology,
     )
 
-    for row in _entries_for('dj4xol.ServerRaceType'):
+    for row in _entries_for('dj4xol.ServerRaceType', fixture_path=fixture_key):
         fields = dict(row.get('fields') or {})
         pk = row.get('pk') or fields.get('code')
         if not pk:
@@ -190,7 +207,7 @@ def sync_factory_defaults(force=False):
         fields = _normalize_fk_fields(ServerRaceType, fields)
         _upsert_server_race_type(ServerRaceType, pk, fields)
 
-    for row in _entries_for('dj4xol.ResearchCategory'):
+    for row in _entries_for('dj4xol.ResearchCategory', fixture_path=fixture_key):
         pk = row.get('pk')
         fields = dict(row.get('fields') or {})
         if pk is None:
@@ -198,7 +215,7 @@ def sync_factory_defaults(force=False):
         fields = _normalize_fk_fields(ResearchCategory, fields)
         ResearchCategory.objects.update_or_create(id=pk, defaults=fields)
 
-    for row in _entries_for('dj4xol.ServerRace'):
+    for row in _entries_for('dj4xol.ServerRace', fixture_path=fixture_key):
         pk = row.get('pk')
         fields = dict(row.get('fields') or {})
         if not pk:
@@ -206,7 +223,7 @@ def sync_factory_defaults(force=False):
         fields = _normalize_fk_fields(ServerRace, fields)
         ServerRace.objects.update_or_create(id=pk, defaults=fields)
 
-    for row in _entries_for('dj4xol.Technology'):
+    for row in _entries_for('dj4xol.Technology', fixture_path=fixture_key):
         pk = row.get('pk')
         fields = dict(row.get('fields') or {})
         if not pk:
@@ -214,7 +231,7 @@ def sync_factory_defaults(force=False):
         fields = _normalize_fk_fields(Technology, fields)
         _upsert_technology(Technology, pk, fields)
 
-    for row in _entries_for('dj4xol.ResearchLevelPrerequisite'):
+    for row in _entries_for('dj4xol.ResearchLevelPrerequisite', fixture_path=fixture_key):
         fields = dict(row.get('fields') or {})
         fields = _normalize_fk_fields(ResearchLevelPrerequisite, fields)
         category_id = fields.pop('category_id', None)
@@ -229,4 +246,4 @@ def sync_factory_defaults(force=False):
             defaults=fields,
         )
 
-    _SYNC_DONE = True
+    _SYNC_DONE_PATHS.add(fixture_key)
