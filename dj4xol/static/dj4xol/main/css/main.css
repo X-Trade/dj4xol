@@ -1647,6 +1647,7 @@ body.order-params-overlay-open {
 }
 
 .order-param-row {
+    --order-param-label-width: 110px;
     display: flex;
     align-items: center;
     margin-bottom: 8px;
@@ -1685,11 +1686,40 @@ body.order-params-overlay-open {
 }
 
 @container orders-column (min-width: 546px) {
+    .order-param-row {
+        --order-param-label-width: 200px;
+    }
+
     .order-param-row > label {
         flex: 0 0 200px;
         width: 200px;
         min-width: 200px;
     }
+}
+
+.order-param-row--with-hint {
+    flex-wrap: wrap;
+}
+
+.order-param-row--with-hint .speed-row {
+    flex: 1 1 0;
+}
+
+.order-param-hints {
+    flex: 0 0 calc(100% - var(--order-param-label-width) - 8px);
+    margin-left: calc(var(--order-param-label-width) + 8px);
+    min-height: calc(2 * 1.3em);
+}
+
+.order-param-hint {
+    color: #666;
+    font-size: 0.85em;
+    line-height: 1.3;
+    min-height: 1.3em;
+}
+
+.order-param-hint.is-hidden {
+    visibility: hidden;
 }
 
 /* Destination display */

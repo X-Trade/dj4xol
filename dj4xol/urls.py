@@ -22,6 +22,11 @@ urlpatterns = [
     url(r'^profile/theme/$', views.update_theme, name='update_theme'),
     url(r'^profile/email-preferences/$', views.update_email_preferences, name='update_email_preferences'),
     url(r'^profile/resend-email-verification/$', views.resend_email_verification, name='resend_email_verification'),
+    url(
+        r'^profile/send-unverified-email-verifications/$',
+        views.send_unverified_email_verifications,
+        name='send_unverified_email_verifications',
+    ),
     url(r'^profile/test-email-rollup/$', views.test_email_rollup, name='test_email_rollup'),
     url(r'^profile/test-generic-email/$', views.test_generic_email, name='test_generic_email'),
     url(r'^verify-email/(?P<key>[0-9a-f]{32})/$', views.verify_email, name='verify_email'),

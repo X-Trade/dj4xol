@@ -61,6 +61,7 @@
                             <div class="form-nav">
                                 <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:index' %}'">Back to Games</button>
                                 <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:help_pages_cms' %}'">Edit Help Pages</button>
+                                <button type="submit" class="nav-button" formaction="{% url 'dj4xol:send_unverified_email_verifications' %}">Send Verification Emails</button>
                                 <button type="submit" class="nav-button primary">Save Settings</button>
                             </div>
                         </form>

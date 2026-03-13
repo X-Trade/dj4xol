@@ -502,6 +502,7 @@ class TestServerSettingsView(TestCase):
         self.assertContains(response, 'Enable Profanity Filter')
         self.assertContains(response, 'Profanity Whitelist')
         self.assertContains(response, 'Profanity Blacklist')
+        self.assertContains(response, 'Send Verification Emails')
 
         response = self.client.post(
             reverse('dj4xol:server_settings'),
@@ -583,6 +584,74 @@ class TestServerSettingsView(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(ServerSettings.get('server_url'), 'https://example.test')
+
+    def test_staff_can_send_verification_emails_to_unverified_accounts(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=['is_staff'])
+        ServerSettings.objects.update_or_create(
+            key='enable_email',
+            defaults={
+                'value': 'True',
+                'description': 'Enable email',
+            }
+        )
+        ServerSettings.objects.update_or_create(
+            key='server_url',
+            defaults={
+                'value': 'https://example.test',
+                'description': 'Server URL',
+            }
+        )
+
+        unverified_user = User.objects.create_user(
+            'unverifiedpilot', 'unverified@example.com', 'pass1234'
+        )
+        unverified_account = Account.objects.create(
+            django_user=unverified_user,
+            alias='unverifiedpilot',
+            email='unverified@example.com',
+            full_name='Unverified Pilot',
+        )
+        verified_user = User.objects.create_user(
+            'verifiedpilot', 'verified@example.com', 'pass1234'
+        )
+        verified_account = Account.objects.create(
+            django_user=verified_user,
+            alias='verifiedpilot',
+            email='verified@example.com',
+            full_name='Verified Pilot',
+            email_verified=True,
+        )
+        no_email_user = User.objects.create_user(
+            'noemailpilot', 'noemail@example.com', 'pass1234'
+        )
+        Account.objects.create(
+            django_user=no_email_user,
+            alias='noemailpilot',
+            email='',
+            full_name='No Email Pilot',
+        )
+
+        response = self.client.post(
+            reverse('dj4xol:send_unverified_email_verifications'),
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'Sent verification email to 1 unverified account.',
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['unverified@example.com'])
+        self.assertIn(
+            unverified_account.email_verification_key,
+            mail.outbox[0].body,
+        )
+        self.assertNotIn(
+            verified_account.email_verification_key,
+            mail.outbox[0].body,
+        )
 
 
 class TestGameDetailRendering(TestCase):
