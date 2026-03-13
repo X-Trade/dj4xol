@@ -47,6 +47,16 @@ def _unsubscribe_url(account, base_url):
     return path
 
 
+def _verify_email_url(account, base_url):
+    path = reverse(
+        'dj4xol:verify_email',
+        args=[account.email_verification_key],
+    )
+    if base_url:
+        return base_url + path
+    return path
+
+
 def _profile_url(base_url):
     path = reverse('dj4xol:profile')
     if base_url:
@@ -241,6 +251,49 @@ def send_generic_test_email_for_account(account, dry_run=False, stdout=None):
     )
     if stdout:
         stdout.write(f'Sent generic test email to {account.email}')
+    return True, 'Sent'
+
+
+def send_email_verification_for_account(account, dry_run=False, stdout=None):
+    """Send a verification email for a newly registered account."""
+    if not _email_enabled():
+        if stdout:
+            stdout.write('Email disabled; skipping verification email.')
+        return False, 'Email disabled'
+    if not account or not getattr(account, 'email', ''):
+        return False, 'No email address'
+
+    base_url = _get_server_url()
+    from_email = _get_from_email()
+    subject = 'DJ4XOL: Verify your email address'
+    body = render_to_string('dj4xol/email/verify_email.txt', {
+        'account': account,
+        'verify_url': _verify_email_url(account, base_url),
+        'profile_url': _profile_url(base_url),
+        'server_url': base_url,
+    })
+
+    if dry_run:
+        if stdout:
+            stdout.write(
+                f'[DRY RUN] Would send verification email to {account.email}'
+            )
+        return False, 'Dry run'
+
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=from_email,
+            recipient_list=[account.email],
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception(
+            'Failed to send verification email for account %s',
+            getattr(account, 'pk', None),
+        )
+        return False, 'Send failure'
     return True, 'Sent'
 
 

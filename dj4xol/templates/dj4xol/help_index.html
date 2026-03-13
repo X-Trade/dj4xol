@@ -40,6 +40,9 @@
                             <li><a href="{% url 'dj4xol:help_race_types' %}">Race Type Browser</a> Browse server race types and compare their effects.</li>
                             <li><a href="{% url 'dj4xol:help_technology' %}">Technology Directory</a> Browse configured technologies by category and level.</li>
                             <li><a href="{% url 'dj4xol:help_version_history' %}">Version History</a> See a summary of recent development changes.</li>
+                            {% for page in custom_help_pages %}
+                            <li><a href="{% url 'dj4xol:custom_help_page' page.slug %}">{{ page.title }}</a> {{ page.summary|default:'Custom server help page.' }}</li>
+                            {% endfor %}
                         </ul>
                         </section>
                     </div>

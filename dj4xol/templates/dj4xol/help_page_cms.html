@@ -1,0 +1,211 @@
+{% load static rich_text %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Help Pages</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help_editor.css' %}">
+        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
+        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index help-editor-page">
+        <div class="title-bar">
+            <span class="title">Help Pages</span>
+            <span class="tagline">Server CMS</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_pages_cms' %}
+        </div>
+        {% include 'dj4xol/_form_message_banner.html' with errors=page_form.non_field_errors %}
+        <div class="columns two-column help-editor-columns">
+            <div class="column column-left">
+                <div class="panel no-transition open" data-panel="help-pages-list">
+                    <h2><span>Pages</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-list">
+                        <ul class="game-list">
+                            <li>
+                                <div class="game-entry-main">
+                                    <a href="{% url 'dj4xol:help_pages_cms' %}?page=new" class="game-entry-title">Create New Page</a>
+                                    <span class="game-meta">Start a new custom help page.</span>
+                                </div>
+                            </li>
+                            {% for page in pages %}
+                            <li>
+                                <div class="game-entry-main">
+                                    <a href="{% url 'dj4xol:help_pages_cms' %}?page={{ page.id }}" class="game-entry-title">{{ page.title }}</a>
+                                    <span class="game-meta">
+                                        {{ page.slug }}
+                                        {% if page.published %} · Published{% else %} · Draft{% endif %}
+                                    </span>
+                                </div>
+                            </li>
+                            {% empty %}
+                            <li>
+                                <div class="game-entry-main">
+                                    <span class="game-entry-title">No pages yet</span>
+                                    <span class="game-meta">Create your first server help page.</span>
+                                </div>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        </section>
+                    </div>
+                </div>
+
+                <div class="panel no-transition open" data-panel="help-formatting-guide">
+                    <h2><span>Formatting Guide</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                        <p>Use blank lines between paragraphs.</p>
+                        <p>Start bullet lines with <code>- </code>.</p>
+                        <p>Links: <code>[Guide](/4x/help/)</code></p>
+                        <p>Images: <code>![Galaxy map](https://example.com/map.png)</code></p>
+                        <p>Use absolute <code>http://</code>, <code>https://</code>, or site-relative <code>/</code> URLs.</p>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
+            <div class="column column-right">
+                <div class="panel no-transition open" data-panel="help-page-editor">
+                    <h2><span>{% if selected_page %}Edit Page{% else %}New Page{% endif %}</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                        <form method="post" class="game-form help-page-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="page_id" value="{% if selected_page %}{{ selected_page.id }}{% else %}new{% endif %}">
+                            <div class="detail-subpanel">
+                                <h3 class="settings-section-title">Page Details</h3>
+                                <table class="profile-table">
+                                    {% for field in page_form %}
+                                    <tr>
+                                        <th>{{ field.label_tag }}</th>
+                                        <td>
+                                            {{ field }}
+                                            {{ field.errors }}
+                                            {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </table>
+                            </div>
+
+                            <div class="detail-subpanel">
+                                <h3 class="settings-section-title">Blocks</h3>
+                                {{ block_formset.management_form }}
+                                {% for block_form in block_formset %}
+                                <div class="help-editor-block" data-help-block>
+                                    {% for hidden in block_form.hidden_fields %}{{ hidden }}{% endfor %}
+                                    <div class="help-editor-block-header">
+                                        <strong>Block {{ forloop.counter }}</strong>
+                                        {% if block_form.instance.pk %}
+                                        <label class="help-editor-delete">{{ block_form.DELETE }} Delete block</label>
+                                        {% endif %}
+                                    </div>
+                                    <table class="profile-table">
+                                        {% for field in block_form.visible_fields %}
+                                        <tr>
+                                            <th>{{ field.label_tag }}</th>
+                                            <td>
+                                                {% if field.name == 'body' %}
+                                                <div class="rich-text-toolbar">
+                                                    <button type="button" class="nav-button rich-text-insert" data-insert-template="[Label](https://example.com)">Link</button>
+                                                    <button type="button" class="nav-button rich-text-insert" data-insert-template="![Alt text](https://example.com/image.png)">Image</button>
+                                                    <button type="button" class="nav-button rich-text-insert" data-insert-template="- Bullet item">Bullet</button>
+                                                </div>
+                                                {% endif %}
+                                                {{ field }}
+                                                {{ field.errors }}
+                                                {% if field.help_text %}<div class="help-text">{{ field.help_text }}</div>{% endif %}
+                                                {% if field.name == 'body' %}
+                                                <div class="help-editor-preview-wrap">
+                                                    <div class="help-editor-preview-label">Live Preview</div>
+                                                    <div class="help-editor-preview panel-scrollable-text" data-rich-text-role="preview"></div>
+                                                </div>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </table>
+                                </div>
+                                {% endfor %}
+                            </div>
+
+                            <div class="form-nav">
+                                <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:server_settings' %}'">Back to Server Settings</button>
+                                {% if selected_page %}
+                                <button type="submit" name="action" value="delete_page" class="nav-button" onclick="return confirm('Delete this help page?');">Delete Page</button>
+                                {% endif %}
+                                {% if public_preview_url %}
+                                <a href="{{ public_preview_url }}" class="nav-button" target="_blank" rel="noopener">Open Public Preview</a>
+                                {% endif %}
+                                <button type="submit" name="action" value="save" class="nav-button primary">Save Page</button>
+                            </div>
+                        </form>
+                        </section>
+                    </div>
+                </div>
+
+                <div class="panel no-transition open" data-panel="help-page-render-preview">
+                    <h2><span>Saved Page Preview</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text help-page-blocks">
+                        {% if preview_page and preview_page.pk %}
+                        <h3 class="help-editor-saved-title">{{ preview_page.title|default:'Untitled Page' }}</h3>
+                        {% if preview_page.tagline %}<p class="help-caption">{{ preview_page.tagline }}</p>{% endif %}
+                        {% for block in preview_page.blocks.all %}
+                        <section class="help-page-block">
+                            {% if block.heading %}<h4>{{ block.heading }}</h4>{% endif %}
+                            {{ block.body|render_rich_text }}
+                        </section>
+                        {% empty %}
+                        <p>Save a page with at least one block to preview the composed result here.</p>
+                        {% endfor %}
+                        {% else %}
+                        <p>Create a page to see a saved preview here.</p>
+                        {% endif %}
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script type="text/javascript" src="{% static 'dj4xol/help/js/rich_text_editor.js' %}"></script>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+
+                if (window.DJ4XOLRichTextEditor) {
+                    window.DJ4XOLRichTextEditor.init(document);
+                }
+            })();
+        </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+    </body>
+</html>

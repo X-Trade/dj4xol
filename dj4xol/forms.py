@@ -2,6 +2,8 @@ from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.password_validation import password_validators_help_text_html
+from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.db import models
 from urllib.parse import urlparse, urlunparse
 from .models import (
@@ -9,6 +11,8 @@ from .models import (
     ServerRaceType,
     Game,
     Account,
+    CustomHelpPage,
+    CustomHelpPageBlock,
     ServerSettings,
     profanity_filter_settings,
 )
@@ -536,7 +540,16 @@ class ServerSettingsForm(forms.Form):
     server_welcome = forms.CharField(
         label="Homepage Welcome",
         required=False,
-        widget=forms.Textarea(attrs={'rows': 8}),
+        help_text=(
+            'Supports paragraphs, bullet lines beginning with "- ", '
+            '[links](https://example.com), and '
+            '![images](https://example.com/image.png).'
+        ),
+        widget=forms.Textarea(attrs={
+            'rows': 8,
+            'class': 'rich-text-source',
+            'data-rich-text-role': 'source',
+        }),
     )
     allow_self_signup = forms.BooleanField(
         label="Allow Self Sign-up",
@@ -723,6 +736,91 @@ class SignupForm(UserCreationForm):
         return user
 
 
+class CustomHelpPageForm(forms.ModelForm):
+    class Meta:
+        model = CustomHelpPage
+        fields = [
+            'title',
+            'slug',
+            'tagline',
+            'summary',
+            'nav_order',
+            'published',
+        ]
+        widgets = {
+            'summary': forms.Textarea(attrs={'rows': 2}),
+            'nav_order': forms.NumberInput(attrs={'step': '1'}),
+        }
+        help_texts = {
+            'slug': 'Used in the page URL, for example /4x/help/pages/your-slug/.',
+            'summary': 'Shown on the Help index page.',
+            'nav_order': 'Lower numbers appear earlier on the Help index.',
+        }
+
+
+class CustomHelpPageBlockForm(forms.ModelForm):
+    class Meta:
+        model = CustomHelpPageBlock
+        fields = [
+            'display_order',
+            'heading',
+            'body',
+        ]
+        widgets = {
+            'display_order': forms.NumberInput(attrs={'step': '1'}),
+            'body': forms.Textarea(attrs={
+                'rows': 10,
+                'class': 'rich-text-source',
+                'data-rich-text-role': 'source',
+            }),
+        }
+        help_texts = {
+            'display_order': 'Lower numbers appear earlier on the page.',
+            'body': (
+                'Supports paragraphs, bullet lines beginning with "- ", '
+                '[links](https://example.com), and '
+                '![images](https://example.com/image.png).'
+            ),
+        }
+
+
+CustomHelpPageBlockFormSet = forms.inlineformset_factory(
+    CustomHelpPage,
+    CustomHelpPageBlock,
+    form=CustomHelpPageBlockForm,
+    extra=1,
+    can_delete=True,
+)
+
+
+def _normalise_optional_website_url(value):
+    text = str(value or '').strip()
+    if not text or text == 'https://':
+        return ''
+    while (
+        text.startswith('https://https://') or
+        text.startswith('https://http://')
+    ):
+        text = text[len('https://'):]
+    if '://' not in text:
+        text = 'https://' + text
+    return text
+
+
+def _capitalise_name_words(value):
+    text = str(value or '')
+    result = []
+    should_upper = True
+    for ch in text:
+        if should_upper and ch.isalpha():
+            result.append(ch.upper())
+            should_upper = False
+            continue
+        result.append(ch)
+        should_upper = ch.isspace()
+    return ''.join(result)
+
+
 class RegistrationForm(forms.ModelForm):
     """Registration form for account profile, with optional Django user creation."""
     email_game_rollups_per_day = forms.TypedChoiceField(
@@ -746,6 +844,10 @@ class RegistrationForm(forms.ModelForm):
         required=False,
         label='Confirm Password',
         widget=forms.PasswordInput(),
+    )
+    website_url = forms.CharField(
+        required=False,
+        label='Website URL',
     )
 
     class Meta:
@@ -776,6 +878,17 @@ class RegistrationForm(forms.ModelForm):
             'spellcheck': 'false',
             'autocorrect': 'off',
             'autocapitalize': 'none',
+        })
+        self.fields['website_url'].widget.attrs.update({
+            'placeholder': 'optional',
+            'data-url-prefix': 'https://',
+            'autocomplete': 'url',
+            'spellcheck': 'false',
+            'autocorrect': 'off',
+            'autocapitalize': 'none',
+        })
+        self.fields['full_name'].widget.attrs.update({
+            'autocapitalize': 'words',
         })
         self.create_user = self.user is None
         if not self.is_bound and (not self.instance or not self.instance.pk):
@@ -826,12 +939,25 @@ class RegistrationForm(forms.ModelForm):
     def clean_full_name(self):
         profanity_filter = profanity_filter_settings()
         return validate_safe_public_text(
-            self.cleaned_data.get('full_name'),
+            _capitalise_name_words(self.cleaned_data.get('full_name')),
             'Full name',
             block_profanity=profanity_filter['enabled'],
             profanity_whitelist=profanity_filter['whitelist'],
             profanity_blacklist=profanity_filter['blacklist'],
         )
+
+    def clean_website_url(self):
+        website_url = _normalise_optional_website_url(
+            self.cleaned_data.get('website_url')
+        )
+        if not website_url:
+            return ''
+        validator = URLValidator()
+        try:
+            validator(website_url)
+        except ValidationError:
+            raise forms.ValidationError('Enter a valid URL.')
+        return website_url
 
     def clean(self):
         cleaned = super().clean()

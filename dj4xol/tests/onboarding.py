@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.core import mail
 from django.core.exceptions import ValidationError
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -53,6 +54,8 @@ class OnboardingRegistrationTest(TestCase):
         self.assertFalse(account.email_newsletter)
         self.assertEqual(account.email_game_rollups_per_day, 1)
         self.assertTrue(bool(account.email_unsubscribe_key))
+        self.assertFalse(account.email_verified)
+        self.assertTrue(bool(account.email_verification_key))
 
     def test_register_shows_email_and_password_help_in_login_section(self):
         ServerSettings.objects.update_or_create(
@@ -70,6 +73,11 @@ class OnboardingRegistrationTest(TestCase):
         self.assertContains(response, 'Confirm Password')
         self.assertContains(response, 'Your password')
         self.assertContains(response, 'onboarding_profile.py')
+        self.assertContains(response, 'name="website_url"', html=False)
+        self.assertContains(response, 'placeholder="optional"', html=False)
+        self.assertContains(response, 'data-url-prefix="https://"', html=False)
+        self.assertContains(response, 'name="full_name"', html=False)
+        self.assertContains(response, 'autocapitalize="words"', html=False)
 
     def test_register_hides_user_fields_for_logged_in_user(self):
         user = User.objects.create_user('existing', 'existing@example.com', 'pass1234')
@@ -207,6 +215,193 @@ class OnboardingRegistrationTest(TestCase):
         })
         self.assertEqual(response.status_code, 302)
         self.assertTrue(User.objects.filter(username='fuckpilot').exists())
+
+    def test_register_accepts_valid_website_url(self):
+        ServerSettings.objects.update_or_create(
+            key='allow_self_signup',
+            defaults={
+                'value': 'True',
+                'description': 'Allow self-sign-up',
+            }
+        )
+        response = self.client.post(reverse('dj4xol:register'), {
+            'username': 'sitepilot',
+            'password1': 'pw-test-12345',
+            'password2': 'pw-test-12345',
+            'alias': 'sitepilot',
+            'email': 'pilot@example.com',
+            'full_name': 'Site Pilot',
+            'website_url': 'example.com/profile',
+            'email_game_updates': 'on',
+        })
+        self.assertEqual(response.status_code, 302)
+        account = Account.objects.get(django_user__username='sitepilot')
+        self.assertEqual(account.website_url, 'https://example.com/profile')
+
+    def test_register_rejects_invalid_website_url(self):
+        ServerSettings.objects.update_or_create(
+            key='allow_self_signup',
+            defaults={
+                'value': 'True',
+                'description': 'Allow self-sign-up',
+            }
+        )
+        response = self.client.post(reverse('dj4xol:register'), {
+            'username': 'badsite',
+            'password1': 'pw-test-12345',
+            'password2': 'pw-test-12345',
+            'alias': 'badsite',
+            'email': 'pilot@example.com',
+            'full_name': 'Bad Site',
+            'website_url': 'not a url',
+            'email_game_updates': 'on',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Enter a valid URL.')
+        self.assertFalse(User.objects.filter(username='badsite').exists())
+
+    def test_register_treats_placeholder_prefix_only_as_blank(self):
+        ServerSettings.objects.update_or_create(
+            key='allow_self_signup',
+            defaults={
+                'value': 'True',
+                'description': 'Allow self-sign-up',
+            }
+        )
+        response = self.client.post(reverse('dj4xol:register'), {
+            'username': 'prefixpilot',
+            'password1': 'pw-test-12345',
+            'password2': 'pw-test-12345',
+            'alias': 'prefixpilot',
+            'email': 'pilot@example.com',
+            'full_name': 'Prefix Pilot',
+            'website_url': 'https://',
+            'email_game_updates': 'on',
+        })
+        self.assertEqual(response.status_code, 302)
+        account = Account.objects.get(django_user__username='prefixpilot')
+        self.assertEqual(account.website_url, '')
+
+    def test_register_capitalises_full_name_word_starts(self):
+        ServerSettings.objects.update_or_create(
+            key='allow_self_signup',
+            defaults={
+                'value': 'True',
+                'description': 'Allow self-sign-up',
+            }
+        )
+        response = self.client.post(reverse('dj4xol:register'), {
+            'username': 'namepilot',
+            'password1': 'pw-test-12345',
+            'password2': 'pw-test-12345',
+            'alias': 'namepilot',
+            'email': 'pilot@example.com',
+            'full_name': 'new pilot example',
+            'website_url': '',
+            'email_game_updates': 'on',
+        })
+        self.assertEqual(response.status_code, 302)
+        account = Account.objects.get(django_user__username='namepilot')
+        self.assertEqual(account.full_name, 'New Pilot Example')
+
+    def test_register_sends_verification_email_when_enabled(self):
+        ServerSettings.objects.update_or_create(
+            key='allow_self_signup',
+            defaults={
+                'value': 'True',
+                'description': 'Allow self-sign-up',
+            }
+        )
+        ServerSettings.objects.update_or_create(
+            key='enable_email',
+            defaults={
+                'value': 'True',
+                'description': 'Enable email',
+            }
+        )
+        ServerSettings.objects.update_or_create(
+            key='server_url',
+            defaults={
+                'value': 'https://example.test',
+                'description': 'Server URL',
+            }
+        )
+
+        response = self.client.post(reverse('dj4xol:register'), {
+            'username': 'mailpilot',
+            'password1': 'pw-test-12345',
+            'password2': 'pw-test-12345',
+            'alias': 'mailpilot',
+            'email': 'pilot@example.com',
+            'full_name': 'Mail Pilot',
+            'website_url': '',
+            'email_game_updates': 'on',
+        }, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Verification email sent.')
+        self.assertEqual(len(mail.outbox), 1)
+        account = Account.objects.get(django_user__username='mailpilot')
+        self.assertIn(account.email_verification_key, mail.outbox[0].body)
+        self.assertIn('/verify-email/', mail.outbox[0].body)
+
+    def test_verify_email_marks_account_verified_and_redirects_to_profile(self):
+        user = User.objects.create_user(
+            'verifypilot', 'verify@example.com', 'pass1234'
+        )
+        account = Account.objects.create(
+            django_user=user,
+            alias='verifypilot',
+            email='verify@example.com',
+            full_name='Verify Pilot',
+            onboarding_step=Account.ONBOARDING_STEP_COMPLETE,
+        )
+
+        response = self.client.get(
+            reverse('dj4xol:verify_email', args=[account.email_verification_key]),
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        account.refresh_from_db()
+        self.assertTrue(account.email_verified)
+        self.assertContains(response, 'Email address verified.')
+        self.assertContains(response, '4x Profile')
+
+    def test_resend_email_verification_sends_email_from_profile(self):
+        ServerSettings.objects.update_or_create(
+            key='enable_email',
+            defaults={
+                'value': 'True',
+                'description': 'Enable email',
+            }
+        )
+        ServerSettings.objects.update_or_create(
+            key='server_url',
+            defaults={
+                'value': 'https://example.test',
+                'description': 'Server URL',
+            }
+        )
+        user = User.objects.create_user(
+            'resendpilot', 'resend@example.com', 'pass1234'
+        )
+        Account.objects.create(
+            django_user=user,
+            alias='resendpilot',
+            email='resend@example.com',
+            full_name='Resend Pilot',
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse('dj4xol:resend_email_verification'),
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Verification email sent.')
+        self.assertEqual(len(mail.outbox), 1)
 
 
 class IdentityNameRulesTest(TestCase):

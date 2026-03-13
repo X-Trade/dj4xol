@@ -1,0 +1,9 @@
+Hello{% if account.full_name %} {{ account.full_name }}{% endif %},
+
+Please verify the email address for your DJ4XOL account{% if account.alias %} ({{ account.alias }}){% endif %}.
+
+Verify email: {{ verify_url }}
+{% if profile_url %}Profile: {{ profile_url }}
+{% endif %}{% if server_url %}Server URL: {{ server_url }}
+{% endif %}
+If you did not create this account, you can ignore this email.

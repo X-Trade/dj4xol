@@ -82,7 +82,9 @@ class TestHabitabilityMixin(TestCase):
             starting_colonists=20,
             starting_labs=1,
         )
-        self.assertAlmostEqual(rules.total_cost(), rules.budget)
+        self.assertAlmostEqual(rules.budget, 120.0)
+        self.assertAlmostEqual(rules.labs_cost(), 4.0)
+        self.assertAlmostEqual(rules.total_cost(), 114.0)
 
     def test_race_creation_race_type_points_balance_adjusts_total(self):
         rules = RaceCreationRules(
@@ -93,7 +95,7 @@ class TestHabitabilityMixin(TestCase):
             race_type_points_balance=-8.5,
         )
         self.assertAlmostEqual(rules.race_type_balance_cost(), -8.5)
-        self.assertAlmostEqual(rules.total_cost(), rules.budget - 8.5)
+        self.assertAlmostEqual(rules.total_cost(), 105.5)
 
     def test_race_creation_width_cost_curve_keeps_1_and_raises_2(self):
         rules_narrow = RaceCreationRules(

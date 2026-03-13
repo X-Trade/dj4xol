@@ -87,6 +87,7 @@ class TestLandingPage(TestCase):
         response = client.get(reverse('dj4xol:index'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Server Settings')
+        self.assertContains(response, 'Help Page Editor')
 
     def test_home_shows_turned_in_status_for_my_quorum_game(self):
         game = default_game(stars=5)

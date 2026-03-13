@@ -1,7 +1,13 @@
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from ..models import ResearchCategory, Technology
+from ..models import (
+    CustomHelpPage,
+    CustomHelpPageBlock,
+    ResearchCategory,
+    ServerSettings,
+    Technology,
+)
 from ._util import get_default_user
 
 
@@ -32,6 +38,68 @@ class HelpPagesTest(TestCase):
         self.assertLess(
             content.index('Race Type Browser'),
             content.index('Technology Directory'),
+        )
+
+    def test_help_index_shows_published_custom_pages_only(self):
+        published_page = CustomHelpPage.objects.create(
+            slug='server-rules',
+            title='Server Rules',
+            summary='House rules for this server.',
+            nav_order=1,
+            published=True,
+        )
+        CustomHelpPageBlock.objects.create(
+            page=published_page,
+            heading='Rules',
+            body='Be kind to other players.',
+        )
+        CustomHelpPage.objects.create(
+            slug='draft-page',
+            title='Draft Page',
+            published=False,
+        )
+
+        response = self.client.get(reverse('dj4xol:help_index'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Server Rules')
+        self.assertContains(response, 'House rules for this server.')
+        self.assertNotContains(response, 'Draft Page')
+
+    def test_custom_help_page_renders_blocks_links_and_images(self):
+        page = CustomHelpPage.objects.create(
+            slug='server-rules',
+            title='Server Rules',
+            tagline='Read before joining',
+            summary='House rules for this server.',
+            published=True,
+        )
+        CustomHelpPageBlock.objects.create(
+            page=page,
+            display_order=10,
+            heading='Basics',
+            body=(
+                'See [the lobby](/4x/).\n\n'
+                '- Stay respectful\n'
+                '- Keep games moving\n\n'
+                '![Map](https://example.test/map.png)'
+            ),
+        )
+
+        response = self.client.get(
+            reverse('dj4xol:custom_help_page', args=[page.slug])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Server Rules')
+        self.assertContains(response, 'Read before joining')
+        self.assertContains(response, 'Basics')
+        self.assertContains(response, '<a href="/4x/">the lobby</a>', html=True)
+        self.assertContains(response, '<ul class="rich-text-list">', html=False)
+        self.assertContains(
+            response,
+            '<img class="rich-text-image" src="https://example.test/map.png" alt="Map">',
+            html=True,
         )
 
     def test_help_exploration_renders(self):
@@ -208,6 +276,81 @@ class HelpPagesTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Race Type')
         self.assertContains(response, 'Is not JOAT')
+
+    def test_home_welcome_renders_rich_text(self):
+        ServerSettings.objects.update_or_create(
+            key='server_welcome',
+            defaults={
+                'value': '',
+                'long_value': (
+                    'Welcome to [DJ4XOL](/4x/).\n\n'
+                    '![Hero](https://example.test/hero.png)'
+                ),
+                'description': 'Welcome message on homepage',
+            },
+        )
+
+        response = self.client.get(reverse('dj4xol:index'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<a href="/4x/">DJ4XOL</a>', html=True)
+        self.assertContains(
+            response,
+            '<img class="rich-text-image" src="https://example.test/hero.png" alt="Hero">',
+            html=True,
+        )
+
+
+class HelpPageCmsTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user, _ = get_default_user()
+        self.client.force_login(self.user)
+
+    def test_non_staff_cannot_access_help_page_cms(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('dj4xol:help_pages_cms'))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, 'Staff access is required.', status_code=403)
+
+    def test_staff_can_create_help_page_with_block(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=['is_staff'])
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('dj4xol:help_pages_cms'),
+            {
+                'page_id': 'new',
+                'title': 'Server Rules',
+                'slug': 'server-rules',
+                'tagline': 'Read before joining',
+                'summary': 'House rules for this server.',
+                'nav_order': '5',
+                'published': 'on',
+                'blocks-TOTAL_FORMS': '1',
+                'blocks-INITIAL_FORMS': '0',
+                'blocks-MIN_NUM_FORMS': '0',
+                'blocks-MAX_NUM_FORMS': '1000',
+                'blocks-0-display_order': '10',
+                'blocks-0-heading': 'Basics',
+                'blocks-0-body': 'Stay respectful.\n- No ghosting',
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Help page saved.')
+        self.assertTrue(
+            CustomHelpPage.objects.filter(slug='server-rules').exists()
+        )
+        page = CustomHelpPage.objects.get(slug='server-rules')
+        self.assertEqual(page.title, 'Server Rules')
+        self.assertEqual(page.blocks.count(), 1)
+        self.assertEqual(page.blocks.first().heading, 'Basics')
+        self.assertContains(response, 'Open Public Preview')
 
     def test_help_technology_humanises_trait_requirement_names(self):
         energy = ResearchCategory.objects.create(

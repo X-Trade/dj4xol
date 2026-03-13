@@ -1,4 +1,5 @@
-from django.db import models
+from django.db import models, transaction
+from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import resolve, reverse
@@ -23,11 +24,12 @@ from .models import (
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology,
     ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
     Spectator, PlayerDiplomaticStance, PlayerStarMarker, profanity_filter_settings, server_setting_enabled,
-    server_setting_int, DiplomaticContract,
+    server_setting_int, DiplomaticContract, CustomHelpPage,
 )
 from .email_rollups import (
     send_message_rollup_for_account,
     send_generic_test_email_for_account,
+    send_email_verification_for_account,
     send_game_deleted_email,
     send_game_join_email,
 )
@@ -94,6 +96,8 @@ from .forms import (
     RegistrationForm,
     JoinGameForm,
     ServerSettingsForm,
+    CustomHelpPageForm,
+    CustomHelpPageBlockFormSet,
 )
 from .name_rules import validate_safe_public_text
 from .scanners import get_scanner_sources_for_player
@@ -2315,11 +2319,38 @@ def help_invasion(request):
     })
 
 
+def _published_custom_help_pages():
+    return list(
+        CustomHelpPage.objects.filter(published=True).prefetch_related('blocks')
+    )
+
+
+def _custom_help_page_editor_url(page):
+    base_url = reverse('dj4xol:help_pages_cms')
+    if not page:
+        return '%s?page=new' % base_url
+    return '%s?page=%s' % (base_url, page.id)
+
+
+@registration_required()
+def custom_help_page(request, slug):
+    account = request.user.dj4xol_account
+    page = get_object_or_404(
+        CustomHelpPage.objects.filter(published=True).prefetch_related('blocks'),
+        slug=slug,
+    )
+    return render(request, 'dj4xol/help_custom_page.html', {
+        'user_theme': account.theme if account else 'classic',
+        'help_page': page,
+    })
+
+
 @registration_required()
 def help_index(request):
     account = request.user.dj4xol_account
     return render(request, 'dj4xol/help_index.html', {
         'user_theme': account.theme if account else 'classic',
+        'custom_help_pages': _published_custom_help_pages(),
     })
 
 
@@ -2328,6 +2359,94 @@ def help_version_history(request):
     account = request.user.dj4xol_account
     return render(request, 'dj4xol/help_version_history.html', {
         'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
+def help_pages_cms(request):
+    if not request.user.is_staff:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Staff access is required.',
+        }, status=403)
+
+    account = request.user.dj4xol_account
+    pages = list(CustomHelpPage.objects.all().prefetch_related('blocks'))
+    selected_token = request.GET.get('page') or request.POST.get('page_id')
+    selected_page = None
+    if selected_token and selected_token != 'new':
+        try:
+            selected_page = next(
+                page for page in pages if page.id == int(selected_token)
+            )
+        except (StopIteration, TypeError, ValueError):
+            selected_page = None
+    elif not selected_token and pages:
+        selected_page = pages[0]
+
+    preview_page = selected_page
+    if request.method == 'POST':
+        action = request.POST.get('action', 'save')
+        if action == 'delete_page':
+            if selected_page is None:
+                messages.warning(request, 'Select a help page to delete first.')
+                return redirect(_custom_help_page_editor_url(None))
+            page_title = selected_page.title
+            selected_page.delete()
+            messages.success(
+                request,
+                'Deleted help page "%s".' % page_title,
+            )
+            remaining_page = CustomHelpPage.objects.order_by(
+                'nav_order', 'title', 'id'
+            ).first()
+            return redirect(_custom_help_page_editor_url(remaining_page))
+
+        page_form = CustomHelpPageForm(request.POST, instance=selected_page)
+        preview_page = page_form.instance
+        block_formset = CustomHelpPageBlockFormSet(
+            request.POST,
+            instance=selected_page or CustomHelpPage(),
+            prefix='blocks',
+        )
+        if page_form.is_valid():
+            page = page_form.save()
+            preview_page = page
+            block_formset = CustomHelpPageBlockFormSet(
+                request.POST,
+                instance=page,
+                prefix='blocks',
+            )
+            if block_formset.is_valid():
+                with transaction.atomic():
+                    block_formset.save()
+                messages.success(request, 'Help page saved.')
+                return redirect(_custom_help_page_editor_url(page))
+            messages.error(
+                request,
+                'Help page details were saved, but block errors still need attention.',
+            )
+        else:
+            messages.error(request, 'Please correct the highlighted help page fields.')
+    else:
+        page_form = CustomHelpPageForm(instance=selected_page)
+        block_formset = CustomHelpPageBlockFormSet(
+            instance=selected_page or CustomHelpPage(),
+            prefix='blocks',
+        )
+
+    pages = list(CustomHelpPage.objects.all().prefetch_related('blocks'))
+    return render(request, 'dj4xol/help_page_cms.html', {
+        'user_theme': account.theme if account else 'classic',
+        'pages': pages,
+        'selected_page': selected_page,
+        'page_form': page_form,
+        'block_formset': block_formset,
+        'preview_page': preview_page,
+        'public_preview_url': (
+            reverse('dj4xol:custom_help_page', args=[preview_page.slug])
+            if preview_page and preview_page.pk and preview_page.published
+            else None
+        ),
     })
 
 
@@ -3611,9 +3730,20 @@ def register(request):
     if request.method == 'POST':
         form = RegistrationForm(request.user, request.POST)
         if form.is_valid():
-            form.save()
+            account = form.save()
             if not request.user.is_authenticated and form.user:
                 login(request, form.user)
+            sent, reason = send_email_verification_for_account(account)
+            if sent:
+                messages.success(
+                    request,
+                    'Verification email sent. Please check your inbox.',
+                )
+            else:
+                messages.warning(
+                    request,
+                    'Verification email not sent: %s.' % reason,
+                )
             return redirect(_account_onboarding_redirect_name(form.instance) or 'dj4xol:index')
     else:
         form = RegistrationForm(request.user)
@@ -3727,6 +3857,33 @@ def profile(request):
     })
 
 
+def verify_email(request, key):
+    account = Account.objects.filter(email_verification_key=key).first()
+    if not key or not account:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Invalid or expired verification link.',
+        }, status=404)
+
+    if not account.email_verified:
+        account.email_verified = True
+        account.save(update_fields=['email_verified'])
+
+    current_user = getattr(request, 'user', None)
+    current_account = getattr(current_user, 'dj4xol_account', None)
+    if current_user is None or not current_user.is_authenticated or current_account == account:
+        backend = settings.AUTHENTICATION_BACKENDS[0]
+        account.django_user.backend = backend
+        login(request, account.django_user, backend=backend)
+        messages.success(request, 'Email address verified.')
+        return redirect('dj4xol:profile')
+
+    messages.success(
+        request,
+        'Email address verified for %s.' % (account.alias or account.django_user.username),
+    )
+    return redirect('dj4xol:index')
+
+
 @registration_required()
 def server_settings(request):
     """Staff-only themed editor for key server settings."""
@@ -3807,6 +3964,24 @@ def update_email_preferences(request):
         'email_game_rollups_per_day': account.email_game_rollups_per_day,
         'email_newsletter': account.email_newsletter,
     })
+
+
+@registration_required()
+def resend_email_verification(request):
+    if request.method != 'POST':
+        return redirect('dj4xol:profile')
+
+    account = request.user.dj4xol_account
+    if account.email_verified:
+        messages.success(request, 'Email address already verified.')
+        return redirect('dj4xol:profile')
+
+    sent, reason = send_email_verification_for_account(account)
+    if sent:
+        messages.success(request, 'Verification email sent.')
+    else:
+        messages.warning(request, 'Verification email not sent: %s.' % reason)
+    return redirect('dj4xol:profile')
 
 
 @staff_member_required
