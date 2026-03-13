@@ -313,6 +313,20 @@ def player_grants_permission(player, other_player, permission_key, stance_map=No
     )
 
 
+def player_reveals_cloaked_fleets(player, other_player):
+    if not player or not other_player:
+        return False
+    row = PlayerDiplomaticStance.objects.filter(
+        player=player,
+        target_player=other_player,
+    ).first()
+    if row is None:
+        return False
+    if normalise_stance(getattr(row, 'stance', None)) != STANCE_ALLIED:
+        return False
+    return bool(getattr(row, 'reveal_cloaked_fleets', False))
+
+
 def encountered_players(player):
     if not player:
         return []

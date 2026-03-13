@@ -44,7 +44,9 @@ from ..diplomacy import (
     combat_readiness_multiplier,
 )
 from ..diplomatic_contracts import (
+    accept_contract,
     apply_world_resource_delivery,
+    decline_contract,
     format_contract_statement,
     format_contract_summary,
     grant_player_technology,
@@ -52,6 +54,7 @@ from ..diplomatic_contracts import (
     VAGUE_THREAT_PHRASES,
 )
 from ..play_cli_web import execute_browser_command
+from ..views import _diplomacy_parse_contract
 from ..turn import (
     GameTurn,
     format_basic_hidden_salvage_name,
@@ -3419,16 +3422,12 @@ class TestDiplomacyView(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        content = response.content.decode('utf-8')
-        home_label = '%s (their home)' % other_home.name
-        self.assertLess(
-            content.index(home_label),
-            content.index(other_colony_a.name),
-        )
-        self.assertLess(
-            content.index(home_label),
-            content.index(other_colony_b.name),
-        )
+        choices = response.context['request_colony_choices']
+        self.assertGreaterEqual(len(choices), 3)
+        self.assertEqual(choices[0]['label'], '%s (their home)' % other_home.name)
+        remaining_labels = [choice['label'] for choice in choices[1:3]]
+        self.assertIn(other_colony_a.name, remaining_labels)
+        self.assertIn(other_colony_b.name, remaining_labels)
 
     def test_diplomacy_report_offer_can_be_granted_on_resource_completion(self):
         game = default_game(stars=5, fleets=0)
@@ -3707,6 +3706,101 @@ class TestDiplomacyView(TestCase):
         self.assertIn(('we demand that threat receivers do nothing, or else we %s.' % phrase).lower(), sender_statement.lower())
         self.assertIn(('testers demands that we do nothing, or else they %s.' % phrase).lower(), recipient_statement.lower())
         self.assertIn(('demands that we do nothing, or else they %s.' % phrase).lower(), summary.lower())
+
+    def test_diplomacy_form_allows_or_else_with_do_nothing_request(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_or_else_nothing', 'diplo_or_else_nothing@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DON')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Ridiculous Race',
+            plural_name='Ridiculous Races',
+            race_type=race_type,
+        )
+        contract, errors = _diplomacy_parse_contract(
+            player,
+            other_player,
+            {
+                'temperature': 'DEMAND',
+                'request_clause_type': 'NOTHING',
+                'offer_condition_type': 'OR_ELSE',
+                'offer_clause_type': 'VAGUE_THREAT',
+                'deadline_years': '24',
+                'extend_on_accept_years': '0',
+            },
+            available_offer_techs={},
+            available_request_techs={},
+            available_request_stars={},
+            available_offer_stars={},
+            available_request_reports={},
+            available_offer_reports={},
+        )
+        self.assertEqual(errors, [])
+        self.assertEqual(contract.request_clause_type, DiplomaticContract.CLAUSE_NOTHING)
+        self.assertEqual(contract.offer_condition_type, DiplomaticContract.CONDITION_OR_ELSE)
+        self.assertEqual(contract.offer_clause_type, DiplomaticContract.CLAUSE_VAGUE_THREAT)
+
+    def test_do_nothing_or_else_only_triggers_consequence_on_decline_not_accept(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_or_else_outcome', 'diplo_or_else_outcome@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DOO')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Outcome Race',
+            plural_name='Outcome Races',
+            race_type=race_type,
+        )
+
+        accepted_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='DEMAND',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='OR_ELSE',
+            offer_clause_type='STANCE',
+            offer_stance='HOSTILE',
+        )
+        ok, _message = accept_contract(accepted_contract, other_player)
+        self.assertTrue(ok)
+        accepted_contract.refresh_from_db()
+        self.assertEqual(accepted_contract.status, DiplomaticContract.STATUS_FULFILLED)
+        self.assertFalse(
+            PlayerDiplomaticStance.objects.filter(
+                player=player,
+                target_player=other_player,
+            ).exists()
+        )
+
+        declined_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='DEMAND',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='OR_ELSE',
+            offer_clause_type='STANCE',
+            offer_stance='HOSTILE',
+        )
+        ok, _message = decline_contract(declined_contract, other_player)
+        self.assertTrue(ok)
+        stance = PlayerDiplomaticStance.objects.get(
+            player=player,
+            target_player=other_player,
+        )
+        self.assertEqual(stance.pending_stance, 'HOSTILE')
 
     def test_diplomacy_can_send_technology_request_and_offer_from_form(self):
         game = default_game(stars=5, fleets=0)
@@ -4626,6 +4720,50 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(contract.status, DiplomaticContract.STATUS_DECLINED)
         stance = PlayerDiplomaticStance.objects.get(player=player, target_player=other_player)
         self.assertEqual(stance.pending_stance, 'HOSTILE')
+
+    def test_diplomacy_allied_detail_can_toggle_reveal_cloaked_fleets(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_cloak_target', 'diplo_cloak_target@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DCL')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Cloak Ally',
+            plural_name='Cloak Allies',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        self._create_contact_star_report(game, player, other_player, contact_star)
+        PlayerDiplomaticStance.objects.create(
+            player=player,
+            target_player=other_player,
+            stance='ALLIED',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id},
+        )
+        self.assertContains(response, 'Reveal cloaked fleets')
+
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'toggle_reveal_cloaked',
+                'reveal_cloaked_fleets': '1',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        stance = PlayerDiplomaticStance.objects.get(player=player, target_player=other_player)
+        self.assertTrue(stance.reveal_cloaked_fleets)
 
     def test_diplomacy_compose_shows_delivery_warning_for_direct_world_delivery_at_cold_stance(self):
         game = default_game(stars=5, fleets=0)

@@ -1253,6 +1253,141 @@ class ScannerReportTest(TestCase):
         self.assertIn('mines', star_data)
         self.assertIn('shipyards', star_data)
 
+    def test_allied_intel_hides_cloaked_fleet_without_reveal_setting(self):
+        shared_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Veiled Ally',
+            x=61,
+            y=62,
+            ship_count=3,
+            integrity=77,
+            max_cloaked_warp=5,
+            travel_warp=4,
+        )
+
+        PlayerDiplomaticStance.objects.create(
+            player=self.player2,
+            target_player=self.player1,
+            stance='ALLIED',
+        )
+
+        GameTurn(self.game).generate_shared_intel_reports()
+
+        self.assertFalse(
+            Report.objects.filter(
+                game=self.game,
+                player=self.player1,
+                target_type='fleet',
+                target_id=shared_fleet.id,
+            ).exists()
+        )
+
+    def test_advanced_scanners_reveal_non_advanced_cloak_but_not_advanced_cloak(self):
+        scanner = self._create_scanner_fleet(basic=6, advanced=6, x=20, y=20)
+        simple_cloak = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Simple Cloak',
+            x=scanner.x + 3,
+            y=scanner.y,
+            ship_count=2,
+            integrity=80,
+            max_cloaked_warp=5,
+            travel_warp=4,
+            advanced_cloak=False,
+        )
+        deep_cloak = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Deep Cloak',
+            x=scanner.x,
+            y=scanner.y + 4,
+            ship_count=2,
+            integrity=80,
+            max_cloaked_warp=5,
+            travel_warp=4,
+            advanced_cloak=True,
+        )
+
+        GameTurn(self.game).generate_scanner_reports()
+
+        simple_report = Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=simple_cloak.id,
+        ).first()
+        deep_report = Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=deep_cloak.id,
+        ).first()
+
+        self.assertIsNotNone(simple_report)
+        self.assertEqual(simple_report.get_report_data().get('report_tier'), 'advanced')
+        self.assertIsNone(deep_report)
+
+    def test_colony_direct_encounter_reports_cloaked_fleet_without_live_visibility(self):
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Hidden Orbiter',
+            x=self.player1.homeworld.x,
+            y=self.player1.homeworld.y,
+            ship_count=2,
+            integrity=90,
+            max_cloaked_warp=6,
+            travel_warp=0,
+            advanced_cloak=True,
+        )
+
+        GameTurn(self.game).generate_scanner_reports()
+
+        report = Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        ).first()
+        self.assertIsNotNone(report)
+        self.assertEqual(report.get_report_data().get('report_tier'), 'encounter')
+
+        detail = DetailBuilder(
+            self.game,
+            x=self.player1.homeworld.x,
+            y=self.player1.homeworld.y,
+            player=self.player1,
+        ).build_detail()
+        target_types = [item.get('type') for item in detail.get('location_targets', [])]
+        self.assertNotIn('fleet', target_types)
+
+    def test_owned_cloaked_fleet_motion_summary_shows_cloaked_status(self):
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Silent Runner',
+            x=33,
+            y=33,
+            ship_count=2,
+            integrity=90,
+            travel_warp=4,
+            heading=90,
+            max_cloaked_warp=5,
+        )
+
+        detail = DetailBuilder(
+            self.game,
+            selected=fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+
+        self.assertEqual(
+            detail.get('fleet_motion_summary'),
+            'Travelling at Warp 4 | Heading 90.0° | cloaked',
+        )
+
     def test_advanced_scanner_reports_salvage_and_anomaly(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=6, x=20, y=20)
         salvage = Salvage.objects.create(

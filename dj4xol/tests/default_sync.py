@@ -189,6 +189,40 @@ class DefaultSyncTest(TestCase):
             10.0,
         )
 
+    def test_sync_adds_special_cloak_technologies(self):
+        sync_factory_defaults(force=True)
+
+        mini_cloak = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000801'
+        )
+        self.assertEqual(mini_cloak.tech_type, 'SPECIAL')
+        self.assertEqual(mini_cloak.category.code, 'MATERIALS')
+        self.assertEqual(mini_cloak.level, 3)
+        self.assertEqual(
+            json.loads(mini_cloak.params_json),
+            {
+                'max_cloaked_warp': 1,
+                'advanced_cloak': False,
+                'defense_level': -0.5,
+                'race_type': 'SCI',
+            },
+        )
+
+        prototype_cloak = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000806'
+        )
+        self.assertEqual(
+            json.loads(prototype_cloak.params_json).get('race_type'),
+            'has_stealth == False',
+        )
+
+        advanced_cloak = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000808'
+        )
+        self.assertEqual(advanced_cloak.category.code, 'CONSTRUCTION')
+        self.assertEqual(advanced_cloak.level, 26)
+        self.assertTrue(json.loads(advanced_cloak.params_json).get('advanced_cloak'))
+
     def test_sync_reconciles_technology_by_short_id_when_uuid_differs(self):
         sync_factory_defaults(force=True)
 

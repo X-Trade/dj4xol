@@ -54,6 +54,8 @@ TECH_PARAM_LABELS = {
     'colony_defense_level': 'Colony Defense Level',
     'basic_scanner_range': 'Basic Scanner Range',
     'advanced_scanner_range': 'Advanced Scanner Range',
+    'max_cloaked_warp': 'Max Cloaked Warp',
+    'advanced_cloak': 'Advanced Cloak',
     'terraforming_rate': 'Terraforming Rate',
     'administration_level': 'Administration Level',
     'race_type': 'Race Type',
@@ -151,6 +153,8 @@ def _should_show_param(key, value):
             return float(value) > 0
         except (TypeError, ValueError):
             return True
+    if key == 'advanced_cloak':
+        return bool(value)
     if key == 'production_cost_overrides':
         return False
     return True
@@ -1249,6 +1253,8 @@ def get_player_tech_effects(player):
         'has_miners': None,
         'has_fuel_factory': False,
         'has_wormhole_drive': False,
+        'max_cloaked_warp': -1,
+        'advanced_cloak': False,
         'basic_scanner_range': 0,
         'advanced_scanner_range': 0,
     }
@@ -1328,6 +1334,17 @@ def get_player_tech_effects(player):
             effects['has_fuel_factory'] = True
         if bool(params.get('has_wormhole_drive')):
             effects['has_wormhole_drive'] = True
+        max_cloaked_warp = params.get('max_cloaked_warp')
+        if max_cloaked_warp is not None:
+            try:
+                effects['max_cloaked_warp'] = max(
+                    effects['max_cloaked_warp'],
+                    int(max_cloaked_warp),
+                )
+            except (TypeError, ValueError):
+                pass
+        if bool(params.get('advanced_cloak')):
+            effects['advanced_cloak'] = True
 
     if selected_hull is not None:
         params = _safe_params(selected_hull)

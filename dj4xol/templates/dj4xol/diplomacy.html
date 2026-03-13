@@ -123,6 +123,24 @@
                                     <span class="diplomacy-effects-summary" title="{{ item.description }}">{{ item.summary }}</span>
                                 </div>
                                 {% endfor %}
+                                {% if detail.show_reveal_cloaked_toggle %}
+                                <form method="post" class="diplomacy-effects-row">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="target" value="{{ selected_target }}">
+                                    <input type="hidden" name="action" value="toggle_reveal_cloaked">
+                                    <span class="diplomacy-effects-name">Reveal cloaked fleets</span>
+                                    <span class="diplomacy-effects-summary">
+                                        <input
+                                            type="checkbox"
+                                            name="reveal_cloaked_fleets"
+                                            value="1"
+                                            {% if detail.reveal_cloaked_fleets_checked %}checked{% endif %}
+                                            {% if diplomacy_locked %}disabled{% endif %}
+                                            onchange="this.form.submit()"
+                                        >
+                                    </span>
+                                </form>
+                                {% endif %}
                             </div>
                             {% if not detail.is_default %}
                             <hr class="detail-divider">
@@ -321,7 +339,7 @@
                                     class="diplomacy-compose-warning diplomacy-compose-inline-warning"
                                     {% if not detail.colony_transfer_warning or compose_state.offer_clause_type != 'SPECIFIC_COLONY' %}style="display:none"{% endif %}
                                 >
-                                    Warning: when you give a colony, up to 75% of its population may evacuate into your orbiting fleets before transfer, subject to available cargo space, leaving at least 10kt behind.
+                                    Warning: when you give a colony, up to 75% of its population may evacuate into your orbiting fleets before transfer, subject to available cargo space, leaving a minimum of 10k behind.
                                 </p>
                                 <p
                                     id="diplomacy-homeworld-warning"

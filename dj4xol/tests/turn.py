@@ -10198,6 +10198,30 @@ class TestInterceptPatrolOrders(TestCase):
         result = GameTurn(game)._find_enemy_fleet_in_radius(player1, fleet.x, fleet.y, 10)
         self.assertIsNone(result)
 
+    def test_patrol_enemy_search_does_not_target_allied_fleets(self):
+        game, player1, player2 = self._create_two_player_game()
+        PlayerDiplomaticStance.objects.create(
+            player=player1,
+            target_player=player2,
+            stance='ALLIED',
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=player2,
+            target_player=player1,
+            stance='ALLIED',
+        )
+        fleet = Fleet.objects.create(
+            game=game, player=player1, name="Patrol",
+            x=10, y=10, ship_count=1, integrity=100, basic_scanner_range=20
+        )
+        ally = Fleet.objects.create(
+            game=game, player=player2, name="Ally",
+            x=12, y=10, ship_count=1, integrity=100
+        )
+
+        result = GameTurn(game)._find_enemy_fleet_in_radius(player1, fleet.x, fleet.y, 10)
+        self.assertIsNone(result)
+
     def test_intercept_arrival_executes_followup_merge_same_turn(self):
         """Successful intercept should run immediate non-move follow-up orders."""
         from ..models import FleetOrders

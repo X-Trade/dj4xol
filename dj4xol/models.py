@@ -731,6 +731,8 @@ class Fleet(AbstractMapObject):
                                   null=True, blank=True, default=None)
     has_fuel_factory = models.BooleanField(default=False)
     has_wormhole_drive = models.BooleanField(default=False)
+    max_cloaked_warp = models.IntegerField(default=-1)
+    advanced_cloak = models.BooleanField(default=False)
     basic_scanner_range = models.IntegerField(default=0)
     advanced_scanner_range = models.IntegerField(default=0)
     thumbnail_path = models.CharField(max_length=255, blank=True, default='')
@@ -767,6 +769,12 @@ class Fleet(AbstractMapObject):
             advanced = 0
         if advanced > basic:
             basic = advanced
+        try:
+            cloaked_warp = int(self.max_cloaked_warp or 0)
+        except (TypeError, ValueError):
+            cloaked_warp = 0
+        self.max_cloaked_warp = max(-1, cloaked_warp)
+        self.advanced_cloak = bool(self.advanced_cloak)
         self.basic_scanner_range = max(0, basic)
         self.advanced_scanner_range = max(0, advanced)
         super(Fleet, self).save(*args, **kwargs)
@@ -1079,6 +1087,7 @@ class PlayerDiplomaticStance(models.Model):
         choices=Player.STANCE_CHOICES,
         default='NEUTRAL',
     )
+    reveal_cloaked_fleets = models.BooleanField(default=False)
 
     class Meta:
         unique_together = [['player', 'target_player']]
@@ -1349,6 +1358,7 @@ class Technology(UUIDMixin):
         ('ELECTRICAL', 'Electrical'),
         ('MECHANICAL', 'Mechanical'),
         ('BOMB', 'Bomb'),
+        ('SPECIAL', 'Special'),
         ('OTHER', 'Other'),
     ]
 

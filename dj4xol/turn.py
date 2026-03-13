@@ -67,6 +67,7 @@ from .diplomacy import (
     ensure_contact_stance_entry,
     player_grants_permission,
     player_permission_value,
+    player_reveals_cloaked_fleets,
     stance_label,
     stance_towards,
 )
@@ -156,7 +157,13 @@ from .bombardment_rules import (
     normalize_miner_type,
     smart_bombs_only_target_defenses_and_population,
 )
-from .scanners import get_scanner_sources_for_player, position_in_scanner_range, fleet_visible_to_player
+from .scanners import (
+    fleet_is_cloaked,
+    fleet_targetable_by_patrol,
+    fleet_visible_to_player,
+    get_scanner_sources_for_player,
+    position_in_scanner_range,
+)
 
 # Population carrying capacity constants now live in colony_rules.py
 
@@ -1654,6 +1661,11 @@ class GameTurn():
                         report_tier='encounter',
                     )
                 for fleet in fleets_by_player.get(grantor.id, []):
+                    if (
+                        fleet_is_cloaked(fleet) and
+                        not player_reveals_cloaked_fleets(grantor, viewer)
+                    ):
+                        continue
                     self._create_or_update_report(
                         viewer,
                         'fleet',
@@ -1666,6 +1678,22 @@ class GameTurn():
         """Generate scanner-based reports for stars and fleets within sensor range."""
         from .models import Star, Fleet, Salvage, Anomaly
 
+        for player in self.game.players.filter(defeated=False):
+            colony_positions = set(player.stars.values_list('x', 'y'))
+            if not colony_positions:
+                continue
+            for fleet in Fleet.objects.filter(game=self.game).exclude(player=player):
+                if (fleet.x, fleet.y) not in colony_positions:
+                    continue
+                self._create_or_update_report(
+                    player,
+                    'fleet',
+                    fleet,
+                    self.game.year,
+                    report_tier='encounter',
+                    include_cargo=True,
+                )
+
         if getattr(self.game, 'no_scanners', False):
             return
 
@@ -1674,6 +1702,7 @@ class GameTurn():
             if not sources:
                 continue
 
+            colony_positions = set(player.stars.values_list('x', 'y'))
             player_fleet_positions = set(
                 player.fleets.values_list('x', 'y')
             )
@@ -1718,9 +1747,14 @@ class GameTurn():
 
             # Fleets: basic scans confirm presence, advanced scans reveal composition.
             for fleet in Fleet.objects.filter(game=self.game).exclude(player=player):
+                if (fleet.x, fleet.y) in colony_positions:
+                    continue
+                cloaked = fleet_is_cloaked(fleet)
                 if has_advanced and position_in_scanner_range(
                     fleet.x, fleet.y, sources, range_key='advanced'
                 ):
+                    if cloaked and bool(getattr(fleet, 'advanced_cloak', False)):
+                        continue
                     self._create_or_update_report(
                         player, 'fleet', fleet, self.game.year, report_tier='advanced'
                     )
@@ -1728,6 +1762,8 @@ class GameTurn():
                 if has_basic and position_in_scanner_range(
                     fleet.x, fleet.y, sources, range_key='basic'
                 ):
+                    if cloaked:
+                        continue
                     self._create_or_update_report(
                         player, 'fleet', fleet, self.game.year, report_tier='basic'
                     )
@@ -2100,6 +2136,7 @@ class GameTurn():
                 'travel_warp': travel_warp,
                 'warp_advantage': warp_advantage,
                 'heading': heading,
+                'is_cloaked': fleet_is_cloaked(obj),
             }
             if report_tier == 'ownership':
                 data['player_name'] = obj.player.name if obj.player else 'Abandoned'
@@ -2137,6 +2174,8 @@ class GameTurn():
                     'has_miners': obj.has_miners,
                     'has_fuel_factory': bool(obj.has_fuel_factory),
                     'has_wormhole_drive': bool(obj.has_wormhole_drive),
+                    'max_cloaked_warp': getattr(obj, 'max_cloaked_warp', -1),
+                    'advanced_cloak': bool(getattr(obj, 'advanced_cloak', False)),
                     'basic_scanner_range': getattr(obj, 'basic_scanner_range', 0),
                     'advanced_scanner_range': getattr(obj, 'advanced_scanner_range', 0),
                 })
@@ -2661,6 +2700,26 @@ class GameTurn():
             stance_map=self._stance_map_for_player(player_b),
         )
         return combat_readiness_multiplier(stance_a, stance_b)
+
+    def _players_can_target_each_other(self, player_a, player_b):
+        if not player_a or not player_b or player_a.id == player_b.id:
+            return False
+        stance_a = stance_towards(
+            player_a,
+            player_b,
+            stance_map=self._stance_map_for_player(player_a),
+        )
+        stance_b = stance_towards(
+            player_b,
+            player_a,
+            stance_map=self._stance_map_for_player(player_b),
+        )
+        return combat_chance_with_diplomacy_percent(
+            stance_a,
+            stance_b,
+            player_a,
+            player_b,
+        ) > 0
 
     def _combatants_for_location(self, players):
         combatants = set()
@@ -5677,6 +5736,14 @@ class GameTurn():
             source_fleet.has_fuel_factory or target_fleet.has_fuel_factory
         )
         target_fleet.has_wormhole_drive = merged_has_wormhole_drive
+        target_fleet.max_cloaked_warp = max(
+            int(getattr(target_fleet, 'max_cloaked_warp', -1) or 0),
+            int(getattr(source_fleet, 'max_cloaked_warp', -1) or 0),
+        )
+        target_fleet.advanced_cloak = bool(
+            getattr(target_fleet, 'advanced_cloak', False) or
+            getattr(source_fleet, 'advanced_cloak', False)
+        )
 
         # Transfer cargo (may exceed capacity - intentional for merge)
         target_fleet.ironium_inventory += source_fleet.ironium_inventory
@@ -5919,8 +5986,11 @@ class GameTurn():
 
         nearest = None
         nearest_dist = None
+        sources = self._get_player_scanner_sources(player)
         for enemy in candidates:
-            if not self._fleet_target_visible_to_player(player, enemy):
+            if not self._players_can_target_each_other(player, enemy.player):
+                continue
+            if not fleet_targetable_by_patrol(enemy, player, sources=sources):
                 continue
             dx = enemy.x - x
             dy = enemy.y - y
@@ -6026,6 +6096,11 @@ class GameTurn():
 
     def _find_patrol_enemy(self, player, x, y, radius, patrol_target_fleet):
         """Prefer enemy fleets other than the patrol target, if possible."""
+        if patrol_target_fleet and patrol_target_fleet.player != player:
+            if not self._players_can_target_each_other(player, patrol_target_fleet.player):
+                patrol_target_fleet = None
+            elif not self._fleet_target_visible_to_player(player, patrol_target_fleet):
+                patrol_target_fleet = None
         if patrol_target_fleet and patrol_target_fleet.player != player:
             enemy = self._find_enemy_fleet_in_radius(
                 player, x, y, radius,
@@ -6507,6 +6582,8 @@ class GameTurn():
             has_miners=tech_effects.get('has_miners'),
             has_fuel_factory=bool(tech_effects.get('has_fuel_factory')),
             has_wormhole_drive=bool(tech_effects.get('has_wormhole_drive')),
+            max_cloaked_warp=tech_effects.get('max_cloaked_warp', -1),
+            advanced_cloak=bool(tech_effects.get('advanced_cloak')),
             basic_scanner_range=tech_effects.get('basic_scanner_range', 0),
             advanced_scanner_range=tech_effects.get('advanced_scanner_range', 0),
             thumbnail_path=thumbnail_path,
