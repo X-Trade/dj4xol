@@ -228,6 +228,8 @@ COMBAT_SHIP_LOSS_MAX_CHANCE = 0.50
 COMBAT_LUCK_JITTER = 0.12
 COMBAT_ATTACK_ROLL_BEND = 1.0
 COMBAT_DEFENSE_ROLL_BEND = 1.0
+COMBAT_AMBUSH_ATTACK_MIN = 1.05
+COMBAT_AMBUSH_ATTACK_MAX = 1.30
 ORBITAL_DEFENSE_HAZARD_BASE_CHANCE = 0.15
 ORBITAL_DEFENSE_HAZARD_MIN_CHANCE = 0.10
 ORBITAL_DEFENSE_HAZARD_MAX_CHANCE = 0.20
@@ -331,6 +333,16 @@ def roll_defense_scale(luck_multiplier):
     )
 
 
+def roll_ambush_attack_multiplier(luck_multiplier):
+    """Roll a modest offense boost for a fresh cloaked intercept ambush."""
+    return scaled_luck_roll(
+        luck_multiplier,
+        min_scale=COMBAT_AMBUSH_ATTACK_MIN,
+        max_scale=COMBAT_AMBUSH_ATTACK_MAX,
+        bend=COMBAT_ATTACK_ROLL_BEND,
+    )
+
+
 def calculate_integrity_loss(excess_warp):
     """Calculate integrity loss from warp damage (5-15% per excess warp)."""
     return sum(random.randint(5, 15) for _ in range(excess_warp))
@@ -428,7 +440,12 @@ def calculate_fleet_defense_multiplier(fleet):
     return race_mult * tech_level_to_multiplier(fleet.defense_level)
 
 
-def calculate_fleet_strength(fleet, opponent_defence_multiplier, attack_roll_scale=1.0):
+def calculate_fleet_strength(
+    fleet,
+    opponent_defence_multiplier,
+    attack_roll_scale=1.0,
+    offense_bonus_multiplier=1.0,
+):
     """Calculate fleet combat strength against opponent defenses."""
     count_norm = normalize_ship_count(fleet.ship_count)
     integrity_norm = max(0.0, min(1.0, fleet.integrity / 100.0))
@@ -439,6 +456,11 @@ def calculate_fleet_strength(fleet, opponent_defence_multiplier, attack_roll_sca
         scale = 1.0
     scale = max(0.0, min(1.0, scale))
     attack_mult *= scale
+    try:
+        offense_bonus = float(offense_bonus_multiplier)
+    except (TypeError, ValueError):
+        offense_bonus = 1.0
+    attack_mult *= max(0.0, offense_bonus)
     defence_factor = 1.0 / opponent_defence_multiplier if opponent_defence_multiplier else 1.0
     base = count_norm * attack_mult * defence_factor
     integrity_factor = (2.0 * integrity_norm) - (integrity_norm ** 2)
@@ -454,6 +476,7 @@ class GameTurn():
         self._first_contact_sent = set()
         self._first_contact_any_sent = set()
         self._stance_map_by_player_id = {}
+        self._ambush_fleet_ids_for_year = set()
 
     def generate_turn(self):
         """Generate a turn for the game. Requires at least one player."""
@@ -2304,6 +2327,7 @@ class GameTurn():
     def fleet_movements(self):
         """Move fleets according to their orders."""
         self._locked_fleet_ids_for_year = set()
+        self._ambush_fleet_ids_for_year = set()
         self._fleet_start_positions_for_year = {
             fleet.id: (fleet.x, fleet.y) for fleet in self.game.fleets.all()
         }
@@ -2611,6 +2635,7 @@ class GameTurn():
                         getattr(fleet.player.race_type, 'luck_multiplier', 1.0)
                         ) * diplomacy_attack_scale
                     ),
+                    offense_bonus_multiplier=self._fleet_ambush_attack_multiplier(fleet),
                 )
                 for fleet in fleets_by_player[player]
             )
@@ -3013,6 +3038,15 @@ class GameTurn():
                     return None
                 elif transfer_result == 'waiting':
                     # Transfer blocked - stop processing
+                    break
+
+            elif order.order_type == 'REFUEL':
+                refuel_result = self._execute_refuel_order(fleet, order)
+                if refuel_result == 'executed':
+                    self._handle_repeating_order(order)
+                    order.delete()
+                    continue
+                elif refuel_result == 'waiting':
                     break
 
             elif order.order_type in ['MOVE', 'INTERCEPT']:
@@ -3444,11 +3478,36 @@ class GameTurn():
         interceptor_start = self._fleet_start_positions_for_year.get(interceptor.id)
         target_start = self._fleet_start_positions_for_year.get(target.id)
         if interceptor_start is not None and interceptor_start == target_start:
-            # If both started stacked this year, don't immobilize the target.
+            # If both started stacked this year, don't immobilize the target,
+            # but still treat it as a continuing encounter for ambush tracking.
+            self._record_intercept_contact(interceptor, order, allow_ambush=False)
             return
 
+        self._record_intercept_contact(interceptor, order, allow_ambush=True)
         self._locked_fleet_ids_for_year.add(interceptor.id)
         self._locked_fleet_ids_for_year.add(target.id)
+
+    def _record_intercept_contact(self, interceptor, order, allow_ambush=True):
+        """Record an intercept encounter and optionally grant a fresh-contact ambush."""
+        last_contact_year = getattr(order, 'last_contact_year', None)
+        is_fresh_contact = (
+            last_contact_year is None or int(self.game.year) > int(last_contact_year) + 1
+        )
+        if allow_ambush and is_fresh_contact and fleet_is_cloaked(interceptor):
+            self._ambush_fleet_ids_for_year.add(interceptor.id)
+        order.last_contact_year = int(self.game.year)
+
+    def _mark_cloaked_intercept_ambush(self, interceptor, order):
+        """Backward-compatible wrapper for tests and existing callers."""
+        self._record_intercept_contact(interceptor, order, allow_ambush=True)
+
+    def _fleet_ambush_attack_multiplier(self, fleet):
+        """Return offense bonus multiplier for fleets with a fresh ambush."""
+        if getattr(fleet, 'id', None) not in self._ambush_fleet_ids_for_year:
+            return 1.0
+        return roll_ambush_attack_multiplier(
+            getattr(fleet.player.race_type, 'luck_multiplier', 1.0)
+        )
 
     def _get_intercept_destination(self, order):
         """Calculate intercept destination based on moving target prediction."""
@@ -4017,10 +4076,12 @@ class GameTurn():
                 transfer_resource_y=order.transfer_resource_y,
                 transfer_resource_z=order.transfer_resource_z,
                 transfer_colonists=order.transfer_colonists,
+                transfer_fuel=order.transfer_fuel,
                 transfer_player_id=order.transfer_player_id,
                 patrol_radius=order.patrol_radius,
                 intercept_speed=order.intercept_speed,
                 patrol_generated=order.patrol_generated,
+                last_contact_year=order.last_contact_year,
                 bomb_until=order.bomb_until,
                 mine_until_full=order.mine_until_full,
             )
@@ -4082,6 +4143,39 @@ class GameTurn():
         else:
             print(f"Transfer to {type(target_obj)} not yet implemented")
             return 'executed'  # Remove unsupported order
+
+    def _execute_refuel_order(self, source_fleet, order):
+        """Transfer fuel to another same-location fleet."""
+        target_fleet = getattr(order, 'target_fleet', None)
+        if not target_fleet:
+            return 'executed'
+        if source_fleet.id == target_fleet.id:
+            return 'executed'
+        if (int(source_fleet.x), int(source_fleet.y)) != (int(target_fleet.x), int(target_fleet.y)):
+            return 'waiting'
+
+        try:
+            requested = float(getattr(order, 'transfer_fuel', 0.0) or 0.0)
+        except (TypeError, ValueError):
+            requested = 0.0
+        available = max(0.0, float(getattr(source_fleet, 'fuel', 0.0) or 0.0))
+        target_missing = max(
+            0.0,
+            float(getattr(target_fleet, 'max_fuel', 0.0) or 0.0) -
+            float(getattr(target_fleet, 'fuel', 0.0) or 0.0)
+        )
+        transfer_amount = min(requested, available, target_missing)
+        if transfer_amount <= 0.0:
+            return 'executed'
+
+        source_fleet.fuel = max(0.0, float(source_fleet.fuel) - transfer_amount)
+        target_fleet.fuel = min(
+            float(target_fleet.max_fuel or 0.0),
+            float(target_fleet.fuel or 0.0) + transfer_amount,
+        )
+        source_fleet.save(update_fields=['fuel'])
+        target_fleet.save(update_fields=['fuel'])
+        return 'executed'
 
     def _transfer_with_space(self, fleet, order, target_x, target_y):
         """Execute transfer to empty space (creates/updates salvage)."""

@@ -1475,6 +1475,7 @@ def add_fleet_order(request, game_short_id):
         order.transfer_resource_y = 0
         order.transfer_resource_z = 0
         order.transfer_colonists = 0
+        order.transfer_fuel = 0.0
         order.transfer_player = None
         order.patrol_radius = 0
         order.intercept_speed = 5
@@ -1503,9 +1504,7 @@ def add_fleet_order(request, game_short_id):
                 default_warpfactor = min(int(fleet.max_safe_warp or 0), cloaked_warp)
         warpfactor = int(request.POST.get('warpfactor', default_warpfactor))
         warpfactor = max(0, min(14, warpfactor))
-        if warpfactor == 14 and (
-            order_type == 'INTERCEPT' or not fleet.has_wormhole_drive
-        ):
+        if warpfactor == 14 and (order_type == 'INTERCEPT' or not fleet.has_wormhole_drive):
             warpfactor = 13
         order.warpfactor = warpfactor
         order.original_warpfactor = warpfactor
@@ -1526,7 +1525,41 @@ def add_fleet_order(request, game_short_id):
 
         if order_type == 'INTERCEPT' and not order.target_fleet and not order.target_short_id:
             order.order_type = 'MOVE'
-    
+
+    elif order_type == 'REFUEL':
+        target_fleet_id = request.POST.get('target_fleet')
+        if not target_fleet_id:
+            return _redirect_preserving_selection(
+                request,
+                game,
+                suppress_autolocate=True,
+            )
+        try:
+            order.target_fleet = Fleet.objects.get(short_id=target_fleet_id, game=game)
+        except Fleet.DoesNotExist:
+            return _redirect_preserving_selection(
+                request,
+                game,
+                suppress_autolocate=True,
+            )
+        if order.target_fleet_id == fleet.id:
+            return _redirect_preserving_selection(
+                request,
+                game,
+                suppress_autolocate=True,
+            )
+        try:
+            requested_fuel = float(request.POST.get('transfer_fuel', 0) or 0.0)
+        except (TypeError, ValueError):
+            requested_fuel = 0.0
+        order.transfer_fuel = max(0.0, requested_fuel)
+        order.target_star = None
+        order.target_salvage = None
+        order.target_kind = None
+        order.target_short_id = None
+        order.x = None
+        order.y = None
+
     elif order_type == 'PATROL':
         target_star_id = request.POST.get('target_star')
         target_fleet_id = request.POST.get('target_fleet')
