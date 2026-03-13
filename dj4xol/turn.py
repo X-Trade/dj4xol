@@ -4907,6 +4907,11 @@ class GameTurn():
 
         fleet.save()
 
+        source_label = format_map_object(
+            salvage,
+            link=salvage.total_minerals > 0,
+        )
+
         # Delete salvage if emptied, otherwise save
         if salvage.total_minerals == 0:
             salvage.delete()
@@ -4916,7 +4921,7 @@ class GameTurn():
         # Create collection message if anything was transferred
         if any(transfers.values()):
             factory = SalvageCollectedMessageFactory(
-                self.game, fleet.player, fleet, transfers
+                self.game, fleet.player, fleet, transfers, source_label
             )
             msg = factory.new_message()
             msg.year = self.game.year

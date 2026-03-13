@@ -34,6 +34,7 @@ from ..factory import GameFactory
 from ..research import ensure_player_research_rows
 from ..chance_rules import transfer_raid_success_chance
 from ..hazard_rules import DANGER_HIGH, DANGER_LOW, DANGER_MEDIUM, DANGER_NONE
+from ..messages import format_map_object
 from django.test import TestCase
 from ._util import default_game, get_default_race, get_default_race_type
 from unittest.mock import patch, PropertyMock
@@ -5580,6 +5581,82 @@ class TestFleetTransferOrders(TestCase):
         self.assertEqual(fleet.ironium_inventory, 20)
         self.assertEqual(fleet.boranium_inventory, 5)
         self.assertEqual(fleet.germanium_inventory, 0)
+
+    def test_salvage_collection_message_links_surviving_salvage_source(self):
+        game = default_game()
+        player = game.players.first()
+
+        salvage = Salvage.objects.create(
+            game=game,
+            x=12,
+            y=12,
+            salvage_type=Salvage.TYPE_ASTEROID_FIELD,
+            ironium_inventory=40,
+            boranium_inventory=10,
+            germanium_inventory=0,
+        )
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Partial Loader",
+            x=12,
+            y=12,
+            cargo_capacity=10,
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_salvage=salvage,
+        )
+
+        GameTurn(game).generate_turn()
+
+        message = player.messages.filter(message__icontains='asteroid field').order_by('-id').first()
+        salvage.refresh_from_db()
+        self.assertIsNotNone(message)
+        self.assertIn(format_map_object(salvage), message.message)
+
+    def test_salvage_collection_message_uses_plain_text_when_salvage_depleted(self):
+        game = default_game()
+        player = game.players.first()
+
+        salvage = Salvage.objects.create(
+            game=game,
+            x=13,
+            y=13,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            ironium_inventory=8,
+            boranium_inventory=4,
+            germanium_inventory=0,
+        )
+        salvage_link = format_map_object(salvage)
+        salvage_label = format_map_object(salvage, link=False)
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Full Loader",
+            x=13,
+            y=13,
+            cargo_capacity=100,
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_salvage=salvage,
+        )
+
+        GameTurn(game).generate_turn()
+
+        message = player.messages.filter(message__icontains='ancient debris').order_by('-id').first()
+        self.assertIsNotNone(message)
+        self.assertIn(salvage_label, message.message)
+        self.assertNotIn(salvage_link, message.message)
 
     def test_transfer_invasion_changes_owner_on_success(self):
         """Transferring colonists to enemy colony can capture the star."""
