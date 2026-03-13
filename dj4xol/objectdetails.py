@@ -600,6 +600,12 @@ class DetailBuilder():
                     'has_bombs': data.get('has_bombs'),
                     'has_miners': data.get('has_miners'),
                     'has_fuel_factory': data.get('has_fuel_factory'),
+                    'fuel_factory_mg_per_year': data.get(
+                        'fuel_factory_mg_per_year', 0.0
+                    ),
+                    'fuel_factory_max_warp': data.get(
+                        'fuel_factory_max_warp', -1
+                    ),
                     'has_wormhole_drive': data.get('has_wormhole_drive'),
                 }
                 if data.get('report_tier') == 'encounter':
@@ -610,7 +616,7 @@ class DetailBuilder():
                         bool(data.get('advanced_cloak')),
                         data.get('has_bombs'),
                         data.get('has_miners'),
-                        bool(data.get('has_fuel_factory')),
+                        data.get('fuel_factory_mg_per_year', 0.0),
                         bool(data.get('has_wormhole_drive')),
                         data.get('basic_scanner_range', 0),
                         data.get('advanced_scanner_range', 0),
@@ -1885,10 +1891,32 @@ class DetailBuilder():
         cargo = self._build_fleet_composition(self.selected_obj)
         cargo['max_safe_warp'] = getattr(self.selected_obj, 'max_safe_warp', None)
         cargo['max_cloaked_warp'] = getattr(self.selected_obj, 'max_cloaked_warp', -1)
+        cargo['fuel_factory_mg_per_year'] = getattr(
+            self.selected_obj, 'fuel_factory_mg_per_year', 0.0
+        )
+        cargo['fuel_factory_max_warp'] = getattr(
+            self.selected_obj, 'fuel_factory_max_warp', -1
+        )
         cargo['move_default_warp'] = self._fleet_default_move_warp(self.selected_obj)
         cargo['move_default_cloaked'] = self._fleet_move_speed_is_cloaked(
             self.selected_obj,
             cargo['move_default_warp'],
+        )
+        cargo['move_default_fuel_factory_active'] = (
+            self._fleet_move_speed_has_fuel_factory(
+                self.selected_obj,
+                cargo['move_default_warp'],
+            )
+        )
+        cargo['intercept_default_cloaked'] = self._fleet_move_speed_is_cloaked(
+            self.selected_obj,
+            cargo['max_safe_warp'],
+        )
+        cargo['intercept_default_fuel_factory_active'] = (
+            self._fleet_move_speed_has_fuel_factory(
+                self.selected_obj,
+                cargo['max_safe_warp'],
+            )
         )
         if include_cargo or (self.player and self.selected_obj.player == self.player):
             cargo.update({
@@ -1928,7 +1956,7 @@ class DetailBuilder():
             bool(getattr(self.selected_obj, 'advanced_cloak', False)),
             self.selected_obj.has_bombs,
             self.selected_obj.has_miners,
-            bool(self.selected_obj.has_fuel_factory),
+            getattr(self.selected_obj, 'fuel_factory_mg_per_year', 0.0),
             bool(self.selected_obj.has_wormhole_drive),
             getattr(self.selected_obj, 'basic_scanner_range', 0),
             getattr(self.selected_obj, 'advanced_scanner_range', 0),
@@ -1962,7 +1990,15 @@ class DetailBuilder():
             'defense_modifier': f'{defense_mod:+d}',
             'has_bombs': fleet.has_bombs,
             'has_miners': fleet.has_miners,
-            'has_fuel_factory': bool(fleet.has_fuel_factory),
+            'has_fuel_factory': bool(
+                getattr(fleet, 'fuel_factory_mg_per_year', 0.0)
+            ),
+            'fuel_factory_mg_per_year': getattr(
+                fleet, 'fuel_factory_mg_per_year', 0.0
+            ),
+            'fuel_factory_max_warp': getattr(
+                fleet, 'fuel_factory_max_warp', -1
+            ),
             'has_wormhole_drive': bool(fleet.has_wormhole_drive),
         }
 
@@ -1974,7 +2010,7 @@ class DetailBuilder():
         advanced_cloak,
         bombs,
         miners,
-        has_fuel_factory,
+        fuel_factory_mg_per_year,
         has_wormhole_drive,
         basic_scanner_range,
         advanced_scanner_range,
@@ -2017,10 +2053,13 @@ class DetailBuilder():
                 'label': 'Miners',
                 'value': str(miners).title(),
             })
-        if has_fuel_factory:
+        fuel_factory_display = self._format_fuel_factory_output(
+            fuel_factory_mg_per_year
+        )
+        if fuel_factory_display:
             capabilities.append({
                 'label': 'Fuel Factory',
-                'value': 'Yes',
+                'value': fuel_factory_display,
             })
         if has_wormhole_drive:
             capabilities.append({
@@ -2051,6 +2090,15 @@ class DetailBuilder():
             return 'Basic'
         return None
 
+    def _format_fuel_factory_output(self, fuel_factory_mg_per_year):
+        try:
+            fuel_factory_mg_per_year = float(fuel_factory_mg_per_year or 0.0)
+        except (TypeError, ValueError):
+            fuel_factory_mg_per_year = 0.0
+        if fuel_factory_mg_per_year <= 0.0:
+            return None
+        return '{0:g} mg/y'.format(fuel_factory_mg_per_year)
+
     def _fleet_default_move_warp(self, fleet):
         if not fleet:
             return None
@@ -2078,6 +2126,29 @@ class DetailBuilder():
         except (TypeError, ValueError):
             max_cloaked_warp = -1
         return bool(getattr(fleet, 'player_id', None)) and max_cloaked_warp >= 0 and speed <= max_cloaked_warp
+
+    def _fleet_move_speed_has_fuel_factory(self, fleet, speed):
+        if not fleet:
+            return False
+        try:
+            speed = int(speed)
+        except (TypeError, ValueError):
+            return False
+        try:
+            fuel_factory_rate = float(
+                getattr(fleet, 'fuel_factory_mg_per_year', 0.0) or 0.0
+            )
+        except (TypeError, ValueError):
+            fuel_factory_rate = 0.0
+        try:
+            fuel_factory_max_warp = int(
+                getattr(fleet, 'fuel_factory_max_warp', -1)
+            )
+        except (TypeError, ValueError):
+            fuel_factory_max_warp = -1
+        return fuel_factory_rate > 0.0 and (
+            fuel_factory_max_warp >= 0 and speed <= fuel_factory_max_warp
+        )
 
     def _format_scanner_range(self, basic, advanced, suffix=''):
         """Format scanner range display or return None when no scanners are present."""

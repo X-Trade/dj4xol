@@ -66,6 +66,16 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'House rules for this server.')
         self.assertNotContains(response, 'Draft Page')
 
+        content = response.content.decode('utf-8')
+        self.assertLess(
+            content.index('104: Mining, Salvage &amp; Asteroids'),
+            content.index('Server Rules'),
+        )
+        self.assertLess(
+            content.index('Server Rules'),
+            content.index('Fleet Composition'),
+        )
+
     def test_custom_help_page_renders_blocks_links_and_images(self):
         page = CustomHelpPage.objects.create(
             slug='server-rules',

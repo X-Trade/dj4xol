@@ -1012,6 +1012,22 @@ class RegistrationForm(forms.ModelForm):
         return account
 
 
+class ChangeEmailForm(forms.Form):
+    """Profile form for changing an account email address."""
+    email = forms.EmailField(label='New Email')
+
+    def __init__(self, account, *args, **kwargs):
+        self.account = account
+        super().__init__(*args, **kwargs)
+
+    def clean_email(self):
+        email = (self.cleaned_data.get('email') or '').strip()
+        current_email = str(getattr(self.account, 'email', '') or '').strip()
+        if email.lower() == current_email.lower():
+            raise forms.ValidationError('Enter a different email address.')
+        return email
+
+
 class JoinGameForm(forms.Form):
     """Form for joining a game with a selected race."""
     race = RaceChoiceField(

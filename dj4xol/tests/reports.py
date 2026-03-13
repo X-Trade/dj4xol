@@ -1555,6 +1555,56 @@ class ScannerReportTest(TestCase):
         self.assertEqual(detail['fleet_cargo']['move_default_warp'], 5)
         self.assertTrue(detail['fleet_cargo']['move_default_cloaked'])
 
+    def test_fleet_capabilities_show_fuel_factory_output(self):
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Refinery',
+            x=56,
+            y=56,
+            ship_count=1,
+            integrity=100,
+            fuel_factory_mg_per_year=2.0,
+            fuel_factory_max_warp=6,
+        )
+
+        detail = DetailBuilder(
+            self.game,
+            selected=fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+
+        self.assertIn(
+            {'label': 'Fuel Factory', 'value': '2 mg/y'},
+            detail.get('fleet_capabilities') or [],
+        )
+
+    def test_move_default_ignores_fuel_factory_speed_limit(self):
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Cruiser Refinery',
+            x=57,
+            y=57,
+            ship_count=1,
+            integrity=100,
+            max_safe_warp=9,
+            fuel_factory_mg_per_year=1.0,
+            fuel_factory_max_warp=5,
+        )
+
+        detail = DetailBuilder(
+            self.game,
+            selected=fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+
+        self.assertEqual(detail['fleet_cargo']['move_default_warp'], 9)
+        self.assertFalse(detail['fleet_cargo']['move_default_cloaked'])
+        self.assertFalse(
+            detail['fleet_cargo']['move_default_fuel_factory_active']
+        )
+
     def test_advanced_scanner_reports_salvage_and_anomaly(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=6, x=20, y=20)
         salvage = Salvage.objects.create(

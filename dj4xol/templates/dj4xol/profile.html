@@ -41,12 +41,14 @@
                                     {{ account.email }}
                                     {% if account.email_verified %}
                                     <span class="game-meta">Verified</span>
+                                    <button type="button" class="action-link" id="change-email-trigger" style="margin:4px;">Change email</button>
                                     {% else %}
                                     <span class="game-meta">Not verified</span>
-                                    <form method="post" action="{% url 'dj4xol:resend_email_verification' %}" class="inline-form" style="display:inline-block; margin-left:8px;">
+                                    <form method="post" action="{% url 'dj4xol:resend_email_verification' %}" class="inline-form" style="display:inline-block; margin:4px;">
                                         {% csrf_token %}
                                         <button type="submit" class="action-link">Resend verification</button>
                                     </form>
+                                    <button type="button" class="action-link" id="change-email-trigger" style="margin:4px;">Change email</button>
                                     {% endif %}
                                 </td>
                             </tr>
@@ -211,6 +213,31 @@
             </div>
         </div>
 
+        <div class="owned-game-delete-overlay" id="change-email-overlay"{% if not change_email_open %} hidden{% endif %}>
+            <div class="owned-game-delete-backdrop"></div>
+            <div class="owned-game-delete-popover" role="dialog" aria-modal="true" aria-labelledby="change-email-title">
+                <h3 id="change-email-title">Change Email</h3>
+                <p>Changing your email will require verification again.</p>
+                <form method="post" action="{% url 'dj4xol:profile' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="change_email">
+                    <div>
+                        {{ change_email_form.email.label_tag }}
+                        {{ change_email_form.email }}
+                        {% if change_email_form.email.errors %}
+                        <div class="form-errors">
+                            {{ change_email_form.email.errors }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="owned-game-delete-actions" style="margin-top:16px;">
+                        <button type="submit" class="action-link">Save</button>
+                        <button type="button" class="action-link owned-game-delete-cancel" id="change-email-cancel">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <script>
         (function() {
             // Hamburger menu toggle
@@ -266,6 +293,12 @@
             var deleteConfirm = document.getElementById('owned-game-delete-confirm');
             var deleteCancel = document.getElementById('owned-game-delete-cancel');
             var pendingDeleteForm = null;
+            var changeEmailTrigger = document.getElementById('change-email-trigger');
+            var changeEmailOverlay = document.getElementById('change-email-overlay');
+            var changeEmailCancel = document.getElementById('change-email-cancel');
+            var changeEmailInput = changeEmailOverlay
+                ? changeEmailOverlay.querySelector('input[name="email"]')
+                : null;
 
             function closeDeleteOverlay() {
                 pendingDeleteForm = null;
@@ -273,7 +306,9 @@
                     return;
                 }
                 deleteOverlay.hidden = true;
-                document.body.classList.remove('owned-game-delete-open');
+                if (!changeEmailOverlay || changeEmailOverlay.hidden) {
+                    document.body.classList.remove('owned-game-delete-open');
+                }
             }
 
             function openDeleteOverlay(formEl) {
@@ -297,6 +332,28 @@
                 }
                 deleteOverlay.hidden = false;
                 document.body.classList.add('owned-game-delete-open');
+            }
+
+            function openChangeEmailOverlay() {
+                if (!changeEmailOverlay) {
+                    return;
+                }
+                changeEmailOverlay.hidden = false;
+                document.body.classList.add('owned-game-delete-open');
+                if (changeEmailInput) {
+                    changeEmailInput.focus();
+                    changeEmailInput.select();
+                }
+            }
+
+            function closeChangeEmailOverlay() {
+                if (!changeEmailOverlay) {
+                    return;
+                }
+                changeEmailOverlay.hidden = true;
+                if (!deleteOverlay || deleteOverlay.hidden) {
+                    document.body.classList.remove('owned-game-delete-open');
+                }
             }
 
             themeOptions.forEach(function(option) {
@@ -367,9 +424,42 @@
                 });
             }
 
+            if (changeEmailTrigger) {
+                changeEmailTrigger.addEventListener('click', function() {
+                    openChangeEmailOverlay();
+                });
+            }
+
+            if (changeEmailCancel) {
+                changeEmailCancel.addEventListener('click', function() {
+                    closeChangeEmailOverlay();
+                });
+            }
+
+            if (changeEmailOverlay) {
+                if (!changeEmailOverlay.hidden) {
+                    document.body.classList.add('owned-game-delete-open');
+                }
+                changeEmailOverlay.addEventListener('click', function(event) {
+                    if (
+                        event.target === changeEmailOverlay ||
+                        event.target.classList.contains('owned-game-delete-backdrop')
+                    ) {
+                        closeChangeEmailOverlay();
+                    }
+                });
+            }
+
             document.addEventListener('keydown', function(event) {
                 if (event.key === 'Escape' && deleteOverlay && !deleteOverlay.hidden) {
                     closeDeleteOverlay();
+                }
+                if (
+                    event.key === 'Escape' &&
+                    changeEmailOverlay &&
+                    !changeEmailOverlay.hidden
+                ) {
+                    closeChangeEmailOverlay();
                 }
             });
 

@@ -403,6 +403,102 @@ class OnboardingRegistrationTest(TestCase):
         self.assertContains(response, 'Verification email sent.')
         self.assertEqual(len(mail.outbox), 1)
 
+    def test_profile_shows_change_email_button(self):
+        user = User.objects.create_user(
+            'changepilot', 'change@example.com', 'pass1234'
+        )
+        Account.objects.create(
+            django_user=user,
+            alias='changepilot',
+            email='change@example.com',
+            full_name='Change Pilot',
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse('dj4xol:profile'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Change email')
+
+    def test_change_email_updates_account_and_resets_verification(self):
+        ServerSettings.objects.update_or_create(
+            key='enable_email',
+            defaults={
+                'value': 'True',
+                'description': 'Enable email',
+            }
+        )
+        ServerSettings.objects.update_or_create(
+            key='server_url',
+            defaults={
+                'value': 'https://example.test',
+                'description': 'Server URL',
+            }
+        )
+        user = User.objects.create_user(
+            'emailchange', 'old@example.com', 'pass1234'
+        )
+        account = Account.objects.create(
+            django_user=user,
+            alias='emailchange',
+            email='old@example.com',
+            full_name='Email Change',
+            email_verified=True,
+        )
+        old_key = account.email_verification_key
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse('dj4xol:profile'),
+            {
+                'action': 'change_email',
+                'email': 'new@example.com',
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        account.refresh_from_db()
+        user.refresh_from_db()
+        self.assertEqual(account.email, 'new@example.com')
+        self.assertEqual(user.email, 'new@example.com')
+        self.assertFalse(account.email_verified)
+        self.assertNotEqual(account.email_verification_key, old_key)
+        self.assertContains(
+            response,
+            'Email address updated. Verification email sent.',
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(account.email_verification_key, mail.outbox[0].body)
+
+    def test_change_email_rejects_same_address_and_keeps_dialog_open(self):
+        user = User.objects.create_user(
+            'sameemail', 'same@example.com', 'pass1234'
+        )
+        account = Account.objects.create(
+            django_user=user,
+            alias='sameemail',
+            email='same@example.com',
+            full_name='Same Email',
+            email_verified=True,
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse('dj4xol:profile'),
+            {
+                'action': 'change_email',
+                'email': 'same@example.com',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        account.refresh_from_db()
+        self.assertEqual(account.email, 'same@example.com')
+        self.assertTrue(account.email_verified)
+        self.assertContains(response, 'Enter a different email address.')
+        self.assertContains(response, 'id="change-email-overlay"', html=False)
+
 
 class IdentityNameRulesTest(TestCase):
     def test_safe_public_text_rejects_markup_characters(self):

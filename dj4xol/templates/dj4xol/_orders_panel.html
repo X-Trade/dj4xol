@@ -361,10 +361,11 @@
                     <div class="order-param-row">
                         <label for="warp-slider">Speed</label>
                         <div class="speed-row">
-                            <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{{ detail.fleet_cargo.move_default_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}">
+                            <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{{ detail.fleet_cargo.move_default_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}">
                             <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.move_default_warp|default:5 }}</span>
                         </div>
-                        <div id="warp-cloak-note" class="order-param-hint"{% if not detail.fleet_cargo.move_default_cloaked %} hidden{% endif %}>This vessel will be cloaked at this speed.</div>
+                        <div id="warp-cloak-note" class="order-param-hint"{% if not detail.fleet_cargo.move_default_cloaked %} hidden{% endif %}>Cloaked at this speed.</div>
+                        <div id="warp-fuel-factory-note" class="order-param-hint"{% if not detail.fleet_cargo.move_default_fuel_factory_active %} hidden{% endif %}>Fuel factory runs at this speed.</div>
                     </div>
                 </div>
 
@@ -393,9 +394,11 @@
                     <div class="order-param-row">
                         <label for="intercept-speed-slider">Intercept Speed</label>
                         <div class="speed-row">
-                            <input type="range" id="intercept-speed-slider" min="0" max="13" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
+                            <input type="range" id="intercept-speed-slider" min="0" max="13" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}">
                             <span id="intercept-speed-value" class="warp-value">Warp {{ detail.fleet_cargo.max_safe_warp|default:5 }}</span>
                         </div>
+                        <div id="intercept-cloak-note" class="order-param-hint"{% if not detail.fleet_cargo.intercept_default_cloaked %} hidden{% endif %}>Cloaked at this speed.</div>
+                        <div id="intercept-fuel-factory-note" class="order-param-hint"{% if not detail.fleet_cargo.intercept_default_fuel_factory_active %} hidden{% endif %}>Fuel factory runs at this speed.</div>
                     </div>
                 </div>
 
@@ -613,6 +616,7 @@
     var warpDisplay = document.getElementById('warp-value');
     var warpInput = document.getElementById('warpfactor-input');
     var warpCloakNote = document.getElementById('warp-cloak-note');
+    var warpFuelFactoryNote = document.getElementById('warp-fuel-factory-note');
     var refuelSlider = document.getElementById('refuel-slider');
     var refuelDisplay = document.getElementById('refuel-value');
     var refuelInput = document.getElementById('transfer-fuel-input');
@@ -625,6 +629,10 @@
     var interceptSpeedSlider = document.getElementById('intercept-speed-slider');
     var interceptSpeedDisplay = document.getElementById('intercept-speed-value');
     var interceptSpeedInput = document.getElementById('intercept-speed-input');
+    var interceptCloakNote = document.getElementById('intercept-cloak-note');
+    var interceptFuelFactoryNote = document.getElementById(
+        'intercept-fuel-factory-note'
+    );
     var destDisplay = document.getElementById('dest-display');
     var moveTargetSelect = document.getElementById('move-target');
     var targetXInput = document.querySelector('input[name="target_x"]');
@@ -1990,8 +1998,16 @@
     if (warpSlider && warpDisplay && warpInput) {
         var maxSafeWarp = parseInt(warpSlider.dataset.maxSafeWarp) || 5;
         var maxCloakedWarp = parseInt(warpSlider.dataset.maxCloakedWarp, 10);
+        var fuelFactoryRate = parseFloat(warpSlider.dataset.fuelFactoryRate) || 0;
+        var fuelFactoryMaxWarp = parseInt(
+            warpSlider.dataset.fuelFactoryMaxWarp,
+            10
+        );
         if (isNaN(maxCloakedWarp)) {
             maxCloakedWarp = -1;
+        }
+        if (isNaN(fuelFactoryMaxWarp)) {
+            fuelFactoryMaxWarp = -1;
         }
         var hasWormholeDrive = warpSlider.dataset.hasWormholeDrive === '1';
         function applyWarpSliderBounds() {
@@ -2006,15 +2022,18 @@
             var val = parseInt(warpSlider.value);
             var allowWormhole = hasWormholeDrive && orderType && orderType.value !== 'INTERCEPT';
             var cloakedAtSpeed = maxCloakedWarp >= 0 && val <= maxCloakedWarp && !(val === 14 && allowWormhole);
+            var fuelFactoryAtSpeed = (
+                fuelFactoryRate > 0 &&
+                fuelFactoryMaxWarp >= 0 &&
+                val <= fuelFactoryMaxWarp &&
+                !(val === 14 && allowWormhole)
+            );
             if (val === 0) {
                 warpDisplay.textContent = 'Stopped';
             } else if (val === 14 && allowWormhole) {
                 warpDisplay.textContent = 'Wormhole';
             } else {
                 warpDisplay.textContent = 'Warp ' + val;
-            }
-            if (cloakedAtSpeed) {
-                warpDisplay.textContent += ' | cloaked';
             }
             warpInput.value = val;
             warpDisplay.classList.remove('warp-warning', 'warp-danger');
@@ -2029,6 +2048,9 @@
             }
             if (warpCloakNote) {
                 warpCloakNote.hidden = !cloakedAtSpeed;
+            }
+            if (warpFuelFactoryNote) {
+                warpFuelFactoryNote.hidden = !fuelFactoryAtSpeed;
             }
         }
         warpSlider.addEventListener('input', updateWarpDisplay);
@@ -2050,8 +2072,33 @@
 
     if (interceptSpeedSlider && interceptSpeedDisplay && interceptSpeedInput) {
         var maxSafeIntercept = parseInt(interceptSpeedSlider.dataset.maxSafeWarp) || 5;
+        var maxCloakedIntercept = parseInt(
+            interceptSpeedSlider.dataset.maxCloakedWarp,
+            10
+        );
+        var interceptFuelFactoryRate = parseFloat(
+            interceptSpeedSlider.dataset.fuelFactoryRate
+        ) || 0;
+        var interceptFuelFactoryMaxWarp = parseInt(
+            interceptSpeedSlider.dataset.fuelFactoryMaxWarp,
+            10
+        );
+        if (isNaN(maxCloakedIntercept)) {
+            maxCloakedIntercept = -1;
+        }
+        if (isNaN(interceptFuelFactoryMaxWarp)) {
+            interceptFuelFactoryMaxWarp = -1;
+        }
         function updateInterceptDisplay() {
             var val = parseInt(interceptSpeedSlider.value);
+            var cloakedAtSpeed = (
+                maxCloakedIntercept >= 0 && val <= maxCloakedIntercept
+            );
+            var fuelFactoryAtSpeed = (
+                interceptFuelFactoryRate > 0 &&
+                interceptFuelFactoryMaxWarp >= 0 &&
+                val <= interceptFuelFactoryMaxWarp
+            );
             if (val === 0) {
                 interceptSpeedDisplay.textContent = 'Stopped';
             } else {
@@ -2065,6 +2112,12 @@
                 } else {
                     interceptSpeedDisplay.classList.add('warp-warning');
                 }
+            }
+            if (interceptCloakNote) {
+                interceptCloakNote.hidden = !cloakedAtSpeed;
+            }
+            if (interceptFuelFactoryNote) {
+                interceptFuelFactoryNote.hidden = !fuelFactoryAtSpeed;
             }
         }
         interceptSpeedSlider.addEventListener('input', updateInterceptDisplay);
