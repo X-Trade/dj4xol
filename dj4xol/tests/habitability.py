@@ -84,6 +84,17 @@ class TestHabitabilityMixin(TestCase):
         )
         self.assertAlmostEqual(rules.total_cost(), rules.budget)
 
+    def test_race_creation_race_type_points_balance_adjusts_total(self):
+        rules = RaceCreationRules(
+            centers={'gravity': 1.0, 'temperature': 1.0, 'radiation': 1.0},
+            widths={'gravity': 1.0, 'temperature': 1.0, 'radiation': 1.0},
+            starting_colonists=20,
+            starting_labs=1,
+            race_type_points_balance=-8.5,
+        )
+        self.assertAlmostEqual(rules.race_type_balance_cost(), -8.5)
+        self.assertAlmostEqual(rules.total_cost(), rules.budget - 8.5)
+
     def test_race_creation_width_cost_curve_keeps_1_and_raises_2(self):
         rules_narrow = RaceCreationRules(
             centers={'gravity': 0.0, 'temperature': 1.0, 'radiation': 1.0},
@@ -96,6 +107,13 @@ class TestHabitabilityMixin(TestCase):
         # Center at 0.0 removes center-cost component for gravity, isolating width cost.
         self.assertAlmostEqual(rules_narrow.per_env_cost('gravity'), 8.0)
         self.assertAlmostEqual(rules_wide.per_env_cost('gravity'), 20.0)
+
+    def test_race_creation_tiny_extreme_range_costs_about_one_point(self):
+        rules = RaceCreationRules(
+            centers={'gravity': 0.05, 'temperature': 1.0, 'radiation': 1.0},
+            widths={'gravity': 0.1, 'temperature': 1.0, 'radiation': 1.0},
+        )
+        self.assertAlmostEqual(rules.per_env_cost('gravity'), 1.0)
 
     def test_validate_habitability_range_below_zero(self):
         """Range extending below 0 should return error."""

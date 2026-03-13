@@ -975,6 +975,25 @@ class TestRaceCreationView(TestCase):
         self.assertContains(response, reverse('dj4xol:help_race_types'))
         self.assertContains(response, 'Browse')
 
+    def test_create_race_includes_race_type_behavior_config_and_state_script(self):
+        self.race_type.ignores_gravity = True
+        self.race_type.race_creation_points_balance = -6.5
+        self.race_type.save(update_fields=['ignores_gravity', 'race_creation_points_balance'])
+
+        response = self.client.get(reverse('dj4xol:create_race'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="race-type-behaviors-json"')
+        self.assertContains(response, '"%s"' % self.race_type.code)
+        self.assertContains(response, '"ignores_gravity": true')
+        self.assertContains(response, '"race_creation_points_balance": -6.5')
+        self.assertContains(response, "dj4xol/js/race_form_state.js")
+
+    def test_create_race_marks_inline_race_type_points_target(self):
+        response = self.client.get(reverse('dj4xol:create_race'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-race-type-browser-link="1"')
+
     def test_create_race_prefills_race_type_from_query_param(self):
         alt_type = ServerRaceType.objects.create(
             code='RSEL',
@@ -1031,6 +1050,26 @@ class TestRaceCreationView(TestCase):
         race = ServerRace.objects.get(name='PlayerPublicRace')
         self.assertTrue(race.public)
         self.assertEqual(race.owner, self.account)
+
+    def test_create_race_ignored_habitability_posts_save_as_defaults(self):
+        ignored_type = ServerRaceType.objects.create(
+            code='IGNG',
+            name='Ignored Gravity',
+            enabled=True,
+            ignores_gravity=True,
+            description='',
+        )
+        payload = self._race_payload('IgnoreGrav')
+        payload['race_type'] = ignored_type.code
+        payload['gravity_center'] = '1.70'
+        payload['gravity_width'] = '0.20'
+
+        response = self.client.post(reverse('dj4xol:create_race'), payload)
+
+        self.assertEqual(response.status_code, 302)
+        race = ServerRace.objects.get(name='IgnoreGrav')
+        self.assertEqual(race.gravity_center, 1.0)
+        self.assertEqual(race.gravity_width, 1.0)
 
     def test_edit_race_prefills_form_and_shows_warning(self):
         race = ServerRace.objects.create(
@@ -1110,6 +1149,18 @@ class TestOnboardingRaceView(TestCase):
         self.assertContains(response, reverse('dj4xol:help_race_types'))
         self.assertContains(response, 'Browse')
 
+    def test_onboarding_race_includes_race_type_behavior_config_and_state_script(self):
+        self.race_type.ignores_temperature = True
+        self.race_type.save(update_fields=['ignores_temperature'])
+
+        response = self.client.get(reverse('dj4xol:onboarding_race'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="race-type-behaviors-json"')
+        self.assertContains(response, '"%s"' % self.race_type.code)
+        self.assertContains(response, '"ignores_temperature": true')
+        self.assertContains(response, "dj4xol/js/race_form_state.js")
+
 
 class TestRaceTypeHelpView(TestCase):
     def setUp(self):
@@ -1121,7 +1172,8 @@ class TestRaceTypeHelpView(TestCase):
     def test_help_race_types_renders_single_panel_with_effects(self):
         self.race_type.diplomacy_multiplier = 1.2
         self.race_type.scan_multiplier = 0.8
-        self.race_type.save(update_fields=['diplomacy_multiplier', 'scan_multiplier'])
+        self.race_type.race_creation_points_balance = -4.0
+        self.race_type.save(update_fields=['diplomacy_multiplier', 'scan_multiplier', 'race_creation_points_balance'])
 
         response = self.client.get(
             reverse('dj4xol:help_race_types'),
@@ -1135,6 +1187,8 @@ class TestRaceTypeHelpView(TestCase):
         self.assertContains(response, '+20%')
         self.assertContains(response, 'Scanners')
         self.assertContains(response, '-20%')
+        self.assertContains(response, 'Race Balance Points')
+        self.assertContains(response, '-4.00 pts')
 
     def test_help_race_types_use_type_link_returns_to_create_race(self):
         response = self.client.get(

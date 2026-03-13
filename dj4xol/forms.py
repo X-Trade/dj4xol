@@ -167,6 +167,17 @@ class ServerRaceForm(forms.ModelForm):
                 'Choose only one leftover points option: minerals or research.'
             )
 
+        race_type = cleaned_data.get('race_type')
+        if race_type is not None:
+            for env, field_name in [
+                ('gravity', 'ignores_gravity'),
+                ('temperature', 'ignores_temperature'),
+                ('radiation', 'ignores_radiation'),
+            ]:
+                if bool(getattr(race_type, field_name, False)):
+                    cleaned_data['%s_center' % env] = 1.0
+                    cleaned_data['%s_width' % env] = 1.0
+
         rules = RaceCreationRules(
             centers={
                 'gravity': cleaned_data.get('gravity_center', 1.0),
@@ -187,6 +198,10 @@ class ServerRaceForm(forms.ModelForm):
             starting_tech_level=cleaned_data.get('starting_tech_level', 3),
             starting_tech_level_cost=get_starting_tech_balance_cost(
                 cleaned_data.get('starting_tech_level', 3)
+            ),
+            race_type_points_balance=(
+                float(getattr(race_type, 'race_creation_points_balance', 0.0) or 0.0)
+                if race_type is not None else 0.0
             ),
             convert_unused_buildpoints_to_research=cleaned_data.get(
                 'convert_unused_buildpoints_to_research', False

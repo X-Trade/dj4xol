@@ -545,6 +545,7 @@ class ServerRaceType(models.Model):
     population_growth_multiplier = models.FloatField(default=1.0)
     population_growth_uses_resources = models.BooleanField(default=False)
     population_cap_multiplier = models.IntegerField(default=1)
+    race_creation_points_balance = models.FloatField(default=0.0)
     starting_economy = models.IntegerField(default=2)
     economy_offset = models.IntegerField(default=0)
     manufacturing_multiplier = models.FloatField(default=1.0)

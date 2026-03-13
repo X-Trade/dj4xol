@@ -127,6 +127,7 @@
     code: 'SCI'
     name: 'Scientists'
     description: 'A race that excels at research.'
+    race_creation_points_balance: 6.0
     research_multiplier: 1.5
     manufacturing_multiplier: 0.6
     scan_multiplier: 1.2
@@ -160,6 +161,7 @@
   fields:
     code: 'MECH'
     name: 'Mechanical'
+    race_creation_points_balance: 12.0
     ignores_radiation: True
     ignores_gravity: True
     ignores_temperature: True
@@ -222,6 +224,7 @@
   fields:
     code: 'EXPL'
     name: 'Explorers'
+    race_creation_points_balance: 10.0
     ignores_radiation: False
     ignores_temperature: True
     warp_advantage: 0.6
@@ -245,6 +248,7 @@
     code: 'BULD'
     name: 'Builders'
     description: 'Builders are good at manufacturing and research, but not so good at combat or diplomacy.'
+    race_creation_points_balance: 5.0
     warp_advantage: 0.2
     shield_multiplier: 1.1
     combat_multiplier: 0.8
@@ -299,6 +303,7 @@
   fields:
     code: 'BRED'
     name: 'Breeders'
+    race_creation_points_balance: 10.0
     population_growth_multiplier: 2.0
     defence_multiplier: 0.6
     ground_force_multiplier: 1.64

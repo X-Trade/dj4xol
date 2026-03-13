@@ -50,6 +50,15 @@
     font-weight: bold;
 }
 
+.habitability-button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.habitability-ignored-row .habitability-controls {
+    opacity: 0.7;
+}
+
 .habitability-points {
     font-size: 0.85em;
     color: #b34700;
@@ -109,6 +118,10 @@
 
 .env-bar.dragging {
     cursor: grabbing;
+}
+
+.env-bar.habitability-ignored {
+    cursor: default;
 }
 
 .env-range {
