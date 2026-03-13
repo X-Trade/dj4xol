@@ -68,6 +68,8 @@ from .diplomacy import (
     player_grants_permission,
     player_permission_value,
     player_reveals_cloaked_fleets,
+    shared_colony_report_policy,
+    shared_fleet_report_policy,
     stance_label,
     stance_towards,
 )
@@ -1675,13 +1677,23 @@ class GameTurn():
                     stance_map=self._stance_map_for_player(grantor),
                 ):
                     continue
+                colony_report_tier = shared_colony_report_policy(
+                    grantor,
+                    viewer,
+                    stance_map=self._stance_map_for_player(grantor),
+                )
+                fleet_report_tier, fleet_include_cargo = shared_fleet_report_policy(
+                    grantor,
+                    viewer,
+                    stance_map=self._stance_map_for_player(grantor),
+                )
                 for star in stars_by_player.get(grantor.id, []):
                     self._create_or_update_report(
                         viewer,
                         'star',
                         star,
                         self.game.year,
-                        report_tier='encounter',
+                        report_tier=colony_report_tier,
                     )
                 for fleet in fleets_by_player.get(grantor.id, []):
                     if (
@@ -1694,7 +1706,8 @@ class GameTurn():
                         'fleet',
                         fleet,
                         self.game.year,
-                        report_tier='advanced',
+                        report_tier=fleet_report_tier,
+                        include_cargo=fleet_include_cargo,
                     )
 
     def generate_scanner_reports(self):

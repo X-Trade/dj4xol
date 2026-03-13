@@ -35,9 +35,10 @@
             {% if race_type_browser_url %}
             <a class="action-link race-type-browser-link" data-race-type-browser-link="1" href="{{ race_type_browser_url }}">Browse</a>
             {% endif %}
+            <div id="race-type-description" class="race-type-description"></div>
             {{ form.race_type.errors }}
         </td>
-        <td class="hint">&nbsp;</td>
+        <td class="hint" id="race-type-description-hint">Select a race type to view its built-in traits and playstyle summary.</td>
     </tr>
     {% if form.public %}
     <tr>

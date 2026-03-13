@@ -270,6 +270,14 @@ class Account(models.Model):
         ('lcars', 'LCARS'),
         ('win95', 'Windows 95'),
     ]
+    ONBOARDING_STEP_COMPLETE = 'COMPLETE'
+    ONBOARDING_STEP_THEME = 'THEME'
+    ONBOARDING_STEP_RACE = 'RACE'
+    ONBOARDING_STEP_CHOICES = [
+        (ONBOARDING_STEP_COMPLETE, 'Complete'),
+        (ONBOARDING_STEP_THEME, 'Theme'),
+        (ONBOARDING_STEP_RACE, 'Race'),
+    ]
 
     django_user = models.OneToOneField(auth_models.User, primary_key=True,
             related_name="dj4xol_account", on_delete=models.PROTECT)
@@ -281,6 +289,11 @@ class Account(models.Model):
     email_newsletter = models.BooleanField(default=True)
     email_unsubscribe_key = models.CharField(max_length=64, blank=True, default='')
     theme = models.CharField(max_length=20, choices=THEME_CHOICES, default='classic')
+    onboarding_step = models.CharField(
+        max_length=12,
+        choices=ONBOARDING_STEP_CHOICES,
+        default=ONBOARDING_STEP_COMPLETE,
+    )
     website_url = models.URLField(blank=True, default='')
     discovered_resource_x = models.BooleanField(default=False)
     discovered_resource_y = models.BooleanField(default=False)

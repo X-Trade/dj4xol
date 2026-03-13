@@ -1,8 +1,10 @@
 """Tests for the exploration reports feature."""
 import json
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.contrib.auth.models import User
+from .. import diplomacy
 from ..models import (
     Account, Star, Fleet, FleetOrders, Salvage, Report, Anomaly, GameMessage,
     PlayerDiplomaticStance,
@@ -1209,7 +1211,7 @@ class ScannerReportTest(TestCase):
         self.assertIsNotNone(report)
         self.assertEqual(report.get_report_data().get('report_tier'), 'basic')
 
-    def test_allied_intel_sharing_creates_advanced_fleet_and_encounter_colony_reports(self):
+    def test_allied_intel_sharing_creates_encounter_fleet_and_encounter_colony_reports(self):
         shared_fleet = Fleet.objects.create(
             game=self.game,
             player=self.player2,
@@ -1218,6 +1220,15 @@ class ScannerReportTest(TestCase):
             y=62,
             ship_count=3,
             integrity=77,
+            cargo_capacity=120,
+            ironium_inventory=18,
+            fuel=33.0,
+            max_fuel=70.0,
+            max_safe_warp=8,
+            basic_scanner_range=5,
+            advanced_scanner_range=2,
+            has_bombs='CONVENTIONAL',
+            has_wormhole_drive=True,
         )
         shared_star = self.player2.homeworld
 
@@ -1237,8 +1248,14 @@ class ScannerReportTest(TestCase):
             target_id=shared_fleet.id,
         ).first()
         self.assertIsNotNone(fleet_report)
-        self.assertEqual(fleet_report.get_report_data().get('report_tier'), 'advanced')
-        self.assertEqual(fleet_report.get_report_data().get('player_name'), self.player2.name)
+        fleet_data = fleet_report.get_report_data()
+        self.assertEqual(fleet_data.get('report_tier'), 'encounter')
+        self.assertEqual(fleet_data.get('player_name'), self.player2.name)
+        self.assertEqual(fleet_data.get('cargo_capacity'), 120)
+        self.assertEqual(fleet_data.get('ironium_inventory'), 18)
+        self.assertEqual(fleet_data.get('max_safe_warp'), 8)
+        self.assertEqual(fleet_data.get('has_bombs'), 'CONVENTIONAL')
+        self.assertEqual(fleet_data.get('advanced_scanner_range'), 2)
 
         star_report = Report.objects.filter(
             game=self.game,
@@ -1252,6 +1269,65 @@ class ScannerReportTest(TestCase):
         self.assertEqual(star_data.get('player_name'), self.player2.name)
         self.assertIn('mines', star_data)
         self.assertIn('shipyards', star_data)
+
+    def test_allied_intel_sharing_honors_backend_report_level_policy(self):
+        shared_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Shared Policy Fleet',
+            x=64,
+            y=65,
+            ship_count=4,
+            integrity=81,
+            cargo_capacity=90,
+            ironium_inventory=11,
+            max_safe_warp=7,
+            has_bombs='CONVENTIONAL',
+        )
+        shared_star = self.player2.homeworld
+
+        PlayerDiplomaticStance.objects.create(
+            player=self.player2,
+            target_player=self.player1,
+            stance='ALLIED',
+        )
+
+        with patch.dict(
+            diplomacy.STANCE_PERMISSION_PROFILES[diplomacy.STANCE_ALLIED],
+            {
+                diplomacy.PERMISSION_SHARE_FLEET_REPORT_LEVEL: diplomacy.FLEET_REPORT_LEVEL_CARGO,
+                diplomacy.PERMISSION_SHARE_COLONY_REPORT_LEVEL: diplomacy.COLONY_REPORT_LEVEL_ADVANCED,
+            },
+            clear=False,
+        ):
+            turn = GameTurn(self.game)
+            turn.generate_shared_intel_reports()
+
+        fleet_report = Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=shared_fleet.id,
+        ).first()
+        self.assertIsNotNone(fleet_report)
+        fleet_data = fleet_report.get_report_data()
+        self.assertEqual(fleet_data.get('report_tier'), 'advanced')
+        self.assertEqual(fleet_data.get('cargo_capacity'), 90)
+        self.assertEqual(fleet_data.get('ironium_inventory'), 11)
+        self.assertNotIn('max_safe_warp', fleet_data)
+        self.assertNotIn('has_bombs', fleet_data)
+
+        star_report = Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=shared_star.id,
+        ).first()
+        self.assertIsNotNone(star_report)
+        star_data = star_report.get_report_data()
+        self.assertEqual(star_data.get('report_tier'), 'advanced')
+        self.assertNotIn('mines', star_data)
+        self.assertNotIn('shipyards', star_data)
 
     def test_allied_intel_hides_cloaked_fleet_without_reveal_setting(self):
         shared_fleet = Fleet.objects.create(

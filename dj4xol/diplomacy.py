@@ -46,6 +46,16 @@ PERMISSION_ALLOW_TRANSFER_RAID_DEFENSE = 'allow_transfer_raid_defense'
 PERMISSION_ALLOW_TRANSFER_RAID_ROLL = 'allow_transfer_raid_roll'
 PERMISSION_SHARE_INTEL = 'share_intel'
 PERMISSION_SHARE_SCANNERS = 'share_scanners'
+PERMISSION_SHARE_FLEET_REPORT_LEVEL = 'share_fleet_report_level'
+PERMISSION_SHARE_COLONY_REPORT_LEVEL = 'share_colony_report_level'
+PERMISSION_REVEAL_CLOAKED_FLEETS = 'reveal_cloaked_fleets'
+
+FLEET_REPORT_LEVEL_ADVANCED = 'advanced'
+FLEET_REPORT_LEVEL_CARGO = 'cargo'
+FLEET_REPORT_LEVEL_FULL = 'full'
+
+COLONY_REPORT_LEVEL_ADVANCED = 'advanced'
+COLONY_REPORT_LEVEL_FULL = 'full'
 
 def _self_combat_percent(stance):
     stance = (stance or DEFAULT_STANCE).upper()
@@ -73,6 +83,9 @@ STANCE_PERMISSION_PROFILES = {
         PERMISSION_ALLOW_TRANSFER_RAID_ROLL: True,
         PERMISSION_SHARE_INTEL: False,
         PERMISSION_SHARE_SCANNERS: False,
+        PERMISSION_SHARE_FLEET_REPORT_LEVEL: FLEET_REPORT_LEVEL_ADVANCED,
+        PERMISSION_SHARE_COLONY_REPORT_LEVEL: COLONY_REPORT_LEVEL_ADVANCED,
+        PERMISSION_REVEAL_CLOAKED_FLEETS: False,
     },
     STANCE_COLD: {
         PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE: _STANCE_SELF_COMBAT_PERCENT[STANCE_COLD] / 100.0,
@@ -81,6 +94,9 @@ STANCE_PERMISSION_PROFILES = {
         PERMISSION_ALLOW_TRANSFER_RAID_ROLL: True,
         PERMISSION_SHARE_INTEL: False,
         PERMISSION_SHARE_SCANNERS: False,
+        PERMISSION_SHARE_FLEET_REPORT_LEVEL: FLEET_REPORT_LEVEL_ADVANCED,
+        PERMISSION_SHARE_COLONY_REPORT_LEVEL: COLONY_REPORT_LEVEL_ADVANCED,
+        PERMISSION_REVEAL_CLOAKED_FLEETS: False,
     },
     STANCE_NEUTRAL: {
         PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE: _STANCE_SELF_COMBAT_PERCENT[STANCE_NEUTRAL] / 100.0,
@@ -89,6 +105,9 @@ STANCE_PERMISSION_PROFILES = {
         PERMISSION_ALLOW_TRANSFER_RAID_ROLL: True,
         PERMISSION_SHARE_INTEL: False,
         PERMISSION_SHARE_SCANNERS: False,
+        PERMISSION_SHARE_FLEET_REPORT_LEVEL: FLEET_REPORT_LEVEL_ADVANCED,
+        PERMISSION_SHARE_COLONY_REPORT_LEVEL: COLONY_REPORT_LEVEL_ADVANCED,
+        PERMISSION_REVEAL_CLOAKED_FLEETS: False,
     },
     STANCE_WARM: {
         PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE: _STANCE_SELF_COMBAT_PERCENT[STANCE_WARM] / 100.0,
@@ -97,6 +116,9 @@ STANCE_PERMISSION_PROFILES = {
         PERMISSION_ALLOW_TRANSFER_RAID_ROLL: True,
         PERMISSION_SHARE_INTEL: False,
         PERMISSION_SHARE_SCANNERS: False,
+        PERMISSION_SHARE_FLEET_REPORT_LEVEL: FLEET_REPORT_LEVEL_ADVANCED,
+        PERMISSION_SHARE_COLONY_REPORT_LEVEL: COLONY_REPORT_LEVEL_ADVANCED,
+        PERMISSION_REVEAL_CLOAKED_FLEETS: False,
     },
     STANCE_ALLIED: {
         PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE: 0.0,
@@ -105,6 +127,9 @@ STANCE_PERMISSION_PROFILES = {
         PERMISSION_ALLOW_TRANSFER_RAID_ROLL: False,
         PERMISSION_SHARE_INTEL: True,
         PERMISSION_SHARE_SCANNERS: True,
+        PERMISSION_SHARE_FLEET_REPORT_LEVEL: FLEET_REPORT_LEVEL_FULL,
+        PERMISSION_SHARE_COLONY_REPORT_LEVEL: COLONY_REPORT_LEVEL_FULL,
+        PERMISSION_REVEAL_CLOAKED_FLEETS: False,
     },
 }
 
@@ -165,8 +190,8 @@ STANCE_EFFECT_ITEMS = {
         },
         {
             'name': 'Intel',
-            'summary': 'Shared',
-            'description': 'Shares fleet/colony positions and advanced intel.',
+            'summary': 'Full',
+            'description': 'Shares full allied fleet and colony reports.',
         },
         {
             'name': 'Scanners',
@@ -313,18 +338,69 @@ def player_grants_permission(player, other_player, permission_key, stance_map=No
     )
 
 
+def player_shared_fleet_report_level(player, other_player, stance_map=None):
+    return str(
+        player_permission_value(
+            player,
+            other_player,
+            PERMISSION_SHARE_FLEET_REPORT_LEVEL,
+            default=FLEET_REPORT_LEVEL_ADVANCED,
+            stance_map=stance_map,
+        ) or FLEET_REPORT_LEVEL_ADVANCED
+    ).lower()
+
+
+def player_shared_colony_report_level(player, other_player, stance_map=None):
+    return str(
+        player_permission_value(
+            player,
+            other_player,
+            PERMISSION_SHARE_COLONY_REPORT_LEVEL,
+            default=COLONY_REPORT_LEVEL_ADVANCED,
+            stance_map=stance_map,
+        ) or COLONY_REPORT_LEVEL_ADVANCED
+    ).lower()
+
+
+def shared_fleet_report_policy(player, other_player, stance_map=None):
+    level = player_shared_fleet_report_level(player, other_player, stance_map=stance_map)
+    policies = {
+        FLEET_REPORT_LEVEL_ADVANCED: ('advanced', False),
+        FLEET_REPORT_LEVEL_CARGO: ('advanced', True),
+        FLEET_REPORT_LEVEL_FULL: ('encounter', True),
+    }
+    return policies.get(level, policies[FLEET_REPORT_LEVEL_ADVANCED])
+
+
+def shared_colony_report_policy(player, other_player, stance_map=None):
+    level = player_shared_colony_report_level(player, other_player, stance_map=stance_map)
+    policies = {
+        COLONY_REPORT_LEVEL_ADVANCED: 'advanced',
+        COLONY_REPORT_LEVEL_FULL: 'encounter',
+    }
+    return policies.get(level, policies[COLONY_REPORT_LEVEL_ADVANCED])
+
+
 def player_reveals_cloaked_fleets(player, other_player):
     if not player or not other_player:
         return False
+    if not player_grants_permission(player, other_player, PERMISSION_SHARE_INTEL):
+        return False
+    default_reveal = bool(
+        player_permission_value(
+            player,
+            other_player,
+            PERMISSION_REVEAL_CLOAKED_FLEETS,
+            default=False,
+        )
+    )
     row = PlayerDiplomaticStance.objects.filter(
         player=player,
         target_player=other_player,
     ).first()
     if row is None:
-        return False
-    if normalise_stance(getattr(row, 'stance', None)) != STANCE_ALLIED:
-        return False
-    return bool(getattr(row, 'reveal_cloaked_fleets', False))
+        return default_reveal
+    return bool(getattr(row, 'reveal_cloaked_fleets', default_reveal))
 
 
 def encountered_players(player):

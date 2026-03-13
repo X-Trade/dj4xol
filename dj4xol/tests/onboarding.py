@@ -48,6 +48,7 @@ class OnboardingRegistrationTest(TestCase):
         user = User.objects.get(username='newpilot')
         self.assertTrue(Account.objects.filter(django_user=user).exists())
         account = Account.objects.get(django_user=user)
+        self.assertEqual(account.onboarding_step, Account.ONBOARDING_STEP_THEME)
         self.assertTrue(account.email_game_updates)
         self.assertFalse(account.email_newsletter)
         self.assertEqual(account.email_game_rollups_per_day, 1)
@@ -77,6 +78,38 @@ class OnboardingRegistrationTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Create Your 4x Profile')
         self.assertNotContains(response, 'Create Login')
+
+    def test_gamelist_redirects_incomplete_account_to_onboarding_theme(self):
+        user = User.objects.create_user('themewait', 'themewait@example.com', 'pass1234')
+        Account.objects.create(
+            django_user=user,
+            alias='themewait',
+            email='themewait@example.com',
+            full_name='Theme Wait',
+            onboarding_step=Account.ONBOARDING_STEP_THEME,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse('dj4xol:index'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dj4xol:onboarding_theme'))
+
+    def test_gamelist_redirects_incomplete_account_to_onboarding_race(self):
+        user = User.objects.create_user('racewait', 'racewait@example.com', 'pass1234')
+        Account.objects.create(
+            django_user=user,
+            alias='racewait',
+            email='racewait@example.com',
+            full_name='Race Wait',
+            onboarding_step=Account.ONBOARDING_STEP_RACE,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse('dj4xol:index'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dj4xol:onboarding_race'))
 
     def test_profile_updates_email_preferences(self):
         user = User.objects.create_user('prefs', 'prefs@example.com', 'pass1234')
