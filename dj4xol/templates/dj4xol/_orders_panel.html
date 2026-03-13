@@ -134,7 +134,7 @@
             <input type="hidden" name="x" value="{{ selection.x }}">
             <input type="hidden" name="y" value="{{ selection.y }}">
             <input type="hidden" name="sel" value="{{ selection.sel }}">
-            <input type="hidden" name="warpfactor" id="warpfactor-input" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
+            <input type="hidden" name="warpfactor" id="warpfactor-input" value="{{ detail.fleet_cargo.move_default_warp|default:5 }}">
             <input type="hidden" name="transfer_type" id="transfer-type-input" value="LOAD">
             <input type="hidden" name="transfer_target" id="transfer-target-input" value="">
             <input type="hidden" name="transfer_player" id="transfer-player-input" value="">
@@ -341,9 +341,10 @@
                     <div class="order-param-row">
                         <label for="warp-slider">Speed</label>
                         <div class="speed-row">
-                            <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}">
-                            <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.max_safe_warp|default:5 }}</span>
+                            <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{{ detail.fleet_cargo.move_default_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}">
+                            <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.move_default_warp|default:5 }}</span>
                         </div>
+                        <div id="warp-cloak-note" class="order-param-hint"{% if not detail.fleet_cargo.move_default_cloaked %} hidden{% endif %}>This vessel will be cloaked at this speed.</div>
                     </div>
                 </div>
 
@@ -577,6 +578,7 @@
     var warpSlider = document.getElementById('warp-slider');
     var warpDisplay = document.getElementById('warp-value');
     var warpInput = document.getElementById('warpfactor-input');
+    var warpCloakNote = document.getElementById('warp-cloak-note');
 
     // Patrol inputs
     var patrolRadiusInput = document.getElementById('patrol-radius');
@@ -1852,6 +1854,10 @@
     // Warp factor slider
     if (warpSlider && warpDisplay && warpInput) {
         var maxSafeWarp = parseInt(warpSlider.dataset.maxSafeWarp) || 5;
+        var maxCloakedWarp = parseInt(warpSlider.dataset.maxCloakedWarp, 10);
+        if (isNaN(maxCloakedWarp)) {
+            maxCloakedWarp = -1;
+        }
         var hasWormholeDrive = warpSlider.dataset.hasWormholeDrive === '1';
         function applyWarpSliderBounds() {
             var allowWormhole = hasWormholeDrive && orderType && orderType.value !== 'INTERCEPT';
@@ -1864,12 +1870,16 @@
             applyWarpSliderBounds();
             var val = parseInt(warpSlider.value);
             var allowWormhole = hasWormholeDrive && orderType && orderType.value !== 'INTERCEPT';
+            var cloakedAtSpeed = maxCloakedWarp >= 0 && val <= maxCloakedWarp && !(val === 14 && allowWormhole);
             if (val === 0) {
                 warpDisplay.textContent = 'Stopped';
             } else if (val === 14 && allowWormhole) {
                 warpDisplay.textContent = 'Wormhole';
             } else {
                 warpDisplay.textContent = 'Warp ' + val;
+            }
+            if (cloakedAtSpeed) {
+                warpDisplay.textContent += ' | cloaked';
             }
             warpInput.value = val;
             warpDisplay.classList.remove('warp-warning', 'warp-danger');
@@ -1881,6 +1891,9 @@
                 } else {
                     warpDisplay.classList.add('warp-warning');
                 }
+            }
+            if (warpCloakNote) {
+                warpCloakNote.hidden = !cloakedAtSpeed;
             }
         }
         warpSlider.addEventListener('input', updateWarpDisplay);

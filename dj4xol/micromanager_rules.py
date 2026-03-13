@@ -57,6 +57,8 @@ LEVEL_TWO_FILLER_ORDER_TYPES = (
     'BUILD_DEFENSE',
     'BUILD_LAB',
 )
+LEVEL_TWO_DEFENSE_FLOOR = 12
+LEVEL_TWO_LAB_FLOOR = 8
 
 
 def empty_queue_requirements():
@@ -328,6 +330,26 @@ def get_micromanager_managed_order_types(tier):
     return ()
 
 
+def _planning_limit_for_star(player, star, limit):
+    """Return a deeper queue target when jobs are critically low."""
+    plan_limit = max(0, int(limit or 0))
+    thresholds = _projected_job_thresholds(player, star)
+    current_jobs = _job_capacity(star)
+    if current_jobs < thresholds['min_jobs']:
+        missing_jobs = thresholds['min_jobs'] - current_jobs
+        catchup_limit = (
+            missing_jobs + COLONISTS_PER_JOB - 1
+        ) // COLONISTS_PER_JOB
+        return max(plan_limit, min(1000, int(catchup_limit)))
+    if current_jobs < thresholds['target_jobs']:
+        missing_jobs = thresholds['target_jobs'] - current_jobs
+        catchup_limit = (
+            missing_jobs + COLONISTS_PER_JOB - 1
+        ) // COLONISTS_PER_JOB
+        return max(plan_limit, min(120, int(catchup_limit)))
+    return plan_limit
+
+
 def _has_resource_surplus_for_order(player, star, cost_map, order_type, reserve_factor=2):
     """Return True when the colony can cover queue demand with headroom."""
     if not cost_map:
@@ -463,6 +485,22 @@ def get_micromanager_candidate_orders(
                     )
                 ):
                     append_candidate('BUILD_SHIPYARD')
+                if (
+                    int(getattr(star, 'defenses', 0) or 0) <
+                    LEVEL_TWO_DEFENSE_FLOOR and
+                    _can_add_jobs_without_breaking_limit(
+                        player, star, 'BUILD_DEFENSE'
+                    )
+                ):
+                    append_candidate('BUILD_DEFENSE')
+                if (
+                    int(getattr(star, 'labs', 0) or 0) <
+                    LEVEL_TWO_LAB_FLOOR and
+                    _can_add_jobs_without_breaking_limit(
+                        player, star, 'BUILD_LAB'
+                    )
+                ):
+                    append_candidate('BUILD_LAB')
             for order_type in filler_order_types:
                 append_candidate(order_type)
             for order_type in level_one_support_candidates:
@@ -610,7 +648,8 @@ def plan_micromanager_orders(
             terraform_used = True
 
     planned = []
-    for _ in range(max(0, int(limit or 0))):
+    plan_limit = _planning_limit_for_star(player, projected, limit)
+    for _ in range(plan_limit):
         candidates = get_micromanager_candidate_orders(
             player,
             projected,

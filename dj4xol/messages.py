@@ -294,7 +294,7 @@ class PlanetoidEventMessageFactory(MessageFactory):
     """Messages for rogue planetoid environmental effects."""
     category = 'RANDOM'
     templates = [
-        "A rogue planetoid passed through the {star} system and {adverb} {verb} planetary conditions.",
+        "A rogue planetoid passed through the {star} system and {adverb} {verb} environmental conditions.",
         "Gravitational effects from an uncharted body {adverb} {verb} the environment on {star}.",
         "A comet's near-miss {adverb} {verb} atmospheric conditions on {star}.",
     ]
@@ -1502,12 +1502,12 @@ class OrbitalDefenseHitMessageFactory(MessageFactory):
     category = 'COMBAT'
     priority = True
     templates_attacker = [
-        "{fleet} took {damage}% integrity damage from planetary defenses at {star}.",
+        "{fleet} took {damage}% integrity damage from defenses at {star}.",
         "Defensive fire from {star} damaged {fleet} by {damage}% integrity.",
         "{fleet} was hit by orbital defenses at {star}; integrity reduced by {damage}%.",
     ]
     templates_defender = [
-        "Planetary defenses at {star} damaged hostile fleet {fleet} by {damage}% integrity.",
+        "Defenses at {star} damaged hostile fleet {fleet} by {damage}% integrity.",
         "Defensive batteries at {star} struck {fleet} for {damage}% integrity damage.",
         "Hostile fleet {fleet} was hit by defenses at {star}; {damage}% integrity lost.",
     ]
@@ -1540,7 +1540,7 @@ class TransferRaidThwartedMessageFactory(MessageFactory):
     templates_defender = [
         "Defenses at {star} repelled a raid by {fleet}; the attackers took {damage}% damage.",
         "Raiders from {fleet} were driven off at {star}, losing {damage}% integrity.",
-        "Planetary defenses stopped a theft attempt at {star}; {fleet} suffered {damage}% damage.",
+        "Defense systems stopped a theft attempt at {star}; {fleet} suffered {damage}% damage.",
     ]
 
     def __init__(self, game, player, fleet, star, owner_name, resource_desc, damage, perspective='attacker', message=None):

@@ -613,6 +613,96 @@ class AdministrationAutomationTest(TestCase):
         self.assertEqual(second.order_type, 'BUILD_FACTORY')
         self.assertGreater(second.quantity, 1)
 
+    def test_micromanager_merges_new_run_into_matching_progressed_order(self):
+        self._create_administration_tech(1, 1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 20_000
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        order = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            position=1,
+            quantity=12,
+            completed=10,
+            added_by_micromanager=True,
+        )
+
+        GameTurn(self.game)._refresh_administration_production_queue(self.star)
+        order.refresh_from_db()
+
+        self.assertEqual(
+            self.star.production_orders.filter(
+                added_by_micromanager=True
+            ).count(),
+            1,
+        )
+        self.assertEqual(order.quantity, 20)
+
+    def test_level_two_queues_deeper_and_adds_support_when_jobs_are_critical(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 2_000_000_000
+        self.star.mines = 10
+        self.star.factories = 10
+        self.star.labs = 0
+        self.star.defenses = 4
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 100_000
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        self.player.fleets.all().delete()
+
+        GameTurn(self.game)._refresh_administration_production_queue(self.star)
+
+        orders = list(
+            self.star.production_orders.filter(
+                added_by_micromanager=True
+            ).order_by('position')
+        )
+        self.assertGreaterEqual(len(orders), 3)
+        self.assertEqual(orders[0].order_type, 'BUILD_DEFENSE')
+        self.assertGreater(
+            sum(
+                order.quantity for order in orders
+                if order.order_type == 'BUILD_DEFENSE'
+            ),
+            4,
+        )
+        self.assertGreater(
+            sum(
+                order.quantity for order in orders
+                if order.order_type == 'BUILD_LAB'
+            ),
+            0,
+        )
+        self.assertGreater(
+            sum(
+                order.quantity for order in orders
+                if order.order_type == 'BUILD_FACTORY'
+            ),
+            12,
+        )
+
     def test_level_two_converts_repeat_shipyard_order_to_auto_and_reduces_it(self):
         self._create_administration_tech(2, 2)
         self.player.race_type.population_growth_multiplier = 0

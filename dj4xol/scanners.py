@@ -89,6 +89,8 @@ def position_in_scanner_range(x, y, sources, range_key='basic'):
 def fleet_is_cloaked(fleet):
     if not fleet:
         return False
+    if not getattr(fleet, 'player_id', None):
+        return False
     try:
         max_cloaked_warp = int(getattr(fleet, 'max_cloaked_warp', -1) or 0)
     except (TypeError, ValueError):

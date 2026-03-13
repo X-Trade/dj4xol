@@ -1,5 +1,29 @@
+from io import StringIO
+
+from django.core.management import call_command
 from django.test import TestCase
 from ..models import ServerSettings
+
+
+class TestMigrationDrift(TestCase):
+    def test_no_unmigrated_model_changes(self):
+        stdout = StringIO()
+        stderr = StringIO()
+        try:
+            call_command(
+                'makemigrations',
+                check=True,
+                dry_run=True,
+                interactive=False,
+                verbosity=0,
+                stdout=stdout,
+                stderr=stderr,
+            )
+        except SystemExit as exc:
+            self.fail(
+                'Django detected unmigrated model changes (exit %s).\nSTDOUT:\n%s\nSTDERR:\n%s'
+                % (exc.code, stdout.getvalue(), stderr.getvalue())
+            )
 
 
 class TestServerSettings(TestCase):
