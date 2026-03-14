@@ -331,11 +331,49 @@
             }
 
             var storageKey = 'pageScroll:' + window.location.pathname;
+            var destinationFlowKey = (
+                'mobileDestinationFlow:' + window.location.pathname
+            );
+            var destinationFlow = localStorage.getItem(destinationFlowKey);
+            var hasDestinationBanner = !!document.querySelector('.dest-mode-banner');
+            var ordersPanel = document.querySelector('.orders-section');
+            var detailPanel = document.querySelector('.detail-section');
+            var destinationCancel = document.querySelector('.dest-cancel');
+
+            function clearDestinationFlow() {
+                localStorage.removeItem(destinationFlowKey);
+            }
+
+            function scrollToOrdersPanel() {
+                var target = ordersPanel || detailPanel;
+                if (!target) {
+                    return;
+                }
+                target.scrollIntoView({
+                    block: 'start',
+                    behavior: 'auto',
+                });
+            }
+
             var savedScroll = localStorage.getItem(storageKey);
-            if (savedScroll) {
+            if (hasDestinationBanner) {
+                requestAnimationFrame(function() {
+                    window.scrollTo(0, 0);
+                });
+                if (destinationFlow !== 'to_orders') {
+                    localStorage.setItem(destinationFlowKey, 'to_map');
+                }
+            } else if (destinationFlow === 'to_orders') {
+                requestAnimationFrame(function() {
+                    scrollToOrdersPanel();
+                    clearDestinationFlow();
+                });
+            } else if (savedScroll) {
                 requestAnimationFrame(function() {
                     window.scrollTo(0, parseInt(savedScroll, 10) || 0);
                 });
+            } else {
+                clearDestinationFlow();
             }
 
             window.addEventListener('scroll', function() {
@@ -349,9 +387,16 @@
             var destSetLink = document.getElementById('dest-set-link');
             if (destSetLink) {
                 destSetLink.addEventListener('click', function() {
+                    localStorage.setItem(destinationFlowKey, 'to_map');
                     localStorage.setItem(storageKey, 0);
                     localStorage.setItem('starmap:' + window.location.pathname + ':panel:starmap', 'true');
                     window.scrollTo(0, 0);
+                });
+            }
+
+            if (destinationCancel) {
+                destinationCancel.addEventListener('click', function() {
+                    localStorage.setItem(destinationFlowKey, 'to_orders');
                 });
             }
         })();

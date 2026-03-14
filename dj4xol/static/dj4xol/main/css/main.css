@@ -174,29 +174,27 @@ body.map-dragging * {
     }
 
     .column-right {
-        grid-column: 2 / 4;
-        grid-row: 1;
-        display: grid !important;
-        grid-template-columns: minmax(324px, 1fr) minmax(324px, 1fr);
-        grid-template-areas: "detail orders";
-        column-gap: 10px;
+        display: contents;
         min-width: 0;
         max-width: none;
-        overflow: visible;
     }
 
     .column-right > .column-detail {
-        grid-area: detail;
+        grid-column: 2;
         grid-row: 1;
-        min-width: 324px;
+        min-width: 0;
         max-width: none;
     }
 
     .column-right > .column-orders {
-        grid-area: orders;
+        grid-column: 3;
         grid-row: 1;
-        min-width: 324px;
+        min-width: 0;
         max-width: none;
+    }
+
+    .column-right.no-orders-panel > .column-detail {
+        grid-column: 2 / 4;
     }
 }
 
