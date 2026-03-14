@@ -656,7 +656,9 @@
         var destAnomaly = document.querySelector('input[name="target_anomaly"]').value;
         var destX = document.querySelector('input[name="target_x"]').value;
 
-        addBtn.disabled = !destStar && !destFleet && !destSalvage && !destAnomaly && !destX;
+        setOrderAddDisabled(
+            !destStar && !destFleet && !destSalvage && !destAnomaly && !destX
+        );
     }
 
     function updateSubmitButtonLabels() {
@@ -667,6 +669,20 @@
         }
         if (orderParamsOverlayAdd) {
             orderParamsOverlayAdd.textContent = isEditing ? 'Save' : 'Add';
+        }
+    }
+
+    function setOrderAddDisabled(disabled) {
+        var isDisabled = !!disabled;
+        if (addBtn) {
+            addBtn.disabled = isDisabled;
+        }
+        if (orderParamsOverlayAdd) {
+            orderParamsOverlayAdd.disabled = isDisabled;
+            orderParamsOverlayAdd.setAttribute(
+                'aria-disabled',
+                isDisabled ? 'true' : 'false'
+            );
         }
     }
 
@@ -735,18 +751,18 @@
         // Transfer orders require a target (or empty space is allowed) and at least one resource
         // Empty space has transferTargetValue = '' which is still valid
         var hasValidTarget = transferTargetValue !== undefined;
-        addBtn.disabled = !hasValidTarget || !hasResources;
+        setOrderAddDisabled(!hasValidTarget || !hasResources);
     }
 
     function updateAddButtonStateGive() {
-        addBtn.disabled = false;
+        setOrderAddDisabled(false);
     }
 
     function updateAddButtonStateRefuel() {
         var targetFleet = document.querySelector('input[name="target_fleet"]');
         var targetFleetId = targetFleet ? targetFleet.value : '';
         var requestedFuel = refuelInput ? parseFloat(refuelInput.value || '0') : 0;
-        addBtn.disabled = !targetFleetId || !(requestedFuel > 0);
+        setOrderAddDisabled(!targetFleetId || !(requestedFuel > 0));
     }
 
     function restoreOrderForm() {
@@ -782,6 +798,22 @@
         }
         selectEl.value = value;
         return option;
+    }
+
+    function readTargetValue(selectId, singleId, emptyId) {
+        var selectEl = document.getElementById(selectId);
+        if (selectEl) {
+            return selectEl.value || '';
+        }
+        var singleEl = document.getElementById(singleId);
+        if (singleEl) {
+            return singleEl.getAttribute('data-target') || '';
+        }
+        var emptyEl = document.getElementById(emptyId);
+        if (emptyEl) {
+            return emptyEl.getAttribute('data-target') || '';
+        }
+        return '';
     }
 
     function setDestinationText(containerId, label, emphasize) {
@@ -1096,32 +1128,20 @@
     function initializeTransferTarget() {
         var transferTargetInput = document.getElementById('transfer-target-input');
         if (!transferTargetInput) return;
+        transferTargetInput.value = readTargetValue(
+            'transfer-target',
+            'single-target-value',
+            'empty-target-value'
+        );
 
-        // Check for dropdown (multiple targets)
-        var transferTargetSelect = document.getElementById('transfer-target');
-        if (transferTargetSelect) {
-            transferTargetInput.value = transferTargetSelect.value;
-            return;
-        }
-
-        // Check for single target
-        var singleTargetValue = document.getElementById('single-target-value');
-        if (singleTargetValue) {
-            transferTargetInput.value = singleTargetValue.getAttribute('data-target');
-            return;
-        }
-
-        // Check for empty space
         var emptyTargetValue = document.getElementById('empty-target-value');
-        if (emptyTargetValue) {
-            transferTargetInput.value = emptyTargetValue.getAttribute('data-target');
+        if (emptyTargetValue && transferTargetInput.value === 'space') {
             var x = emptyTargetValue.getAttribute('data-x');
             var y = emptyTargetValue.getAttribute('data-y');
             if (targetXInput && targetYInput) {
                 targetXInput.value = x;
                 targetYInput.value = y;
             }
-            return;
         }
     }
 
@@ -1168,82 +1188,48 @@
     function initializeColoniseTarget() {
         var coloniseTargetInput = document.getElementById('colonise-target-input');
         if (!coloniseTargetInput) return;
-
-        // Check for dropdown (multiple targets)
-        var coloniseTargetSelect = document.getElementById('colonise-target');
-        if (coloniseTargetSelect) {
-            coloniseTargetInput.value = coloniseTargetSelect.value;
-            return;
-        }
-
-        // Check for single target
-        var singleTargetValue = document.getElementById('colonise-single-target-value');
-        if (singleTargetValue) {
-            coloniseTargetInput.value = singleTargetValue.getAttribute('data-target');
-            return;
-        }
-
-        // Check for empty (no star)
-        var emptyTargetValue = document.getElementById('colonise-empty-target-value');
-        if (emptyTargetValue) {
-            coloniseTargetInput.value = '';
-            return;
-        }
+        coloniseTargetInput.value = readTargetValue(
+            'colonise-target',
+            'colonise-single-target-value',
+            'colonise-empty-target-value'
+        );
     }
 
     function updateAddButtonStateColonise() {
         var coloniseTargetInput = document.getElementById('colonise-target-input');
         var hasTarget = coloniseTargetInput && coloniseTargetInput.value !== '';
-        addBtn.disabled = !hasTarget;
+        setOrderAddDisabled(!hasTarget);
     }
 
     function initializeBombTarget() {
         var bombTargetInput = document.getElementById('bomb-target-input');
         if (!bombTargetInput) return;
-        var bombTargetSelect = document.getElementById('bomb-target');
-        if (bombTargetSelect) {
-            bombTargetInput.value = bombTargetSelect.value;
-            return;
-        }
-        var singleTargetValue = document.getElementById('bomb-single-target-value');
-        if (singleTargetValue) {
-            bombTargetInput.value = singleTargetValue.getAttribute('data-target');
-            return;
-        }
-        var emptyTargetValue = document.getElementById('bomb-empty-target-value');
-        if (emptyTargetValue) {
-            bombTargetInput.value = '';
-        }
+        bombTargetInput.value = readTargetValue(
+            'bomb-target',
+            'bomb-single-target-value',
+            'bomb-empty-target-value'
+        );
     }
 
     function updateAddButtonStateBomb() {
         var bombTargetInput = document.getElementById('bomb-target-input');
         var hasTarget = bombTargetInput && bombTargetInput.value !== '';
-        addBtn.disabled = !hasTarget;
+        setOrderAddDisabled(!hasTarget);
     }
 
     function initializeRemoteMineTarget() {
         var input = document.getElementById('remotemine-target-input');
         if (!input) return;
-        var select = document.getElementById('remotemine-target');
-        if (select) {
-            input.value = select.value;
-            return;
-        }
-        var single = document.getElementById('remotemine-single-target-value');
-        if (single) {
-            input.value = single.getAttribute('data-target');
-            return;
-        }
-        var empty = document.getElementById('remotemine-empty-target-value');
-        if (empty) {
-            input.value = '';
-        }
+        input.value = readTargetValue(
+            'remotemine-target',
+            'remotemine-single-target-value',
+            'remotemine-empty-target-value'
+        );
     }
 
     function updateAddButtonStateRemoteMine() {
         var input = document.getElementById('remotemine-target-input');
-        addBtn.disabled = !(input && input.value !== '');
+        setOrderAddDisabled(!(input && input.value !== ''));
     }
 
     function initializeBombCompletionMode() {
@@ -1325,59 +1311,31 @@
     function initializeMergeTarget() {
         var mergeTargetInput = document.getElementById('merge-target-input');
         if (!mergeTargetInput) return;
-
-        // Check for dropdown (multiple targets)
-        var mergeTargetSelect = document.getElementById('merge-target');
-        if (mergeTargetSelect) {
-            mergeTargetInput.value = mergeTargetSelect.value;
-            return;
-        }
-
-        // Check for single target
-        var singleTargetValue = document.getElementById('merge-single-target-value');
-        if (singleTargetValue) {
-            mergeTargetInput.value = singleTargetValue.getAttribute('data-target');
-            return;
-        }
-
-        // Check for empty (no fleet)
-        var emptyTargetValue = document.getElementById('merge-empty-target-value');
-        if (emptyTargetValue) {
-            mergeTargetInput.value = '';
-            return;
-        }
+        mergeTargetInput.value = readTargetValue(
+            'merge-target',
+            'merge-single-target-value',
+            'merge-empty-target-value'
+        );
     }
 
     function updateAddButtonStateMerge() {
         var mergeTargetInput = document.getElementById('merge-target-input');
         var hasTarget = mergeTargetInput && mergeTargetInput.value !== '';
-        addBtn.disabled = !hasTarget;
+        setOrderAddDisabled(!hasTarget);
     }
 
     function initializeRefuelTarget() {
         if (!refuelTargetInput) return;
-
-        var refuelTargetSelect = document.getElementById('refuel-target');
-        if (refuelTargetSelect) {
-            refuelTargetInput.value = refuelTargetSelect.value;
-            return;
-        }
-
-        var singleTargetValue = document.getElementById('refuel-single-target-value');
-        if (singleTargetValue) {
-            refuelTargetInput.value = singleTargetValue.getAttribute('data-target');
-            return;
-        }
-
-        var emptyTargetValue = document.getElementById('refuel-empty-target-value');
-        if (emptyTargetValue) {
-            refuelTargetInput.value = '';
-        }
+        refuelTargetInput.value = readTargetValue(
+            'refuel-target',
+            'refuel-single-target-value',
+            'refuel-empty-target-value'
+        );
     }
 
     function updateAddButtonStatePatrol() {
         var patrolTargetValue = patrolTargetInput ? patrolTargetInput.value : '';
-        addBtn.disabled = patrolTargetValue === '';
+        setOrderAddDisabled(patrolTargetValue === '');
     }
 
     function emitPatrolPreview() {
@@ -1652,7 +1610,7 @@
             if (destRow) destRow.style.display = 'none';
 
             // Scuttle doesn't require a target - always enabled
-            addBtn.disabled = false;
+            setOrderAddDisabled(false);
             if (bombDestination) bombDestination.style.display = 'none';
             if (remotemineDestination) remotemineDestination.style.display = 'none';
             if (patrolDestination) patrolDestination.style.display = 'none';
@@ -1783,6 +1741,9 @@
 
     if (orderParamsOverlayAdd) {
         orderParamsOverlayAdd.addEventListener('click', function() {
+            if (orderParamsOverlayAdd.disabled) {
+                return;
+            }
             if (orderForm && typeof orderForm.requestSubmit === 'function') {
                 orderForm.requestSubmit();
                 return;
@@ -2171,6 +2132,12 @@
     
     // Initialize on page load (call this last)
     updateSubmitButtonLabels();
+    initializeTransferTarget();
+    initializeColoniseTarget();
+    initializeBombTarget();
+    initializeRemoteMineTarget();
+    initializeMergeTarget();
+    initializeRefuelTarget();
     initializeOrderType();
     updateOrderParamsOverlayTitle();
     if (warpSlider) {

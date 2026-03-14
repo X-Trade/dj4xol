@@ -880,6 +880,7 @@ class TestProfileView(TestCase):
             alias='OTHR',
             email='other@example.com',
             full_name='Other Player',
+            email_verified=True,
             email_game_updates=True,
             email_game_rollups_per_day=1,
         )
@@ -897,6 +898,7 @@ class TestProfileView(TestCase):
             alias='SLNT',
             email='silent@example.com',
             full_name='Silent Player',
+            email_verified=True,
             email_game_updates=False,
             email_game_rollups_per_day=0,
         )
@@ -982,8 +984,9 @@ class TestPreJoinNavigation(TestCase):
         game.save(update_fields=['joinable'])
         owner = game.owner
         owner.email = 'owner@example.test'
+        owner.email_verified = True
         owner.email_game_updates = True
-        owner.save(update_fields=['email', 'email_game_updates'])
+        owner.save(update_fields=['email', 'email_verified', 'email_game_updates'])
 
         joiner_user = User.objects.create_user('join_public_user', 'join-public@example.com', 'pass')
         joiner_account = Account.objects.create(
@@ -1028,8 +1031,9 @@ class TestPreJoinNavigation(TestCase):
         game.save(update_fields=['joinable'])
         owner = game.owner
         owner.email = 'owner@example.test'
+        owner.email_verified = True
         owner.email_game_updates = True
-        owner.save(update_fields=['email', 'email_game_updates'])
+        owner.save(update_fields=['email', 'email_verified', 'email_game_updates'])
 
         joiner_user = User.objects.create_user('join_invited_user', 'join-invited@example.com', 'pass')
         joiner_account = Account.objects.create(

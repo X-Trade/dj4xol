@@ -71,12 +71,49 @@ def _join_game_url(game, base_url):
     return path
 
 
+def _verified_account_email_allowed(account, stdout=None, label='email'):
+    if not account:
+        return False, 'No account'
+    if not getattr(account, 'email', ''):
+        return False, 'No email address'
+    if not getattr(account, 'email_verified', False):
+        if stdout:
+            stdout.write('Email not verified; skipping %s.' % label)
+        return False, 'Email not verified'
+    return True, 'Allowed'
+
+
+def _verified_account_for_email(recipient_email, stdout=None):
+    if not recipient_email:
+        return None, 'No email address'
+    account = Account.objects.filter(email__iexact=recipient_email).first()
+    if not account:
+        if stdout:
+            stdout.write(
+                'No verified account matches %s; skipping invite email.'
+                % recipient_email
+            )
+        return None, 'No verified account'
+    allowed, reason = _verified_account_email_allowed(
+        account,
+        stdout=stdout,
+        label='invite email',
+    )
+    if not allowed:
+        return None, reason
+    return account, 'Allowed'
+
+
 def send_game_invite_email(game, recipient_email, inviter_name=None, dry_run=False, stdout=None):
     if not _email_enabled():
         if stdout:
             stdout.write('Email disabled; skipping invite email.')
         return False
-    if not recipient_email:
+    account, reason = _verified_account_for_email(
+        recipient_email,
+        stdout=stdout,
+    )
+    if account is None:
         return False
 
     base_url = _get_server_url()
@@ -91,14 +128,14 @@ def send_game_invite_email(game, recipient_email, inviter_name=None, dry_run=Fal
 
     if dry_run:
         if stdout:
-            stdout.write(f'[DRY RUN] Would send invite to {recipient_email}')
+            stdout.write(f'[DRY RUN] Would send invite to {account.email}')
         return False
 
     send_mail(
         subject=subject,
         message=body,
         from_email=from_email,
-        recipient_list=[recipient_email],
+        recipient_list=[account.email],
         fail_silently=False,
     )
     return True
@@ -119,7 +156,12 @@ def send_game_join_email(game, owner_account, joining_account, via_invitation=Fa
         if stdout:
             stdout.write('Email disabled; skipping join email.')
         return False
-    if not owner_account or not getattr(owner_account, 'email', ''):
+    allowed, reason = _verified_account_email_allowed(
+        owner_account,
+        stdout=stdout,
+        label='join email',
+    )
+    if not allowed:
         return False
     if not getattr(owner_account, 'email_game_updates', False):
         return False
@@ -164,7 +206,12 @@ def send_game_deleted_email(game, owner_account, player_account, dry_run=False, 
         if stdout:
             stdout.write('Email disabled; skipping game deletion email.')
         return False
-    if not player_account or not getattr(player_account, 'email', ''):
+    allowed, reason = _verified_account_email_allowed(
+        player_account,
+        stdout=stdout,
+        label='game deletion email',
+    )
+    if not allowed:
         return False
     if not getattr(player_account, 'email_game_updates', False):
         return False
@@ -210,8 +257,13 @@ def send_generic_test_email_for_account(account, dry_run=False, stdout=None):
         if stdout:
             stdout.write('Email disabled; skipping test email.')
         return False, 'Email disabled'
-    if not account or not getattr(account, 'email', ''):
-        return False, 'No email address'
+    allowed, reason = _verified_account_email_allowed(
+        account,
+        stdout=stdout,
+        label='test email',
+    )
+    if not allowed:
+        return False, reason
 
     base_url = _get_server_url() or 'not configured'
     profile_url = _profile_url(_get_server_url())
@@ -414,7 +466,14 @@ def send_message_rollup_for_account(account, ignore_frequency=False, dry_run=Fal
         if stdout:
             stdout.write('Email disabled; skipping rollups.')
         return False, 'Email disabled'
-    if not account.email_game_updates or not account.email:
+    allowed, reason = _verified_account_email_allowed(
+        account,
+        stdout=stdout,
+        label='rollups',
+    )
+    if not allowed:
+        return False, reason
+    if not account.email_game_updates:
         return False, 'Email updates disabled'
 
     rollups_per_day = int(account.email_game_rollups_per_day or 0)
@@ -464,7 +523,7 @@ def send_message_rollups(dry_run=False, stdout=None):
 
     accounts = (
         Account.objects
-        .filter(email_game_updates=True)
+        .filter(email_game_updates=True, email_verified=True)
         .exclude(email='')
         .prefetch_related('players__game')
     )
