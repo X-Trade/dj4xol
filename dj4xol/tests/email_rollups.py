@@ -4,7 +4,12 @@ from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from ..email_rollups import send_message_rollup_for_account
+from ..email_rollups import (
+    send_game_deleted_email,
+    send_game_invite_email,
+    send_game_join_email,
+    send_message_rollup_for_account,
+)
 from ..models import Account, DiplomaticContract, ServerSettings
 from ._util import default_game, get_default_race
 
@@ -17,6 +22,7 @@ class EmailUnsubscribeTest(TestCase):
             alias='tester',
             email='tester@example.com',
             full_name='Tester',
+            email_verified=True,
             email_game_updates=True,
             email_game_rollups_per_day=2,
             email_newsletter=False,
@@ -81,6 +87,7 @@ class TestGenericEmailAction(TestCase):
             alias='staffer',
             email='staffer@example.com',
             full_name='Staff User',
+            email_verified=True,
             email_game_updates=False,
             email_game_rollups_per_day=0,
             email_newsletter=False,
@@ -102,6 +109,19 @@ class TestGenericEmailAction(TestCase):
         self.assertIn('/4x/profile/', message.body)
         self.assertIn('Unsubscribe URL: https://example.test', message.body)
 
+    def test_staff_action_blocks_generic_test_email_for_unverified_account(self):
+        self.account.email_verified = False
+        self.account.save(update_fields=['email_verified'])
+
+        response = self.client.get(reverse('dj4xol:test_generic_email'), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'Generic test email not sent: Email not verified.',
+        )
+        self.assertEqual(len(mail.outbox), 0)
+
 
 @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
 class TestDiplomaticContractRollups(TestCase):
@@ -120,7 +140,8 @@ class TestDiplomaticContractRollups(TestCase):
         self.game.joinable = True
         self.game.save(update_fields=['joinable'])
         self.account.email = 'rollup_player@example.com'
-        self.account.save(update_fields=['email'])
+        self.account.email_verified = True
+        self.account.save(update_fields=['email', 'email_verified'])
 
         other_user = User.objects.create_user('rollup_other', 'rollup_other@example.com', 'pw')
         other_account = Account.objects.create(
@@ -156,3 +177,97 @@ class TestDiplomaticContractRollups(TestCase):
         self.assertIn('Diplomatic request:', mail.outbox[0].body)
         self.assertIn('Expires Year %s' % (self.game.year + 24), mail.outbox[0].body)
         self.assertNotIn('(%s)' % self.other_player.account.alias, mail.outbox[0].body)
+
+    def test_rollup_skips_unverified_account(self):
+        self.account.email_verified = False
+        self.account.save(update_fields=['email_verified'])
+
+        DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.other_player,
+            recipient=self.player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=self.game.year,
+            expires_year=self.game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='NEUTRAL',
+            offer_clause_type='NOTHING',
+        )
+
+        sent, reason = send_message_rollup_for_account(self.account)
+
+        self.assertFalse(sent)
+        self.assertEqual(reason, 'Email not verified')
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_invite_email_skips_unverified_account(self):
+        game = default_game(stars=5, fleets=0)
+        invitee_user = User.objects.create_user(
+            'invitee_unverified',
+            'invitee@example.com',
+            'pw',
+        )
+        Account.objects.create(
+            django_user=invitee_user,
+            alias='INV',
+            email='invitee@example.com',
+            full_name='Invitee User',
+            email_verified=False,
+        )
+
+        sent = send_game_invite_email(game, 'invitee@example.com')
+
+        self.assertFalse(sent)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_join_email_skips_unverified_owner_account(self):
+        game = default_game(stars=6, fleets=0)
+        owner_account = game.owner
+        owner_account.email = 'owner@example.com'
+        owner_account.email_verified = False
+        owner_account.email_game_updates = True
+        owner_account.save(
+            update_fields=['email', 'email_verified', 'email_game_updates']
+        )
+
+        joiner_user = User.objects.create_user(
+            'joiner_mail_test',
+            'joiner-mail@example.com',
+            'pw',
+        )
+        joiner_account = Account.objects.create(
+            django_user=joiner_user,
+            alias='JOIN',
+            email='joiner-mail@example.com',
+            full_name='Join Mail',
+            email_verified=True,
+        )
+
+        sent = send_game_join_email(game, owner_account, joiner_account)
+
+        self.assertFalse(sent)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_deleted_game_email_skips_unverified_player_account(self):
+        game = default_game(stars=6, fleets=0)
+        owner_account = game.owner
+
+        other_user = User.objects.create_user(
+            'deleted_mail_test',
+            'deleted-mail@example.com',
+            'pw',
+        )
+        other_account = Account.objects.create(
+            django_user=other_user,
+            alias='DELD',
+            email='deleted-mail@example.com',
+            full_name='Deleted Mail',
+            email_verified=False,
+            email_game_updates=True,
+        )
+
+        sent = send_game_deleted_email(game, owner_account, other_account)
+
+        self.assertFalse(sent)
+        self.assertEqual(len(mail.outbox), 0)
