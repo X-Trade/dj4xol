@@ -2474,6 +2474,31 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, 'id="order-params-overlay-add"', html=False)
         self.assertContains(response, 'id="order-params-overlay-title">Order Parameters<', html=False)
 
+    def test_refuel_button_logic_is_scoped_to_refuel_orders(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "if (!orderType || orderType.value !== 'REFUEL') {",
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'orderTypeInput.value = currentType;\n        setOrderAddDisabled(false);',
+            html=False,
+        )
+
     def test_move_and_patrol_defaults_follow_fleet_max_safe_warp(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()

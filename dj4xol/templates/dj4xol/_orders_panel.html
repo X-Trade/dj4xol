@@ -759,6 +759,9 @@
     }
 
     function updateAddButtonStateRefuel() {
+        if (!orderType || orderType.value !== 'REFUEL') {
+            return;
+        }
         var targetFleet = document.querySelector('input[name="target_fleet"]');
         var targetFleetId = targetFleet ? targetFleet.value : '';
         var requestedFuel = refuelInput ? parseFloat(refuelInput.value || '0') : 0;
@@ -1438,6 +1441,7 @@
 
         var currentType = orderType.value;
         orderTypeInput.value = currentType;
+        setOrderAddDisabled(false);
 
         var destTargetLabel = document.getElementById('dest-target-label');
         var moveDestination = document.getElementById('move-destination');
