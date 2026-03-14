@@ -5,6 +5,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from ..email_rollups import (
+    send_email_verification_for_account,
     send_game_deleted_email,
     send_game_invite_email,
     send_game_join_email,
@@ -271,3 +272,29 @@ class TestDiplomaticContractRollups(TestCase):
 
         self.assertFalse(sent)
         self.assertEqual(len(mail.outbox), 0)
+
+    def test_verification_email_regenerates_blank_legacy_key(self):
+        legacy_user = User.objects.create_user(
+            'legacyverify',
+            'legacyverify@example.com',
+            'pw',
+        )
+        legacy_account = Account.objects.create(
+            django_user=legacy_user,
+            alias='LEG',
+            email='legacyverify@example.com',
+            full_name='Legacy Verify',
+        )
+        legacy_account.email_verification_key = ''
+        legacy_account.save(update_fields=['email_verification_key'])
+
+        sent, reason = send_email_verification_for_account(legacy_account)
+
+        self.assertTrue(sent, reason)
+        legacy_account.refresh_from_db()
+        self.assertTrue(bool(legacy_account.email_verification_key))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn(
+            legacy_account.email_verification_key,
+            mail.outbox[0].body,
+        )
