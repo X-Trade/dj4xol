@@ -16,6 +16,12 @@ function submitDestination(objectId, x, y, objectType) {
     }
     // Persist current map position before navigating
     persistStarmapScrollPosition();
+    try {
+        localStorage.setItem(
+            'mobileDestinationFlow:' + window.location.pathname,
+            'to_orders'
+        );
+    } catch (e) {}
     // Get current URL params and update with destination
     var params = new URLSearchParams(window.location.search);
     params.delete('mode');  // Exit destination mode
@@ -47,6 +53,12 @@ function submitCoordinateDestination(x, y) {
     }
     // Persist current map position before navigating
     persistStarmapScrollPosition();
+    try {
+        localStorage.setItem(
+            'mobileDestinationFlow:' + window.location.pathname,
+            'to_orders'
+        );
+    } catch (e) {}
     var params = new URLSearchParams(window.location.search);
     params.delete('mode');  // Exit destination mode
     params.delete('dest_star');

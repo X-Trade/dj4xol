@@ -1419,6 +1419,12 @@
         params.delete('dest_anomaly');
         params.delete('dest_x');
         params.delete('dest_y');
+        try {
+            localStorage.setItem(
+                'mobileDestinationFlow:' + window.location.pathname,
+                'to_orders'
+            );
+        } catch (e) {}
         if (typeof persistStarmapScrollPosition === 'function') {
             persistStarmapScrollPosition();
         }
