@@ -244,7 +244,8 @@
     display: grid;
     grid-template-columns: 1fr;
     gap: 2px;
-    padding: 14px 2px 2px 2px;
+    align-content: start;
+    padding: 2px;
 }
 
 .hull-slot-field-row {
@@ -252,6 +253,12 @@
     grid-template-columns: 16px 1fr;
     align-items: center;
     gap: 2px;
+    margin: 0;
+}
+
+.hull-slot-fields label,
+.hull-slot-fields .hull-slot-field-row {
+    margin-top: 0;
 }
 
 .hull-slot-field-label {
