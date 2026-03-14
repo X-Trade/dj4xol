@@ -1,4 +1,5 @@
 import logging
+import uuid
 from datetime import timedelta
 
 from django.conf import settings
@@ -314,6 +315,9 @@ def send_email_verification_for_account(account, dry_run=False, stdout=None):
         return False, 'Email disabled'
     if not account or not getattr(account, 'email', ''):
         return False, 'No email address'
+    if not getattr(account, 'email_verification_key', ''):
+        account.email_verification_key = uuid.uuid4().hex
+        account.save(update_fields=['email_verification_key'])
 
     base_url = _get_server_url()
     from_email = _get_from_email()
