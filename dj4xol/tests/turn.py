@@ -659,6 +659,34 @@ class TestTerraforming(TestCase):
         self.assertGreater(homeworld.gravity, initial_g)
         self.assertLess(homeworld.temperature, initial_t)
 
+    def test_terraforming_multiplier_modifies_effect_strength(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        player.race_type.terraforming_multiplier = 2.0
+        player.race_type.save(update_fields=['terraforming_multiplier'])
+        homeworld = player.homeworld
+        rows = ensure_player_research_rows(player)
+        construction = next(
+            row for row in rows if row.category.code == 'CONSTRUCTION'
+        )
+        construction.current_level = 7
+        construction.save(update_fields=['current_level'])
+        player_ideal = player.gravity_center
+        homeworld.gravity = max(0.0, player_ideal - 0.3)
+        homeworld.save(update_fields=['gravity'])
+
+        initial_gravity = homeworld.gravity
+        order = ProductionOrder(
+            game=game,
+            star=homeworld,
+            order_type='TERRAFORM_GRAVITY',
+        )
+        GameTurn(game)._apply_terraform_order(homeworld, order)
+        homeworld.refresh_from_db()
+
+        expected = initial_gravity + ((player_ideal - initial_gravity) * 0.02)
+        self.assertAlmostEqual(homeworld.gravity, expected, places=6)
+
 
 class TestRandomEvents(TestCase):
     def test_random_events_disabled_by_default(self):
@@ -4945,15 +4973,17 @@ class TestProductionProgress(TestCase):
             colonists=10000,
         )
 
-        # Create TERRAFORM_GRAVITY order (bp: 100, ironium: 1000, others: 0)
-        # During turn generation, some resources have been allocated
+        # Create TERRAFORM_GRAVITY order using the current 50 BP / 500 total
+        # mineral cost profile, then mark half of each side as spent.
         order = ProductionOrder.objects.create(
             game=game,
             star=star,
             order_type='TERRAFORM_GRAVITY',
             quantity=1,
-            spent_bp=50,     # 50% of BP requirement (50/100)
-            spent_ironium=500  # 50% of ironium requirement (500/1000)
+            spent_bp=25,
+            spent_ironium=175,
+            spent_boranium=50,
+            spent_germanium=25,
         )
 
         detail_builder = DetailBuilder(game, x=10, y=10, selected=star.short_id.lower(), player=player)
@@ -4963,9 +4993,9 @@ class TestProductionProgress(TestCase):
 
         # Should have dual progress: resources 25% + labor 25% = 50%
         self.assertEqual(production_order['has_labor'], True)
-        self.assertEqual(production_order['resource_progress'], 25)  # 500/1000 = 25% of 50%
-        self.assertEqual(production_order['labor_progress'], 25)     # 50/100 BP = 25% of 50%
-        self.assertEqual(production_order['progress_percent'], 50)   # 25% + 25%
+        self.assertEqual(production_order['resource_progress'], 25)
+        self.assertEqual(production_order['labor_progress'], 25)
+        self.assertEqual(production_order['progress_percent'], 50)
 
     def test_resources_blocked_by_labor(self):
         """Test that resources show actual progress based on what was spent during turn generation."""

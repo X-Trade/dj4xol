@@ -168,7 +168,8 @@
     ignores_radiation: True
     ignores_gravity: True
     ignores_temperature: True
-    has_terraforming: True
+    has_no_terraforming: False
+    only_basic_terraforming: True
     has_metalurgy: False
     is_mechanical: True
     population_growth_multiplier: 0.8
@@ -196,7 +197,7 @@
     ignores_gravity: True
     ignores_temperature: True
     population_cap_multiplier: 1000
-    has_terraforming: False
+    has_no_terraforming: True
     has_no_stealth: False
     stealth_multiplier: 1.6
     population_growth_multiplier: 1.2
@@ -318,6 +319,7 @@
     warp_advantage: -0.2
     starting_economy: 0
     economy_offset: -1
+    only_basic_terraforming: True
     scan_multiplier: 0.9
     shield_multiplier: 0.9
     has_metalurgy: False
@@ -1133,7 +1135,7 @@
     name: 'Terraforming Control I'
     description: 'Early terraforming control matrices enable limited planetary adjustment.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"terraforming_rate": 0.01, "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 100, "ironium": 750, "boranium": 150, "germanium": 100, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 100, "ironium": 200, "boranium": 660, "germanium": 140, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 100, "ironium": 50, "boranium": 475, "germanium": 475, "colonists": 0}}}'
+    params_json: '{"terraforming_rate": 0.01, "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 50, "ironium": 375, "boranium": 75, "germanium": 50, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 50, "ironium": 100, "boranium": 330, "germanium": 70, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 50, "ironium": 25, "boranium": 240, "germanium": 240, "colonists": 0}}}'
     display_order: 206
     enabled: True
 
@@ -1146,7 +1148,7 @@
     name: 'Terraforming Control II'
     description: 'Improved terraforming relays double adjustment rates and reduce per-point costs.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"terraforming_rate": 0.02, "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 180, "ironium": 1350, "boranium": 270, "germanium": 180, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 180, "ironium": 360, "boranium": 1188, "germanium": 252, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 180, "ironium": 90, "boranium": 855, "germanium": 855, "colonists": 0}}}'
+    params_json: '{"terraforming_rate": 0.02, "race_type": "has only_basic_terraforming == False", "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 100, "ironium": 750, "boranium": 150, "germanium": 100, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 100, "ironium": 200, "boranium": 660, "germanium": 140, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 100, "ironium": 50, "boranium": 480, "germanium": 480, "colonists": 0}}}'
     display_order: 207
     enabled: True
 
@@ -1159,7 +1161,7 @@
     name: 'Terraforming Control III'
     description: 'Advanced atmospheric and geological feedback loops enable faster terraforming.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"terraforming_rate": 0.05, "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 350, "ironium": 3000, "boranium": 600, "germanium": 400, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 350, "ironium": 800, "boranium": 2640, "germanium": 560, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 350, "ironium": 200, "boranium": 1900, "germanium": 1900, "colonists": 0}}}'
+    params_json: '{"terraforming_rate": 0.05, "race_type": "has only_basic_terraforming == False", "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 200, "ironium": 1500, "boranium": 300, "germanium": 200, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 200, "ironium": 400, "boranium": 1320, "germanium": 280, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 200, "ironium": 100, "boranium": 960, "germanium": 960, "colonists": 0}}}'
     display_order: 208
     enabled: True
 
@@ -1172,7 +1174,7 @@
     name: 'Terraforming Control IV'
     description: 'Endgame terraforming arrays deliver rapid environmental stabilisation.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"terraforming_rate": 0.10, "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 600, "ironium": 5250, "boranium": 1050, "germanium": 700, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 600, "ironium": 1400, "boranium": 4620, "germanium": 980, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 600, "ironium": 350, "boranium": 3325, "germanium": 3325, "colonists": 0}}}'
+    params_json: '{"terraforming_rate": 0.10, "race_type": "has only_basic_terraforming == False", "production_cost_overrides": {"TERRAFORM_GRAVITY": {"bp": 300, "ironium": 2250, "boranium": 450, "germanium": 300, "colonists": 0}, "TERRAFORM_TEMPERATURE": {"bp": 300, "ironium": 600, "boranium": 1980, "germanium": 420, "colonists": 0}, "TERRAFORM_RADIATION": {"bp": 300, "ironium": 150, "boranium": 1440, "germanium": 1440, "colonists": 0}}}'
     display_order: 209
     enabled: True
 

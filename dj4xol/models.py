@@ -617,7 +617,8 @@ class ServerRaceType(models.Model):
     ignores_radiation = models.BooleanField(default=False)
     ignores_temperature = models.BooleanField(default=False)
     ignores_gravity = models.BooleanField(default=False)
-    has_terraforming = models.BooleanField(default=True)
+    has_no_terraforming = models.BooleanField(default=False)
+    only_basic_terraforming = models.BooleanField(default=False)
     has_advanced_mines = models.BooleanField(default=False)
     has_advanced_stargates = models.BooleanField(default=False)
     has_advanced_remoteminers = models.BooleanField(default=False)
@@ -2024,9 +2025,9 @@ PRODUCTION_COSTS = {
     'REMOVE_ADMINISTRATION': {'bp': 40, 'ironium': 0, 'boranium': 0,
                               'germanium': 0, 'colonists': 0},
     'BUILD_FLEET': {'bp': 50, 'ironium': 100, 'boranium': 200, 'germanium': 200, 'colonists': 0},
-    'TERRAFORM_GRAVITY': {'bp': 100, 'ironium': 750, 'boranium': 150, 'germanium': 100, 'colonists': 0},
-    'TERRAFORM_TEMPERATURE': {'bp': 100, 'ironium': 200, 'boranium': 660, 'germanium': 140, 'colonists': 0},
-    'TERRAFORM_RADIATION': {'bp': 100, 'ironium': 50, 'boranium': 475, 'germanium': 475, 'colonists': 0},
+    'TERRAFORM_GRAVITY': {'bp': 50, 'ironium': 375, 'boranium': 75, 'germanium': 50, 'colonists': 0},
+    'TERRAFORM_TEMPERATURE': {'bp': 50, 'ironium': 100, 'boranium': 330, 'germanium': 70, 'colonists': 0},
+    'TERRAFORM_RADIATION': {'bp': 50, 'ironium': 25, 'boranium': 240, 'germanium': 240, 'colonists': 0},
 }
 
 
