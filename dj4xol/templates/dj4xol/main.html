@@ -68,7 +68,7 @@
             {% if dest_mode %}
             <div class="dest-mode-banner">
                 <span>Click a star or location to set destination</span>
-                <a href="?x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&fleet={{ dest_fleet }}&warp={{ dest_warp }}" class="dest-cancel">Cancel</a>
+                <a href="?x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&fleet={{ dest_fleet }}&order_type={{ request.GET.order_type|default:'MOVE' }}&warp={{ dest_warp }}" class="dest-cancel">Cancel</a>
             </div>
             {% endif %}
             <div class="column-left">
@@ -129,6 +129,9 @@
                 </div>
             </div>
         </div>
+        <footer class="site-copyright">
+            Copyright Bradley Gray 2026
+        </footer>
         {% if play_cli_web_enabled %}
         <div id="play-terminal-overlay" class="play-terminal-overlay" hidden>
             <div class="play-terminal-backdrop"></div>

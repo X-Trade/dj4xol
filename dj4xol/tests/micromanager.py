@@ -7,6 +7,7 @@ from ..research import (
     get_player_administration_profile,
     get_player_available_production_orders,
     get_player_production_costs,
+    get_player_terraforming_profile,
 )
 from ..objectdetails import DetailBuilder
 from ..turn import GameTurn
@@ -112,6 +113,16 @@ class AdministrationAutomationTest(TestCase):
         )
         options = get_player_available_production_orders(self.player, self.star)
         self.assertNotIn('BUILD_ADMINISTRATION', [item['value'] for item in options])
+
+    def test_non_terraforming_infrastructure_does_not_override_terraforming(self):
+        self._create_terraforming_tech(3, 0.1)
+        self._create_administration_tech(4, 2)
+
+        profile = get_player_terraforming_profile(self.player)
+
+        self.assertAlmostEqual(profile.get('rate', 0.0), 0.1)
+        self.assertIsNotNone(profile.get('tech'))
+        self.assertEqual(profile['tech'].name, 'Terraforming Relay 3')
 
         self.star.production_orders.all().delete()
         self.star.has_administration = True

@@ -50,6 +50,13 @@ body {
     padding: 0;
 }
 
+.site-copyright {
+    padding: 8px 12px 12px;
+    color: var(--toggle-colour);
+    font-size: 0.85rem;
+    text-align: center;
+}
+
 a {
     color: var(--theme-accent);
     text-decoration: none;

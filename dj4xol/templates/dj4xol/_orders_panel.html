@@ -137,7 +137,7 @@
             <input type="hidden" name="x" value="{{ selection.x }}">
             <input type="hidden" name="y" value="{{ selection.y }}">
             <input type="hidden" name="sel" value="{{ selection.sel }}">
-            <input type="hidden" name="warpfactor" id="warpfactor-input" value="{{ detail.fleet_cargo.move_default_warp|default:5 }}">
+            <input type="hidden" name="warpfactor" id="warpfactor-input" value="{% if request.GET.warp and request.GET.order_type != 'INTERCEPT' %}{{ dest_warp }}{% else %}{{ detail.fleet_cargo.move_default_warp|default:5 }}{% endif %}">
             <input type="hidden" name="transfer_type" id="transfer-type-input" value="LOAD">
             <input type="hidden" name="transfer_target" id="transfer-target-input" value="">
             <input type="hidden" name="transfer_player" id="transfer-player-input" value="">
@@ -158,7 +158,7 @@
             <input type="hidden" name="remotemine_focus" id="remotemine-focus-input" value="">
             <input type="hidden" name="merge_target" id="merge-target-input" value="">
             <input type="hidden" name="patrol_radius" id="patrol-radius-input" value="15">
-            <input type="hidden" name="intercept_speed" id="intercept-speed-input" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}">
+            <input type="hidden" name="intercept_speed" id="intercept-speed-input" value="{% if request.GET.warp and request.GET.order_type == 'INTERCEPT' %}{{ dest_warp }}{% else %}{{ detail.fleet_cargo.max_safe_warp|default:5 }}{% endif %}">
 
             <div class="order-type-row">
                 <select id="order-type" class="order-select">
@@ -251,7 +251,7 @@
                                 >
                             {% endif %}
                         {% endif %}
-                        <a href="?mode=select_destination&fleet={{ detail.fleet_short_id }}&x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&order_type=MOVE" class="dest-set-btn" id="dest-set-link">Set</a>
+                        <a href="?mode=select_destination&fleet={{ detail.fleet_short_id }}&x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&order_type={{ request.GET.order_type|default:'MOVE' }}&warp={{ dest_warp|default:detail.fleet_cargo.move_default_warp|default:5 }}" class="dest-set-btn" id="dest-set-link">Set</a>
                     </div>
                 <div class="dest-display-row" id="transfer-destination" style="display: none;">
                         {% if detail.transfer_targets.display_mode == 'single' %}
@@ -388,7 +388,7 @@
                     <div class="order-param-row order-param-row--with-hint">
                         <label for="warp-slider">Speed</label>
                         <div class="speed-row">
-                            <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{{ detail.fleet_cargo.move_default_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}">
+                            <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{% if request.GET.warp and request.GET.order_type != 'INTERCEPT' %}{{ dest_warp }}{% else %}{{ detail.fleet_cargo.move_default_warp|default:5 }}{% endif %}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}">
                             <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.move_default_warp|default:5 }}</span>
                         </div>
                         <div class="order-param-hints">
@@ -423,7 +423,7 @@
                     <div class="order-param-row order-param-row--with-hint">
                         <label for="intercept-speed-slider">Intercept Speed</label>
                         <div class="speed-row">
-                            <input type="range" id="intercept-speed-slider" min="0" max="13" value="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}">
+                            <input type="range" id="intercept-speed-slider" min="0" max="13" value="{% if request.GET.warp and request.GET.order_type == 'INTERCEPT' %}{{ dest_warp }}{% else %}{{ detail.fleet_cargo.max_safe_warp|default:5 }}{% endif %}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}">
                             <span id="intercept-speed-value" class="warp-value">Warp {{ detail.fleet_cargo.max_safe_warp|default:5 }}</span>
                         </div>
                         <div class="order-param-hints">
@@ -1444,18 +1444,22 @@
         }));
     }
     
-    // Update destination link with current order type
+    // Update destination link with the active order type and speed.
     function updateDestinationLink(type) {
         var destLink = document.getElementById('dest-set-link');
-        if (destLink) {
-            var href = destLink.getAttribute('href');
-            if (href.includes('order_type=')) {
-                href = href.replace(/order_type=[^&]*/, 'order_type=' + type);
-            } else {
-                href += '&order_type=' + type;
-            }
-            destLink.setAttribute('href', href);
+        if (!destLink) {
+            return;
         }
+        var url = new URL(destLink.href, window.location.origin);
+        url.searchParams.set('order_type', type);
+        if (type === 'INTERCEPT' && interceptSpeedInput) {
+            url.searchParams.set('warp', interceptSpeedInput.value || '5');
+        } else if (type === 'MOVE' && warpInput) {
+            url.searchParams.set('warp', warpInput.value || '5');
+        } else {
+            url.searchParams.delete('warp');
+        }
+        destLink.setAttribute('href', url.pathname + '?' + url.searchParams.toString());
     }
 
     function isMapSelectionOrderType(type) {
@@ -2095,6 +2099,9 @@
             }
         }
         warpSlider.addEventListener('input', updateWarpDisplay);
+        warpSlider.addEventListener('input', function() {
+            updateDestinationLink(orderType ? orderType.value : 'MOVE');
+        });
         updateWarpDisplay();  // Initialise on page load
     }
 
@@ -2168,6 +2175,9 @@
             }
         }
         interceptSpeedSlider.addEventListener('input', updateInterceptDisplay);
+        interceptSpeedSlider.addEventListener('input', function() {
+            updateDestinationLink(orderType ? orderType.value : 'INTERCEPT');
+        });
         updateInterceptDisplay();
     }
     
