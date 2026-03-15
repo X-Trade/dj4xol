@@ -583,6 +583,20 @@ def apply_projected_order(
     add_queue_cost=False,
 ):
     """Apply one planned order to a projected colony state."""
+    try:
+        terraforming_multiplier = float(
+            getattr(
+                getattr(player, 'race_type', None),
+                'terraforming_multiplier',
+                1.0,
+            ) or 1.0
+        )
+    except (TypeError, ValueError):
+        terraforming_multiplier = 1.0
+    effective_terraform_rate = max(
+        0.0,
+        float(terraform_rate or 0.0) * terraforming_multiplier,
+    )
     if add_queue_cost and cost_map is not None:
         _add_queue_cost(star_state, cost_map.get(order_type, {}))
     if order_type == 'BUILD_MINE':
@@ -599,19 +613,19 @@ def apply_projected_order(
         star_state.has_administration = True
     elif order_type == 'TERRAFORM_GRAVITY':
         distance = float(getattr(player, 'gravity_center', 0.0) or 0.0) - star_state.gravity
-        star_state.gravity += distance * float(terraform_rate or 0.0)
+        star_state.gravity += distance * effective_terraform_rate
     elif order_type == 'TERRAFORM_TEMPERATURE':
         distance = (
             float(getattr(player, 'temperature_center', 0.0) or 0.0) -
             star_state.temperature
         )
-        star_state.temperature += distance * float(terraform_rate or 0.0)
+        star_state.temperature += distance * effective_terraform_rate
     elif order_type == 'TERRAFORM_RADIATION':
         distance = (
             float(getattr(player, 'radiation_center', 0.0) or 0.0) -
             star_state.radiation
         )
-        star_state.radiation += distance * float(terraform_rate or 0.0)
+        star_state.radiation += distance * effective_terraform_rate
 
 
 def plan_micromanager_orders(

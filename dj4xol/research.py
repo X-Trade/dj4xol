@@ -274,7 +274,7 @@ def get_player_terraforming_profile(player):
     """Return terraforming rate/costs for a player based on INFRASTRUCTURE tech."""
     if not player or not getattr(player, 'race_type', None):
         return {'rate': 0.0, 'costs': {}, 'tech': None}
-    if not bool(getattr(player.race_type, 'has_terraforming', True)):
+    if bool(getattr(player.race_type, 'has_no_terraforming', False)):
         return {'rate': 0.0, 'costs': {}, 'tech': None}
     unlocked = list(get_player_unlocked_technologies(player))
     if not unlocked:

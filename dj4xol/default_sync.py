@@ -216,6 +216,23 @@ def _upsert_server_race_type(ServerRaceType, pk, fields):
             persisted_fields['has_no_stealth'] = not bool(fields['has_stealth'])
         else:
             persisted_fields['has_no_stealth'] = False
+    if 'has_terraforming' in table_columns and 'has_terraforming' not in persisted_fields:
+        if 'has_no_terraforming' in fields:
+            persisted_fields['has_terraforming'] = not bool(
+                fields['has_no_terraforming']
+            )
+        else:
+            persisted_fields['has_terraforming'] = True
+    if (
+        'has_no_terraforming' in table_columns and
+        'has_no_terraforming' not in persisted_fields
+    ):
+        if 'has_terraforming' in fields:
+            persisted_fields['has_no_terraforming'] = not bool(
+                fields['has_terraforming']
+            )
+        else:
+            persisted_fields['has_no_terraforming'] = False
 
     if exists:
         update_columns = [column for column in persisted_fields.keys() if column != 'code']

@@ -6856,6 +6856,16 @@ class GameTurn():
         if rate is None:
             profile = get_player_terraforming_profile(star.player)
             rate = float(profile.get('rate', 0.0) or 0.0)
+        multiplier = 1.0
+        race_type = getattr(star.player, 'race_type', None)
+        if race_type is not None:
+            try:
+                multiplier = float(
+                    getattr(race_type, 'terraforming_multiplier', 1.0) or 1.0
+                )
+            except (TypeError, ValueError):
+                multiplier = 1.0
+        rate = max(0.0, float(rate or 0.0) * multiplier)
         if rate <= 0:
             return
 

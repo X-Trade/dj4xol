@@ -124,6 +124,69 @@ class AdministrationAutomationTest(TestCase):
         self.assertIsNotNone(profile.get('tech'))
         self.assertEqual(profile['tech'].name, 'Terraforming Relay 3')
 
+    def test_no_terraforming_race_gets_no_terraforming_profile(self):
+        self.player.race_type.has_no_terraforming = True
+        self.player.race_type.save(update_fields=['has_no_terraforming'])
+        self._create_terraforming_tech(3, 0.1)
+
+        profile = get_player_terraforming_profile(self.player)
+
+        self.assertEqual(profile.get('rate'), 0.0)
+        self.assertEqual(profile.get('costs'), {})
+        self.assertIsNone(profile.get('tech'))
+
+    def test_advanced_terraforming_gate_blocks_higher_tier_unlock_without_trait(self):
+        self._create_terraforming_tech(7, 0.01)
+        gated = ResearchCategory.objects.create(
+            code='TFRM10',
+            name='Terraform 10',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=gated,
+            level=10,
+            name='Terraforming Relay 10',
+            tech_type='INFRASTRUCTURE',
+            params_json=(
+                '{"terraforming_rate": 0.02, '
+                '"race_type": "has only_basic_terraforming == False"}'
+            ),
+        )
+        self._unlock_category_level(gated, 10)
+
+        profile = get_player_terraforming_profile(self.player)
+
+        self.assertAlmostEqual(profile.get('rate', 0.0), 0.02)
+        self.assertEqual(profile['tech'].name, 'Terraforming Relay 10')
+
+    def test_only_basic_terraforming_blocks_higher_tier_terraforming(self):
+        self.player.race_type.only_basic_terraforming = True
+        self.player.race_type.save(
+            update_fields=['only_basic_terraforming']
+        )
+        self._create_terraforming_tech(7, 0.01)
+        gated = ResearchCategory.objects.create(
+            code='TFRM10A',
+            name='Terraform 10A',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=gated,
+            level=10,
+            name='Terraforming Relay 10A',
+            tech_type='INFRASTRUCTURE',
+            params_json=(
+                '{"terraforming_rate": 0.02, '
+                '"race_type": "has only_basic_terraforming == False"}'
+            ),
+        )
+        self._unlock_category_level(gated, 10)
+
+        profile = get_player_terraforming_profile(self.player)
+
+        self.assertAlmostEqual(profile.get('rate', 0.0), 0.01)
+        self.assertEqual(profile['tech'].name, 'Terraforming Relay 7')
+
         self.star.production_orders.all().delete()
         self.star.has_administration = True
         self.star.save(update_fields=['has_administration'])

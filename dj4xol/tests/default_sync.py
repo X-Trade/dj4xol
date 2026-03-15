@@ -20,6 +20,15 @@ class DefaultSyncTest(TestCase):
         race = ServerRaceType.objects.get(code='JOAT')
         self.assertTrue(race.name)
         self.assertFalse(race.has_no_stealth)
+        self.assertFalse(race.has_no_terraforming)
+        self.assertFalse(race.only_basic_terraforming)
+        transdimensional = ServerRaceType.objects.get(code='TRDM')
+        self.assertTrue(transdimensional.has_no_terraforming)
+        self.assertFalse(transdimensional.only_basic_terraforming)
+        mechanical = ServerRaceType.objects.get(code='MECH')
+        self.assertTrue(mechanical.only_basic_terraforming)
+        breeders = ServerRaceType.objects.get(code='BRED')
+        self.assertTrue(breeders.only_basic_terraforming)
 
         category = ResearchCategory.objects.get(id=1)
         self.assertEqual(category.code, 'ENERGY')
@@ -110,6 +119,32 @@ class DefaultSyncTest(TestCase):
         self.assertEqual(
             json.loads(advanced_remote_miners.params_json).get('race_type'),
             'has has_advanced_remoteminers',
+        )
+        terraform_ii = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000408'
+        )
+        terraform_ii_params = json.loads(terraform_ii.params_json)
+        self.assertEqual(
+            terraform_ii_params.get('race_type'),
+            'has only_basic_terraforming == False',
+        )
+        self.assertEqual(
+            terraform_ii_params['production_cost_overrides']['TERRAFORM_GRAVITY']['bp'],
+            100,
+        )
+        terraform_iii = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000409'
+        )
+        self.assertEqual(
+            json.loads(terraform_iii.params_json).get('race_type'),
+            'has only_basic_terraforming == False',
+        )
+        terraform_iv = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000410'
+        )
+        self.assertEqual(
+            json.loads(terraform_iv.params_json).get('race_type'),
+            'has only_basic_terraforming == False',
         )
         warp_8 = Technology.objects.get(
             id='00000000-0000-0000-0000-000000000106'
