@@ -1,6 +1,11 @@
 from django import forms
 from django.contrib.auth.models import User
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.forms import (
+    PasswordChangeForm,
+    PasswordResetForm,
+    SetPasswordForm,
+    UserCreationForm,
+)
 from django.contrib.auth.password_validation import password_validators_help_text_html
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
@@ -734,6 +739,53 @@ class SignupForm(UserCreationForm):
         if commit:
             user.save()
         return user
+
+
+class PasswordResetRequestForm(PasswordResetForm):
+    """Styled password reset request form."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['email'].widget.attrs.update({
+            'autocomplete': 'email',
+            'autocorrect': 'off',
+            'autocapitalize': 'none',
+            'spellcheck': 'false',
+        })
+
+
+class PasswordResetSetForm(SetPasswordForm):
+    """Styled password reset confirmation form."""
+
+    def __init__(self, user, *args, **kwargs):
+        super().__init__(user, *args, **kwargs)
+        for field_name in ['new_password1', 'new_password2']:
+            self.fields[field_name].widget.attrs.update({
+                'autocomplete': 'new-password',
+                'autocorrect': 'off',
+                'autocapitalize': 'none',
+                'spellcheck': 'false',
+            })
+
+
+class AccountPasswordChangeForm(PasswordChangeForm):
+    """Profile password change form with project-consistent widgets."""
+
+    def __init__(self, user, *args, **kwargs):
+        super().__init__(user, *args, **kwargs)
+        self.fields['old_password'].widget.attrs.update({
+            'autocomplete': 'current-password',
+            'autocorrect': 'off',
+            'autocapitalize': 'none',
+            'spellcheck': 'false',
+        })
+        for field_name in ['new_password1', 'new_password2']:
+            self.fields[field_name].widget.attrs.update({
+                'autocomplete': 'new-password',
+                'autocorrect': 'off',
+                'autocapitalize': 'none',
+                'spellcheck': 'false',
+            })
 
 
 class CustomHelpPageForm(forms.ModelForm):
