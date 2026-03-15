@@ -485,7 +485,7 @@ body.map-dragging * {
     white-space: nowrap;
 }
 
-.detail-header .rename-btn {
+.detail-header .detail-action-btn {
     flex: 0 0 auto;
 }
 
@@ -496,7 +496,7 @@ body.map-dragging * {
     flex: 0 0 auto;
 }
 
-.rename-btn {
+.detail-action-btn {
     background: none;
     border: none;
     cursor: pointer;
@@ -506,7 +506,7 @@ body.map-dragging * {
     border-radius: 3px;
 }
 
-.rename-btn:hover {
+.detail-action-btn:hover {
     background: #e0e0e0;
     color: #333;
 }
