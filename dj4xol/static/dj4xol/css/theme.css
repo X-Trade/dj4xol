@@ -57,6 +57,13 @@ body {
     text-align: center;
 }
 
+.site-copyright.site-copyright-app,
+.site-copyright.site-copyright-game {
+    padding: 0 8px 4px;
+    font-size: 0.72rem;
+    line-height: 1.1;
+}
+
 a {
     color: var(--theme-accent);
     text-decoration: none;
