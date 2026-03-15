@@ -10545,6 +10545,31 @@ class TestInterceptPatrolOrders(TestCase):
         x, y = GameTurn(game)._get_intercept_destination(intercept_order)
         self.assertEqual((x, y), (target.x, target.y))
 
+    def test_intercept_destination_ignores_target_warp_advantage(self):
+        """Fractional warp advantage should not extend intercept lead distance."""
+        from ..models import FleetOrders
+
+        game, player1, _ = self._create_two_player_game()
+        interceptor = Fleet.objects.create(
+            game=game, player=player1, name="Interceptor",
+            x=10, y=30, ship_count=1, integrity=100
+        )
+        target = Fleet.objects.create(
+            game=game, player=player1, name="Target",
+            x=20, y=20, ship_count=1, integrity=100, heading=45,
+            warp_advantage=0.9,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=target, order_type='MOVE', x=40, y=1, warpfactor=5
+        )
+        intercept_order = FleetOrders.objects.create(
+            game=game, fleet=interceptor, order_type='INTERCEPT',
+            target_fleet=target, warpfactor=5
+        )
+
+        x, y = GameTurn(game)._get_intercept_destination(intercept_order)
+        self.assertEqual((x, y), (23, 16))
+
     def test_hidden_manual_intercept_converts_to_last_known_space_and_messages(self):
         game, player1, player2 = self._create_two_player_game()
         interceptor = Fleet.objects.create(
@@ -12204,6 +12229,80 @@ class TestHomeworldLossAndDerelicts(TestCase):
         turn = GameTurn(game)
         turn._move_toward_destination(fleet, order)
         self.assertEqual((fleet.x, fleet.y), (9, 0))
+
+    def test_intercept_ignores_game_warp_speed_multiplier(self):
+        game = default_game(stars=5)
+        game.warp_speed_multiplier = 2.0
+        game.save(update_fields=['warp_speed_multiplier'])
+        player = game.players.first()
+        interceptor = player.fleets.first()
+        interceptor.x = 10
+        interceptor.y = 10
+        interceptor.save(update_fields=['x', 'y'])
+        target = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Target',
+            x=19,
+            y=10,
+            ship_count=1,
+            integrity=100,
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=interceptor,
+            order_type='INTERCEPT',
+            target_fleet=target,
+            warpfactor=5,
+        )
+
+        turn = GameTurn(game)
+        turn._move_toward_destination(interceptor, order)
+
+        self.assertEqual((interceptor.x, interceptor.y), (15, 10))
+
+    def test_intercept_ignores_warp_advantage_for_interceptor_movement(self):
+        from numpy import array as nparray
+        from numpy import linalg
+
+        game = default_game(stars=5)
+        player = game.players.first()
+        interceptor = player.fleets.first()
+        interceptor.x = 10
+        interceptor.y = 10
+        interceptor.warp_advantage = 0.9
+        interceptor.save(update_fields=['x', 'y', 'warp_advantage'])
+        target = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Target',
+            x=20,
+            y=13,
+            ship_count=1,
+            integrity=100,
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=interceptor,
+            order_type='INTERCEPT',
+            target_fleet=target,
+            warpfactor=5,
+        )
+
+        turn = GameTurn(game)
+        turn._move_toward_destination(interceptor, order)
+
+        vector = nparray([target.x, target.y]) - nparray([10, 10])
+        distance = linalg.norm(vector)
+        normalised = vector / distance
+        expected_step = normalised * 5.0
+        expected_x = 10 + turn._quantized_axis_step(
+            expected_step[0], interceptor.short_id, 'x'
+        )
+        expected_y = 10 + turn._quantized_axis_step(
+            expected_step[1], interceptor.short_id, 'y'
+        )
+        self.assertEqual((interceptor.x, interceptor.y), (expected_x, expected_y))
 
     def test_warp_advantage_adds_fractional_speed_to_distance(self):
         game = default_game(stars=5)
