@@ -77,6 +77,7 @@ class TestLandingPage(TestCase):
         self.assertContains(response, response.context['feature_highlights'][0])
         self.assertContains(response, response.context['roadmap_priorities'][0])
         self.assertContains(response, response.context['roadmap_future'][0])
+        self.assertContains(response, 'Copyright Bradley Gray 2026')
 
     def test_staff_home_shows_server_settings_action(self):
         user, _ = get_default_user()
@@ -2525,6 +2526,45 @@ class TestFleetOrderViews(TestCase):
             html=False,
         )
         self.assertContains(response, 'id="intercept-speed-slider"', html=False)
+
+    def test_move_target_selection_preserves_requested_warp(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+                'order_type': 'MOVE',
+                'warp': '7',
+                'dest_x': fleet.x + 3,
+                'dest_y': fleet.y + 1,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'name="warpfactor" id="warpfactor-input" value="7"',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'id="warp-slider"',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'id="dest-set-link"',
+            html=False,
+        )
+        self.assertContains(response, 'warp=7', html=False)
 
     def test_move_single_target_render_includes_explicit_anomaly_target(self):
         game = default_game(stars=5, fleets=2)

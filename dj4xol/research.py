@@ -233,7 +233,13 @@ def _select_terraforming_tech(unlocked):
         if str(tech.tech_type or '') != 'INFRASTRUCTURE':
             continue
         params = _safe_params(tech)
-        if 'terraforming_rate' not in params and 'production_cost_overrides' not in params:
+        rate = _parse_terraforming_rate(params.get('terraforming_rate', 0.0))
+        overrides = _production_cost_overrides_from_tech(tech)
+        has_terraforming_overrides = any(
+            order_type in TERRAFORM_ORDER_LABELS
+            for order_type in overrides
+        )
+        if rate <= 0 and not has_terraforming_overrides:
             continue
         sort_key = (int(tech.level), int(tech.display_order or 0), str(tech.name or ''))
         if selected is None or sort_key > selected_sort_key:
