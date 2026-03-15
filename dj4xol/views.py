@@ -3,8 +3,9 @@ from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import resolve, reverse
-from django.contrib.auth import login
+from django.contrib.auth import login, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import views as auth_views
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -96,7 +97,10 @@ from .forms import (
     NewGameForm,
     RegistrationForm,
     ChangeEmailForm,
+    AccountPasswordChangeForm,
     JoinGameForm,
+    PasswordResetRequestForm,
+    PasswordResetSetForm,
     ServerSettingsForm,
     CustomHelpPageForm,
     CustomHelpPageBlockFormSet,
@@ -265,6 +269,14 @@ def _account_onboarding_redirect_name(account):
     if step == Account.ONBOARDING_STEP_RACE:
         return 'dj4xol:onboarding_race'
     return None
+
+
+class Dj4xolPasswordResetView(auth_views.PasswordResetView):
+    form_class = PasswordResetRequestForm
+
+
+class Dj4xolPasswordResetConfirmView(auth_views.PasswordResetConfirmView):
+    form_class = PasswordResetSetForm
 
 
 def _race_type_return_target(return_to):
@@ -4047,7 +4059,9 @@ def profile(request):
         account,
         initial={'email': account.email},
     )
+    change_password_form = AccountPasswordChangeForm(request.user)
     change_email_open = False
+    change_password_open = False
 
     if request.method == 'POST':
         action = request.POST.get('action', '')
@@ -4084,6 +4098,24 @@ def profile(request):
                 request,
                 'Please correct the highlighted email field.',
             )
+        elif action == 'change_password':
+            change_password_form = AccountPasswordChangeForm(
+                request.user,
+                request.POST,
+            )
+            change_password_open = True
+            if change_password_form.is_valid():
+                user = change_password_form.save()
+                update_session_auth_hash(request, user)
+                messages.success(
+                    request,
+                    'Password updated.',
+                )
+                return redirect('dj4xol:profile')
+            messages.error(
+                request,
+                'Please correct the highlighted password fields.',
+            )
 
     # Get games the user is playing in
     playing = list(
@@ -4110,6 +4142,8 @@ def profile(request):
         'theme_choices': Account.THEME_CHOICES,
         'change_email_form': change_email_form,
         'change_email_open': change_email_open,
+        'change_password_form': change_password_form,
+        'change_password_open': change_password_open,
     })
 
 

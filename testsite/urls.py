@@ -22,5 +22,15 @@ urlpatterns = [
     url(r'^gallery/$', dj4xol_views.gallery, name='root_gallery'),
     url(r'^admin/', admin.site.urls),
     url(r'^4x/', include('dj4xol.urls', namespace='dj4xol')),
+    url(
+        r'^accounts/password_reset/$',
+        dj4xol_views.Dj4xolPasswordResetView.as_view(),
+        name='password_reset',
+    ),
+    url(
+        r'^accounts/reset/(?P<uidb64>[0-9A-Za-z_\-]+)/(?P<token>.+)/$',
+        dj4xol_views.Dj4xolPasswordResetConfirmView.as_view(),
+        name='password_reset_confirm',
+    ),
     url(r'^accounts/', include('django.contrib.auth.urls'))
 ]

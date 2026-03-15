@@ -52,6 +52,13 @@
                                     {% endif %}
                                 </td>
                             </tr>
+                            <tr>
+                                <th>Password</th>
+                                <td>
+                                    ********
+                                    <button type="button" class="action-link" id="change-password-trigger" style="margin:4px;">Change password</button>
+                                </td>
+                            </tr>
                             {% if account.website_url %}
                             <tr>
                                 <th>Website</th>
@@ -238,6 +245,51 @@
             </div>
         </div>
 
+        <div class="owned-game-delete-overlay" id="change-password-overlay"{% if not change_password_open %} hidden{% endif %}>
+            <div class="owned-game-delete-backdrop"></div>
+            <div class="owned-game-delete-popover" role="dialog" aria-modal="true" aria-labelledby="change-password-title">
+                <h3 id="change-password-title">Change Password</h3>
+                <form method="post" action="{% url 'dj4xol:profile' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="change_password">
+                    <div>
+                        {{ change_password_form.old_password.label_tag }}
+                        {{ change_password_form.old_password }}
+                        {% if change_password_form.old_password.errors %}
+                        <div class="form-errors">
+                            {{ change_password_form.old_password.errors }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div style="margin-top:12px;">
+                        {{ change_password_form.new_password1.label_tag }}
+                        {{ change_password_form.new_password1 }}
+                        {% if change_password_form.new_password1.errors %}
+                        <div class="form-errors">
+                            {{ change_password_form.new_password1.errors }}
+                        </div>
+                        {% endif %}
+                        {% if change_password_form.new_password1.help_text %}
+                        <div class="helptext">{{ change_password_form.new_password1.help_text|safe }}</div>
+                        {% endif %}
+                    </div>
+                    <div style="margin-top:12px;">
+                        {{ change_password_form.new_password2.label_tag }}
+                        {{ change_password_form.new_password2 }}
+                        {% if change_password_form.new_password2.errors %}
+                        <div class="form-errors">
+                            {{ change_password_form.new_password2.errors }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="owned-game-delete-actions" style="margin-top:16px;">
+                        <button type="submit" class="action-link">Save</button>
+                        <button type="button" class="action-link owned-game-delete-cancel" id="change-password-cancel">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <script>
         (function() {
             // Hamburger menu toggle
@@ -299,6 +351,12 @@
             var changeEmailInput = changeEmailOverlay
                 ? changeEmailOverlay.querySelector('input[name="email"]')
                 : null;
+            var changePasswordTrigger = document.getElementById('change-password-trigger');
+            var changePasswordOverlay = document.getElementById('change-password-overlay');
+            var changePasswordCancel = document.getElementById('change-password-cancel');
+            var changePasswordInput = changePasswordOverlay
+                ? changePasswordOverlay.querySelector('input[name="old_password"]')
+                : null;
 
             function closeDeleteOverlay() {
                 pendingDeleteForm = null;
@@ -306,7 +364,10 @@
                     return;
                 }
                 deleteOverlay.hidden = true;
-                if (!changeEmailOverlay || changeEmailOverlay.hidden) {
+                if (
+                    (!changeEmailOverlay || changeEmailOverlay.hidden) &&
+                    (!changePasswordOverlay || changePasswordOverlay.hidden)
+                ) {
                     document.body.classList.remove('owned-game-delete-open');
                 }
             }
@@ -351,7 +412,34 @@
                     return;
                 }
                 changeEmailOverlay.hidden = true;
-                if (!deleteOverlay || deleteOverlay.hidden) {
+                if (
+                    (!deleteOverlay || deleteOverlay.hidden) &&
+                    (!changePasswordOverlay || changePasswordOverlay.hidden)
+                ) {
+                    document.body.classList.remove('owned-game-delete-open');
+                }
+            }
+
+            function openChangePasswordOverlay() {
+                if (!changePasswordOverlay) {
+                    return;
+                }
+                changePasswordOverlay.hidden = false;
+                document.body.classList.add('owned-game-delete-open');
+                if (changePasswordInput) {
+                    changePasswordInput.focus();
+                }
+            }
+
+            function closeChangePasswordOverlay() {
+                if (!changePasswordOverlay) {
+                    return;
+                }
+                changePasswordOverlay.hidden = true;
+                if (
+                    (!deleteOverlay || deleteOverlay.hidden) &&
+                    (!changeEmailOverlay || changeEmailOverlay.hidden)
+                ) {
                     document.body.classList.remove('owned-game-delete-open');
                 }
             }
@@ -430,9 +518,21 @@
                 });
             }
 
+            if (changePasswordTrigger) {
+                changePasswordTrigger.addEventListener('click', function() {
+                    openChangePasswordOverlay();
+                });
+            }
+
             if (changeEmailCancel) {
                 changeEmailCancel.addEventListener('click', function() {
                     closeChangeEmailOverlay();
+                });
+            }
+
+            if (changePasswordCancel) {
+                changePasswordCancel.addEventListener('click', function() {
+                    closeChangePasswordOverlay();
                 });
             }
 
@@ -450,6 +550,20 @@
                 });
             }
 
+            if (changePasswordOverlay) {
+                if (!changePasswordOverlay.hidden) {
+                    document.body.classList.add('owned-game-delete-open');
+                }
+                changePasswordOverlay.addEventListener('click', function(event) {
+                    if (
+                        event.target === changePasswordOverlay ||
+                        event.target.classList.contains('owned-game-delete-backdrop')
+                    ) {
+                        closeChangePasswordOverlay();
+                    }
+                });
+            }
+
             document.addEventListener('keydown', function(event) {
                 if (event.key === 'Escape' && deleteOverlay && !deleteOverlay.hidden) {
                     closeDeleteOverlay();
@@ -460,6 +574,13 @@
                     !changeEmailOverlay.hidden
                 ) {
                     closeChangeEmailOverlay();
+                }
+                if (
+                    event.key === 'Escape' &&
+                    changePasswordOverlay &&
+                    !changePasswordOverlay.hidden
+                ) {
+                    closeChangePasswordOverlay();
                 }
             });
 

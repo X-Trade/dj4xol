@@ -1,7 +1,9 @@
+import re
+
 from django.contrib.auth.models import User
 from django.core import mail
 from django.core.exceptions import ValidationError
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from ..name_rules import parse_profanity_terms, validate_safe_public_text
@@ -86,6 +88,13 @@ class OnboardingRegistrationTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Create Your 4x Profile')
         self.assertNotContains(response, 'Create Login')
+
+    def test_login_shows_forgot_password_link(self):
+        response = self.client.get(reverse('login'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Forgot password?')
+        self.assertContains(response, reverse('password_reset'))
 
     def test_gamelist_redirects_incomplete_account_to_onboarding_theme(self):
         user = User.objects.create_user('themewait', 'themewait@example.com', 'pass1234')
@@ -419,6 +428,7 @@ class OnboardingRegistrationTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Change email')
+        self.assertContains(response, 'Change password')
 
     def test_change_email_updates_account_and_resets_verification(self):
         ServerSettings.objects.update_or_create(
@@ -498,6 +508,110 @@ class OnboardingRegistrationTest(TestCase):
         self.assertTrue(account.email_verified)
         self.assertContains(response, 'Enter a different email address.')
         self.assertContains(response, 'id="change-email-overlay"', html=False)
+
+    def test_change_password_updates_password(self):
+        user = User.objects.create_user(
+            'passwordpilot', 'password@example.com', 'old-pass-1234'
+        )
+        Account.objects.create(
+            django_user=user,
+            alias='passwordpilot',
+            email='password@example.com',
+            full_name='Password Pilot',
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse('dj4xol:profile'),
+            {
+                'action': 'change_password',
+                'old_password': 'old-pass-1234',
+                'new_password1': 'new-pass-12345',
+                'new_password2': 'new-pass-12345',
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Password updated.')
+        user.refresh_from_db()
+        self.assertTrue(user.check_password('new-pass-12345'))
+        self.assertTrue('_auth_user_id' in self.client.session)
+
+    def test_change_password_invalid_keeps_dialog_open(self):
+        user = User.objects.create_user(
+            'badpasswordpilot', 'badpassword@example.com', 'old-pass-1234'
+        )
+        Account.objects.create(
+            django_user=user,
+            alias='badpasswordpilot',
+            email='badpassword@example.com',
+            full_name='Bad Password Pilot',
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            reverse('dj4xol:profile'),
+            {
+                'action': 'change_password',
+                'old_password': 'wrong-pass',
+                'new_password1': 'new-pass-12345',
+                'new_password2': 'new-pass-12345',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Please correct the highlighted password fields.')
+        self.assertContains(response, 'id="change-password-overlay"', html=False)
+        self.assertContains(response, 'name="old_password"', html=False)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_forgot_password_sends_reset_email_and_allows_password_reset(self):
+        user = User.objects.create_user(
+            'forgotpilot', 'forgot@example.com', 'old-pass-1234'
+        )
+        Account.objects.create(
+            django_user=user,
+            alias='forgotpilot',
+            email='forgot@example.com',
+            full_name='Forgot Pilot',
+        )
+
+        response = self.client.post(
+            reverse('password_reset'),
+            {'email': 'forgot@example.com'},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'password reset link has been sent')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['forgot@example.com'])
+        self.assertIn('DJ4XOL: Reset your password', mail.outbox[0].subject)
+        match = re.search(r'http://testserver(/accounts/reset/[^\s]+/)', mail.outbox[0].body)
+        self.assertIsNotNone(match)
+        reset_path = match.group(1)
+
+        response = self.client.get(reset_path, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Set New Password')
+        reset_path = response.request['PATH_INFO']
+
+        response = self.client.post(
+            reset_path,
+            {
+                'new_password1': 'fresh-pass-12345',
+                'new_password2': 'fresh-pass-12345',
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Password Updated')
+        self.assertTrue(self.client.login(
+            username='forgotpilot',
+            password='fresh-pass-12345',
+        ))
 
 
 class IdentityNameRulesTest(TestCase):
