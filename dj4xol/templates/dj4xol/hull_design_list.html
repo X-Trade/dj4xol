@@ -21,14 +21,26 @@
                 <div class="panel no-transition open" data-panel="hulls">
                     <h2><span>Hull Layout Editor</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
+                        <p>Use this tool to define hull layout slots, costs, and linked hull tech cards.</p>
                         <section class="panel-scrollable-list">
-                            <p>Use this prototype to define hull layout slots and costs.</p>
                             <ul class="game-list">
                                 {% for hull in hulls %}
                                 <li>
-                                    <span>{{ hull.name }}</span>
-                                    <span class="game-meta">{{ hull.thumbnail_class }} &middot; {{ hull.slots.count }} slot{{ hull.slots.count|pluralize }}</span>
-                                    <a href="{% url 'dj4xol:hull_design_edit' hull.id %}" class="action-link">Edit Layout</a>
+                                    <div class="game-entry-main">
+                                        <span class="game-entry-title">{{ hull.name }}</span>
+                                        <span class="game-meta">
+                                            {{ hull.thumbnail_class }} &middot;
+                                            {{ hull.slots.count }} slot{{ hull.slots.count|pluralize }}
+                                            {% if hull.technology %}
+                                            &middot; {{ hull.technology.category.code }} L{{ hull.technology.level }}: {{ hull.technology.name }}
+                                            {% else %}
+                                            &middot; No linked hull tech
+                                            {% endif %}
+                                        </span>
+                                    </div>
+                                    <div class="game-entry-actions">
+                                        <a href="{% url 'dj4xol:hull_design_edit' hull.id %}" class="action-link">Edit Layout</a>
+                                    </div>
                                 </li>
                                 {% empty %}
                                 <li>
@@ -37,8 +49,26 @@
                                 {% endfor %}
                             </ul>
                         </section>
+                            {% if unlinked_hull_techs %}
+                            <p style="margin-top: 16px;">Unlinked hull techs:</p>
+                            <section class="panel-scrollable-list">
+                            <ul class="game-list">
+                                {% for tech in unlinked_hull_techs %}
+                                <li>
+                                    <div class="game-entry-main">
+                                        <span class="game-entry-title">{{ tech.name }}</span>
+                                        <span class="game-meta">{{ tech.category.code }} L{{ tech.level }}</span>
+                                    </div>
+                                    <div class="game-entry-actions">
+                                        <a href="{% url 'dj4xol:hull_design_new' %}?technology={{ tech.id }}" class="action-link">Create Design</a>
+                                    </div>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            </section>
+                            {% endif %}
                         <div class="panel-footer">
-                            <a href="{% url 'dj4xol:hull_design_new' %}" class="action-link">Create New Hull</a>
+                            <a href="{% url 'dj4xol:hull_design_new' %}" class="action-link">Create New Hull + Tech</a>
                         </div>
                     </div>
                 </div>

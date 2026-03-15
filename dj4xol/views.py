@@ -2074,13 +2074,142 @@ def _hull_modifier_from_display(value):
     return float(value) / 10.0
 
 
+def _unique_hull_design_name(base_name, technology=None, exclude_hull_id=None):
+    """Return a globally unique hull design name."""
+    base_name = (base_name or 'Hull').strip() or 'Hull'
+    base_name = base_name[:64]
+    qs = HullDesign.objects.all()
+    if exclude_hull_id is not None:
+        qs = qs.exclude(pk=exclude_hull_id)
+    if not qs.filter(name=base_name).exists():
+        return base_name
+
+    suffix = getattr(technology, 'short_id', '') or 'hull'
+    suffix = str(suffix).strip()[:12] or 'hull'
+    trimmed = base_name[: max(1, 64 - len(suffix) - 3)].rstrip()
+    candidate = '%s [%s]' % (trimmed, suffix)
+    if not qs.filter(name=candidate).exists():
+        return candidate
+
+    idx = 2
+    while True:
+        extra = ' %s' % idx
+        trimmed = base_name[: max(1, 64 - len(extra))].rstrip()
+        candidate = '%s%s' % (trimmed, extra)
+        if not qs.filter(name=candidate).exists():
+            return candidate
+        idx += 1
+
+
+def _apply_hull_defaults_from_technology(hull, technology, force_name=False):
+    """Seed an unsaved hull design from an existing HULL technology."""
+    params = _safe_tech_params(technology)
+    if force_name or not getattr(hull, 'name', '').strip():
+        hull.name = _unique_hull_design_name(
+            getattr(technology, 'name', '') or 'Hull',
+            technology=technology,
+            exclude_hull_id=getattr(hull, 'pk', None),
+        )
+    hull.thumbnail_class = (
+        str(params.get('hull_thumbnail_class') or '').strip().lower() or
+        hull.thumbnail_class or
+        'scout'
+    )
+    try:
+        hull.offense_offset = float(params.get('offense_level', 0.0) or 0.0)
+    except (TypeError, ValueError):
+        hull.offense_offset = 0.0
+    try:
+        hull.defense_offset = float(params.get('defense_level', 0.0) or 0.0)
+    except (TypeError, ValueError):
+        hull.defense_offset = 0.0
+    try:
+        hull.cargo_capacity = int(params.get('max_cargo_capacity', 0) or 0)
+    except (TypeError, ValueError):
+        hull.cargo_capacity = 0
+    try:
+        hull.fuel_capacity = int(params.get('max_fuel', 100) or 100)
+    except (TypeError, ValueError):
+        hull.fuel_capacity = 100
+    hull.enabled = bool(getattr(technology, 'enabled', True))
+
+
+def _sync_hull_technology_from_design(technology, hull):
+    """Persist hull-design gameplay values back onto the linked HULL tech."""
+    params = _safe_tech_params(technology)
+    params['max_cargo_capacity'] = int(hull.cargo_capacity or 0)
+    params['max_fuel'] = int(hull.fuel_capacity or 0)
+    params['hull_thumbnail_class'] = (
+        str(hull.thumbnail_class or '').strip().lower() or 'scout'
+    )
+    params['offense_level'] = float(hull.offense_offset or 0.0)
+    params['defense_level'] = float(hull.defense_offset or 0.0)
+    technology.params_json = json.dumps(params, sort_keys=True)
+
+
+def _backfill_hull_designs_for_hull_techs():
+    """Ensure existing HULL tech cards each have a linked hull design."""
+    hull_techs = Technology.objects.filter(
+        tech_type='HULL',
+    ).select_related('hull_design')
+    for technology in hull_techs:
+        if getattr(technology, 'hull_design', None):
+            continue
+        hull = HullDesign.objects.filter(
+            technology__isnull=True,
+            name=technology.name,
+        ).order_by('id').first()
+        if hull is None:
+            hull = HullDesign(technology=technology)
+            _apply_hull_defaults_from_technology(
+                hull,
+                technology,
+                force_name=True,
+            )
+        else:
+            hull.technology = technology
+        hull.full_clean()
+        hull.save()
+        _sync_hull_technology_from_design(technology, hull)
+        technology.save(update_fields=['params_json'])
+
+
+def _unlinked_hull_technologies(current_technology=None):
+    """Return HULL tech cards not currently attached to a hull design."""
+    qs = Technology.objects.filter(tech_type='HULL', hull_design__isnull=True)
+    if current_technology is not None and getattr(current_technology, 'pk', None):
+        qs = Technology.objects.filter(
+            models.Q(tech_type='HULL', hull_design__isnull=True) |
+            models.Q(pk=current_technology.pk)
+        )
+    return list(
+        qs.select_related('category').order_by(
+            'category__display_order',
+            'category__name',
+            'level',
+            'display_order',
+            'name',
+        )
+    )
+
+
 @staff_member_required
 def hull_design_list(request):
     """Staff-only list of hull designs."""
     account = getattr(request.user, 'dj4xol_account', None)
     return render(request, 'dj4xol/hull_design_list.html', {
         'user_theme': account.theme if account else 'classic',
-        'hulls': HullDesign.objects.all().prefetch_related('slots'),
+        'hulls': HullDesign.objects.select_related(
+            'technology',
+            'technology__category',
+        ).prefetch_related('slots').order_by(
+            'technology__level',
+            'technology__category__display_order',
+            'technology__display_order',
+            'technology__name',
+            'name',
+        ),
+        'unlinked_hull_techs': _unlinked_hull_technologies(),
     })
 
 
@@ -2090,12 +2219,53 @@ def hull_design_edit(request, hull_id=None):
     account = getattr(request.user, 'dj4xol_account', None)
     selected_theme = account.theme if account else 'classic'
     hull = get_object_or_404(HullDesign, pk=hull_id) if hull_id is not None else HullDesign()
+    technology = getattr(hull, 'technology', None)
+    if technology is None:
+        tech_id = request.GET.get('technology')
+        if tech_id:
+            technology = Technology.objects.filter(
+                pk=tech_id,
+                tech_type='HULL',
+                hull_design__isnull=True,
+            ).select_related('category').first()
+            if technology is not None:
+                _apply_hull_defaults_from_technology(
+                    hull,
+                    technology,
+                    force_name=not bool(hull_id),
+                )
+        if technology is None:
+            technology = Technology(tech_type='HULL', enabled=True)
     errors = []
     thumbnail_class_choices = _hull_thumbnail_class_choices(hull.thumbnail_class)
     offense_offset_display = _hull_modifier_to_display(hull.offense_offset)
     defense_offset_display = _hull_modifier_to_display(hull.defense_offset)
+    tech_categories = list(
+        ResearchCategory.objects.filter(enabled=True).order_by(
+            'display_order',
+            'name',
+        )
+    )
 
     if request.method == 'POST':
+        technology_id = (request.POST.get('technology_id') or '').strip()
+        if technology_id:
+            technology = Technology.objects.filter(
+                pk=technology_id,
+                tech_type='HULL',
+            ).select_related('category').first()
+            if technology is None:
+                errors.append('Selected hull technology could not be found.')
+            else:
+                try:
+                    linked_hull = technology.hull_design
+                except Exception:
+                    linked_hull = None
+                if linked_hull is not None and linked_hull.pk != hull.pk:
+                    errors.append('That hull technology already has a hull design.')
+        else:
+            technology = Technology(tech_type='HULL')
+
         hull.name = (request.POST.get('name') or '').strip()
         hull.thumbnail_class = (request.POST.get('thumbnail_class') or '').strip().lower()
         hull.enabled = bool(request.POST.get('enabled'))
@@ -2120,9 +2290,39 @@ def hull_design_edit(request, hull_id=None):
         except (TypeError, ValueError):
             errors.append('Numeric hull fields contain invalid values.')
 
+        if technology is not None:
+            category_id = (request.POST.get('tech_category') or '').strip()
+            tech_name = (request.POST.get('tech_name') or '').strip()
+            technology.name = tech_name
+            technology.description = (request.POST.get('tech_description') or '').strip()
+            technology.tech_type = 'HULL'
+            technology.enabled = bool(request.POST.get('tech_enabled'))
+            try:
+                technology.level = int(request.POST.get('tech_level') or 0)
+                technology.display_order = int(
+                    request.POST.get('tech_display_order') or 0
+                )
+            except (TypeError, ValueError):
+                errors.append('Technology level/order values are invalid.')
+            technology.category = ResearchCategory.objects.filter(
+                pk=category_id
+            ).first()
+            if technology.category is None:
+                errors.append('Hull technology category is required.')
+            if not technology.name:
+                errors.append('Hull technology name is required.')
+
         if not errors:
             try:
                 hull.full_clean()
+            except Exception as exc:
+                if hasattr(exc, 'messages'):
+                    errors.extend(exc.messages)
+                else:
+                    errors.append(str(exc))
+        if technology is not None and not errors:
+            try:
+                technology.full_clean()
             except Exception as exc:
                 if hasattr(exc, 'messages'):
                     errors.extend(exc.messages)
@@ -2137,7 +2337,11 @@ def hull_design_edit(request, hull_id=None):
         errors.extend(slot_errors)
 
         if not errors:
+            technology.save()
+            hull.technology = technology
             hull.save()
+            _sync_hull_technology_from_design(technology, hull)
+            technology.save(update_fields=['params_json'])
             HullDesignSlot.objects.filter(hull=hull).delete()
             for slot in clean_slots:
                 HullDesignSlot.objects.create(hull=hull, **slot)
@@ -2160,6 +2364,7 @@ def hull_design_edit(request, hull_id=None):
     return render(request, 'dj4xol/hull_design_edit.html', {
         'selected_theme': selected_theme,
         'hull': hull,
+        'technology': technology,
         'errors': errors,
         'secret_resource_labels': {
             key: get_secret_resource_label(
@@ -2176,6 +2381,8 @@ def hull_design_edit(request, hull_id=None):
         'item_count_choices_json': json.dumps([1, 2, 4, 8, 16]),
         'max_tech_level_choices_json': json.dumps(_hull_slot_level_choices()),
         'thumbnail_class_choices': thumbnail_class_choices,
+        'tech_categories': tech_categories,
+        'available_hull_techs': _unlinked_hull_technologies(technology),
         'thumbnail_paths_by_class_json': json.dumps(
             _hull_thumbnail_paths_by_class(thumbnail_class_choices)
         ),
@@ -2576,7 +2783,10 @@ def help_technology(request):
 
     q = (request.GET.get('q') or '').strip()
 
-    filter_qs = Technology.objects.filter(enabled=True).select_related('category')
+    filter_qs = Technology.objects.filter(enabled=True).select_related(
+        'category',
+        'hull_design',
+    )
     if min_level is not None:
         filter_qs = filter_qs.filter(level__gte=min_level)
     if max_level is not None:

@@ -17,6 +17,7 @@ from ..models import (
     Game,
     GameMessage,
     GameInvitation,
+    HullDesign,
     Player,
     PlayerDiplomaticStance,
     PlayerTechnologyGrant,
@@ -2518,8 +2519,355 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, 'name="warpfactor" id="warpfactor-input" value="8"', html=False)
         self.assertContains(response, 'id="warp-slider"', html=False)
         self.assertContains(response, 'data-max-safe-warp="8"', html=False)
-        self.assertContains(response, 'name="intercept_speed" id="intercept-speed-input" value="8"', html=False)
+        self.assertContains(
+            response,
+            'name="intercept_speed" id="intercept-speed-input" value="8"',
+            html=False,
+        )
         self.assertContains(response, 'id="intercept-speed-slider"', html=False)
+
+    def test_move_single_target_render_includes_explicit_anomaly_target(self):
+        game = default_game(stars=5, fleets=2)
+        player = game.players.first()
+        fleet = player.fleets.order_by('id').first()
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=fleet.x + 3,
+            y=fleet.y + 2,
+            name='Nebula 2',
+            anomaly_type='NEBULA',
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+                'dest_anomaly': anomaly.short_id,
+                'order_type': 'MOVE',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="move-single-target-value"',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'data-target="anomaly:%s"' % anomaly.short_id,
+            html=False,
+        )
+        self.assertContains(response, 'initializeMoveTarget();', html=False)
+
+    def test_move_single_target_render_includes_explicit_fleet_target(self):
+        game = default_game(stars=5, fleets=2)
+        player = game.players.first()
+        fleets = list(player.fleets.order_by('id'))
+        fleet = fleets[0]
+        target_fleet = fleets[1]
+        target_fleet.x = fleet.x + 4
+        target_fleet.y = fleet.y + 1
+        target_fleet.save(update_fields=['x', 'y'])
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+                'dest_fleet': target_fleet.short_id,
+                'order_type': 'MOVE',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'id="move-single-target-value"',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'data-target="fleet:%s"' % target_fleet.short_id,
+            html=False,
+        )
+        self.assertNotContains(
+            response,
+            'id="add-order-btn" disabled',
+            html=False,
+        )
+
+    def test_add_fleet_order_move_can_target_anomaly_with_other_origin_fleet(self):
+        game = default_game(stars=5, fleets=2)
+        player = game.players.first()
+        fleets = list(player.fleets.order_by('id'))
+        fleet = fleets[0]
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=fleet.x + 3,
+            y=fleet.y + 2,
+            name='Nebula 2',
+            anomaly_type='NEBULA',
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'MOVE',
+                'target_anomaly': anomaly.short_id,
+                'warpfactor': '5',
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order = fleet.orders.get(order_type='MOVE')
+        self.assertEqual(order.target_kind, 'OBJECT')
+        self.assertEqual(order.target_short_id, anomaly.short_id)
+        self.assertEqual(order.x, anomaly.x)
+        self.assertEqual(order.y, anomaly.y)
+
+    def test_add_fleet_order_move_can_target_salvage_with_other_origin_fleet(self):
+        game = default_game(stars=5, fleets=2)
+        player = game.players.first()
+        fleets = list(player.fleets.order_by('id'))
+        fleet = fleets[0]
+        salvage = Salvage.objects.create(
+            game=game,
+            x=fleet.x + 2,
+            y=fleet.y + 1,
+            ironium_inventory=15,
+            boranium_inventory=0,
+            germanium_inventory=0,
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'MOVE',
+                'target_salvage': salvage.short_id,
+                'warpfactor': '5',
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order = fleet.orders.get(order_type='MOVE')
+        self.assertEqual(order.target_salvage_id, salvage.id)
+        self.assertEqual(order.target_kind, 'OBJECT')
+        self.assertEqual(order.target_short_id, salvage.short_id)
+        self.assertEqual(order.x, salvage.x)
+        self.assertEqual(order.y, salvage.y)
+
+    def test_add_fleet_order_move_can_target_empty_space_with_other_origin_fleet(self):
+        game = default_game(stars=5, fleets=2)
+        player = game.players.first()
+        fleets = list(player.fleets.order_by('id'))
+        fleet = fleets[0]
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'MOVE',
+                'target_x': str(fleet.x + 4),
+                'target_y': str(fleet.y + 3),
+                'warpfactor': '5',
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order = fleet.orders.get(order_type='MOVE')
+        self.assertEqual(order.target_kind, 'SPACE')
+        self.assertIsNone(order.target_short_id)
+        self.assertEqual(order.x, fleet.x + 4)
+        self.assertEqual(order.y, fleet.y + 3)
+
+
+class TestHullDesignViews(TestCase):
+    def setUp(self):
+        self.user, _ = get_default_user()
+        self.user.is_staff = True
+        self.user.save(update_fields=['is_staff'])
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.energy = ResearchCategory.objects.create(
+            code='HULL_ENERGY',
+            name='Hull Energy',
+            display_order=1,
+            enabled=True,
+        )
+        self.construction = ResearchCategory.objects.create(
+            code='HULL_CONSTRUCTION',
+            name='Hull Construction',
+            display_order=2,
+            enabled=True,
+        )
+
+    def test_hull_design_list_shows_unlinked_hull_techs(self):
+        tech = Technology.objects.create(
+            category=self.energy,
+            level=9,
+            name='Test Hull Tech',
+            tech_type='HULL',
+            params_json='{}',
+        )
+
+        response = self.client.get(reverse('dj4xol:hull_design_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Unlinked hull techs:')
+        self.assertContains(response, tech.name)
+        self.assertContains(
+            response,
+            '?technology=%s' % tech.id,
+            html=False,
+        )
+
+    def test_hull_design_new_creates_linked_hull_technology(self):
+        response = self.client.post(
+            reverse('dj4xol:hull_design_new'),
+            {
+                'name': 'Admin Scout',
+                'thumbnail_class': 'scout',
+                'offense_offset': '2',
+                'defense_offset': '3',
+                'ironium_cost': '10',
+                'boranium_cost': '20',
+                'germanium_cost': '30',
+                'resource_x_cost': '0',
+                'resource_y_cost': '0',
+                'resource_z_cost': '0',
+                'cargo_capacity': '80',
+                'fuel_capacity': '120',
+                'cargo_hold_grid_width': '0',
+                'cargo_hold_grid_height': '0',
+                'enabled': 'on',
+                'tech_name': 'Admin Scout Hull',
+                'tech_category': str(self.energy.id),
+                'tech_level': '7',
+                'tech_display_order': '2',
+                'tech_description': 'Admin-created hull tech.',
+                'tech_enabled': 'on',
+                'slots_json': '[]',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        hull = HullDesign.objects.get(name='Admin Scout')
+        self.assertIsNotNone(hull.technology)
+        self.assertEqual(hull.technology.tech_type, 'HULL')
+        self.assertEqual(hull.technology.category_id, self.energy.id)
+        self.assertEqual(hull.technology.level, 7)
+        self.assertEqual(hull.technology.name, 'Admin Scout Hull')
+        self.assertEqual(
+            json.loads(hull.technology.params_json),
+            {
+                'defense_level': 0.3,
+                'hull_thumbnail_class': 'scout',
+                'max_cargo_capacity': 80,
+                'max_fuel': 120,
+                'offense_level': 0.2,
+            },
+        )
+
+    def test_hull_design_edit_updates_linked_hull_technology(self):
+        tech = Technology.objects.create(
+            category=self.energy,
+            level=5,
+            name='Old Hull Tech',
+            description='Old description.',
+            tech_type='HULL',
+            display_order=1,
+            enabled=True,
+            params_json=json.dumps({
+                'race_type': 'SCI',
+                'max_cargo_capacity': 50,
+                'max_fuel': 60,
+                'hull_thumbnail_class': 'scout',
+                'offense_level': 0.0,
+                'defense_level': 0.0,
+            }),
+        )
+        hull = HullDesign.objects.create(
+            technology=tech,
+            name='Linked Hull',
+            thumbnail_class='scout',
+            cargo_capacity=50,
+            fuel_capacity=60,
+            enabled=True,
+        )
+
+        response = self.client.post(
+            reverse('dj4xol:hull_design_edit', args=[hull.id]),
+            {
+                'technology_id': str(tech.id),
+                'name': 'Linked Hull',
+                'thumbnail_class': 'fighter',
+                'offense_offset': '4',
+                'defense_offset': '5',
+                'ironium_cost': '0',
+                'boranium_cost': '0',
+                'germanium_cost': '0',
+                'resource_x_cost': '0',
+                'resource_y_cost': '0',
+                'resource_z_cost': '0',
+                'cargo_capacity': '140',
+                'fuel_capacity': '180',
+                'cargo_hold_grid_width': '0',
+                'cargo_hold_grid_height': '0',
+                'enabled': 'on',
+                'tech_name': 'Updated Hull Tech',
+                'tech_category': str(self.construction.id),
+                'tech_level': '11',
+                'tech_display_order': '4',
+                'tech_description': 'Updated description.',
+                'tech_enabled': 'on',
+                'slots_json': '[]',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        hull.refresh_from_db()
+        tech.refresh_from_db()
+        self.assertEqual(tech.category_id, self.construction.id)
+        self.assertEqual(tech.level, 11)
+        self.assertEqual(tech.name, 'Updated Hull Tech')
+        self.assertEqual(tech.description, 'Updated description.')
+        params = json.loads(tech.params_json)
+        self.assertEqual(params.get('race_type'), 'SCI')
+        self.assertEqual(params.get('max_cargo_capacity'), 140)
+        self.assertEqual(params.get('max_fuel'), 180)
+        self.assertEqual(params.get('hull_thumbnail_class'), 'fighter')
+        self.assertEqual(params.get('offense_level'), 0.4)
+        self.assertEqual(params.get('defense_level'), 0.5)
 
     def test_debug_actions_drop_debug_prefix(self):
         game = default_game(stars=5, fleets=1)

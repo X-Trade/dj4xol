@@ -135,6 +135,19 @@
     min-width: 0;
 }
 
+.hull-editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.hull-editor-status {
+    min-height: 1.2em;
+    margin-top: 6px;
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
 .hull-editor-canvas {
     position: relative;
     background-color: #0b1020;

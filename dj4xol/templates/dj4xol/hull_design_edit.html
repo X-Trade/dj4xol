@@ -19,6 +19,9 @@
         </div>
         <form method="post" id="hull-editor-form" autocomplete="off">
             {% csrf_token %}
+            {% if technology.pk %}
+            <input type="hidden" name="technology_id" value="{{ technology.id }}">
+            {% endif %}
             <div class="autofill-decoy" aria-hidden="true">
                 <input type="text" name="contact_name" autocomplete="name" tabindex="-1">
                 <input type="tel" name="contact_phone" autocomplete="tel" tabindex="-1">
@@ -48,7 +51,12 @@
                                 </div>
                             </section>
                             <div class="panel-footer">
-                                <button type="button" class="nav-button" id="clear-hull-grid">Clear Grid</button>
+                                <div class="hull-editor-actions">
+                                    <button type="button" class="nav-button" id="shift-hull-left">Shift Left</button>
+                                    <button type="button" class="nav-button" id="shift-hull-right">Shift Right</button>
+                                    <button type="button" class="nav-button" id="clear-hull-grid">Clear Grid</button>
+                                </div>
+                                <div class="hull-editor-status" id="hull-editor-status" aria-live="polite"></div>
                             </div>
                         </div>
                     </div>
@@ -83,6 +91,57 @@
                                                 >
                                                 <span id="hull-thumb-corner" class="tech-thumb-corner" title="Multiple variants (long-press to zoom)" style="display:none;"></span>
                                             </div>
+                                        </div>
+                                        <div class="hull-errors" style="margin-bottom: 12px;">
+                                            <div><strong>{% if technology.pk %}Linked Hull Tech{% else %}New Hull Tech{% endif %}</strong></div>
+                                            {% if technology.pk %}
+                                            <div>{{ technology.category.code }} L{{ technology.level }}: {{ technology.name }}</div>
+                                            {% else %}
+                                            <div>This hull will create a new HULL tech card unless you opened the editor from an existing unlinked hull tech.</div>
+                                            {% endif %}
+                                            {% if not technology.pk and available_hull_techs %}
+                                            <div style="margin-top: 6px;">
+                                                Attach to existing:
+                                                {% for tech_option in available_hull_techs %}
+                                                <a href="{% if hull.pk %}{% url 'dj4xol:hull_design_edit' hull.id %}{% else %}{% url 'dj4xol:hull_design_new' %}{% endif %}?technology={{ tech_option.id }}">{{ tech_option.name }}</a>{% if not forloop.last %}, {% endif %}
+                                                {% endfor %}
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="hull-form-row">
+                                            <label>
+                                                Tech Name
+                                                <input type="text" name="tech_name" value="{{ technology.name|default:'' }}" maxlength="64" required>
+                                            </label>
+                                            <label>
+                                                Tech Category
+                                                <select name="tech_category" required>
+                                                    <option value="">Select category</option>
+                                                    {% for category in tech_categories %}
+                                                    <option value="{{ category.id }}"{% if technology.category_id == category.id %} selected{% endif %}>{{ category.name }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </label>
+                                        </div>
+                                        <div class="hull-form-row">
+                                            <label>
+                                                Tech Level
+                                                <input type="number" name="tech_level" min="0" value="{{ technology.level|default:0 }}" required>
+                                            </label>
+                                            <label>
+                                                Tech Display Order
+                                                <input type="number" name="tech_display_order" value="{{ technology.display_order|default:0 }}">
+                                            </label>
+                                        </div>
+                                        <label>
+                                            Tech Description
+                                            <textarea name="tech_description" rows="3">{{ technology.description|default:'' }}</textarea>
+                                        </label>
+                                        <div class="hull-form-row">
+                                            <label>
+                                                Tech Enabled
+                                                <input type="checkbox" name="tech_enabled" {% if technology.enabled or not technology.pk %}checked{% endif %}>
+                                            </label>
                                         </div>
                                         <label>
                                             Thumbnail Class
@@ -162,7 +221,7 @@
                                                 <input type="number" min="0" max="24" name="cargo_hold_grid_height" id="cargo-hold-grid-height" value="{{ hull.cargo_hold_grid_height|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly');">
                                             </label>
                                             <label>
-                                                Enabled
+                                                Design Enabled
                                                 <input type="checkbox" name="enabled" {% if hull.enabled or not hull.pk %}checked{% endif %}>
                                             </label>
                                         </div>
@@ -217,7 +276,10 @@
             var slotsInput = document.getElementById('slots-json');
             var canvas = document.getElementById('hull-editor-canvas');
             var slotCount = document.getElementById('slot-count');
+            var shiftHullLeftButton = document.getElementById('shift-hull-left');
+            var shiftHullRightButton = document.getElementById('shift-hull-right');
             var clearGridButton = document.getElementById('clear-hull-grid');
+            var hullEditorStatus = document.getElementById('hull-editor-status');
             var form = document.getElementById('hull-editor-form');
             var gridColsInput = document.getElementById('grid-columns');
             var gridRowsInput = document.getElementById('grid-rows');
@@ -387,6 +449,11 @@
                     };
                 }));
                 slotCount.textContent = slots.length + ' slot' + (slots.length === 1 ? '' : 's');
+            }
+
+            function setStatus(message) {
+                if (!hullEditorStatus) return;
+                hullEditorStatus.textContent = message || '';
             }
 
             function slotFootprint(slot) {
@@ -568,6 +635,7 @@
                 };
                 if (!canPlace(newSlot, undefined)) return;
                 slots.push(newSlot);
+                setStatus('');
                 render();
             });
             if (clearGridButton) {
@@ -576,7 +644,55 @@
                     if (!window.confirm('Remove all slots from this hull layout?')) return;
                     slots = [];
                     hideGhost();
+                    setStatus('');
                     render();
+                });
+            }
+
+            function canShiftSlots(deltaX) {
+                if (!slots.length) {
+                    return false;
+                }
+                var maxX = getSubCols() - 2;
+                for (var i = 0; i < slots.length; i += 1) {
+                    var shiftedX = slots[i].x + deltaX;
+                    if (shiftedX < 0 || shiftedX > maxX) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            function shiftSlots(deltaX) {
+                if (!slots.length) {
+                    setStatus('No slots to shift.');
+                    return;
+                }
+                if (!canShiftSlots(deltaX)) {
+                    setStatus(deltaX < 0 ?
+                        'Cannot shift left any further.' :
+                        'Cannot shift right any further.');
+                    return;
+                }
+                slots.forEach(function(slot) {
+                    slot.x += deltaX;
+                });
+                hideGhost();
+                setStatus(deltaX < 0 ?
+                    'Shifted layout left by half a square.' :
+                    'Shifted layout right by half a square.');
+                render();
+            }
+
+            if (shiftHullLeftButton) {
+                shiftHullLeftButton.addEventListener('click', function() {
+                    shiftSlots(-1);
+                });
+            }
+
+            if (shiftHullRightButton) {
+                shiftHullRightButton.addEventListener('click', function() {
+                    shiftSlots(1);
                 });
             }
 

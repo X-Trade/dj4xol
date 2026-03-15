@@ -135,6 +135,13 @@ class DefaultSyncTest(TestCase):
             json.loads(city_hull.params_json).get('race_type'),
             'has has_advanced_hulls',
         )
+        self.assertFalse(
+            Technology.objects.filter(
+                tech_type='HULL',
+                hull_design__isnull=True,
+            ).exists()
+        )
+        self.assertIsNotNone(city_hull.hull_design)
         planetary_disruptor_gate = ResearchLevelPrerequisite.objects.get(
             category__code='CONSTRUCTION',
             level=6,

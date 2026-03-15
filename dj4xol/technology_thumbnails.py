@@ -30,6 +30,16 @@ def _safe_params(tech):
 
 
 def _infer_hull_class(tech, params):
+    try:
+        linked_hull = getattr(tech, 'hull_design', None)
+    except Exception:
+        linked_hull = None
+    hull_class = str(
+        getattr(linked_hull, 'thumbnail_class', '') or ''
+    ).strip().lower()
+    if hull_class:
+        return hull_class
+
     hull_class = str(params.get('hull_thumbnail_class') or '').strip().lower()
     if hull_class:
         return hull_class
