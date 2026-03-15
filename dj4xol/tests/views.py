@@ -1669,6 +1669,53 @@ class TestStarMarkerView(TestCase):
             ).exists()
         )
 
+    def test_set_star_marker_allowed_after_turn_in(self):
+        self.player.turned_in = True
+        self.player.save(update_fields=['turned_in'])
+
+        response = self.client.post(
+            reverse('dj4xol:set_star_marker', args=[self.game.short_id, self.reported_star.short_id]),
+            {'marker_type': 'X'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['marker_type'], 'X')
+        self.assertTrue(
+            PlayerStarMarker.objects.filter(
+                player=self.player,
+                star=self.reported_star,
+                marker_type='X',
+            ).exists()
+        )
+
+    def test_game_turn_lock_keeps_marker_button_active(self):
+        self.player.turned_in = True
+        self.player.save(update_fields=['turned_in'])
+        star = self.player.homeworld
+
+        response = self.client.get(
+            reverse('dj4xol:game', args=[self.game.short_id]),
+            {
+                'x': star.x,
+                'y': star.y,
+                'sel': star.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'class="detail-action-btn marker-btn"',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'class="detail-action-btn rename-control"',
+            html=False,
+        )
+        self.assertContains(response, "'.rename-control'", html=False)
+        self.assertNotContains(response, "'.rename-btn'", html=False)
+
     def test_clear_star_marker(self):
         PlayerStarMarker.objects.create(
             player=self.player,
@@ -2790,6 +2837,13 @@ class TestHullDesignViews(TestCase):
             '?technology=%s' % tech.id,
             html=False,
         )
+
+    def test_hull_design_editor_includes_scanner_slot_type(self):
+        response = self.client.get(reverse('dj4xol:hull_design_new'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '"value": "SCANNER"', html=False)
+        self.assertContains(response, '"label": "Scanner"', html=False)
 
     def test_hull_design_new_creates_linked_hull_technology(self):
         response = self.client.post(

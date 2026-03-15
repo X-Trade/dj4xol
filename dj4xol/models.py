@@ -1820,6 +1820,7 @@ class HullDesignSlot(models.Model):
         ('TORPEDO', 'Torpedo'),
         ('SHIELD', 'Shield'),
         ('ARMOUR', 'Armour'),
+        ('SCANNER', 'Scanner'),
         ('INFRASTRUCTURE', 'Infrastructure'),
         ('ELECTRICAL', 'Electrical'),
         ('MECHANICAL', 'Mechanical'),

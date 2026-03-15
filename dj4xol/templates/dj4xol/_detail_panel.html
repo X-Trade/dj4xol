@@ -32,12 +32,12 @@
         {% if detail.is_owned or detail.can_set_marker %}
         <div class="detail-header-actions">
             {% if detail.can_set_marker %}
-            <button class="rename-btn marker-btn" onclick="toggleMarkerPopover()" title="Map marker">
+            <button class="detail-action-btn marker-btn" onclick="toggleMarkerPopover()" title="Map marker">
                 {% if detail.star_marker_type == 'CIRCLE' %}&#9711;{% elif detail.star_marker_type == 'X' %}&times;{% else %}&#9873;{% endif %}
             </button>
             {% endif %}
             {% if detail.is_owned %}
-            <button class="rename-btn" onclick="showRenamePopover()" title="Rename">&#9998;</button>
+            <button class="detail-action-btn rename-control" onclick="showRenamePopover()" title="Rename">&#9998;</button>
             {% endif %}
         </div>
         {% endif %}
