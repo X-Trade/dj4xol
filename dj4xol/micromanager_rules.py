@@ -350,6 +350,64 @@ def _planning_limit_for_star(player, star, limit):
     return plan_limit
 
 
+def _one_year_planning_budget(player, star, queue_requirements=None):
+    """Return remaining one-year BP/mineral budget after queued work."""
+    queue_requirements = queue_requirements or empty_queue_requirements()
+    growth_reserve = _population_growth_resource_reserve(player, star)
+    mining_output = projected_mining_output(star)
+    budget = {
+        'bp': max(
+            0,
+            calculate_available_buildpoints(star) -
+            int(queue_requirements.get('bp', 0) or 0),
+        ),
+    }
+    for key in ALL_RESOURCE_KEYS:
+        available = (
+            int(getattr(star, '%s_inventory' % key, 0) or 0) +
+            int(mining_output.get(key, 0) or 0) -
+            int(queue_requirements.get(key, 0) or 0)
+        )
+        if key in growth_reserve:
+            available -= int(growth_reserve.get(key, 0) or 0)
+        budget[key] = max(0, available)
+    return budget
+
+
+def _can_afford_from_budget(cost_map, budget, order_type):
+    """Return True when the order fits within the one-year budget."""
+    if not cost_map:
+        return True
+    cost = cost_map.get(order_type, {})
+    if max(0, int(cost.get('bp', 0) or 0)) > int(budget.get('bp', 0) or 0):
+        return False
+    for key in ALL_RESOURCE_KEYS:
+        if (
+            max(0, int(cost.get(key, 0) or 0)) >
+            int(budget.get(key, 0) or 0)
+        ):
+            return False
+    return True
+
+
+def _spend_budget(cost_map, budget, order_type):
+    """Reduce the one-year budget by the positive costs of one order."""
+    if not cost_map:
+        return
+    cost = cost_map.get(order_type, {})
+    budget['bp'] = max(
+        0,
+        int(budget.get('bp', 0) or 0) -
+        max(0, int(cost.get('bp', 0) or 0)),
+    )
+    for key in ALL_RESOURCE_KEYS:
+        budget[key] = max(
+            0,
+            int(budget.get(key, 0) or 0) -
+            max(0, int(cost.get(key, 0) or 0)),
+        )
+
+
 def _has_resource_surplus_for_order(player, star, cost_map, order_type, reserve_factor=2):
     """Return True when the colony can cover queue demand with headroom."""
     if not cost_map:
@@ -465,10 +523,10 @@ def get_micromanager_candidate_orders(
             append_candidate('BUILD_FACTORY')
         if queue_pressure.get('mines') and mine_room:
             append_candidate('BUILD_MINE')
-        if queue_pressure.get('factories'):
-            append_candidate('BUILD_FACTORY')
 
         if mine_room:
+            if queue_pressure.get('factories'):
+                append_candidate('BUILD_FACTORY')
             if current_mines < (current_factories + 1) * 2:
                 append_candidate('BUILD_MINE')
                 append_candidate('BUILD_FACTORY')
@@ -501,6 +559,8 @@ def get_micromanager_candidate_orders(
                     )
                 ):
                     append_candidate('BUILD_LAB')
+            if queue_pressure.get('factories'):
+                append_candidate('BUILD_FACTORY')
             for order_type in filler_order_types:
                 append_candidate(order_type)
             for order_type in level_one_support_candidates:
@@ -647,6 +707,11 @@ def plan_micromanager_orders(
         star,
         queue_requirements=queue_requirements,
     )
+    planning_budget = _one_year_planning_budget(
+        player,
+        star,
+        queue_requirements=queue_requirements,
+    )
     terraform_used = False
     existing = list(preplanned_orders or [])
     for order_type in existing:
@@ -675,8 +740,16 @@ def plan_micromanager_orders(
         )
         if not candidates:
             break
-        selected = candidates[0]
+        selected = None
+        for candidate in candidates:
+            if not _can_afford_from_budget(cost_map, planning_budget, candidate):
+                continue
+            selected = candidate
+            break
+        if selected is None:
+            break
         planned.append(selected)
+        _spend_budget(cost_map, planning_budget, selected)
         apply_projected_order(
             player,
             projected,
@@ -699,3 +772,16 @@ def compress_micromanager_order_runs(order_types):
             continue
         runs[-1][1] += 1
     return [(order_type, quantity) for order_type, quantity in runs]
+
+
+def collapse_micromanager_order_totals(order_types):
+    """Collapse all identical order types into one row, keeping first order."""
+    totals = []
+    positions = {}
+    for order_type in list(order_types or []):
+        if order_type not in positions:
+            positions[order_type] = len(totals)
+            totals.append([order_type, 1])
+            continue
+        totals[positions[order_type]][1] += 1
+    return [(order_type, quantity) for order_type, quantity in totals]
