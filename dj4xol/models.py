@@ -1754,6 +1754,14 @@ class PlayerTechnologyGrant(models.Model):
 
 class HullDesign(models.Model):
     """Staff-authored hull blueprint prototype (no gameplay integration yet)."""
+    technology = models.OneToOneField(
+        'Technology',
+        null=True,
+        blank=True,
+        related_name='hull_design',
+        on_delete=models.CASCADE,
+        limit_choices_to={'tech_type': 'HULL'},
+    )
     name = models.CharField(max_length=64, unique=True)
     thumbnail_class = models.CharField(max_length=32, blank=True, default='scout')
     offense_offset = models.FloatField(default=0.0)

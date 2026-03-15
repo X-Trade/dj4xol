@@ -179,7 +179,7 @@
                     <option value="PATROL"{% if request.GET.order_type == 'PATROL' %} selected{% endif %}>Patrol</option>
                 </select>
                 <label class="repeat-checkbox"><input type="checkbox" name="repeat" id="repeat-checkbox"> &#x21bb;</label>
-                <button type="submit" class="order-add-btn" id="add-order-btn" {% if not dest_star_id and not dest_fleet_id and not dest_salvage_id and not dest_anomaly_id and not dest_x %}disabled{% endif %}>+</button>
+                <button type="submit" class="order-add-btn" id="add-order-btn" {% if not dest_star_id and not dest_fleet_id and not dest_salvage_id and not dest_anomaly_id and not dest_x and not dest_y %}disabled{% endif %}>+</button>
             </div>
 
             <div class="order-params">
@@ -223,6 +223,33 @@
                                     <em>None selected</em>
                                 {% endif %}
                             </span>
+                            {% if destination_targets and destination_targets.display_mode == 'single' %}
+                                {% with move_target=destination_targets.targets.0 %}
+                                <input
+                                    type="hidden"
+                                    id="move-single-target-value"
+                                    data-target="{% if move_target.type == 'space' %}space{% else %}{{ move_target.type }}:{{ move_target.short_id }}{% endif %}"
+                                    data-x="{{ destination_targets.location.0 }}"
+                                    data-y="{{ destination_targets.location.1 }}"
+                                >
+                                {% endwith %}
+                            {% elif destination_targets and destination_targets.display_mode == 'empty' %}
+                                <input
+                                    type="hidden"
+                                    id="move-empty-target-value"
+                                    data-target="space"
+                                    data-x="{{ destination_targets.location.0 }}"
+                                    data-y="{{ destination_targets.location.1 }}"
+                                >
+                            {% elif dest_x and dest_y %}
+                                <input
+                                    type="hidden"
+                                    id="move-empty-target-value"
+                                    data-target="space"
+                                    data-x="{{ dest_x }}"
+                                    data-y="{{ dest_y }}"
+                                >
+                            {% endif %}
                         {% endif %}
                         <a href="?mode=select_destination&fleet={{ detail.fleet_short_id }}&x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&order_type=MOVE" class="dest-set-btn" id="dest-set-link">Set</a>
                     </div>
@@ -655,9 +682,14 @@
         var destSalvage = document.querySelector('input[name="target_salvage"]').value;
         var destAnomaly = document.querySelector('input[name="target_anomaly"]').value;
         var destX = document.querySelector('input[name="target_x"]').value;
+        var destY = document.querySelector('input[name="target_y"]').value;
 
         setOrderAddDisabled(
-            !destStar && !destFleet && !destSalvage && !destAnomaly && !destX
+            !destStar &&
+            !destFleet &&
+            !destSalvage &&
+            !destAnomaly &&
+            !(destX && destY)
         );
     }
 
@@ -1141,11 +1173,38 @@
         if (emptyTargetValue && transferTargetInput.value === 'space') {
             var x = emptyTargetValue.getAttribute('data-x');
             var y = emptyTargetValue.getAttribute('data-y');
-            if (targetXInput && targetYInput) {
+            if (
+                orderType &&
+                orderType.value === 'TRANSFER' &&
+                targetXInput &&
+                targetYInput
+            ) {
                 targetXInput.value = x;
                 targetYInput.value = y;
             }
         }
+    }
+
+    function initializeMoveTarget() {
+        if (moveTargetSelect) {
+            var selected = moveTargetSelect.options[moveTargetSelect.selectedIndex];
+            setMoveTargetInputs(moveTargetSelect.value, selected);
+            return;
+        }
+        var moveTargetValue = readTargetValue(
+            'move-target',
+            'move-single-target-value',
+            'move-empty-target-value'
+        );
+        var optionLike = null;
+        var moveEmptyTarget = document.getElementById('move-empty-target-value');
+        var moveSingleTarget = document.getElementById('move-single-target-value');
+        if (moveTargetValue === 'space' && moveEmptyTarget) {
+            optionLike = moveEmptyTarget;
+        } else if (moveTargetValue === 'space' && moveSingleTarget) {
+            optionLike = moveSingleTarget;
+        }
+        setMoveTargetInputs(moveTargetValue, optionLike);
     }
 
     function initializePatrolTarget() {
@@ -1671,6 +1730,8 @@
 
             if (moveTargetSelect) {
                 setMoveTargetInputs(moveTargetSelect.value, moveTargetSelect.options[moveTargetSelect.selectedIndex]);
+            } else {
+                initializeMoveTarget();
             }
             updateAddButtonState();
         } else if (currentType === 'REFUEL') {
@@ -1722,6 +1783,8 @@
 
             if (moveTargetSelect) {
                 setMoveTargetInputs(moveTargetSelect.value, moveTargetSelect.options[moveTargetSelect.selectedIndex]);
+            } else {
+                initializeMoveTarget();
             }
             updateAddButtonState();
         }
@@ -2142,12 +2205,11 @@
     
     // Initialize on page load (call this last)
     updateSubmitButtonLabels();
-    initializeTransferTarget();
+    initializeMoveTarget();
     initializeColoniseTarget();
     initializeBombTarget();
     initializeRemoteMineTarget();
     initializeMergeTarget();
-    initializeRefuelTarget();
     initializeOrderType();
     updateOrderParamsOverlayTitle();
     if (warpSlider) {

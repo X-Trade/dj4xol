@@ -1,5 +1,6 @@
 """Sync factory default race/research/technology rows from fixtures."""
 
+import json
 import os
 import uuid
 
@@ -61,6 +62,74 @@ def _upsert_technology(Technology, pk, fields):
     for key, value in fields.items():
         setattr(technology, key, value)
     technology.save()
+
+
+def _safe_tech_params(technology):
+    try:
+        data = json.loads(technology.params_json or '{}')
+    except (TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _unique_hull_design_name(HullDesign, base_name, technology):
+    base_name = (base_name or 'Hull').strip() or 'Hull'
+    base_name = base_name[:64]
+    if not HullDesign.objects.filter(name=base_name).exists():
+        return base_name
+
+    suffix = getattr(technology, 'short_id', '') or 'hull'
+    suffix = str(suffix).strip()[:12] or 'hull'
+    trimmed = base_name[: max(1, 64 - len(suffix) - 3)].rstrip()
+    candidate = '%s [%s]' % (trimmed, suffix)
+    if not HullDesign.objects.filter(name=candidate).exists():
+        return candidate
+
+    idx = 2
+    while True:
+        extra = ' %s' % idx
+        trimmed = base_name[: max(1, 64 - len(extra))].rstrip()
+        candidate = '%s%s' % (trimmed, extra)
+        if not HullDesign.objects.filter(name=candidate).exists():
+            return candidate
+        idx += 1
+
+
+def _ensure_hull_design_for_technology(HullDesign, technology):
+    if str(getattr(technology, 'tech_type', '') or '') != 'HULL':
+        return
+    if 'technology_id' not in _table_column_names(HullDesign._meta.db_table):
+        return
+    try:
+        if technology.hull_design:
+            return
+    except Exception:
+        pass
+
+    hull = HullDesign.objects.filter(
+        technology__isnull=True,
+        name=technology.name,
+    ).order_by('id').first()
+    if hull is None:
+        params = _safe_tech_params(technology)
+        hull = HullDesign(
+            technology=technology,
+            name=_unique_hull_design_name(HullDesign, technology.name, technology),
+            thumbnail_class=(
+                str(params.get('hull_thumbnail_class') or '').strip().lower()
+                or 'scout'
+            ),
+            offense_offset=float(params.get('offense_level', 0.0) or 0.0),
+            defense_offset=float(params.get('defense_level', 0.0) or 0.0),
+            cargo_capacity=int(params.get('max_cargo_capacity', 0) or 0),
+            fuel_capacity=int(params.get('max_fuel', 100) or 100),
+            enabled=bool(getattr(technology, 'enabled', True)),
+        )
+        hull.save()
+        return
+
+    hull.technology = technology
+    hull.save(update_fields=['technology'])
 
 
 def _table_column_names(table_name):
@@ -192,6 +261,7 @@ def sync_factory_defaults(force=False, fixture_path=None):
         return
 
     from .models import (
+        HullDesign,
         ResearchCategory,
         ResearchLevelPrerequisite,
         ServerRace,
@@ -230,6 +300,9 @@ def sync_factory_defaults(force=False, fixture_path=None):
             continue
         fields = _normalize_fk_fields(Technology, fields)
         _upsert_technology(Technology, pk, fields)
+
+    for technology in Technology.objects.filter(tech_type='HULL').order_by('id'):
+        _ensure_hull_design_for_technology(HullDesign, technology)
 
     for row in _entries_for('dj4xol.ResearchLevelPrerequisite', fixture_path=fixture_key):
         fields = dict(row.get('fields') or {})
