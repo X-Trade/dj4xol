@@ -116,6 +116,7 @@ class SpectatorViewTest(TestCase):
         self.assertTrue(detail.get('owner_known'))
         self.assertEqual(detail.get('population'), 5000)
         self.assertIn('ironium', detail.get('resources', {}))
+        self.assertContains(response, 'spectator-page')
 
     def test_spectator_basic_detail_includes_fleet_inventory(self):
         star = self.game.stars.first()

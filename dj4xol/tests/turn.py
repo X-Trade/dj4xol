@@ -2372,8 +2372,20 @@ class TestEconomicCalculations(TestCase):
         """Buildpoints equal factories * BUILDPOINTS_PER_FACTORY when fully staffed."""
         game = default_game()
         star = game.stars.first()
+        star.mines = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.defenses = 0
         star.factories = 7
         star.colonists = 7000  # Fully staff the factories
+        star.save(update_fields=[
+            'mines',
+            'labs',
+            'shipyards',
+            'defenses',
+            'factories',
+            'colonists',
+        ])
         self.assertEqual(calculate_available_buildpoints(star), 7 * BUILDPOINTS_PER_FACTORY)
 
     def test_available_buildpoints_respects_manufacturing_multiplier(self):

@@ -77,7 +77,7 @@ class TestLandingPage(TestCase):
         self.assertContains(response, response.context['feature_highlights'][0])
         self.assertContains(response, response.context['roadmap_priorities'][0])
         self.assertContains(response, response.context['roadmap_future'][0])
-        self.assertContains(response, 'Copyright Bradley Gray 2026')
+        self.assertContains(response, 'Copyright &copy; Bradley Gray 2026')
 
     def test_staff_home_shows_server_settings_action(self):
         user, _ = get_default_user()

@@ -29,6 +29,9 @@
 
                         <h4><span class="env-label">v0.17.8</span></h4>
                         <ul class="game-list">
+                            <li>Disabled three-column desktop layout in spectator view.</li>
+                            <li>Added the copyright footer to more pages, with a more consistent and less intrusive styling.</li>
+                            <li>Adjusted two-column desktop panel proportions.</li>
                             <li>Added password reset and change password facilities.</li>
                             <li>Map markers are now editable after turn lock.</li>
                             <li>Added scanner as a hull designer slot type.</li>
@@ -608,5 +611,6 @@
             })();
         </script>
         <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+        {% include 'dj4xol/_site_footer.html' %}
     </body>
 </html>

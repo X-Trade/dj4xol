@@ -58,6 +58,11 @@ A Django-based 4X space strategy game inspired by Stars!
 - Add actionable follow-up items to `todo.txt` when a doc introduces concrete cleanup or feature work.
 - `doc/plan.txt` is mainly reserved for broader future gameplay-device ideas and exploratory design notes, not general implementation cleanup tracking.
 
+## Agent Notes
+
+- `CLAUDE.md` is for project guidance, architecture, and coding conventions.
+- Agents that read this file should also consult [AGENTS.md](/Users/bradleygray/src/dj4xol/AGENTS.md) for the canonical workflow instructions and response-format preferences.
+
 ## Defaults Sync Policy
 
 - Until version `1.0`, expect regular fixture-backed defaults churn. When defaults-backed server race types, server races, research categories, technologies, or research prerequisites change in `dj4xol/fixtures/defaults.yaml`, also add a synchronization migration so `migrate` brings existing databases forward.
