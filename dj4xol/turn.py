@@ -3241,7 +3241,12 @@ class GameTurn():
             target_obj = None
             target_position = None
 
-        effective_warp_speed = self._effective_movement_speed(fleet, warp_speed)
+        if is_intercept:
+            effective_warp_speed = self._raw_movement_speed(warp_speed)
+        else:
+            effective_warp_speed = self._effective_movement_speed(
+                fleet, warp_speed
+            )
 
         if is_intercept and target_position is not None:
             live_distance = linalg.norm(
@@ -3597,7 +3602,10 @@ class GameTurn():
         target_fleet = order.target_fleet
         if not self._fleet_target_visible_to_player(order.fleet.player, target_fleet):
             return order.fleet.x, order.fleet.y
-        target_speed = self._get_fleet_current_speed(target_fleet)
+        target_speed = self._get_fleet_current_speed(
+            target_fleet,
+            ignore_movement_modifiers=True,
+        )
         if target_speed <= 0:
             return target_fleet.x, target_fleet.y
 
@@ -3650,9 +3658,7 @@ class GameTurn():
     def _predict_comet_intercept_destination(self, interceptor, order, comet):
         """Lead comet intercept point based on interceptor speed and comet heading."""
         warp_speed = max(1, int(getattr(order, 'warpfactor', 1) or 1))
-        intercept_speed = max(
-            1.0, float(self._effective_movement_speed(interceptor, warp_speed))
-        )
+        intercept_speed = max(1.0, float(self._raw_movement_speed(warp_speed)))
         ix, iy = int(interceptor.x), int(interceptor.y)
         px, py = int(comet.x), int(comet.y)
         for _ in range(4):
@@ -3683,7 +3689,10 @@ class GameTurn():
         """Return True when interceptor is ahead along target's movement vector."""
         from math import radians, sin, cos
 
-        target_speed = self._get_fleet_current_speed(target_fleet)
+        target_speed = self._get_fleet_current_speed(
+            target_fleet,
+            ignore_movement_modifiers=True,
+        )
         if target_speed <= 0:
             return False
 
@@ -3736,7 +3745,11 @@ class GameTurn():
             return base_speed
         return max(0.0, base_speed + self._fleet_warp_advantage(fleet, warp_speed))
 
-    def _get_fleet_current_speed(self, fleet):
+    def _raw_movement_speed(self, warp_speed):
+        """Return unmodified yearly movement speed from the selected warp only."""
+        return max(0.0, float(warp_speed or 0.0))
+
+    def _get_fleet_current_speed(self, fleet, ignore_movement_modifiers=False):
         """Return fleet's current movement speed based on its orders."""
         order = fleet.orders.order_by('position', 'id').first()
         if not order:
@@ -3753,6 +3766,8 @@ class GameTurn():
             warp_speed = max(0, int(order.warpfactor or 0))
             if warp_speed == WORMHOLE_WARPFACTOR and bool(getattr(fleet, 'has_wormhole_drive', False)):
                 return warp_speed
+            if ignore_movement_modifiers:
+                return self._raw_movement_speed(warp_speed)
             return self._effective_movement_speed(fleet, warp_speed)
         return 0
 
