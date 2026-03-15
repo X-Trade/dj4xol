@@ -136,7 +136,7 @@ from .research import (
 from .micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
     REMOVE_ADMINISTRATION_ORDER_TYPE,
-    compress_micromanager_order_runs,
+    collapse_micromanager_order_totals,
     get_micromanager_managed_order_types,
     remaining_queue_requirements,
     plan_micromanager_orders,
@@ -7060,17 +7060,24 @@ class GameTurn():
                 queue_orders, cost_map
             ),
         )
-        planned_runs = compress_micromanager_order_runs(planned)
+        planned_runs = collapse_micromanager_order_totals(planned)
         if preserved and planned_runs:
-            last_preserved = preserved[-1]
-            first_type, first_quantity = planned_runs[0]
-            if last_preserved.order_type == first_type:
-                last_preserved.quantity = (
-                    int(last_preserved.quantity or 0) +
-                    int(first_quantity or 0)
+            preserved_by_type = {}
+            for order in preserved:
+                if order.order_type not in preserved_by_type:
+                    preserved_by_type[order.order_type] = order
+            remaining_runs = []
+            for order_type, quantity in planned_runs:
+                preserved_order = preserved_by_type.get(order_type)
+                if preserved_order is None:
+                    remaining_runs.append((order_type, quantity))
+                    continue
+                preserved_order.quantity = (
+                    int(preserved_order.quantity or 0) +
+                    int(quantity or 0)
                 )
-                last_preserved.save(update_fields=['quantity'])
-                planned_runs = planned_runs[1:]
+                preserved_order.save(update_fields=['quantity'])
+            planned_runs = remaining_runs
 
         tail_base = star.production_orders.exclude(
             id__in=[order.id for order in editable]
