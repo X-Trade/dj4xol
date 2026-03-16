@@ -59,7 +59,8 @@ body.map-dragging * {
 /* Main game layout rebuilt around a stable wrapper structure. */
 .game-page .game-layout {
     display: grid;
-    gap: 0;
+    row-gap: 0;
+    column-gap: 10px;
     min-height: 0;
     align-content: stretch;
 }
@@ -195,7 +196,8 @@ body.map-dragging * {
     display: grid;
     grid-template-columns: minmax(300px, 475px) minmax(300px, 475px);
     grid-template-rows: minmax(0, 1fr);
-    gap: 0;
+    row-gap: 0;
+    column-gap: 10px;
     justify-content: start;
     align-content: start;
     max-width: 960px;
@@ -223,7 +225,8 @@ body.map-dragging * {
 .spectator-page .columns {
     display: grid;
     grid-template-columns: minmax(600px, 1fr) minmax(300px, 475px);
-    gap: 0;
+    row-gap: 0;
+    column-gap: 10px;
     justify-content: start;
 }
 
