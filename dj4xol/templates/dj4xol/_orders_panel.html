@@ -164,7 +164,7 @@
                 <select id="order-type" class="order-select">
                     <option value="MOVE"{% if not request.GET.order_type or request.GET.order_type == 'MOVE' %} selected{% endif %}>Move to</option>
                     <option value="INTERCEPT"{% if request.GET.order_type == 'INTERCEPT' %} selected{% endif %}>Intercept</option>
-                    <option value="REFUEL"{% if request.GET.order_type == 'REFUEL' %} selected{% endif %}>Refuel</option>
+                    <option value="REFUEL"{% if request.GET.order_type == 'REFUEL' %} selected{% endif %}>Refuel Fleet</option>
                     <option value="TRANSFER"{% if request.GET.order_type == 'TRANSFER' %} selected{% endif %}>Transfer</option>
                     <option value="GIVE"{% if request.GET.order_type == 'GIVE' %} selected{% endif %}>Give Fleet</option>
                     <option value="COLONISE"{% if request.GET.order_type == 'COLONISE' %} selected{% endif %}>Colonise</option>
@@ -371,7 +371,7 @@
                             <span class="dest-display">{{ detail.refuel_targets.default_target.display_label }}</span>
                             <input type="hidden" id="refuel-single-target-value" data-target="{{ detail.refuel_targets.default_target.short_id }}">
                         {% elif detail.refuel_targets.display_mode == 'empty' %}
-                            <span class="dest-display"><em>No friendly fleets here</em></span>
+                            <span class="dest-display"><em>No refuel-eligible fleets here</em></span>
                             <input type="hidden" id="refuel-empty-target-value" data-target="">
                         {% else %}
                             <select id="refuel-target" class="transfer-target-select">
@@ -730,9 +730,11 @@
         }
         if (cloakNote) {
             cloakNote.classList.add('is-hidden');
+            cloakNote.textContent = 'Cloaked at this speed.';
         }
         if (fuelFactoryNote) {
             fuelFactoryNote.classList.add('is-hidden');
+            fuelFactoryNote.textContent = 'Producing fuel at this speed.';
         }
 
         if (state === 'danger') {
@@ -748,6 +750,15 @@
                 riskNote.textContent = 'Danger of damage at this speed.';
                 riskNote.classList.remove('is-hidden');
                 riskNote.classList.add('warp-warning');
+            }
+            return;
+        }
+        if (state === 'cloak-fuel') {
+            if (cloakNote) {
+                cloakNote.textContent = (
+                    'Cloaked and producing fuel at this speed.'
+                );
+                cloakNote.classList.remove('is-hidden');
             }
             return;
         }
@@ -2137,6 +2148,8 @@
                     warpDisplay.classList.add('warp-warning');
                     warpHintState = 'warning';
                 }
+            } else if (cloakedAtSpeed && fuelFactoryAtSpeed) {
+                warpHintState = 'cloak-fuel';
             } else if (cloakedAtSpeed) {
                 warpHintState = 'cloak';
             } else if (fuelFactoryAtSpeed) {
@@ -2214,6 +2227,8 @@
                     interceptSpeedDisplay.classList.add('warp-warning');
                     interceptHintState = 'warning';
                 }
+            } else if (cloakedAtSpeed && fuelFactoryAtSpeed) {
+                interceptHintState = 'cloak-fuel';
             } else if (cloakedAtSpeed) {
                 interceptHintState = 'cloak';
             } else if (fuelFactoryAtSpeed) {

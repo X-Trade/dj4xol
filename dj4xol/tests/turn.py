@@ -3725,6 +3725,73 @@ class TestFleetTransferOrderExecution(TestCase):
             '?x=%s&y=%s&sel=%s&locate=1' % (home.x + 5, home.y + 4, enemy_fleet.short_id),
         )
 
+    def test_refuel_targets_include_neutral_and_warmer_but_not_cold(self):
+        game = default_game(stars=10, fleets=0)
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        player = game.players.first()
+        home = player.homeworld
+
+        source_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Source Fleet',
+            x=home.x,
+            y=home.y,
+            basic_scanner_range=6,
+        )
+        own_target = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Own Target',
+            x=home.x,
+            y=home.y,
+        )
+
+        def add_foreign_target(username, alias, stance):
+            other_user = User.objects.create_user(
+                username,
+                '%s@test.com' % username,
+                'pass',
+            )
+            other_account = Account.objects.create(
+                django_user=other_user,
+                alias=alias,
+            )
+            other_player = GameFactory(game).join_player(
+                other_account,
+                get_default_race(),
+            )
+            PlayerDiplomaticStance.objects.create(
+                player=player,
+                target_player=other_player,
+                stance=stance,
+            )
+            return Fleet.objects.create(
+                game=game,
+                player=other_player,
+                name='%s Fleet' % stance.title(),
+                x=home.x,
+                y=home.y,
+            )
+
+        neutral_fleet = add_foreign_target('refuel_neutral', 'RFN', 'NEUTRAL')
+        warm_fleet = add_foreign_target('refuel_warm', 'RFW', 'WARM')
+        allied_fleet = add_foreign_target('refuel_allied', 'RFA', 'ALLIED')
+        cold_fleet = add_foreign_target('refuel_cold_turn', 'RFC', 'COLD')
+        hostile_fleet = add_foreign_target('refuel_hostile', 'RFH', 'HOSTILE')
+
+        builder = DetailBuilder(game, home.x, home.y, source_fleet.short_id, player)
+        targets = builder.get_refuel_targets()['targets']
+        target_ids = {target['short_id'] for target in targets}
+
+        self.assertIn(own_target.short_id, target_ids)
+        self.assertIn(neutral_fleet.short_id, target_ids)
+        self.assertIn(warm_fleet.short_id, target_ids)
+        self.assertIn(allied_fleet.short_id, target_ids)
+        self.assertNotIn(cold_fleet.short_id, target_ids)
+        self.assertNotIn(hostile_fleet.short_id, target_ids)
+
     def test_coordinate_selection_prefers_player_homeworld_star(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
