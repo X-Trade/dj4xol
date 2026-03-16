@@ -9,7 +9,8 @@ html, body {
     overflow: hidden;
 }
 
-body {
+body.game-page,
+body.spectator-page {
     display: flex;
     flex-direction: column;
 }
@@ -18,47 +19,9 @@ body {
    Game-Specific Panel Layout
    ============================================ */
 
-/* Starmap panel wrapper - default ~65% of left column */
-.column-left > .panel[data-panel="starmap"] {
-    flex: 65 1 200px;
-    display: flex;
-    flex-direction: column;
-    min-height: 200px;
-}
-
-/* Starmap collapses when closed */
-.column-left > .panel[data-panel="starmap"]:not(.open) {
-    flex: 0 0 auto !important;
-    min-height: 0 !important;
-}
-
-/* Messages panel - default ~35% of left column */
-.column-left > .panel[data-panel="messages"] {
-    flex: 35 1 100px;
-}
-
-/* Messages collapses when closed */
-.column-left > .panel[data-panel="messages"]:not(.open) {
-    flex: 0 0 auto !important;
-    min-height: 0 !important;
-}
-
-/* When messages is closed, starmap fills remaining space */
-.column-left:has(.panel[data-panel="messages"]:not(.open)) > .panel[data-panel="starmap"].open {
-    flex: 1 1 100%;
-}
-
-/* When starmap is closed, messages fills remaining space */
-.column-left:has(.panel[data-panel="starmap"]:not(.open)) > .panel[data-panel="messages"].open {
-    flex: 1 1 100%;
-}
-
-/* Columnar layout */
-.columns {
-    display: grid;
-    grid-template-columns: minmax(auto, 600px) minmax(324px, 1fr);
-    grid-template-rows: 1fr;
-    gap: 0 10px;
+/* Shared main-game/spectator viewport containers */
+.game-page .columns,
+.spectator-page .columns {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -67,17 +30,21 @@ body {
 }
 
 /* Prevent accidental text highlight while dragging the starmap. */
-.columns:has(#starmap),
-.columns:has(#starmap) * {
+.game-page .columns,
+.game-page .columns *,
+.spectator-page .columns,
+.spectator-page .columns * {
     -webkit-user-select: none;
     user-select: none;
 }
 
 /* Allow text selection in message and detail content areas only. */
-.columns:has(#starmap) #messages,
-.columns:has(#starmap) #messages *,
-.columns:has(#starmap) #detail,
-.columns:has(#starmap) #detail * {
+.game-page #messages,
+.game-page #messages *,
+.game-page #detail,
+.game-page #detail *,
+.spectator-page #detail,
+.spectator-page #detail * {
     -webkit-user-select: text;
     user-select: text;
 }
@@ -89,61 +56,213 @@ body.map-dragging * {
     user-select: none !important;
 }
 
-.column-left {
-    grid-column: 1;
-    grid-row: 1;
+/* Main game layout rebuilt around a stable wrapper structure. */
+.game-page .game-layout {
+    display: grid;
+    gap: 0;
+    min-height: 0;
+    align-content: stretch;
+}
+
+.game-page .game-map-slot,
+.game-page .game-messages-slot,
+.game-page .game-detail-slot,
+.game-page .game-orders-slot {
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
 }
 
-/* Right column container (holds detail and orders) */
-.column-right {
+.game-page .game-right-stack {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.game-page .game-map-slot > .panel[data-panel="starmap"] {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.game-page .game-layout.two-column,
+.game-page .game-layout.three-column {
+    grid-template-rows: minmax(0, 65fr) minmax(0, 35fr);
+}
+
+.game-page .game-layout.two-column {
+    grid-template-columns: minmax(600px, 1fr) minmax(300px, 475px);
+    justify-content: start;
+}
+
+.game-page .game-layout.three-column {
+    grid-template-columns: minmax(600px, 1fr) minmax(610px, 960px);
+    justify-content: start;
+}
+
+.game-page .game-layout.two-column .game-map-slot,
+.game-page .game-layout.three-column .game-map-slot {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 600px;
+}
+
+.game-page .game-layout.two-column .game-messages-slot,
+.game-page .game-layout.three-column .game-messages-slot {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 600px;
+}
+
+.game-page .game-layout.two-column .game-right-stack,
+.game-page .game-layout.three-column .game-right-stack {
+    grid-column: 2;
+    grid-row: 1 / 3;
+}
+
+.game-page .game-layout.state-map-open.state-messages-open {
+    grid-template-rows: minmax(0, 65fr) minmax(0, 35fr);
+}
+
+.game-page .game-layout.state-map-open:not(.state-messages-open) {
+    grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.game-page .game-layout:not(.state-map-open).state-messages-open {
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+.game-page .game-layout:not(.state-map-open):not(.state-messages-open) {
+    grid-template-rows: auto auto;
+    align-content: start;
+}
+
+.game-page .game-layout.two-column .game-map-slot > .panel.open,
+.game-page .game-layout.two-column .game-messages-slot > .panel.open,
+.game-page .game-layout.three-column .game-map-slot > .panel.open,
+.game-page .game-layout.three-column .game-messages-slot > .panel.open {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.game-page .game-detail-slot > .panel.open,
+.game-page .game-orders-slot > .panel.open,
+.spectator-page .column-detail > .panel.open {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.game-page .game-layout.two-column .game-right-stack {
+    max-width: 475px;
+}
+
+.game-page .game-layout.two-column .game-detail-slot,
+.game-page .game-layout.two-column .game-orders-slot {
+    width: 100%;
+    max-width: 475px;
+    flex: 0 0 auto;
+}
+
+.game-page .game-layout.two-column:not(.has-orders-panel) .game-detail-slot {
+    flex: 1 1 0;
+}
+
+.game-page .game-layout.two-column.state-detail-open.state-orders-open
+    .game-detail-slot {
+    flex: 55 1 0;
+}
+
+.game-page .game-layout.two-column.state-detail-open.state-orders-open
+    .game-orders-slot {
+    flex: 45 1 0;
+}
+
+.game-page .game-layout.two-column.state-detail-open:not(.state-orders-open)
+    .game-detail-slot {
+    flex: 1 1 0;
+}
+
+.game-page .game-layout.two-column:not(.state-detail-open).state-orders-open
+    .game-orders-slot {
+    flex: 1 1 0;
+}
+
+.game-page .game-layout.three-column .game-right-stack {
+    display: grid;
+    grid-template-columns: minmax(300px, 475px) minmax(300px, 475px);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 0;
+    justify-content: start;
+    align-content: start;
+    max-width: 960px;
+}
+
+.game-page .game-layout.three-column .game-detail-slot {
+    grid-column: 1;
+}
+
+.game-page .game-layout.three-column .game-orders-slot {
+    grid-column: 2;
+}
+
+.game-page .game-layout.three-column .game-detail-slot > .panel.open,
+.game-page .game-layout.three-column .game-orders-slot > .panel.open {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.game-page .game-layout:not(.three-column) .game-orders-slot:empty {
+    display: none;
+}
+
+/* Spectator layout remains a simple two-column variant. */
+.spectator-page .columns {
+    display: grid;
+    grid-template-columns: minmax(600px, 1fr) minmax(300px, 475px);
+    gap: 0;
+    justify-content: start;
+}
+
+.spectator-page .column-left {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 600px;
+    overflow: hidden;
+}
+
+.spectator-page .column-right {
     grid-column: 2;
     grid-row: 1;
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
-    min-width: 324px;
+    min-width: 300px;
     max-width: 475px;
 }
 
-/* Detail section within right column */
-.column-detail {
+.spectator-page .column-detail {
     display: flex;
     flex-direction: column;
     min-height: 0;
     flex: 1 1 auto;
+}
+
+.column-detail {
     container-type: inline-size;
     container-name: detail-column;
 }
 
-/* Collapse column when panel inside is closed */
-.column-detail:has(.panel:not(.open)) {
-    flex: 0 0 auto;
-}
-
-/* Orders section within right column */
 .column-orders {
-    display: flex;
-    flex-direction: column;
-    min-height: 40vh;
-    flex: 1 1 0;
-    overflow: hidden;
     container-type: inline-size;
     container-name: orders-column;
-}
-
-/* Collapse column when panel inside is closed */
-.column-orders:has(.panel:not(.open)) {
-    flex: 0 0 auto;
-    min-height: 0;
-}
-
-.column-orders:empty {
-    display: none;
 }
 
 /* Panel minimum heights */
@@ -155,39 +274,7 @@ body.map-dragging * {
     min-height: 0;
 }
 
-/* Wide screens: 3-column layout */
-@media (min-width: 1200px) {
-    .columns {
-        grid-template-columns: minmax(500px, 600px) minmax(324px, 1fr) minmax(324px, 1fr);
-        grid-template-rows: 1fr;
-    }
-
-    .column-right {
-        display: contents;
-        min-width: 0;
-        max-width: none;
-    }
-
-    .column-right > .column-detail {
-        grid-column: 2;
-        grid-row: 1;
-        min-width: 0;
-        max-width: none;
-    }
-
-    .column-right > .column-orders {
-        grid-column: 3;
-        grid-row: 1;
-        min-width: 0;
-        max-width: none;
-    }
-
-    .column-right.no-orders-panel > .column-detail {
-        grid-column: 2 / 4;
-    }
-}
-
-/* Mobile responsive - stack columns */
+/* Mobile responsive - stack columns without display: contents. */
 @media (max-width: 900px),
        ((max-width: 1200px) and (orientation: portrait) and
         (hover: none) and (pointer: coarse)) {
@@ -196,7 +283,8 @@ body.map-dragging * {
         overflow-x: hidden;
     }
 
-    body {
+    body.game-page,
+    body.spectator-page {
         touch-action: pan-y;
     }
 
@@ -205,61 +293,46 @@ body.map-dragging * {
         overflow-y: auto;
     }
 
-    .columns {
-        display: flex;
-        flex-direction: column;
+    .game-page .columns,
+    .spectator-page .columns {
         overflow-y: visible;
         flex: 0 0 auto;
+        padding: 0 8px 12px 8px;
+    }
+
+    .game-page .game-layout,
+    .spectator-page .columns {
+        display: flex;
+        flex-direction: column;
         gap: 0;
     }
 
-    .column-left,
-    .column-right,
-    .column-detail,
-    .column-orders {
-        max-width: none;
+    .game-page .game-map-slot,
+    .game-page .game-right-stack,
+    .game-page .game-messages-slot,
+    .spectator-page .column-left,
+    .spectator-page .column-right,
+    .spectator-page .column-detail {
         width: auto;
+        max-width: none;
         overflow: visible;
         flex: 0 0 auto;
     }
 
-    /* Flatten wrappers so mobile can order panels directly */
-    .column-left,
-    .column-right,
-    .column-detail,
-    .column-orders {
-        display: contents;
-    }
-
-    /* Mobile panel order: starmap, detail, orders, messages */
-    .column-left > .panel[data-panel="starmap"] {
-        order: 1;
-    }
-
-    .column-right .detail-section {
-        order: 2;
-    }
-
-    .column-right .orders-section {
-        order: 3;
-    }
-
-    .column-left > .messages-section {
-        order: 4;
-    }
-
-    /* One-column panel sizing: messages/detail/orders */
-    .messages-section.panel.open {
+    .game-page .messages-section.panel.open,
+    .spectator-page .messages-section.panel.open {
         min-height: 248px;
         max-height: 50vh;
     }
 
-    .detail-section.panel.open {
+    .game-page .detail-section.panel.open,
+    .spectator-page .detail-section.panel.open {
         min-height: 248px;
         max-height: 75vh;
     }
 
-    .orders-section.panel.open {
+    .game-page .orders-section.panel.open,
+    .spectator-page .orders-section.panel.open {
         min-height: 248px;
         max-height: 85vh;
         height: 85vh;
@@ -286,39 +359,24 @@ body.map-dragging * {
         max-height: 75vh;
     }
 
-    /* Reset panel flex rules for mobile - content-based height */
-    .column-left > .panel[data-panel="starmap"],
-    .column-left > .panel[data-panel="messages"],
-    .column-left:has(.panel[data-panel="messages"]:not(.open)) > .panel[data-panel="starmap"].open,
-    .column-left:has(.panel[data-panel="starmap"]:not(.open)) > .panel[data-panel="messages"].open {
-        flex: 0 0 auto;
-        min-height: 0;
-    }
-
-    .messages-section {
-        max-height: 300px;
-    }
-
-    .messages-section.open {
-        min-height: 200px;
-    }
-
-    /* Panels in mobile - auto height, no flex resizing */
-    .panel {
+    .game-page .panel,
+    .spectator-page .panel {
         min-height: 0;
         flex: 0 0 auto !important;
     }
 
-    .panel.open {
+    .game-page .panel.open,
+    .spectator-page .panel.open {
         min-height: 150px;
     }
 
-    .panel[data-panel="starmap"].open {
+    .game-page .panel[data-panel="starmap"].open,
+    .spectator-page .panel[data-panel="starmap"].open {
         min-height: 0;
     }
 
-    /* In mobile, starmap limited to 60% of screen height */
-    .starmap {
+    .game-page .starmap,
+    .spectator-page .starmap {
         flex: 0 0 auto;
         height: 60vh;
         max-height: 60vh;
@@ -333,7 +391,6 @@ body.map-dragging * {
     .order-params-overlay-body {
         padding: 10px;
     }
-
 }
 
 @media (min-width: 1100px) {
@@ -373,12 +430,14 @@ body.map-dragging * {
 
 /* Short viewport - give up and scroll */
 @media (max-height: 500px) {
-    body {
+    body.game-page,
+    body.spectator-page {
         overflow-y: auto;
         height: auto;
     }
 
-    .columns {
+    .game-page .columns,
+    .spectator-page .columns {
         overflow-y: visible;
         flex: 0 0 auto;
     }
@@ -1146,10 +1205,7 @@ body.floating-tooltips-enabled .has-tooltip::after {
 
 /* Destination mode banner */
 .dest-mode-banner {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
+    margin: 0 10px 10px 10px;
     background: #2a5a8a;
     color: #fff;
     padding: 8px 12px;
@@ -1157,6 +1213,7 @@ body.floating-tooltips-enabled .has-tooltip::after {
     align-items: center;
     justify-content: space-between;
     z-index: 100;
+    box-sizing: border-box;
 }
 
 .dest-mode-banner span {
