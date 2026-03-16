@@ -2504,6 +2504,37 @@ class TestDetailPanelReportTiers(TestCase):
 
 
 class TestFleetOrderViews(TestCase):
+    def test_game_view_uses_stable_layout_wrappers(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'game-page', html=False)
+        self.assertContains(
+            response,
+            'class="columns game-layout two-column"',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'class="game-right-stack column-right"',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'class="game-messages-slot column-left"',
+            html=False,
+        )
+
     def test_orders_panel_shows_popout_button(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()

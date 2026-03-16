@@ -27,7 +27,7 @@
             window.turnIsDue = false;
         </script>
     </head>
-    <body{% if user_theme %} class="{{ user_theme }}"{% endif %}>
+    <body class="{% if user_theme %}{{ user_theme }} {% endif %}game-page">
         <div class="title-bar">
             <span class="title">{{ game.name }}</span>
             <span class="year"><span class="year-prefix">Year </span><span class="year-value">{{ game.year }}</span></span>
@@ -64,14 +64,14 @@
             </span>
             {% include 'dj4xol/_nav_menu.html' with current_page='game' %}
         </div>
-        <div class="columns">
-            {% if dest_mode %}
-            <div class="dest-mode-banner">
-                <span>Click a star or location to set destination</span>
-                <a href="?x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&fleet={{ dest_fleet }}&order_type={{ request.GET.order_type|default:'MOVE' }}&warp={{ dest_warp }}" class="dest-cancel">Cancel</a>
-            </div>
-            {% endif %}
-            <div class="column-left">
+        {% if dest_mode %}
+        <div class="dest-mode-banner">
+            <span>Click a star or location to set destination</span>
+            <a href="?x={{ selection.x }}&y={{ selection.y }}&sel={{ selection.sel }}&fleet={{ dest_fleet }}&order_type={{ request.GET.order_type|default:'MOVE' }}&warp={{ dest_warp }}" class="dest-cancel">Cancel</a>
+        </div>
+        {% endif %}
+        <div class="columns game-layout two-column">
+            <div class="game-map-slot column-left">
                 <div class="panel no-transition open" data-panel="starmap">
                     <h2><span>Starmap</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content">
@@ -101,10 +101,9 @@
                         </div>
                     </div>
                 </div>
-                {% include 'dj4xol/_messages_panel.html' %}
             </div>
-            <div class="column-right">
-                <div class="column-detail">
+            <div class="game-right-stack column-right">
+                <div class="game-detail-slot column-detail">
                     {% if detail %}
                         {% include 'dj4xol/_detail_panel.html' %}
                     {% else %}
@@ -118,7 +117,7 @@
                         </div>
                     {% endif %}
                 </div>
-                <div class="column-orders">
+                <div class="game-orders-slot column-orders">
                     {% if detail %}
                         {% if detail.is_owned and detail.is_star %}
                             {% include 'dj4xol/_production_panel.html' %}
@@ -127,6 +126,9 @@
                         {% endif %}
                     {% endif %}
                 </div>
+            </div>
+            <div class="game-messages-slot column-left">
+                {% include 'dj4xol/_messages_panel.html' %}
             </div>
         </div>
         {% if play_cli_web_enabled %}
@@ -318,6 +320,89 @@
 
             window.__startTurnPoll = startTurnPoll;
             startTurnPoll();
+        })();
+        (function syncGameLayoutState() {
+            var layout = document.querySelector('.game-layout');
+            if (!layout) {
+                return;
+            }
+
+            var mobileQuery = window.matchMedia &&
+                window.matchMedia(
+                    '(max-width: 900px), ((max-width: 1200px) and ' +
+                    '(orientation: portrait) and (hover: none) and ' +
+                    '(pointer: coarse))'
+                );
+            var wideQuery = window.matchMedia &&
+                window.matchMedia('(min-width: 1200px)');
+
+            function panelIsOpen(selector) {
+                var panel = document.querySelector(selector);
+                return !!(panel && panel.classList.contains('open'));
+            }
+
+            function syncLayout() {
+                var isSingleColumn = mobileQuery ? mobileQuery.matches : false;
+                var hasOrdersPanel = !!document.querySelector(
+                    '.game-orders-slot .panel'
+                );
+                var isThreeColumn = !isSingleColumn && hasOrdersPanel &&
+                    (!wideQuery || wideQuery.matches);
+
+                layout.classList.toggle('single-column', isSingleColumn);
+                layout.classList.toggle(
+                    'two-column',
+                    !isSingleColumn && !isThreeColumn
+                );
+                layout.classList.toggle('three-column', isThreeColumn);
+                layout.classList.toggle('has-orders-panel', hasOrdersPanel);
+                layout.classList.toggle(
+                    'state-map-open',
+                    panelIsOpen('.game-map-slot .panel')
+                );
+                layout.classList.toggle(
+                    'state-messages-open',
+                    panelIsOpen('.game-messages-slot .panel')
+                );
+                layout.classList.toggle(
+                    'state-detail-open',
+                    panelIsOpen('.game-detail-slot .panel')
+                );
+                layout.classList.toggle(
+                    'state-orders-open',
+                    panelIsOpen('.game-orders-slot .panel')
+                );
+            }
+
+            window.__syncGameLayoutState = syncLayout;
+            syncLayout();
+
+            document.querySelectorAll('.game-layout .panel').forEach(
+                function(panel) {
+                    new MutationObserver(syncLayout).observe(panel, {
+                        attributes: true,
+                        attributeFilter: ['class'],
+                    });
+                }
+            );
+
+            if (mobileQuery) {
+                if (mobileQuery.addEventListener) {
+                    mobileQuery.addEventListener('change', syncLayout);
+                } else if (mobileQuery.addListener) {
+                    mobileQuery.addListener(syncLayout);
+                }
+            }
+
+            if (wideQuery) {
+                if (wideQuery.addEventListener) {
+                    wideQuery.addEventListener('change', syncLayout);
+                } else if (wideQuery.addListener) {
+                    wideQuery.addListener(syncLayout);
+                }
+            }
+
+            window.addEventListener('resize', syncLayout);
         })();
         (function() {
             var isMobile = window.matchMedia &&
