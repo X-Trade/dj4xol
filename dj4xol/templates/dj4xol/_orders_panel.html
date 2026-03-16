@@ -392,8 +392,9 @@
                             <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.move_default_warp|default:5 }}</span>
                         </div>
                         <div class="order-param-hints">
+                            <div id="warp-risk-note" class="order-param-hint is-hidden"></div>
                             <div id="warp-cloak-note" class="order-param-hint{% if not detail.fleet_cargo.move_default_cloaked %} is-hidden{% endif %}">Cloaked at this speed.</div>
-                            <div id="warp-fuel-factory-note" class="order-param-hint{% if not detail.fleet_cargo.move_default_fuel_factory_active %} is-hidden{% endif %}">Fuel factory runs at this speed.</div>
+                            <div id="warp-fuel-factory-note" class="order-param-hint{% if not detail.fleet_cargo.move_default_fuel_factory_active %} is-hidden{% endif %}">Producing fuel at this speed.</div>
                         </div>
                     </div>
                 </div>
@@ -427,8 +428,9 @@
                             <span id="intercept-speed-value" class="warp-value">Warp {{ detail.fleet_cargo.max_safe_warp|default:5 }}</span>
                         </div>
                         <div class="order-param-hints">
+                            <div id="intercept-risk-note" class="order-param-hint is-hidden"></div>
                             <div id="intercept-cloak-note" class="order-param-hint{% if not detail.fleet_cargo.intercept_default_cloaked %} is-hidden{% endif %}">Cloaked at this speed.</div>
-                            <div id="intercept-fuel-factory-note" class="order-param-hint{% if not detail.fleet_cargo.intercept_default_fuel_factory_active %} is-hidden{% endif %}">Fuel factory runs at this speed.</div>
+                            <div id="intercept-fuel-factory-note" class="order-param-hint{% if not detail.fleet_cargo.intercept_default_fuel_factory_active %} is-hidden{% endif %}">Producing fuel at this speed.</div>
                         </div>
                     </div>
                 </div>
@@ -646,6 +648,7 @@
     var warpSlider = document.getElementById('warp-slider');
     var warpDisplay = document.getElementById('warp-value');
     var warpInput = document.getElementById('warpfactor-input');
+    var warpRiskNote = document.getElementById('warp-risk-note');
     var warpCloakNote = document.getElementById('warp-cloak-note');
     var warpFuelFactoryNote = document.getElementById('warp-fuel-factory-note');
     var refuelSlider = document.getElementById('refuel-slider');
@@ -660,6 +663,7 @@
     var interceptSpeedSlider = document.getElementById('intercept-speed-slider');
     var interceptSpeedDisplay = document.getElementById('intercept-speed-value');
     var interceptSpeedInput = document.getElementById('intercept-speed-input');
+    var interceptRiskNote = document.getElementById('intercept-risk-note');
     var interceptCloakNote = document.getElementById('intercept-cloak-note');
     var interceptFuelFactoryNote = document.getElementById(
         'intercept-fuel-factory-note'
@@ -715,6 +719,48 @@
                 'aria-disabled',
                 isDisabled ? 'true' : 'false'
             );
+        }
+    }
+
+    function updateWarpHintState(riskNote, cloakNote, fuelFactoryNote, state) {
+        if (riskNote) {
+            riskNote.classList.add('is-hidden');
+            riskNote.classList.remove('warp-warning', 'warp-danger');
+            riskNote.textContent = '';
+        }
+        if (cloakNote) {
+            cloakNote.classList.add('is-hidden');
+        }
+        if (fuelFactoryNote) {
+            fuelFactoryNote.classList.add('is-hidden');
+        }
+
+        if (state === 'danger') {
+            if (riskNote) {
+                riskNote.textContent = 'Danger of destruction at this speed.';
+                riskNote.classList.remove('is-hidden');
+                riskNote.classList.add('warp-danger');
+            }
+            return;
+        }
+        if (state === 'warning') {
+            if (riskNote) {
+                riskNote.textContent = 'Danger of damage at this speed.';
+                riskNote.classList.remove('is-hidden');
+                riskNote.classList.add('warp-warning');
+            }
+            return;
+        }
+        if (state === 'cloak') {
+            if (cloakNote) {
+                cloakNote.classList.remove('is-hidden');
+            }
+            return;
+        }
+        if (state === 'fuel') {
+            if (fuelFactoryNote) {
+                fuelFactoryNote.classList.remove('is-hidden');
+            }
         }
     }
 
@@ -2079,24 +2125,29 @@
             }
             warpInput.value = val;
             warpDisplay.classList.remove('warp-warning', 'warp-danger');
+            var warpHintState = null;
             if (val === 14 && allowWormhole) {
                 warpDisplay.classList.add('warp-danger');
+                warpHintState = 'danger';
             } else if (val > maxSafeWarp) {
                 if (val >= 10) {
                     warpDisplay.classList.add('warp-danger');
+                    warpHintState = 'danger';
                 } else {
                     warpDisplay.classList.add('warp-warning');
+                    warpHintState = 'warning';
                 }
+            } else if (cloakedAtSpeed) {
+                warpHintState = 'cloak';
+            } else if (fuelFactoryAtSpeed) {
+                warpHintState = 'fuel';
             }
-            if (warpCloakNote) {
-                warpCloakNote.classList.toggle('is-hidden', !cloakedAtSpeed);
-            }
-            if (warpFuelFactoryNote) {
-                warpFuelFactoryNote.classList.toggle(
-                    'is-hidden',
-                    !fuelFactoryAtSpeed
-                );
-            }
+            updateWarpHintState(
+                warpRiskNote,
+                warpCloakNote,
+                warpFuelFactoryNote,
+                warpHintState
+            );
         }
         warpSlider.addEventListener('input', updateWarpDisplay);
         warpSlider.addEventListener('input', function() {
@@ -2154,25 +2205,26 @@
             }
             interceptSpeedInput.value = val;
             interceptSpeedDisplay.classList.remove('warp-warning', 'warp-danger');
+            var interceptHintState = null;
             if (val > maxSafeIntercept) {
                 if (val >= 10) {
                     interceptSpeedDisplay.classList.add('warp-danger');
+                    interceptHintState = 'danger';
                 } else {
                     interceptSpeedDisplay.classList.add('warp-warning');
+                    interceptHintState = 'warning';
                 }
+            } else if (cloakedAtSpeed) {
+                interceptHintState = 'cloak';
+            } else if (fuelFactoryAtSpeed) {
+                interceptHintState = 'fuel';
             }
-            if (interceptCloakNote) {
-                interceptCloakNote.classList.toggle(
-                    'is-hidden',
-                    !cloakedAtSpeed
-                );
-            }
-            if (interceptFuelFactoryNote) {
-                interceptFuelFactoryNote.classList.toggle(
-                    'is-hidden',
-                    !fuelFactoryAtSpeed
-                );
-            }
+            updateWarpHintState(
+                interceptRiskNote,
+                interceptCloakNote,
+                interceptFuelFactoryNote,
+                interceptHintState
+            );
         }
         interceptSpeedSlider.addEventListener('input', updateInterceptDisplay);
         interceptSpeedSlider.addEventListener('input', function() {
