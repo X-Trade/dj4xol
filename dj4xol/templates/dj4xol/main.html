@@ -103,7 +103,7 @@
                 </div>
                 {% include 'dj4xol/_messages_panel.html' %}
             </div>
-            <div class="column-right{% if not detail or not detail.is_owned %} no-orders-panel{% endif %}">
+            <div class="column-right">
                 <div class="column-detail">
                     {% if detail %}
                         {% include 'dj4xol/_detail_panel.html' %}
@@ -118,7 +118,7 @@
                         </div>
                     {% endif %}
                 </div>
-                <div class="column-orders{% if not detail or not detail.is_owned %} is-empty{% endif %}">
+                <div class="column-orders">
                     {% if detail %}
                         {% if detail.is_owned and detail.is_star %}
                             {% include 'dj4xol/_production_panel.html' %}
@@ -129,9 +129,6 @@
                 </div>
             </div>
         </div>
-        <footer class="site-copyright site-copyright-game">
-            Copyright &copy; Bradley Gray 2026
-        </footer>
         {% if play_cli_web_enabled %}
         <div id="play-terminal-overlay" class="play-terminal-overlay" hidden>
             <div class="play-terminal-backdrop"></div>
