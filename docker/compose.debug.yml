@@ -1,0 +1,13 @@
+services:
+  app:
+    command:
+      - sh
+      - -c
+      - >
+        pip install debugpy -t /tmp &&
+        python manage.py migrate --noinput &&
+        python manage.py collectstatic --noinput --clear &&
+        python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678
+        manage.py runserver 0.0.0.0:8000 --nothreading --noreload
+    ports:
+      - "5678:5678"

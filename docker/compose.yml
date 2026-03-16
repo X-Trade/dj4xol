@@ -1,0 +1,30 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/app/Dockerfile
+    command: ["sh", "/srv/dj4xol/docker/app/entrypoint.sh"]
+    volumes:
+      - ..:/srv/dj4xol
+      - staticfiles:/srv/dj4xol/staticfiles
+      - media:/srv/dj4xol/media
+      - sqlite_data:/srv/dj4xol/data
+      - ./settings/local_settings.py:/srv/dj4xol/testsite/local_settings.py:ro
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - app
+    ports:
+      - "${DJ4XOL_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - staticfiles:/srv/dj4xol/staticfiles:ro
+      - media:/srv/dj4xol/media:ro
+
+volumes:
+  staticfiles:
+  media:
+  sqlite_data:
