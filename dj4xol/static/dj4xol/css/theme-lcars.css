@@ -1137,6 +1137,14 @@ input[type="range"]::-webkit-slider-thumb {
     color: #99ccff;
 }
 
+.lcars .order-param-hint.warp-warning {
+    color: #ffcc00;
+}
+
+.lcars .order-param-hint.warp-danger {
+    color: #cc6699;
+}
+
 .collapse-toggle {
     color: #ff9966;
 }

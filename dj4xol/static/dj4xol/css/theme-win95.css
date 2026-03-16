@@ -801,6 +801,14 @@ input[type="range"]::-webkit-slider-thumb {
     color: #800000;
 }
 
+.win95 .order-param-hint.warp-warning {
+    color: #808000;
+}
+
+.win95 .order-param-hint.warp-danger {
+    color: #800000;
+}
+
 /* Messages */
 .panel #messages {
     background: #c0c0c0;

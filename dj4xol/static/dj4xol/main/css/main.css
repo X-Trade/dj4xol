@@ -1681,20 +1681,34 @@ body.order-params-overlay-open {
 }
 
 .order-param-hints {
-    flex: 0 0 calc(100% - var(--order-param-label-width) - 8px);
-    margin-left: calc(var(--order-param-label-width) + 8px);
-    min-height: calc(2 * 1.3em);
+    flex: 1 0 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-left: 0;
+    min-height: 1.3em;
 }
 
 .order-param-hint {
     color: #666;
     font-size: 0.85em;
     line-height: 1.3;
-    min-height: 1.3em;
+    min-height: 0;
+    white-space: nowrap;
+}
+
+.order-param-hint.warp-warning {
+    color: #f7931e;
+    font-weight: bold;
+}
+
+.order-param-hint.warp-danger {
+    color: #e63946;
+    font-weight: bold;
 }
 
 .order-param-hint.is-hidden {
-    visibility: hidden;
+    display: none;
 }
 
 /* Destination display */
