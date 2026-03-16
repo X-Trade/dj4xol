@@ -207,6 +207,12 @@ def normalise_stance(value):
     return value if value in STANCE_LABELS else DEFAULT_STANCE
 
 
+def stance_meets_minimum(value, minimum_stance):
+    value = normalise_stance(value)
+    minimum_stance = normalise_stance(minimum_stance)
+    return STANCE_SCORES.get(value, 0) >= STANCE_SCORES.get(minimum_stance, 0)
+
+
 def stance_label(value):
     return STANCE_LABELS.get(normalise_stance(value), STANCE_LABELS[DEFAULT_STANCE])
 
@@ -324,6 +330,17 @@ def stance_towards(player, other_player, stance_map=None):
 def player_permission_value(player, other_player, permission_key, default=None, stance_map=None):
     stance = stance_towards(player, other_player, stance_map=stance_map)
     return stance_permission_value(stance, permission_key, default=default)
+
+
+def player_can_refuel_fleet(player, other_player, stance_map=None):
+    if not player or not other_player:
+        return False
+    if player.id == other_player.id:
+        return True
+    return stance_meets_minimum(
+        stance_towards(player, other_player, stance_map=stance_map),
+        STANCE_NEUTRAL,
+    )
 
 
 def player_grants_permission(player, other_player, permission_key, stance_map=None):

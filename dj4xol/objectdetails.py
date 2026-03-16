@@ -28,6 +28,7 @@ from dj4xol.salvage_thumbnails import (
     get_salvage_thumbnail,
 )
 from dj4xol.hazard_rules import danger_level_display, object_danger_level
+from dj4xol.diplomacy import build_stance_map, player_can_refuel_fleet
 from dj4xol.research import (
     get_player_administration_profile,
     get_player_colony_defense_level,
@@ -2929,6 +2930,21 @@ class DetailBuilder():
             include_order_types=['MOVE', 'INTERCEPT', 'PATROL'],
         )
         targets = [target for target in targets if target.get('type') == 'fleet']
+        stance_map = build_stance_map(self.player)
+        target_short_ids = [target.get('short_id') for target in targets]
+        fleet_player_map = {
+            fleet.short_id: fleet.player
+            for fleet in self.game.fleets.filter(short_id__in=target_short_ids)
+            .select_related('player')
+        }
+        targets = [
+            target for target in targets
+            if player_can_refuel_fleet(
+                self.player,
+                fleet_player_map.get(target.get('short_id')),
+                stance_map=stance_map,
+            )
+        ]
 
         if not targets:
             return {

@@ -53,12 +53,14 @@ from .diplomacy import (
     STANCE_CHOICES,
     STANCE_COLD,
     STANCE_HOSTILE,
+    build_stance_map,
     build_pending_stance_map,
     combat_chance_modifier_percent,
     combat_chance_percent,
     encountered_players,
     has_encountered_player,
     normalise_stance,
+    player_can_refuel_fleet,
     player_pending_default_stance,
     stance_effect_items,
     stance_label,
@@ -1577,6 +1579,16 @@ def add_fleet_order(request, game_short_id):
                 suppress_autolocate=True,
             )
         if order.target_fleet_id == fleet.id:
+            return _redirect_preserving_selection(
+                request,
+                game,
+                suppress_autolocate=True,
+            )
+        if not player_can_refuel_fleet(
+            fleet.player,
+            order.target_fleet.player,
+            stance_map=build_stance_map(fleet.player),
+        ):
             return _redirect_preserving_selection(
                 request,
                 game,
