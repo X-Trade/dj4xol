@@ -1,3 +1,4 @@
+import re
 import json
 import uuid
 from datetime import timedelta
@@ -2533,6 +2534,76 @@ class TestFleetOrderViews(TestCase):
             response,
             'class="game-messages-slot column-left"',
             html=False,
+        )
+
+    def test_staff_game_view_shows_reset_ui_button_and_helpers(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        user, _ = get_default_user()
+        user.is_staff = True
+        user.save(update_fields=['is_staff'])
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': player.homeworld.x, 'y': player.homeworld.y, 'sel': player.homeworld.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Reset UI')
+        self.assertContains(response, 'clearGameUiState()', html=False)
+        self.assertContains(response, 'window.listGameUiStateKeys = function()', html=False)
+
+    def test_classic_game_view_does_not_load_lcars_stylesheet(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        user, account = get_default_user()
+        account.theme = 'classic'
+        account.save(update_fields=['theme'])
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': player.homeworld.x, 'y': player.homeworld.y, 'sel': player.homeworld.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'theme-lcars.css', html=False)
+
+    def test_staff_debug_actions_keep_detail_panel_markup_balanced(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        user, _ = get_default_user()
+        user.is_superuser = True
+        user.is_staff = True
+        user.save(update_fields=['is_superuser', 'is_staff'])
+        ServerSettings.objects.update_or_create(
+            key='enable_debug_actions',
+            defaults={'value': 'True'},
+        )
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {
+                'x': player.homeworld.x,
+                'y': player.homeworld.y,
+                'sel': player.homeworld.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'debug-actions panel-footer', html=False)
+        self.assertContains(response, 'Create Fleet')
+        self.assertRegex(
+            response.content.decode('utf-8'),
+            re.compile(
+                r'<div class="debug-actions panel-footer">.*?</div>\s*</div>\s*</div>\s*<script>',
+                re.S,
+            ),
         )
 
     def test_orders_panel_shows_popout_button(self):

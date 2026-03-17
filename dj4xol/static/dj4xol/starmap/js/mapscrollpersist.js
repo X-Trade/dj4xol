@@ -1543,10 +1543,13 @@ $(document).ready(function() {
     var $columns = $('.columns');
     if ($columns.length) {
         var variants = ['lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3'];
+        var useLcarsVariants = document.body.classList.contains('lcars');
         $columns.find('.panel').each(function(index) {
             var $panel = $(this);
             $panel.removeClass('lcars-variant-1 lcars-variant-2 lcars-variant-3');
-            $panel.addClass(variants[index % variants.length]);
+            if (useLcarsVariants) {
+                $panel.addClass(variants[index % variants.length]);
+            }
         });
     }
 

@@ -15,6 +15,11 @@ body.spectator-page {
     flex-direction: column;
 }
 
+.game-page .title-bar .debug-ui-reset-btn {
+    min-width: auto;
+    white-space: nowrap;
+}
+
 /* ============================================
    Game-Specific Panel Layout
    ============================================ */
@@ -72,6 +77,8 @@ body.map-dragging * {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    min-width: 0;
+    width: 100%;
     overflow: hidden;
 }
 
@@ -81,6 +88,8 @@ body.map-dragging * {
     justify-content: flex-start;
     gap: 0;
     min-height: 0;
+    min-width: 0;
+    width: 100%;
     overflow: hidden;
 }
 
@@ -159,12 +168,15 @@ body.map-dragging * {
 
 .game-page .game-layout.two-column .game-right-stack {
     max-width: 475px;
+    min-width: 0;
+    width: 100%;
 }
 
 .game-page .game-layout.two-column .game-detail-slot,
 .game-page .game-layout.two-column .game-orders-slot {
     width: 100%;
     max-width: 475px;
+    min-width: 0;
     flex: 0 0 auto;
 }
 
@@ -201,14 +213,18 @@ body.map-dragging * {
     justify-content: start;
     align-content: start;
     max-width: 960px;
+    min-width: 0;
+    width: 100%;
 }
 
 .game-page .game-layout.three-column .game-detail-slot {
     grid-column: 1;
+    min-width: 0;
 }
 
 .game-page .game-layout.three-column .game-orders-slot {
     grid-column: 2;
+    min-width: 0;
 }
 
 .game-page .game-layout.three-column .game-detail-slot > .panel.open,
@@ -463,6 +479,7 @@ body.map-dragging * {
     height: 64px;
     min-height: 64px;
     max-height: 64px;
+    min-width: 0;
     overflow: hidden;
     border-right: none;
     padding-right: 8px;
@@ -647,11 +664,13 @@ body.map-dragging * {
 .orders-section .panel-content {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
 }
 
 .orders-section .panel-content.panel-stack {
     max-height: 100%;
+    min-width: 0;
 }
 
 .orders-list {
@@ -718,6 +737,7 @@ body.turned-in.lcars .order-params::after {
 
 .order-select {
     flex: 1;
+    min-width: 0;
 }
 
 .no-orders {
@@ -730,6 +750,7 @@ body.turned-in.lcars .order-params::after {
     display: flex;
     flex-direction: column;
     min-height: 45px;
+    min-width: 0;
     overflow: hidden;
 }
 
@@ -1143,6 +1164,9 @@ body.turned-in.lcars .order-params::after {
     padding: 4px 8px;
     margin: 0.5em 0;
     cursor: pointer;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 /* Custom tooltips */
