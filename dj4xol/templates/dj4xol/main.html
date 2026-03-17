@@ -62,6 +62,14 @@
                     </form>
                 {% endif %}
             </span>
+            {% if player.account.django_user.is_staff %}
+            <button type="button"
+                    class="debug-ui-reset-btn"
+                    onclick="clearGameUiState()"
+                    title="Clear saved panel, map, and mobile layout state for this game view">
+                Reset UI
+            </button>
+            {% endif %}
             {% include 'dj4xol/_nav_menu.html' with current_page='game' %}
         </div>
         {% if dest_mode %}
@@ -160,6 +168,79 @@
                     hamburger.classList.remove('open');
                 }
             });
+        })();
+        (function gameUiStateTools() {
+            function getPathScopedStorageKeys(storage, prefixes, exactKeys) {
+                var keys = [];
+                if (!storage) {
+                    return keys;
+                }
+                for (var i = 0; i < storage.length; i += 1) {
+                    var key = storage.key(i);
+                    if (!key) {
+                        continue;
+                    }
+                    if (exactKeys.indexOf(key) >= 0) {
+                        keys.push(key);
+                        continue;
+                    }
+                    for (var j = 0; j < prefixes.length; j += 1) {
+                        if (key.indexOf(prefixes[j]) === 0) {
+                            keys.push(key);
+                            break;
+                        }
+                    }
+                }
+                return keys.sort();
+            }
+
+            function getGameUiStateKeys() {
+                var path = window.location.pathname;
+                return {
+                    local: getPathScopedStorageKeys(
+                        window.localStorage,
+                        [
+                            'starmap:' + path,
+                            'pageScroll:' + path,
+                            'mobileDestinationFlow:' + path,
+                        ],
+                        []
+                    ),
+                    session: getPathScopedStorageKeys(
+                        window.sessionStorage,
+                        [
+                            'play-terminal:' + path,
+                        ],
+                        []
+                    ),
+                };
+            }
+
+            window.listGameUiStateKeys = function() {
+                return getGameUiStateKeys();
+            };
+
+            window.clearGameUiState = function() {
+                var keys = getGameUiStateKeys();
+                var localKeys = keys.local || [];
+                var sessionKeys = keys.session || [];
+                var total = localKeys.length + sessionKeys.length;
+                if (!window.confirm(
+                    'Clear saved UI state for this game view' +
+                    (total ? ' (' + total + ' key' +
+                        (total === 1 ? '' : 's') + ')' : '') +
+                    '?'
+                )) {
+                    return;
+                }
+                localKeys.forEach(function(key) {
+                    window.localStorage.removeItem(key);
+                });
+                sessionKeys.forEach(function(key) {
+                    window.sessionStorage.removeItem(key);
+                });
+                window.location.reload();
+            };
         })();
         (function() {
             function applyTurnLock() {
