@@ -4,14 +4,16 @@
  */
 
 /* Full viewport layout */
-html, body {
-    height: 100vh;
-    height: 100dvh;
-    overflow: hidden;
+html,
+body {
+    min-height: 100%;
 }
 
 body.game-page,
 body.spectator-page {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
 }
@@ -293,19 +295,23 @@ body.map-dragging * {
 @media (max-width: 900px),
        ((max-width: 1200px) and (orientation: portrait) and
         (hover: none) and (pointer: coarse)) {
-    html, body {
+    body.game-page,
+    body.spectator-page {
         font-size: 20px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        height: auto;
+        min-height: 100vh;
+        min-height: 100dvh;
+    }
+
+    html {
         overflow-x: hidden;
     }
 
     body.game-page,
     body.spectator-page {
         touch-action: pan-y;
-    }
-
-    html, body {
-        height: auto;
-        overflow-y: auto;
     }
 
     .game-page .columns,
