@@ -23,26 +23,25 @@
                     <h2><span>Help Index</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
                         <section class="panel-scrollable-list">
-                        <p>Choose a help tool:</p>
                         <ul class="game-list">
-                            <li><a href="{% url 'dj4xol:help_exploration' %}">101: Exploration &amp; First Turns</a> Start scouting nearby stars, understand scanners, and find your first expansion targets.</li>
-                            <li><a href="{% url 'dj4xol:help_colonising' %}">102: How to Colonise</a> Load colonists and minerals, move to a new world, and queue a colonise order safely.</li>
-                            <li><a href="{% url 'dj4xol:help_colony_management' %}">103: Colony Management Basics</a> Prioritise mines, factories, labs, and shipyards while your empire is still small.</li>
-                            <li><a href="{% url 'dj4xol:help_mining_salvage' %}">104: Mining, Salvage &amp; Asteroids</a> Learn direct mineral transfer, remote mining, and what different salvage sites are for.</li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_exploration' %}" class="game-entry-title">101: Exploration &amp; First Turns</a><span class="game-meta">Start scouting nearby stars, understand scanners, and find your first expansion targets.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_colonising' %}" class="game-entry-title">102: How to Colonise</a><span class="game-meta">Load colonists and minerals, move to a new world, and queue a colonise order safely.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_colony_management' %}" class="game-entry-title">103: Colony Management Basics</a><span class="game-meta">Prioritise mines, factories, labs, and shipyards while your empire is still small.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_mining_salvage' %}" class="game-entry-title">104: Mining, Salvage &amp; Asteroids</a><span class="game-meta">Learn direct mineral transfer, remote mining, and what different salvage sites are for.</span></div></li>
                             {% for page in custom_help_pages %}
-                            <li><a href="{% url 'dj4xol:custom_help_page' page.slug %}">{{ page.title }}</a> {{ page.summary|default:'Custom server help page.' }}</li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:custom_help_page' page.slug %}" class="game-entry-title">{{ page.title }}</a><span class="game-meta">{{ page.summary|default:'Custom server help page.' }}</span></div></li>
                             {% endfor %}
-                            <li><a href="{% url 'dj4xol:help_fleet_composition' %}">Fleet Composition</a> See how hulls, tech modifiers, fuel, and commissioning shape fleet stats (MVP, subject to change).</li>
-                            <li><a href="{% url 'dj4xol:help_research_labs' %}">Research &amp; Labs</a> Understand lab RP, category allocation, and research unlock flow.</li>
-                            <li><a href="{% url 'dj4xol:help_anomalies' %}">Anomalies</a> Learn anomaly types, map behavior, and exploration outcomes.</li>
-                            <li><a href="{% url 'dj4xol:help_secret_resources' %}">Unknown Substances</a> Notes on the rare materials that sit outside normal mineral tables.</li>
-                            <li><a href="{% url 'dj4xol:help_space_combat' %}">Space Combat</a> Learn how fleet strength, damage, and battle outcomes are resolved.</li>
-                            <li><a href="{% url 'dj4xol:help_diplomacy' %}">Diplomacy</a> See how diplomatic stances affect combat, defenses, shipyard access, and shared intelligence.</li>
-                            <li><a href="{% url 'dj4xol:help_invasion' %}">Invasion</a> Understand colony defence fire, ground-force arithmetic, and capture outcomes.</li>
-                            <li><a href="{% url 'dj4xol:help_colony' %}">Colony Calculator</a> Simulate growth, productivity, and resource output.</li>
-                            <li><a href="{% url 'dj4xol:help_race_types' %}">Race Type Browser</a> Browse server race types and compare their effects.</li>
-                            <li><a href="{% url 'dj4xol:help_technology' %}">Technology Directory</a> Browse configured technologies by category and level.</li>
-                            <li><a href="{% url 'dj4xol:help_version_history' %}">Version History</a> See a summary of recent development changes.</li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_fleet_composition' %}" class="game-entry-title">Fleet Composition</a><span class="game-meta">See how hulls, tech modifiers, fuel, and commissioning shape fleet stats (MVP, subject to change).</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_research_labs' %}" class="game-entry-title">Research &amp; Labs</a><span class="game-meta">Understand lab RP, category allocation, and research unlock flow.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_anomalies' %}" class="game-entry-title">Anomalies</a><span class="game-meta">Learn anomaly types, map behavior, and exploration outcomes.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_secret_resources' %}" class="game-entry-title">Unknown Substances</a><span class="game-meta">Notes on the rare materials that sit outside normal mineral tables.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_space_combat' %}" class="game-entry-title">Space Combat</a><span class="game-meta">Learn how fleet strength, damage, and battle outcomes are resolved.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_diplomacy' %}" class="game-entry-title">Diplomacy</a><span class="game-meta">See how diplomatic stances affect combat, defenses, shipyard access, and shared intelligence.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_invasion' %}" class="game-entry-title">Invasion</a><span class="game-meta">Understand colony defence fire, ground-force arithmetic, and capture outcomes.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_colony' %}" class="game-entry-title">Colony Calculator</a><span class="game-meta">Simulate growth, productivity, and resource output.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_race_types' %}" class="game-entry-title">Race Type Browser</a><span class="game-meta">Browse server race types and compare their effects.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_technology' %}" class="game-entry-title">Technology Directory</a><span class="game-meta">Browse configured technologies by category and level.</span></div></li>
+                            <li><div class="game-entry-main"><a href="{% url 'dj4xol:help_version_history' %}" class="game-entry-title">Version History</a><span class="game-meta">See a summary of recent development changes.</span></div></li>
                         </ul>
                         </section>
                     </div>

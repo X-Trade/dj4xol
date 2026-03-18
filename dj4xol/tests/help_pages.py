@@ -33,6 +33,8 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'Space Combat')
         self.assertContains(response, 'Diplomacy')
         self.assertContains(response, 'Invasion')
+        self.assertContains(response, 'class="game-entry-title"', html=False)
+        self.assertContains(response, 'class="game-meta"', html=False)
 
         content = response.content.decode('utf-8')
         self.assertLess(

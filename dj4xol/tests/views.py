@@ -49,10 +49,12 @@ from ..diplomatic_contracts import (
     accept_contract,
     apply_world_resource_delivery,
     decline_contract,
+    extend_contract,
     format_contract_statement,
     format_contract_summary,
     grant_player_technology,
     mark_countered,
+    refresh_contract_integrity,
     vague_threat_phrase,
     VAGUE_THREAT_PHRASES,
 )
@@ -3420,8 +3422,8 @@ class TestDiplomacyView(TestCase):
             status='SENT',
             sent_year=game.year,
             expires_year=game.year + 24,
-            request_clause_type='STANCE',
-            request_stance='WARM',
+            request_clause_type='RESOURCE_TO_WORLD',
+            request_ironium=25,
             offer_clause_type='NOTHING',
         )
 
@@ -4409,7 +4411,7 @@ class TestDiplomacyView(TestCase):
             include_sender_account=False,
         )
 
-        self.assertIn('demands that we do nothing, in exchange they grant us technology', summary.lower())
+        self.assertIn('demand that we do nothing, in exchange they grant us technology', summary.lower())
         self.assertIn(tech.name, summary)
         self.assertNotIn('demands technology', summary.lower())
 
@@ -4449,7 +4451,7 @@ class TestDiplomacyView(TestCase):
             include_sender_account=False,
         )
 
-        self.assertIn('proposes that we give them a fleet carrying 100kt Germanium'.lower(), summary.lower())
+        self.assertIn('propose that we give them a fleet carrying 100kt Germanium'.lower(), summary.lower())
         self.assertIn('in exchange they grant us technology', summary.lower())
         self.assertIn(tech.name, summary)
 
@@ -4488,7 +4490,7 @@ class TestDiplomacyView(TestCase):
             include_sender_account=False,
         )
 
-        self.assertIn('testers demands that we do nothing, in exchange they grant us technology', statement.lower())
+        self.assertIn('testers demand that we do nothing, in exchange they grant us technology', statement.lower())
         self.assertIn(tech.name, statement)
         self.assertNotIn('(admin)', statement)
 
@@ -4580,8 +4582,8 @@ class TestDiplomacyView(TestCase):
         self.assertIn(phrase, VAGUE_THREAT_PHRASES)
         self.assertEqual(phrase, vague_threat_phrase(contract))
         self.assertIn(('we demand that threat receivers do nothing, or else we %s.' % phrase).lower(), sender_statement.lower())
-        self.assertIn(('testers demands that we do nothing, or else they %s.' % phrase).lower(), recipient_statement.lower())
-        self.assertIn(('demands that we do nothing, or else they %s.' % phrase).lower(), summary.lower())
+        self.assertIn(('testers demand that we do nothing, or else they %s.' % phrase).lower(), recipient_statement.lower())
+        self.assertIn(('demand that we do nothing, or else they %s.' % phrase).lower(), summary.lower())
 
     def test_diplomacy_form_allows_or_else_with_do_nothing_request(self):
         game = default_game(stars=5, fleets=0)
@@ -4677,6 +4679,148 @@ class TestDiplomacyView(TestCase):
             target_player=other_player,
         )
         self.assertEqual(stance.pending_stance, 'HOSTILE')
+
+    def test_accept_contract_status_messages_use_correct_perspective_and_priority(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_accept_msg', 'diplo_accept_msg@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DAM')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Accept Race',
+            plural_name='Accept Races',
+            race_type=race_type,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='RESOURCE_TO_WORLD',
+            request_ironium=25,
+            offer_clause_type='NOTHING',
+        )
+
+        ok, _message = accept_contract(contract, other_player)
+
+        self.assertTrue(ok)
+        sender_msg = player.messages.filter(category='DIPLOMATIC').latest('id')
+        recipient_msg = other_player.messages.filter(category='DIPLOMATIC').latest('id')
+        self.assertTrue(sender_msg.priority)
+        self.assertTrue(recipient_msg.priority)
+        self.assertIn('Diplomatic request accepted by Accept Races:', sender_msg.message)
+        self.assertIn('We accepted diplomatic request from Testers:', recipient_msg.message)
+
+    def test_decline_contract_status_messages_use_correct_perspective_and_priority(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_decline_msg', 'diplo_decline_msg@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DDM')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Decline Race',
+            plural_name='Decline Races',
+            race_type=race_type,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='COLD',
+            offer_clause_type='NOTHING',
+        )
+
+        ok, _message = decline_contract(contract, other_player)
+
+        self.assertTrue(ok)
+        sender_msg = player.messages.filter(category='DIPLOMATIC').latest('id')
+        recipient_msg = other_player.messages.filter(category='DIPLOMATIC').latest('id')
+        self.assertTrue(sender_msg.priority)
+        self.assertTrue(recipient_msg.priority)
+        self.assertIn('Diplomatic request declined by Decline Races:', sender_msg.message)
+        self.assertIn('We declined diplomatic request from Testers:', recipient_msg.message)
+
+    def test_expired_contract_status_messages_use_correct_perspective_and_priority(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_expire_msg', 'diplo_expire_msg@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DEM')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Expire Race',
+            plural_name='Expire Races',
+            race_type=race_type,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year - 1,
+            request_clause_type='STANCE',
+            request_stance='NEUTRAL',
+            offer_clause_type='NOTHING',
+        )
+
+        refresh_contract_integrity(game)
+
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_EXPIRED)
+        sender_msg = player.messages.filter(category='DIPLOMATIC').latest('id')
+        recipient_msg = other_player.messages.filter(category='DIPLOMATIC').latest('id')
+        self.assertTrue(sender_msg.priority)
+        self.assertTrue(recipient_msg.priority)
+        self.assertIn('Diplomatic request to Expire Races expired:', sender_msg.message)
+        self.assertIn('Diplomatic request from Testers expired:', recipient_msg.message)
+
+    def test_extend_contract_helper_increases_expiry(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_extend_helper', 'diplo_extend_helper@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DEH')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Extend Race',
+            plural_name='Extend Races',
+            race_type=race_type,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='WARM',
+            offer_clause_type='NOTHING',
+        )
+
+        ok, message = extend_contract(contract, player, 6)
+
+        self.assertTrue(ok)
+        self.assertEqual(message, 'Request extended.')
+        contract.refresh_from_db()
+        self.assertEqual(contract.expires_year, game.year + 30)
 
     def test_diplomacy_can_send_technology_request_and_offer_from_form(self):
         game = default_game(stars=5, fleets=0)
@@ -5218,7 +5362,7 @@ class TestDiplomacyView(TestCase):
 
         self.assertEqual(accept_response.status_code, 200)
         self.assertContains(accept_response, 'accepting this request will transfer the colony immediately')
-    
+
     def test_diplomacy_homeworld_label_and_warning_show_when_offering_homeworld(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
@@ -5927,6 +6071,122 @@ class TestDiplomacyView(TestCase):
 
         self.assertContains(response, 'Status: <span class="diplomacy-contract-status-value">Received</span>', html=True)
         self.assertNotContains(response, 'Status: <span class="diplomacy-contract-status-value">Sent</span>', html=True)
+
+    def test_outgoing_sent_contract_shows_extend_controls(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_extend_controls', 'diplo_extend_controls@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DEC')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Extend Control Race',
+            plural_name='Extend Control Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='WARM',
+            offer_clause_type='NOTHING',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '>Extend</button>', html=False)
+        self.assertContains(response, 'contract-extend-%s' % contract.short_id)
+        self.assertContains(response, 'name="extend_years"', html=False)
+
+    def test_diplomacy_view_can_extend_outgoing_sent_contract(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_extend_post', 'diplo_extend_post@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DEP')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Extend Post Race',
+            plural_name='Extend Post Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='WARM',
+            offer_clause_type='NOTHING',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'extend_contract',
+                'contract_id': contract.short_id,
+                'extend_years': '6',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        contract.refresh_from_db()
+        self.assertEqual(contract.expires_year, game.year + 30)
 
     def test_mark_countered_uses_recipient_perspective_in_recipient_message(self):
         game = default_game(stars=5, fleets=0)

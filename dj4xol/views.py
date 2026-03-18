@@ -75,6 +75,7 @@ from .diplomatic_contracts import (
     diplomatic_actions_locked,
     ensure_specific_colony_report,
     ensure_specific_fleet_report,
+    extend_contract,
     format_contract_statement,
     format_contract_summary,
     mark_countered,
@@ -3666,7 +3667,7 @@ def diplomacy(request, game_short_id):
                 ) and current_stance == STANCE_ALLIED
                 row.save(update_fields=['reveal_cloaked_fleets'])
                 return redirect(_diplomacy_redirect_url(game.short_id, target=selected_target))
-        elif action in ('accept_contract', 'decline_contract', 'revoke_contract'):
+        elif action in ('accept_contract', 'decline_contract', 'revoke_contract', 'extend_contract'):
             contract = DiplomaticContract.objects.filter(
                 game=game,
                 short_id=request.POST.get('contract_id'),
@@ -3675,6 +3676,8 @@ def diplomacy(request, game_short_id):
                 ok, result = accept_contract(contract, player)
             elif action == 'decline_contract':
                 ok, result = decline_contract(contract, player)
+            elif action == 'extend_contract':
+                ok, result = extend_contract(contract, player, request.POST.get('extend_years'))
             else:
                 ok, result = revoke_contract(contract, player)
             if ok:
@@ -3830,6 +3833,7 @@ def diplomacy(request, game_short_id):
                 'can_decline': (contract.recipient_id == player.id and contract.status == DiplomaticContract.STATUS_SENT and not locked),
                 'can_counter': (contract.recipient_id == player.id and contract.status == DiplomaticContract.STATUS_SENT and not locked),
                 'can_revoke': (contract.sender_id == player.id and contract.status == DiplomaticContract.STATUS_SENT and not locked),
+                'can_extend': (contract.sender_id == player.id and contract.status == DiplomaticContract.STATUS_SENT and not locked),
                 'accept_homeworld_warning': bool(
                     contract.recipient_id == player.id and
                     contract.status == DiplomaticContract.STATUS_SENT and

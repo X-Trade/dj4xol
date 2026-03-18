@@ -147,6 +147,27 @@
     font-size: 0.92em;
 }
 
+.diplomacy-inline-toggle {
+    font: inherit;
+}
+
+.diplomacy-contract-extend-form {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+
+.diplomacy-contract-extend-form label {
+    font-size: 0.92em;
+    white-space: nowrap;
+}
+
+.diplomacy-contract-extend-form input {
+    width: 72px;
+    font: inherit;
+}
+
 .diplomacy-compose-form {
     display: grid;
     gap: 8px;
