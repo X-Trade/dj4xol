@@ -79,6 +79,12 @@ body.profile-page .columns.two-column .panel.open .panel-scrollable-text {
     box-sizing: border-box;
 }
 
+.onboarding.two-panel-page .columns {
+    flex: 1 1 auto;
+    height: auto;
+    padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+}
+
 .onboarding .column {
     display: flex;
     flex-direction: column;
