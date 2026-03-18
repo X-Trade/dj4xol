@@ -544,6 +544,28 @@ def _create_contract_status_message(player, contract, text, priority=False):
     return msg
 
 
+def _contract_status_message_text(contract, viewer, event_key, summary):
+    if not contract or not viewer:
+        return summary
+    sender = getattr(contract, 'sender', None)
+    recipient = getattr(contract, 'recipient', None)
+    sender_name = getattr(sender, 'plural_name', None) or getattr(sender, 'name', 'Unknown')
+    recipient_name = getattr(recipient, 'plural_name', None) or getattr(recipient, 'name', 'Unknown')
+    if event_key == 'accepted':
+        if getattr(viewer, 'id', None) == getattr(sender, 'id', None):
+            return 'Diplomatic request accepted by %s: %s' % (recipient_name, summary)
+        return 'We accepted diplomatic request from %s: %s' % (sender_name, summary)
+    if event_key == 'declined':
+        if getattr(viewer, 'id', None) == getattr(sender, 'id', None):
+            return 'Diplomatic request declined by %s: %s' % (recipient_name, summary)
+        return 'We declined diplomatic request from %s: %s' % (sender_name, summary)
+    if event_key == 'expired':
+        if getattr(viewer, 'id', None) == getattr(sender, 'id', None):
+            return 'Diplomatic request to %s expired: %s' % (recipient_name, summary)
+        return 'Diplomatic request from %s expired: %s' % (sender_name, summary)
+    return 'Diplomatic request %s: %s' % (event_key, summary)
+
+
 def grant_player_technology(player, technology, source_contract=None, granted_by_player=None, year=None):
     if not player or technology is None:
         return None
@@ -1102,23 +1124,29 @@ def _expire_contract(contract, year, apply_consequence=False):
     contract.save(update_fields=['status', 'handled_year', 'updated_at'])
     if apply_consequence:
         _apply_condition_consequence(contract)
-    summary = format_contract_summary(
+    sender_summary = format_contract_summary(
         contract,
         viewer=contract.sender,
+        include_links=False,
+        include_sender_account=False,
+    )
+    recipient_summary = format_contract_summary(
+        contract,
+        viewer=contract.recipient,
         include_links=False,
         include_sender_account=False,
     )
     _create_contract_status_message(
         contract.sender,
         contract,
-        'Diplomatic request expired: %s' % summary,
-        priority=(contract.offer_condition_type == DiplomaticContract.CONDITION_OR_ELSE),
+        _contract_status_message_text(contract, contract.sender, 'expired', sender_summary),
+        priority=True,
     )
     _create_contract_status_message(
         contract.recipient,
         contract,
-        'Diplomatic request expired: %s' % summary,
-        priority=(contract.offer_condition_type == DiplomaticContract.CONDITION_OR_ELSE),
+        _contract_status_message_text(contract, contract.recipient, 'expired', recipient_summary),
+        priority=True,
     )
 
 
@@ -1215,14 +1243,30 @@ def accept_contract(contract, acting_player):
         contract.expires_year = int(contract.expires_year or 0) + int(contract.extend_on_accept_years or 0)
     contract.save(update_fields=['status', 'accepted_year', 'expires_year', 'updated_at'])
 
-    summary = format_contract_summary(
+    sender_summary = format_contract_summary(
         contract,
-        viewer=acting_player,
+        viewer=contract.sender,
         include_links=False,
         include_sender_account=False,
     )
-    _create_contract_status_message(contract.sender, contract, 'Diplomatic request accepted: %s' % summary)
-    _create_contract_status_message(contract.recipient, contract, 'Diplomatic request accepted: %s' % summary)
+    recipient_summary = format_contract_summary(
+        contract,
+        viewer=contract.recipient,
+        include_links=False,
+        include_sender_account=False,
+    )
+    _create_contract_status_message(
+        contract.sender,
+        contract,
+        _contract_status_message_text(contract, contract.sender, 'accepted', sender_summary),
+        priority=True,
+    )
+    _create_contract_status_message(
+        contract.recipient,
+        contract,
+        _contract_status_message_text(contract, contract.recipient, 'accepted', recipient_summary),
+        priority=True,
+    )
 
     if (
         contract.request_clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY and
@@ -1271,15 +1315,53 @@ def decline_contract(contract, acting_player):
     contract.handled_year = contract.game.year
     contract.save(update_fields=['status', 'handled_year', 'updated_at'])
     _apply_condition_consequence(contract)
-    summary = format_contract_summary(
+    sender_summary = format_contract_summary(
         contract,
-        viewer=acting_player,
+        viewer=contract.sender,
         include_links=False,
         include_sender_account=False,
     )
-    _create_contract_status_message(contract.sender, contract, 'Diplomatic request declined: %s' % summary, priority=(contract.offer_condition_type == DiplomaticContract.CONDITION_OR_ELSE))
-    _create_contract_status_message(contract.recipient, contract, 'Diplomatic request declined: %s' % summary, priority=(contract.offer_condition_type == DiplomaticContract.CONDITION_OR_ELSE))
+    recipient_summary = format_contract_summary(
+        contract,
+        viewer=contract.recipient,
+        include_links=False,
+        include_sender_account=False,
+    )
+    _create_contract_status_message(
+        contract.sender,
+        contract,
+        _contract_status_message_text(contract, contract.sender, 'declined', sender_summary),
+        priority=True,
+    )
+    _create_contract_status_message(
+        contract.recipient,
+        contract,
+        _contract_status_message_text(contract, contract.recipient, 'declined', recipient_summary),
+        priority=True,
+    )
     return True, 'Request declined.'
+
+
+@transaction.atomic
+def extend_contract(contract, acting_player, extra_years):
+    if not contract or not acting_player or contract.sender_id != acting_player.id:
+        return False, 'Request not found.'
+    if contract.status != DiplomaticContract.STATUS_SENT:
+        return False, 'Only unanswered requests can be extended.'
+    locked, reason = diplomatic_actions_locked(acting_player)
+    if locked:
+        return False, reason
+    try:
+        years = int(extra_years)
+    except (TypeError, ValueError):
+        return False, 'Extension years must be a whole number.'
+    if years <= 0:
+        return False, 'Extension years must be at least 1.'
+    if years > 200:
+        return False, 'Extension years must be 200 or less.'
+    contract.expires_year = int(contract.expires_year or 0) + years
+    contract.save(update_fields=['expires_year', 'updated_at'])
+    return True, 'Request extended.'
 
 
 @transaction.atomic

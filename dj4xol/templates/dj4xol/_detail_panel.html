@@ -399,10 +399,14 @@
 function showRenamePopover() {
     var popover = document.getElementById('rename-popover');
     var input = document.getElementById('rename-input');
-    hideMarkerPopover();
     if (!popover || !input) {
         return;
     }
+    if (popover.style.display === 'block') {
+        hideRenamePopover();
+        return;
+    }
+    hideMarkerPopover();
     popover.style.display = 'block';
     input.focus();
     input.select();

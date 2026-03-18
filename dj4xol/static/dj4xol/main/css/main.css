@@ -354,12 +354,18 @@ body.map-dragging * {
     }
 
     .rename-popover,
-    .panel-content > .rename-popover,
-    .marker-popover {
+    .panel-content > .rename-popover {
         left: 6px;
         right: 6px;
         width: auto;
         max-width: none;
+    }
+
+    .marker-popover {
+        left: auto;
+        right: 6px;
+        width: min(240px, calc(100vw - 24px));
+        max-width: calc(100vw - 24px);
     }
 
     .game-page .orders-section.panel.open,
@@ -587,7 +593,7 @@ body.map-dragging * {
 
 .marker-btn--white,
 .marker-colour-swatch--white {
-    --marker-accent: #cfe6ff;
+    --marker-accent: #7fd7ff;
 }
 
 .marker-btn--red,
@@ -607,7 +613,7 @@ body.map-dragging * {
 
 .marker-btn--blue,
 .marker-colour-swatch--blue {
-    --marker-accent: #cfe6ff;
+    --marker-accent: #7fd7ff;
 }
 
 .marker-btn--indigo,
@@ -623,7 +629,8 @@ body.map-dragging * {
 .rename-popover {
     position: absolute;
     top: 72px;
-    left: 0;
+    left: auto;
+    right: 0;
     z-index: 1000;
     background: #333;
     border: 1px solid #808080;
@@ -640,10 +647,15 @@ body.map-dragging * {
     width: min(400px, calc(100% - 2px), calc(100vw - 24px));
 }
 
+.panel-content > .marker-popover {
+    width: min(240px, calc(100vw - 24px));
+}
+
 .marker-popover {
     left: auto;
     right: 0;
-    min-width: 260px;
+    min-width: 220px;
+    width: min(240px, calc(100vw - 24px));
 }
 
 .rename-popover-content {
@@ -729,13 +741,15 @@ body.map-dragging * {
 }
 
 .classic .rename-popover::before {
-    left: 18px;
+    left: auto;
+    right: 10px;
     border-bottom: 10px solid #808080;
 }
 
 .classic .rename-popover::after {
     top: -8px;
-    left: 19px;
+    left: auto;
+    right: 11px;
     border-left-width: 9px;
     border-right-width: 9px;
     border-bottom: 9px solid #333;
@@ -743,27 +757,29 @@ body.map-dragging * {
 
 .classic .marker-popover::before {
     left: auto;
-    right: 18px;
+    right: 46px;
     border-bottom: 10px solid #808080;
 }
 
 .classic .marker-popover::after {
     top: -8px;
     left: auto;
-    right: 19px;
+    right: 47px;
     border-left-width: 9px;
     border-right-width: 9px;
     border-bottom: 9px solid #333;
 }
 
 .win95 .rename-popover::before {
-    left: 18px;
+    left: auto;
+    right: 10px;
     border-bottom: 10px solid #000000;
 }
 
 .win95 .rename-popover::after {
     top: -8px;
-    left: 19px;
+    left: auto;
+    right: 11px;
     border-left-width: 9px;
     border-right-width: 9px;
     border-bottom: 9px solid #c0c0c0;
@@ -771,14 +787,14 @@ body.map-dragging * {
 
 .win95 .marker-popover::before {
     left: auto;
-    right: 18px;
+    right: 46px;
     border-bottom: 10px solid #000000;
 }
 
 .win95 .marker-popover::after {
     top: -8px;
     left: auto;
-    right: 19px;
+    right: 47px;
     border-left-width: 9px;
     border-right-width: 9px;
     border-bottom: 9px solid #c0c0c0;
