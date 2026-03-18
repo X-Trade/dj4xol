@@ -1861,6 +1861,52 @@ class TestStarMarkerView(TestCase):
             ).exists()
         )
 
+    def test_marker_popover_targets_current_primary_star_for_promoted_stack(self):
+        primary = self.player.homeworld
+        promoted = self.reported_star
+        promoted.x = primary.x
+        promoted.y = primary.y
+        promoted.player = self.player
+        promoted.colonists = 1000
+        promoted.save(update_fields=['x', 'y', 'player', 'colonists'])
+
+        primary.player = None
+        primary.colonists = 0
+        primary.save(update_fields=['player', 'colonists'])
+
+        PlayerStarMarker.objects.create(
+            player=self.player,
+            star=promoted,
+            marker_type=PlayerStarMarker.TYPE_X,
+            marker_color=PlayerStarMarker.COLOR_RED,
+        )
+
+        response = self.client.get(
+            reverse('dj4xol:game', args=[self.game.short_id]),
+            {
+                'x': primary.x,
+                'y': primary.y,
+                'sel': primary.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "var starId = '%s';" % promoted.short_id,
+            html=False,
+        )
+        self.assertContains(
+            response,
+            "var markerStarObjectId = '%s';" % promoted.short_id,
+            html=False,
+        )
+        self.assertNotContains(
+            response,
+            'applyMarkerState(getSelectedMarkerType(), getSelectedMarkerColor());',
+            html=False,
+        )
+
     def test_rejects_invalid_marker_colour(self):
         response = self.client.post(
             reverse('dj4xol:set_star_marker', args=[self.game.short_id, self.reported_star.short_id]),
