@@ -1154,7 +1154,7 @@ class PlayerStarMarker(models.Model):
     marker_color = models.CharField(
         max_length=10,
         choices=COLOR_CHOICES,
-        default=COLOR_WHITE,
+        default=COLOR_BLUE,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

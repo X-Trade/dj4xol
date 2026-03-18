@@ -78,9 +78,13 @@ class StarMap():
                     {
                         'type': marker_type,
                         'color': (
-                            marker_color
+                            (
+                                PlayerStarMarker.COLOR_BLUE
+                                if marker_color == PlayerStarMarker.COLOR_WHITE
+                                else marker_color
+                            )
                             if marker_color in PlayerStarMarker.COLOR_VALUES
-                            else PlayerStarMarker.COLOR_WHITE
+                            else PlayerStarMarker.COLOR_BLUE
                         ),
                     },
                 )
@@ -437,10 +441,12 @@ class StarMap():
     def _get_star_marker_class(self, star):
         marker = self.star_markers.get(getattr(star, 'id', None))
         marker_type = marker
-        marker_color = PlayerStarMarker.COLOR_WHITE
+        marker_color = PlayerStarMarker.COLOR_BLUE
         if isinstance(marker, dict):
             marker_type = marker.get('type')
-            marker_color = marker.get('color') or PlayerStarMarker.COLOR_WHITE
+            marker_color = marker.get('color') or PlayerStarMarker.COLOR_BLUE
+        if marker_color == PlayerStarMarker.COLOR_WHITE:
+            marker_color = PlayerStarMarker.COLOR_BLUE
         color_class = 'mapstar-marker-color-%s' % str(marker_color).lower()
         if marker_type == PlayerStarMarker.TYPE_CIRCLE:
             return 'mapstar-marker-circle %s' % color_class

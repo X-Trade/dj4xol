@@ -353,6 +353,15 @@ body.map-dragging * {
         max-height: 75vh;
     }
 
+    .rename-popover,
+    .panel-content > .rename-popover,
+    .marker-popover {
+        left: 6px;
+        right: 6px;
+        width: auto;
+        max-width: none;
+    }
+
     .game-page .orders-section.panel.open,
     .spectator-page .orders-section.panel.open {
         min-height: 248px;
@@ -573,12 +582,12 @@ body.map-dragging * {
 .marker-btn {
     min-width: 26px;
     text-align: center;
-    color: var(--marker-accent, #ffffff);
+    color: #666;
 }
 
 .marker-btn--white,
 .marker-colour-swatch--white {
-    --marker-accent: #ffffff;
+    --marker-accent: #cfe6ff;
 }
 
 .marker-btn--red,
@@ -598,7 +607,7 @@ body.map-dragging * {
 
 .marker-btn--blue,
 .marker-colour-swatch--blue {
-    --marker-accent: #66b8ff;
+    --marker-accent: #cfe6ff;
 }
 
 .marker-btn--indigo,
@@ -620,21 +629,21 @@ body.map-dragging * {
     border: 1px solid #808080;
     padding: 12px;
     margin-top: 5px;
-    min-width: 200px;
-    width: auto;
-    max-width: min(320px, calc(100vw - 40px));
+    min-width: 240px;
+    width: min(400px, calc(100% - 2px), calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
     box-sizing: border-box;
     box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .panel-content > .rename-popover {
-    width: auto;
+    width: min(400px, calc(100% - 2px), calc(100vw - 24px));
 }
 
 .marker-popover {
     left: auto;
     right: 0;
-    min-width: 220px;
+    min-width: 260px;
 }
 
 .rename-popover-content {
@@ -704,6 +713,75 @@ body.map-dragging * {
 
 .marker-colour-swatch.is-active {
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+}
+
+.classic .rename-popover::before,
+.classic .rename-popover::after,
+.win95 .rename-popover::before,
+.win95 .rename-popover::after {
+    content: "";
+    position: absolute;
+    top: -10px;
+    width: 0;
+    height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+}
+
+.classic .rename-popover::before {
+    left: 18px;
+    border-bottom: 10px solid #808080;
+}
+
+.classic .rename-popover::after {
+    top: -8px;
+    left: 19px;
+    border-left-width: 9px;
+    border-right-width: 9px;
+    border-bottom: 9px solid #333;
+}
+
+.classic .marker-popover::before {
+    left: auto;
+    right: 18px;
+    border-bottom: 10px solid #808080;
+}
+
+.classic .marker-popover::after {
+    top: -8px;
+    left: auto;
+    right: 19px;
+    border-left-width: 9px;
+    border-right-width: 9px;
+    border-bottom: 9px solid #333;
+}
+
+.win95 .rename-popover::before {
+    left: 18px;
+    border-bottom: 10px solid #000000;
+}
+
+.win95 .rename-popover::after {
+    top: -8px;
+    left: 19px;
+    border-left-width: 9px;
+    border-right-width: 9px;
+    border-bottom: 9px solid #c0c0c0;
+}
+
+.win95 .marker-popover::before {
+    left: auto;
+    right: 18px;
+    border-bottom: 10px solid #000000;
+}
+
+.win95 .marker-popover::after {
+    top: -8px;
+    left: auto;
+    right: 19px;
+    border-left-width: 9px;
+    border-right-width: 9px;
+    border-bottom: 9px solid #c0c0c0;
 }
 
 .rename-error {
