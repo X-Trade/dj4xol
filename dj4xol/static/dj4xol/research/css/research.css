@@ -1,9 +1,25 @@
+html,
+body {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
 .research-columns {
     display: grid;
     grid-template-columns: minmax(320px, 420px) 1fr;
     gap: 12px;
     padding: 12px;
-    height: calc(100vh - 56px);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    height: calc(100dvh - 56px);
     box-sizing: border-box;
 }
 

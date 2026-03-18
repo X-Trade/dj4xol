@@ -62,14 +62,6 @@
                     </form>
                 {% endif %}
             </span>
-            {% if player.account.django_user.is_staff %}
-            <button type="button"
-                    class="debug-ui-reset-btn"
-                    onclick="clearGameUiState()"
-                    title="Clear saved panel, map, and mobile layout state for this game view">
-                Reset UI
-            </button>
-            {% endif %}
             {% include 'dj4xol/_nav_menu.html' with current_page='game' %}
         </div>
         {% if dest_mode %}

@@ -40,8 +40,8 @@ _REWARD_CURVE = {
 _TRIGGER_CHANCE = {
     DANGER_NONE: 0.0,
     DANGER_LOW: 0.45,
-    DANGER_MEDIUM: 0.70,
-    DANGER_HIGH: 1.0,
+    DANGER_MEDIUM: 0.60,
+    DANGER_HIGH: 0.70,
 }
 
 
@@ -56,8 +56,19 @@ def _pick_level(seed, options):
     return options[_stable_seed_value(seed) % len(options)]
 
 
-def danger_level_display(level):
-    return DANGER_LEVEL_LABELS.get(str(level or '').upper(), 'Unknown')
+def danger_level_display(level, stability=None):
+    normalized = str(level or '').upper()
+    if normalized not in DANGER_LEVEL_LABELS:
+        return 'Unknown'
+    if stability is None:
+        return DANGER_LEVEL_LABELS.get(normalized, 'Unknown')
+    display_level = normalized
+    intensity = danger_intensity(normalized, stability)
+    if normalized != DANGER_HIGH and intensity >= _BASE_DANGER_FACTOR[DANGER_HIGH]:
+        display_level = DANGER_HIGH
+    elif normalized == DANGER_LOW and intensity >= _BASE_DANGER_FACTOR[DANGER_MEDIUM]:
+        display_level = DANGER_MEDIUM
+    return DANGER_LEVEL_LABELS.get(display_level, 'Unknown')
 
 
 def stability_danger_scale(stability):

@@ -69,12 +69,14 @@ class TestStarMap(TestCase):
             player=player,
             star=star,
             marker_type=PlayerStarMarker.TYPE_CIRCLE,
+            marker_color=PlayerStarMarker.COLOR_BLUE,
         )
 
         starmap = StarMap(game, player)
         html = starmap.render_star(star)
 
         self.assertIn('mapstar-marker-circle', html)
+        self.assertIn('mapstar-marker-color-blue', html)
 
     def test_primary_star_marker_does_not_render_on_satellite_star(self):
         game = default_game(stars=2, fleets=0)

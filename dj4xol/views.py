@@ -4490,8 +4490,6 @@ def rename_object(request, game_short_id, object_short_id):
     game = Game.objects.get(short_id=game_short_id)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
-    if player.turned_in:
-        return JsonResponse({'error': 'Turn already submitted'}, status=403)
 
     new_name = request.POST.get('name', '').strip()
     if not new_name:
@@ -4570,11 +4568,17 @@ def set_star_marker(request, game_short_id, star_short_id):
     star = primary_star
 
     marker_type = (request.POST.get('marker_type', '') or '').strip().upper()
+    marker_color = (request.POST.get('marker_color', '') or '').strip().upper()
     if marker_type == 'CLEAR':
         marker_type = ''
+    if not marker_color:
+        marker_color = PlayerStarMarker.COLOR_WHITE
     valid_types = {PlayerStarMarker.TYPE_CIRCLE, PlayerStarMarker.TYPE_X}
+    valid_colors = PlayerStarMarker.COLOR_VALUES
     if marker_type and marker_type not in valid_types:
         return JsonResponse({'error': 'Invalid marker type'}, status=400)
+    if marker_color not in valid_colors:
+        return JsonResponse({'error': 'Invalid marker colour'}, status=400)
 
     if not marker_type:
         PlayerStarMarker.objects.filter(player=player, star=star).delete()
@@ -4582,7 +4586,14 @@ def set_star_marker(request, game_short_id, star_short_id):
         PlayerStarMarker.objects.update_or_create(
             player=player,
             star=star,
-            defaults={'marker_type': marker_type},
+            defaults={
+                'marker_type': marker_type,
+                'marker_color': marker_color,
+            },
         )
 
-    return JsonResponse({'success': True, 'marker_type': marker_type})
+    return JsonResponse({
+        'success': True,
+        'marker_type': marker_type,
+        'marker_color': marker_color,
+    })

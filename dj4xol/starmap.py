@@ -73,9 +73,22 @@ class StarMap():
             self.explored_salvage_ids = set(self.salvages.values_list('id', flat=True))
         elif self.player:
             self.star_markers = dict(
+                (
+                    star_id,
+                    {
+                        'type': marker_type,
+                        'color': (
+                            marker_color
+                            if marker_color in PlayerStarMarker.COLOR_VALUES
+                            else PlayerStarMarker.COLOR_WHITE
+                        ),
+                    },
+                )
+                for star_id, marker_type, marker_color in
                 PlayerStarMarker.objects.filter(player=self.player).values_list(
                     'star_id',
                     'marker_type',
+                    'marker_color',
                 )
             )
             reports = list(Report.objects.filter(
@@ -422,11 +435,17 @@ class StarMap():
             )
 
     def _get_star_marker_class(self, star):
-        marker_type = self.star_markers.get(getattr(star, 'id', None))
+        marker = self.star_markers.get(getattr(star, 'id', None))
+        marker_type = marker
+        marker_color = PlayerStarMarker.COLOR_WHITE
+        if isinstance(marker, dict):
+            marker_type = marker.get('type')
+            marker_color = marker.get('color') or PlayerStarMarker.COLOR_WHITE
+        color_class = 'mapstar-marker-color-%s' % str(marker_color).lower()
         if marker_type == PlayerStarMarker.TYPE_CIRCLE:
-            return 'mapstar-marker-circle'
+            return 'mapstar-marker-circle %s' % color_class
         if marker_type == PlayerStarMarker.TYPE_X:
-            return 'mapstar-marker-x'
+            return 'mapstar-marker-x %s' % color_class
         return ''
 
     def _get_exploration_class(self, star):

@@ -1123,6 +1123,23 @@ class PlayerStarMarker(models.Model):
         (TYPE_CIRCLE, 'Circle'),
         (TYPE_X, 'X'),
     ]
+    COLOR_WHITE = 'WHITE'
+    COLOR_RED = 'RED'
+    COLOR_YELLOW = 'YELLOW'
+    COLOR_GREEN = 'GREEN'
+    COLOR_BLUE = 'BLUE'
+    COLOR_INDIGO = 'INDIGO'
+    COLOR_VIOLET = 'VIOLET'
+    COLOR_CHOICES = [
+        (COLOR_WHITE, 'White'),
+        (COLOR_RED, 'Red'),
+        (COLOR_YELLOW, 'Yellow'),
+        (COLOR_GREEN, 'Green'),
+        (COLOR_BLUE, 'Blue'),
+        (COLOR_INDIGO, 'Indigo'),
+        (COLOR_VIOLET, 'Violet'),
+    ]
+    COLOR_VALUES = {choice[0] for choice in COLOR_CHOICES}
 
     player = models.ForeignKey(
         Player, related_name='star_markers', on_delete=models.CASCADE
@@ -1133,6 +1150,11 @@ class PlayerStarMarker(models.Model):
     marker_type = models.CharField(
         max_length=10,
         choices=TYPE_CHOICES,
+    )
+    marker_color = models.CharField(
+        max_length=10,
+        choices=COLOR_CHOICES,
+        default=COLOR_WHITE,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
