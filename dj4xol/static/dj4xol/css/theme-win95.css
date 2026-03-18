@@ -1140,6 +1140,22 @@ input[type="range"]::-webkit-slider-thumb {
     background: #c0c0c0;
 }
 
+.win95 .diplomacy-action-button {
+    background: #c0c0c0;
+    border: 2px solid #808080;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
+    color: #000;
+    padding: 6px 12px;
+}
+
+.win95 .diplomacy-action-button:hover {
+    background: #d4d0c8;
+}
+
+.win95 .diplomacy-action-button:active {
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000;
+}
+
 .theme-preview {
     width: 80px;
     height: 50px;

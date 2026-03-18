@@ -21,6 +21,7 @@
                 <div class="panel no-transition open" data-panel="join-game">
                     <h2><span>Join {{ game.name }}</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
                         {% if game.description %}
                             <p>{{ game.description }}</p>
                         {% endif %}
@@ -113,6 +114,7 @@
                                 <button type="submit" class="nav-button primary">Join Game</button>
                             </div>
                         </form>
+                        </section>
                     </div>
                 </div>
             </div>
