@@ -75,6 +75,33 @@ class DefaultSyncTest(TestCase):
         )
         self.assertEqual(targeting_computer.category.code, 'ELECTRONICS')
         self.assertEqual(targeting_computer.level, 5)
+        kinetic_impactor = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000220'
+        )
+        self.assertEqual(kinetic_impactor.category.code, 'MATERIALS')
+        self.assertEqual(kinetic_impactor.level, 0)
+        self.assertEqual(
+            json.loads(kinetic_impactor.params_json).get('offense_level'),
+            0.10,
+        )
+        remote_guided_missile = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000222'
+        )
+        self.assertEqual(remote_guided_missile.category.code, 'ELECTRONICS')
+        self.assertEqual(remote_guided_missile.level, 4)
+        self.assertEqual(
+            json.loads(remote_guided_missile.params_json).get('offense_level'),
+            0.50,
+        )
+        maelstrom_torpedo = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000226'
+        )
+        self.assertEqual(maelstrom_torpedo.category.code, 'MATERIALS')
+        self.assertEqual(maelstrom_torpedo.level, 26)
+        self.assertEqual(
+            json.loads(maelstrom_torpedo.params_json).get('offense_level'),
+            6.40,
+        )
         scanner_v = Technology.objects.get(
             id='00000000-0000-0000-0000-000000000704'
         )
