@@ -66,11 +66,7 @@ def _format_readable_list(items):
 
 def _temperature_verb(temperature, subject_is_we=False):
     verb = str(temperature or '').lower() or 'propose'
-    if subject_is_we:
-        return verb
-    if verb.endswith('s'):
-        return verb
-    return '%ss' % verb
+    return verb
 
 
 def vague_threat_phrase(contract):

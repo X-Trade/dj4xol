@@ -411,6 +411,28 @@
                                             <button type="submit">Revoke</button>
                                         </form>
                                         {% endif %}
+                                        {% if contract.can_extend %}
+                                        <button
+                                            type="button"
+                                            class="diplomacy-inline-toggle"
+                                            onclick="toggleContractExtendForm('{{ contract.short_id }}')"
+                                        >Extend</button>
+                                        <form
+                                            method="post"
+                                            class="diplomacy-contract-extend-form"
+                                            id="contract-extend-{{ contract.short_id }}"
+                                            style="display:none"
+                                        >
+                                            {% csrf_token %}
+                                            <input type="hidden" name="target" value="{{ selected_target }}">
+                                            <input type="hidden" name="action" value="extend_contract">
+                                            <input type="hidden" name="contract_id" value="{{ contract.short_id }}">
+                                            <label for="extend-years-{{ contract.short_id }}">+ years</label>
+                                            <input id="extend-years-{{ contract.short_id }}" type="number" min="1" max="200" name="extend_years" required>
+                                            <button type="submit">Confirm</button>
+                                            <button type="button" onclick="toggleContractExtendForm('{{ contract.short_id }}')">Cancel</button>
+                                        </form>
+                                        {% endif %}
                                     </div>
                                 </article>
                                 {% empty %}
@@ -609,6 +631,26 @@
                     }
                 });
             });
+        })();
+        (function() {
+            window.toggleContractExtendForm = function(contractShortId) {
+                var targetId = 'contract-extend-' + contractShortId;
+                var forms = document.querySelectorAll('.diplomacy-contract-extend-form');
+                Array.prototype.forEach.call(forms, function(form) {
+                    if (!form) {
+                        return;
+                    }
+                    var shouldShow = form.id === targetId && form.style.display !== 'inline-flex';
+                    form.style.display = shouldShow ? 'inline-flex' : 'none';
+                    if (shouldShow) {
+                        var input = form.querySelector('input[name="extend_years"]');
+                        if (input) {
+                            input.focus();
+                            input.select();
+                        }
+                    }
+                });
+            };
         })();
         (function() {
             var composeForm = document.getElementById('diplomacy-compose-form');
