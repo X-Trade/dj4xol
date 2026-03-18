@@ -235,8 +235,8 @@ body.lcars .maparea a.mapstar-name {
 }
 
 .mapstar-marker-color-white {
-    --map-marker-color: #ffffff;
-    --map-marker-glow: rgba(255, 255, 255, 0.7);
+    --map-marker-color: #cfe6ff;
+    --map-marker-glow: rgba(207, 230, 255, 0.85);
 }
 
 .mapstar-marker-color-red {
@@ -255,8 +255,8 @@ body.lcars .maparea a.mapstar-name {
 }
 
 .mapstar-marker-color-blue {
-    --map-marker-color: #66b8ff;
-    --map-marker-glow: rgba(102, 184, 255, 0.7);
+    --map-marker-color: #cfe6ff;
+    --map-marker-glow: rgba(207, 230, 255, 0.85);
 }
 
 .mapstar-marker-color-indigo {

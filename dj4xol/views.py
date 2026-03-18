@@ -4572,7 +4572,9 @@ def set_star_marker(request, game_short_id, star_short_id):
     if marker_type == 'CLEAR':
         marker_type = ''
     if not marker_color:
-        marker_color = PlayerStarMarker.COLOR_WHITE
+        marker_color = PlayerStarMarker.COLOR_BLUE
+    if marker_color == PlayerStarMarker.COLOR_WHITE:
+        marker_color = PlayerStarMarker.COLOR_BLUE
     valid_types = {PlayerStarMarker.TYPE_CIRCLE, PlayerStarMarker.TYPE_X}
     valid_colors = PlayerStarMarker.COLOR_VALUES
     if marker_type and marker_type not in valid_types:

@@ -78,6 +78,24 @@ class TestStarMap(TestCase):
         self.assertIn('mapstar-marker-circle', html)
         self.assertIn('mapstar-marker-color-blue', html)
 
+    def test_legacy_white_marker_renders_with_blue_style(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        star = player.homeworld
+        PlayerStarMarker.objects.create(
+            player=player,
+            star=star,
+            marker_type=PlayerStarMarker.TYPE_CIRCLE,
+            marker_color=PlayerStarMarker.COLOR_WHITE,
+        )
+
+        starmap = StarMap(game, player)
+        html = starmap.render_star(star)
+
+        self.assertIn('mapstar-marker-circle', html)
+        self.assertIn('mapstar-marker-color-blue', html)
+        self.assertNotIn('mapstar-marker-color-white', html)
+
     def test_primary_star_marker_does_not_render_on_satellite_star(self):
         game = default_game(stars=2, fleets=0)
         player = game.players.first()

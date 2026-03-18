@@ -32,12 +32,12 @@
         {% if detail.is_owned or detail.can_set_marker %}
         <div class="detail-header-actions">
             {% if detail.can_set_marker %}
-            <button class="detail-action-btn marker-btn marker-btn--{{ detail.star_marker_color|default:'WHITE'|lower }}" onclick="toggleMarkerPopover()" title="Map marker">
-                {% if detail.star_marker_type == 'CIRCLE' %}&#9711;{% elif detail.star_marker_type == 'X' %}&times;{% else %}&#9873;{% endif %}
+            <button type="button" class="detail-action-btn marker-btn" onclick="toggleMarkerPopover()" title="Map marker">
+                &#9873;
             </button>
             {% endif %}
             {% if detail.is_owned %}
-            <button class="detail-action-btn rename-control" onclick="showRenamePopover()" title="Rename">&#9998;</button>
+            <button type="button" class="detail-action-btn rename-control" onclick="showRenamePopover()" title="Rename">&#9998;</button>
             {% endif %}
         </div>
         {% endif %}
@@ -59,18 +59,17 @@
     <div id="marker-popover" class="rename-popover marker-popover" style="display: none;">
         <div class="rename-popover-content">
             <label>Map marker:</label>
-            <input type="hidden" id="marker-colour-input" value="{{ detail.star_marker_color|default:'WHITE' }}">
+            <input type="hidden" id="marker-colour-input" value="{{ detail.star_marker_color|default:'BLUE' }}">
             <div class="marker-popover-buttons">
-                <button type="button" class="marker-option{% if detail.star_marker_type == 'CIRCLE' %} is-active{% endif %}" onclick="submitStarMarker('CIRCLE')">Circle</button>
-                <button type="button" class="marker-option{% if detail.star_marker_type == 'X' %} is-active{% endif %}" onclick="submitStarMarker('X')">X</button>
-                <button type="button" class="marker-option{% if not detail.star_marker_type %} is-active{% endif %}" onclick="submitStarMarker('CLEAR')">None</button>
+                <button type="button" class="marker-option{% if detail.star_marker_type == 'CIRCLE' %} is-active{% endif %}" data-marker-type="CIRCLE" onclick="submitStarMarker('CIRCLE')">Circle</button>
+                <button type="button" class="marker-option{% if detail.star_marker_type == 'X' %} is-active{% endif %}" data-marker-type="X" onclick="submitStarMarker('X')">X</button>
+                <button type="button" class="marker-option{% if not detail.star_marker_type %} is-active{% endif %}" data-marker-type="CLEAR" onclick="submitStarMarker('CLEAR')">None</button>
             </div>
             <div class="marker-colour-row" aria-label="Marker colour">
-                <button type="button" class="marker-colour-swatch marker-colour-swatch--white{% if detail.star_marker_color == 'WHITE' %} is-active{% endif %}" data-marker-colour="WHITE" onclick="selectMarkerColor('WHITE')" title="White"></button>
+                <button type="button" class="marker-colour-swatch marker-colour-swatch--blue{% if detail.star_marker_color == 'BLUE' or detail.star_marker_color == 'WHITE' %} is-active{% endif %}" data-marker-colour="BLUE" onclick="selectMarkerColor('BLUE')" title="Blue"></button>
                 <button type="button" class="marker-colour-swatch marker-colour-swatch--red{% if detail.star_marker_color == 'RED' %} is-active{% endif %}" data-marker-colour="RED" onclick="selectMarkerColor('RED')" title="Red"></button>
                 <button type="button" class="marker-colour-swatch marker-colour-swatch--yellow{% if detail.star_marker_color == 'YELLOW' %} is-active{% endif %}" data-marker-colour="YELLOW" onclick="selectMarkerColor('YELLOW')" title="Yellow"></button>
                 <button type="button" class="marker-colour-swatch marker-colour-swatch--green{% if detail.star_marker_color == 'GREEN' %} is-active{% endif %}" data-marker-colour="GREEN" onclick="selectMarkerColor('GREEN')" title="Green"></button>
-                <button type="button" class="marker-colour-swatch marker-colour-swatch--blue{% if detail.star_marker_color == 'BLUE' %} is-active{% endif %}" data-marker-colour="BLUE" onclick="selectMarkerColor('BLUE')" title="Blue"></button>
                 <button type="button" class="marker-colour-swatch marker-colour-swatch--indigo{% if detail.star_marker_color == 'INDIGO' %} is-active{% endif %}" data-marker-colour="INDIGO" onclick="selectMarkerColor('INDIGO')" title="Indigo"></button>
                 <button type="button" class="marker-colour-swatch marker-colour-swatch--violet{% if detail.star_marker_color == 'VIOLET' %} is-active{% endif %}" data-marker-colour="VIOLET" onclick="selectMarkerColor('VIOLET')" title="Violet"></button>
             </div>
@@ -481,20 +480,10 @@ function submitStarMarker(markerType) {
 function getSelectedMarkerColor() {
     var input = document.getElementById('marker-colour-input');
     var value = input ? String(input.value || '').toUpperCase() : '';
-    return value || 'WHITE';
-}
-
-function setMarkerButtonPreview(markerColor) {
-    var button = document.querySelector('.marker-btn');
-    if (!button) {
-        return;
+    if (value === 'WHITE') {
+        return 'BLUE';
     }
-    var nextClass = 'marker-btn--' + String(markerColor || 'WHITE').toLowerCase();
-    var classes = Array.prototype.filter.call(button.classList, function(className) {
-        return className.indexOf('marker-btn--') !== 0;
-    });
-    classes.push(nextClass);
-    button.className = classes.join(' ');
+    return value || 'BLUE';
 }
 
 function updateMarkerColorSwatches() {
@@ -504,7 +493,14 @@ function updateMarkerColorSwatches() {
         var swatchColor = swatch.getAttribute('data-marker-colour') || '';
         swatch.classList.toggle('is-active', swatchColor === selected);
     });
-    setMarkerButtonPreview(selected);
+}
+
+function getSelectedMarkerType() {
+    var active = document.querySelector('.marker-option.is-active');
+    if (!active) {
+        return '';
+    }
+    return String(active.getAttribute('data-marker-type') || '').toUpperCase();
 }
 
 function selectMarkerColor(markerColor) {
@@ -513,6 +509,10 @@ function selectMarkerColor(markerColor) {
         input.value = markerColor;
     }
     updateMarkerColorSwatches();
+    var markerType = getSelectedMarkerType();
+    if (markerType && markerType !== 'CLEAR') {
+        submitStarMarker(markerType);
+    }
 }
 
 updateMarkerColorSwatches();

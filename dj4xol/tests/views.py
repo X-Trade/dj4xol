@@ -1696,11 +1696,13 @@ class TestStarMarkerView(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['marker_type'], 'X')
+        self.assertEqual(response.json()['marker_color'], 'BLUE')
         self.assertTrue(
             PlayerStarMarker.objects.filter(
                 player=self.player,
                 star=self.reported_star,
                 marker_type='X',
+                marker_color='BLUE',
             ).exists()
         )
 
@@ -1721,7 +1723,7 @@ class TestStarMarkerView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            'class="detail-action-btn marker-btn marker-btn--white"',
+            'class="detail-action-btn marker-btn"',
             html=False,
         )
         self.assertContains(
@@ -1729,8 +1731,35 @@ class TestStarMarkerView(TestCase):
             'class="detail-action-btn rename-control"',
             html=False,
         )
+        self.assertContains(
+            response,
+            'data-marker-colour="BLUE"',
+            html=False,
+        )
+        self.assertNotContains(
+            response,
+            'data-marker-colour="WHITE"',
+            html=False,
+        )
         self.assertContains(response, "'.rename-control'", html=False)
         self.assertNotContains(response, "'.rename-btn'", html=False)
+
+    def test_missing_marker_colour_defaults_to_blue(self):
+        response = self.client.post(
+            reverse('dj4xol:set_star_marker', args=[self.game.short_id, self.reported_star.short_id]),
+            {'marker_type': 'CIRCLE'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['marker_color'], 'BLUE')
+        self.assertTrue(
+            PlayerStarMarker.objects.filter(
+                player=self.player,
+                star=self.reported_star,
+                marker_type='CIRCLE',
+                marker_color='BLUE',
+            ).exists()
+        )
 
     def test_clear_star_marker(self):
         PlayerStarMarker.objects.create(

@@ -134,11 +134,19 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'Colony Management Basics')
         self.assertContains(response, 'mines')
 
+    def test_help_anomalies_renders(self):
+        response = self.client.get(reverse('dj4xol:help_anomalies'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Anomalies')
+        self.assertContains(response, 'Danger &amp; Stability')
+        self.assertContains(response, 'Outcome Pattern')
+
     def test_help_mining_salvage_renders(self):
         response = self.client.get(reverse('dj4xol:help_mining_salvage'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Mining, Salvage &amp; Asteroids')
         self.assertContains(response, 'Remote Mine')
+        self.assertContains(response, 'jettisoned cargo dumped into space is safe to recover')
 
     def test_help_space_combat_renders(self):
         response = self.client.get(reverse('dj4xol:help_space_combat'))

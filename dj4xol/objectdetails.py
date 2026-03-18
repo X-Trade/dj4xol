@@ -221,7 +221,7 @@ class DetailBuilder():
                      ),
                      'can_set_marker': bool(self.player and isinstance(self.selected_obj, Star)),
                      'star_marker_type': self._get_star_marker_type() if isinstance(self.selected_obj, Star) else '',
-                     'star_marker_color': self._get_star_marker_color() if isinstance(self.selected_obj, Star) else PlayerStarMarker.COLOR_WHITE,
+                     'star_marker_color': self._get_star_marker_color() if isinstance(self.selected_obj, Star) else PlayerStarMarker.COLOR_BLUE,
                      'marker_star_short_id': self._get_marker_star().short_id if isinstance(self.selected_obj, Star) and self._get_marker_star() else None,
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
@@ -362,7 +362,7 @@ class DetailBuilder():
             'thumbnail_blurred': False,
             'can_set_marker': False,
             'star_marker_type': '',
-            'star_marker_color': PlayerStarMarker.COLOR_WHITE,
+            'star_marker_color': PlayerStarMarker.COLOR_BLUE,
             'marker_star_short_id': None,
         }
 
@@ -695,11 +695,13 @@ class DetailBuilder():
     def _get_star_marker_color(self):
         marker = self._get_star_marker()
         if marker is None:
-            return PlayerStarMarker.COLOR_WHITE
+            return PlayerStarMarker.COLOR_BLUE
         color = str(getattr(marker, 'marker_color', '') or '').upper()
+        if color == PlayerStarMarker.COLOR_WHITE:
+            return PlayerStarMarker.COLOR_BLUE
         if color in PlayerStarMarker.COLOR_VALUES:
             return color
-        return PlayerStarMarker.COLOR_WHITE
+        return PlayerStarMarker.COLOR_BLUE
 
     def _get_star_marker(self):
         marker_star = self._get_marker_star()
