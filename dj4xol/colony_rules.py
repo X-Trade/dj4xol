@@ -261,6 +261,16 @@ def calculate_staffing_ratio(star):
     return jobs / star.colonists
 
 
+def calculate_available_construction_colonists(star, colonists_busy=0, employed_jobs=None):
+    """Return unemployed colonists available for mine/factory construction this turn."""
+    if employed_jobs is None:
+        employed_jobs = ((star.mines + star.factories + star.labs + star.defenses) *
+                         COLONISTS_PER_JOB
+                         + star.shipyards * COLONISTS_PER_SHIPYARD)
+    available = int(star.colonists or 0) - int(employed_jobs or 0) - int(colonists_busy or 0)
+    return max(0, available)
+
+
 def calculate_productivity_multiplier(employment_ratio):
     """Bell-curve productivity based on employment ratio.
 

@@ -2574,6 +2574,74 @@ class TestEconomicCalculations(TestCase):
         star.refresh_from_db()
         self.assertEqual(star.factories, 1)
 
+    def test_build_mine_order_uses_unemployed_colonists_over_multiple_turns(self):
+        """Mine construction should use free workforce and carry partial progress."""
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 1
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.defenses = 0
+        star.colonists = 1500
+        star.ironium_inventory = 100
+        star.save(update_fields=[
+            'mines', 'factories', 'labs', 'shipyards', 'defenses',
+            'colonists', 'ironium_inventory',
+        ])
+
+        order = ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='BUILD_MINE',
+        )
+
+        GameTurn(game).production()
+
+        star.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(star.mines, 1)
+        self.assertEqual(order.spent_bp, 500)
+        self.assertEqual(order.spent_ironium, 10)
+
+        GameTurn(game).production()
+
+        star.refresh_from_db()
+        self.assertEqual(star.mines, 2)
+        self.assertFalse(
+            ProductionOrder.objects.filter(id=order.id).exists()
+        )
+
+    def test_build_factory_order_can_finish_two_items_with_two_thousand_free_colonists(self):
+        """Two colonist-built items should complete in one turn with 2000 free colonists."""
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.defenses = 0
+        star.colonists = 2000
+        star.ironium_inventory = 100
+        star.save(update_fields=[
+            'mines', 'factories', 'labs', 'shipyards', 'defenses',
+            'colonists', 'ironium_inventory',
+        ])
+
+        ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='BUILD_FACTORY',
+            quantity=2,
+        )
+
+        GameTurn(game).production()
+
+        star.refresh_from_db()
+        self.assertEqual(star.factories, 2)
+
     def test_mining_extracts_minerals(self):
         """Mines should extract minerals to surface inventory."""
         game = default_game()
@@ -5068,6 +5136,44 @@ class TestProductionProgress(TestCase):
         self.assertEqual(production_order['resource_progress'], 50)  # All resources complete = 50%
         self.assertEqual(production_order['labor_progress'], labor_expected)
         self.assertEqual(production_order['progress_percent'], 50 + labor_expected)
+
+    def test_colonist_labor_progress_counts_towards_partial_mine_construction(self):
+        """Colonist-built mine orders should show partial labor progress."""
+        from ..objectdetails import DetailBuilder
+        from ..models import ProductionOrder, Star
+
+        game = default_game()
+        player = game.players.first()
+
+        star = Star.objects.create(
+            game=game,
+            player=player,
+            name="Colonist Progress Star",
+            x=10,
+            y=10,
+            colonists=1500,
+            mines=1,
+        )
+
+        ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='BUILD_MINE',
+            quantity=1,
+            spent_bp=500,
+            spent_ironium=10,
+        )
+
+        detail_builder = DetailBuilder(
+            game, x=10, y=10, selected=star.short_id.lower(), player=player
+        )
+        details = detail_builder.build_detail()
+        production_order = details['production_orders'][0]
+
+        self.assertEqual(production_order['has_labor'], True)
+        self.assertEqual(production_order['resource_progress'], 50)
+        self.assertEqual(production_order['labor_progress'], 25)
+        self.assertEqual(production_order['progress_percent'], 75)
 
     def test_resource_only_progress(self):
         """Test progress for items that require both BP and resources."""

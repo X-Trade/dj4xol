@@ -1688,7 +1688,8 @@ class DetailBuilder():
                 display = o.get_order_type_display()
             
             # Calculate progress based on what has actually been spent
-            labor_cost = cost.get('bp', 0)
+            colonist_cost = int(cost.get('colonists', 0) or 0)
+            labor_cost = cost.get('bp', 0) or colonist_cost
             resource_cost = sum(cost.get(key, 0) for key in ALL_RESOURCE_KEYS)
             spent_resource_total = sum(int(getattr(o, f'spent_{key}', 0) or 0) for key in ALL_RESOURCE_KEYS)
             
@@ -1731,7 +1732,7 @@ class DetailBuilder():
                 'cost': {
                     'bp': cost.get('bp', 0),
                     **{key: cost.get(key, 0) for key in ALL_RESOURCE_KEYS},
-                    'colonists': cost.get('colonists', 0),
+                    'colonists': colonist_cost,
                 },
                 'spent': {
                     'bp': o.spent_bp,

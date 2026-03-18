@@ -107,6 +107,7 @@ from .colony_rules import (
     COLONISTS_PER_JOB,
     COLONISTS_PER_SHIPYARD,
     calculate_available_buildpoints,
+    calculate_available_construction_colonists,
     calculate_available_researchpoints,
     calculate_staffing_ratio,
     calculate_productivity_multiplier,
@@ -6602,6 +6603,10 @@ class GameTurn():
             had_production_orders = star.production_orders.exists()
             star.buildpoints_consumed = 0
             colonists_busy = 0  # Track colonists busy with construction this turn
+            construction_employment_base = (
+                (star.mines + star.factories + star.labs + star.defenses) * COLONISTS_PER_JOB
+                + star.shipyards * COLONISTS_PER_SHIPYARD
+            )
             available_bp = calculate_available_buildpoints(star)
             blocked = False
             fleets_built_this_turn = 0  # Track fleets built for shipyard availability
@@ -6657,17 +6662,9 @@ class GameTurn():
 
                 # Build items until we've completed the quantity or get blocked
                 while order.completed < order.quantity and not blocked:
-                    # Phase 1: Check colonist availability (for mines/factories)
-                    colonist_cost = cost.get('colonists', 0)
-                    if colonist_cost > 0:
-                        available_colonists = star.colonists - colonists_busy
-                        if available_colonists < colonist_cost:
-                            # Blocked on colonists - save and stop
-                            blocked = True
-                            order.save()
-                            break
+                    colonist_cost = int(cost.get('colonists', 0) or 0)
 
-                    # Phase 2: Consume resources (must complete before BP)
+                    # Phase 1: Consume resources (must complete before labor)
                     for resource in ALL_RESOURCE_KEYS:
                         resource_cost = cost.get(resource, 0)
                         spent_field = f'spent_{resource}'
@@ -6694,23 +6691,38 @@ class GameTurn():
                         order.save()
                         break
 
-                    # Phase 3: Consume BP (only after resources satisfied)
-                    bp_cost = cost.get('bp', 0)
-                    bp_needed = bp_cost - order.spent_bp
+                    # Phase 2: Consume labor.
+                    # Colonist-built mine/factory orders use spent_bp as their
+                    # per-item labor progress tracker so they can carry partial
+                    # progress across turns without needing a schema change.
+                    bp_cost = int(cost.get('bp', 0) or 0)
+                    labor_cost = colonist_cost if colonist_cost > 0 else bp_cost
+                    labor_needed = labor_cost - order.spent_bp
 
-                    if bp_needed > 0:
-                        bp_spend = min(bp_needed, available_bp)
-                        order.spent_bp += bp_spend
-                        available_bp -= bp_spend
-                        star.buildpoints_consumed += bp_spend
+                    if labor_needed > 0:
+                        if colonist_cost > 0:
+                            labor_spend = min(
+                                labor_needed,
+                                calculate_available_construction_colonists(
+                                    star,
+                                    colonists_busy=colonists_busy,
+                                    employed_jobs=construction_employment_base,
+                                ),
+                            )
+                        else:
+                            labor_spend = min(labor_needed, available_bp)
+                            available_bp -= labor_spend
+                            star.buildpoints_consumed += labor_spend
 
-                        if order.spent_bp < bp_cost:
-                            # Blocked on BP - save and stop
+                        order.spent_bp += labor_spend
+
+                        if order.spent_bp < labor_cost:
+                            # Blocked on labor - save and stop
                             blocked = True
                             order.save()
                             break
 
-                    # Item complete! Mark colonists as busy (not consumed)
+                    # Item complete! Mark colonists as busy for the rest of this turn.
                     if colonist_cost > 0:
                         colonists_busy += colonist_cost
 

@@ -703,6 +703,58 @@
     enabled: True
 
 - model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000220"
+  fields:
+    short_id: "tech00000220"
+    category: 3
+    level: 0
+    name: 'Kinetic Impactor'
+    description: 'Unguided kinetic penetrators offer the first practical torpedo strike package.'
+    tech_type: 'TORPEDO'
+    params_json: '{"offense_level": 0.10}'
+    display_order: 48
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000221"
+  fields:
+    short_id: "tech00000221"
+    category: 3
+    level: 2
+    name: 'Nuclear Warhead'
+    description: 'Compact fission payloads give early torpedoes a sharper punch.'
+    tech_type: 'TORPEDO'
+    params_json: '{"offense_level": 0.20}'
+    display_order: 58
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000222"
+  fields:
+    short_id: "tech00000222"
+    category: 2
+    level: 4
+    name: 'Remote Guided Missile'
+    description: 'Remote command guidance lets missile salvos correct course after launch.'
+    tech_type: 'TORPEDO'
+    params_json: '{"offense_level": 0.50}'
+    display_order: 68
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000223"
+  fields:
+    short_id: "tech00000223"
+    category: 3
+    level: 7
+    name: 'Armour Piercing Warhead'
+    description: 'Shaped-charge torpedo casings punch through heavier hull plating.'
+    tech_type: 'TORPEDO'
+    params_json: '{"offense_level": 0.70}'
+    display_order: 78
+    enabled: True
+
+- model: dj4xol.Technology
   pk: "00000000-0000-0000-0000-000000000210"
   fields:
     short_id: "tech00000210"
@@ -752,6 +804,45 @@
     tech_type: 'TORPEDO'
     params_json: '{"offense_level": 4.20}'
     display_order: 108
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000224"
+  fields:
+    short_id: "tech00000224"
+    category: 3
+    level: 21
+    name: 'Cluster Dispersal Torpedo'
+    description: 'Submunition spreads punish close-packed formations with saturating strikes.'
+    tech_type: 'TORPEDO'
+    params_json: '{"offense_level": 5.00}'
+    display_order: 109
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000225"
+  fields:
+    short_id: "tech00000225"
+    category: 2
+    level: 25
+    name: 'Multi-vector Homing Missile'
+    description: 'Independent seekers drive coordinated terminal approaches from several angles.'
+    tech_type: 'TORPEDO'
+    params_json: '{"offense_level": 5.80}'
+    display_order: 111
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000226"
+  fields:
+    short_id: "tech00000226"
+    category: 3
+    level: 26
+    name: 'Maelstrom Torpedo'
+    description: 'Violently self-correcting warheads overwhelm interception with relentless pressure.'
+    tech_type: 'TORPEDO'
+    params_json: '{"offense_level": 6.40}'
+    display_order: 112
     enabled: True
 
 - model: dj4xol.Technology
