@@ -455,7 +455,7 @@ function submitStarMarker(markerType) {
     var errorDiv = document.getElementById('marker-error');
     var csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
     var csrfToken = (csrfInput && csrfInput.value) ? csrfInput.value : '{{ csrf_token }}';
-    var starId = '{{ detail.star_short_id|default:"" }}';
+    var starId = '{{ detail.marker_star_short_id|default:detail.star_short_id|default:"" }}';
     var baseUrl = '{% url "dj4xol:game" game.short_id %}';
     var markerColor = getSelectedMarkerColor();
 
@@ -515,9 +515,18 @@ function updateMarkerTypeButtons(markerType) {
 function updateVisibleMapMarker(markerType, markerColor) {
     var selectedType = String(markerType || '').toUpperCase();
     var normalizedColor = String(markerColor || '').toUpperCase() || 'BLUE';
-    var starNodes = document.querySelectorAll(
-        'div[data-map-object="1"][data-object-type="star"][data-x="{{ selection.x }}"][data-y="{{ selection.y }}"]'
-    );
+    var markerStarObjectId = '{{ detail.marker_star_short_id|default:detail.star_short_id|default:"" }}';
+    var starNodes = [];
+    if (markerStarObjectId) {
+        starNodes = document.querySelectorAll(
+            'div[data-map-object="1"][data-object-type="star"][data-object-id="' + markerStarObjectId + '"]'
+        );
+    }
+    if (!starNodes.length) {
+        starNodes = document.querySelectorAll(
+            'div[data-map-object="1"][data-object-type="star"][data-x="{{ selection.x }}"][data-y="{{ selection.y }}"]'
+        );
+    }
     Array.prototype.forEach.call(starNodes, function(node) {
         if (node.className.indexOf('mapstar-satellite') !== -1) {
             return;
@@ -570,7 +579,7 @@ function selectMarkerColor(markerColor) {
     }
 }
 
-applyMarkerState(getSelectedMarkerType(), getSelectedMarkerColor());
+updateMarkerTypeButtons(getSelectedMarkerType());
 updateMarkerColorSwatches();
 
 function submitRename() {
