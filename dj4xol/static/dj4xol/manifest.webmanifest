@@ -1,0 +1,16 @@
+{
+  "name": "dj4xol",
+  "short_name": "dj4xol",
+  "start_url": "/4x/",
+  "scope": "/4x/",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "/static/dj4xol/images/thumbs/star/all/5__r02_c03.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
