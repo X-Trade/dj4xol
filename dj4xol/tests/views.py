@@ -2722,6 +2722,28 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, 'id="order-params-overlay-add"', html=False)
         self.assertContains(response, 'id="order-params-overlay-title">Order Parameters<', html=False)
 
+    def test_non_repeatable_fleet_order_types_disable_repeat_checkbox_in_form(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {
+                'x': fleet.x,
+                'y': fleet.y,
+                'sel': fleet.short_id,
+                'order_type': 'COLONISE',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="repeat-checkbox is-disabled"', html=False)
+        self.assertContains(response, 'id="repeat-checkbox" disabled', html=False)
+
     def test_refuel_button_logic_is_scoped_to_refuel_orders(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
@@ -6169,6 +6191,66 @@ class TestDiplomacyView(TestCase):
         self.assertContains(response, '>Extend</button>', html=False)
         self.assertContains(response, 'contract-extend-%s' % contract.short_id)
         self.assertContains(response, 'name="extend_years"', html=False)
+
+    def test_outgoing_sent_contract_renders_extend_form_below_action_row(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_extend_layout', 'diplo_extend_layout@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DEL')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Extend Layout Race',
+            plural_name='Extend Layout Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.player = other_player
+        contact_star.save(update_fields=['player'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            target_type='star',
+            target_id=contact_star.id,
+            cached_report=json.dumps({
+                'name': contact_star.name,
+                'x': contact_star.x,
+                'y': contact_star.y,
+                'player_name': other_player.name,
+                'report_tier': 'encounter',
+            }),
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='REQUEST',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='STANCE',
+            request_stance='WARM',
+            offer_clause_type='NOTHING',
+        )
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertRegex(
+            response.content.decode('utf-8'),
+            re.compile(
+                r'class="diplomacy-contract-actions">.*?>Extend</button>\s*</div>\s*<form[^>]+class="diplomacy-contract-extend-form"[^>]+id="contract-extend-%s"' % contract.short_id,
+                re.S,
+            ),
+        )
 
     def test_diplomacy_view_can_extend_outgoing_sent_contract(self):
         game = default_game(stars=5, fleets=0)

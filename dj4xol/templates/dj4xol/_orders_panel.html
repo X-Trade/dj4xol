@@ -178,7 +178,7 @@
                     <option value="SCUTTLE"{% if request.GET.order_type == 'SCUTTLE' %} selected{% endif %}>Scuttle</option>
                     <option value="PATROL"{% if request.GET.order_type == 'PATROL' %} selected{% endif %}>Patrol</option>
                 </select>
-                <label class="repeat-checkbox"><input type="checkbox" name="repeat" id="repeat-checkbox"> &#x21bb;</label>
+                <label class="repeat-checkbox{% if request.GET.order_type == 'GIVE' or request.GET.order_type == 'COLONISE' or request.GET.order_type == 'MERGE' or request.GET.order_type == 'SCUTTLE' %} is-disabled{% endif %}"><input type="checkbox" name="repeat" id="repeat-checkbox"{% if request.GET.order_type == 'GIVE' or request.GET.order_type == 'COLONISE' or request.GET.order_type == 'MERGE' or request.GET.order_type == 'SCUTTLE' %} disabled{% endif %}> &#x21bb;</label>
                 <button type="submit" class="order-add-btn" id="add-order-btn" {% if not dest_star_id and not dest_fleet_id and not dest_salvage_id and not dest_anomaly_id and not dest_x and not dest_y %}disabled{% endif %}>+</button>
             </div>
 
@@ -643,6 +643,7 @@
     var orderParamsOverlayTitle = document.getElementById('order-params-overlay-title');
     var orderParamsPopoutToggle = document.getElementById('order-params-popout-toggle');
     var repeatCheckbox = document.getElementById('repeat-checkbox');
+    var savedRepeatPreference = repeatCheckbox ? repeatCheckbox.checked : false;
     
     // Warp factor slider elements
     var warpSlider = document.getElementById('warp-slider');
@@ -719,6 +720,29 @@
                 'aria-disabled',
                 isDisabled ? 'true' : 'false'
             );
+        }
+    }
+
+    function isRepeatableOrderType(orderTypeValue) {
+        return ['COLONISE', 'MERGE', 'SCUTTLE', 'GIVE'].indexOf(orderTypeValue) === -1;
+    }
+
+    function syncRepeatCheckboxState(currentType) {
+        if (!repeatCheckbox) return;
+        var repeatAllowed = isRepeatableOrderType(currentType);
+        var repeatLabel = repeatCheckbox.closest('.repeat-checkbox');
+        var wasDisabled = repeatCheckbox.disabled;
+
+        if (!repeatAllowed) {
+            savedRepeatPreference = repeatCheckbox.checked;
+            repeatCheckbox.checked = false;
+        } else if (wasDisabled) {
+            repeatCheckbox.checked = savedRepeatPreference;
+        }
+
+        repeatCheckbox.disabled = !repeatAllowed;
+        if (repeatLabel) {
+            repeatLabel.classList.toggle('is-disabled', !repeatAllowed);
         }
     }
 
@@ -1076,6 +1100,7 @@
         orderTypeInput.value = orderType.value;
         if (repeatCheckbox) {
             repeatCheckbox.checked = button.getAttribute('data-repeat') === 'true';
+            savedRepeatPreference = repeatCheckbox.checked;
         }
 
         initializeOrderType();
@@ -1562,6 +1587,7 @@
         var currentType = orderType.value;
         orderTypeInput.value = currentType;
         setOrderAddDisabled(false);
+        syncRepeatCheckboxState(currentType);
 
         var destTargetLabel = document.getElementById('dest-target-label');
         var moveDestination = document.getElementById('move-destination');
@@ -2367,9 +2393,13 @@
     var repeatCheckbox = document.getElementById('repeat-checkbox');
     if (repeatCheckbox) {
         if (localStorage.getItem('fleetOrderRepeat') === 'true') {
-            repeatCheckbox.checked = true;
+            savedRepeatPreference = true;
+            if (!repeatCheckbox.disabled) {
+                repeatCheckbox.checked = true;
+            }
         }
         repeatCheckbox.addEventListener('change', function() {
+            savedRepeatPreference = this.checked;
             localStorage.setItem('fleetOrderRepeat', this.checked);
         });
     }
