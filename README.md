@@ -1,5 +1,7 @@
 # dj4xol
 
+[![CI](https://github.com/X-Trade/dj4xol/actions/workflows/ci.yml/badge.svg)](https://github.com/X-Trade/dj4xol/actions/workflows/ci.yml)
+
 Duh-Jacks-Ohl (`dj4xol`) is a turn-based 4X space strategy game built as a
 Django application, inspired by classic PBEM-style empire games.
 
