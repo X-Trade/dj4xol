@@ -2156,6 +2156,11 @@ body.order-params-overlay-open {
     line-height: 1;
 }
 
+.repeat-checkbox.is-disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+
 .repeat-checkbox input {
     margin: 0;
     vertical-align: middle;

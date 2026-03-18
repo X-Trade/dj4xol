@@ -402,7 +402,7 @@
                                             <button type="submit">Counter</button>
                                         </form>
                                         {% endif %}
-                                        {% if contract.can_revoke %}
+                                    {% if contract.can_revoke %}
                                         <form method="post">
                                             {% csrf_token %}
                                             <input type="hidden" name="target" value="{{ selected_target }}">
@@ -417,6 +417,9 @@
                                             class="diplomacy-inline-toggle"
                                             onclick="toggleContractExtendForm('{{ contract.short_id }}')"
                                         >Extend</button>
+                                        {% endif %}
+                                    </div>
+                                    {% if contract.can_extend %}
                                         <form
                                             method="post"
                                             class="diplomacy-contract-extend-form"
@@ -432,8 +435,7 @@
                                             <button type="submit">Confirm</button>
                                             <button type="button" onclick="toggleContractExtendForm('{{ contract.short_id }}')">Cancel</button>
                                         </form>
-                                        {% endif %}
-                                    </div>
+                                    {% endif %}
                                 </article>
                                 {% empty %}
                                 <p>No negotiations with this race yet.</p>
