@@ -453,6 +453,34 @@ def _preserves_population_growth_reserve(player, star, cost_map, order_type):
     return True
 
 
+def _ordered_support_balance_candidates(star):
+    """Return support orders that bring labs/defenses back toward factory parity."""
+    current_factories = int(getattr(star, 'factories', 0) or 0)
+    if current_factories <= 0:
+        return []
+    support_gaps = [
+        (
+            'BUILD_LAB',
+            max(
+                0,
+                current_factories - (int(getattr(star, 'labs', 0) or 0) * 2),
+            ),
+        ),
+        (
+            'BUILD_DEFENSE',
+            max(
+                0,
+                current_factories - (int(getattr(star, 'defenses', 0) or 0) * 2),
+            ),
+        ),
+    ]
+    support_gaps.sort(key=lambda item: (-item[1], item[0]))
+    return [
+        order_type for order_type, gap in support_gaps
+        if gap > 0
+    ]
+
+
 def get_micromanager_candidate_orders(
     player,
     star,
@@ -483,13 +511,17 @@ def get_micromanager_candidate_orders(
     current_mines = int(getattr(star, 'mines', 0) or 0)
     current_factories = int(getattr(star, 'factories', 0) or 0)
     max_mines = safe_mine_count(star)
-    mine_room = current_mines < max_mines
+    if int(tier or 0) == TIER_BASIC:
+        mine_room = max_mines > 0
+    else:
+        mine_room = current_mines < max_mines
     needs_jobs = current_jobs < thresholds['target_jobs']
     queue_pressure = {'mines': False, 'factories': False}
     filler_order_types = LEVEL_ONE_FILLER_ORDER_TYPES
+    support_balance_candidates = []
     if int(tier or 0) >= TIER_SUPPORT:
         queue_pressure = _queue_throughput_pressure(star)
-        filler_order_types = LEVEL_TWO_FILLER_ORDER_TYPES
+        support_balance_candidates = _ordered_support_balance_candidates(star)
     level_one_support_candidates = []
     if (
         int(tier or 0) == TIER_BASIC and
@@ -524,7 +556,30 @@ def get_micromanager_candidate_orders(
         if queue_pressure.get('mines') and mine_room:
             append_candidate('BUILD_MINE')
 
-        if mine_room:
+        if int(tier or 0) >= TIER_SUPPORT:
+            if queue_pressure.get('factories'):
+                append_candidate('BUILD_FACTORY')
+            if (
+                int(getattr(star, 'shipyards', 0) or 0) <
+                int(fleets_in_orbit or 0) and
+                _can_add_jobs_without_breaking_limit(
+                    player, star, 'BUILD_SHIPYARD'
+                )
+            ):
+                append_candidate('BUILD_SHIPYARD')
+            if support_balance_candidates:
+                for order_type in support_balance_candidates:
+                    if _can_add_jobs_without_breaking_limit(
+                        player, star, order_type
+                    ):
+                        append_candidate(order_type)
+            else:
+                append_candidate('BUILD_FACTORY')
+            if queue_pressure.get('mines') and mine_room:
+                append_candidate('BUILD_MINE')
+            if mine_room and current_mines < (current_factories + 1) * 2:
+                append_candidate('BUILD_MINE')
+        elif mine_room:
             if queue_pressure.get('factories'):
                 append_candidate('BUILD_FACTORY')
             if current_mines < (current_factories + 1) * 2:
@@ -570,12 +625,20 @@ def get_micromanager_candidate_orders(
             append_candidate('BUILD_MINE')
         if queue_pressure.get('factories'):
             append_candidate('BUILD_FACTORY')
-        if (
-            int(tier or 0) >= TIER_SUPPORT and
-            int(getattr(star, 'shipyards', 0) or 0) < int(fleets_in_orbit or 0) and
-            _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD')
-        ):
-            append_candidate('BUILD_SHIPYARD')
+        if int(tier or 0) >= TIER_SUPPORT:
+            if (
+                int(getattr(star, 'shipyards', 0) or 0) < int(fleets_in_orbit or 0) and
+                _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD')
+            ):
+                append_candidate('BUILD_SHIPYARD')
+            if support_balance_candidates:
+                for order_type in support_balance_candidates:
+                    if _can_add_jobs_without_breaking_limit(
+                        player, star, order_type
+                    ):
+                        append_candidate(order_type)
+            elif not queue_pressure.get('factories'):
+                append_candidate('BUILD_FACTORY')
         for order_type in level_one_support_candidates:
             append_candidate(order_type)
 

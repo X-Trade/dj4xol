@@ -5998,7 +5998,11 @@ class TestDiplomacyView(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '<button type="submit">Counter</button>', html=True)
+        self.assertContains(
+            response,
+            '<button type="submit" class="diplomacy-action-button">Counter</button>',
+            html=True,
+        )
         body = response.content.decode('utf-8')
         self.assertLess(body.index('Counter Offer'), body.index('diplomacy-contract-list'))
 

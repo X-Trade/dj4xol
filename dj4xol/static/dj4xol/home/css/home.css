@@ -102,6 +102,56 @@ body.profile-page .columns.two-column .panel.open .panel-scrollable-text {
     overflow: hidden;
 }
 
+.single-panel-page:not(.two-panel-page) .columns {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.single-panel-page:not(.two-panel-page) .column {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    height: 100%;
+}
+
+.single-panel-page:not(.two-panel-page) .column > .panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+.single-panel-page:not(.two-panel-page) .panel > h2 {
+    flex: 0 0 auto;
+}
+
+.single-panel-page:not(.two-panel-page) .panel-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.single-panel-page:not(.two-panel-page) .panel.open .panel-scrollable-list,
+.single-panel-page:not(.two-panel-page) .panel.open .panel-scrollable-text {
+    flex: 1 1 auto;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 /* Remove default paragraph margin */
 .panel-content p {
     margin-top: 0;

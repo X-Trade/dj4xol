@@ -473,6 +473,44 @@ class AdministrationAutomationTest(TestCase):
         self.assertNotIn('BUILD_LAB', candidates)
         self.assertNotIn('BUILD_SHIPYARD', candidates)
 
+    def test_level_one_ignores_safe_mine_cap_but_level_two_respects_it(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 4
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 1_000
+        self.star.boranium_inventory = 1_000
+        self.star.germanium_inventory = 1_000
+        self.star.ironium_yield = 10
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.resource_x_yield = 0
+        self.star.resource_y_yield = 0
+        self.star.resource_z_yield = 0
+        self.star.save()
+
+        level_one_candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            1,
+            cost_map=get_player_production_costs(self.player),
+        )
+        level_two_candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            2,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertIn('BUILD_MINE', level_one_candidates)
+        self.assertNotIn('BUILD_MINE', level_two_candidates)
+
     def test_level_two_prioritises_factory_when_queue_bp_exceeds_one_year(self):
         self._create_administration_tech(2, 2)
         self.player.race_type.population_growth_multiplier = 0
@@ -512,6 +550,35 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertGreaterEqual(len(planned), 1)
         self.assertEqual(planned[0], 'BUILD_FACTORY')
+
+    def test_level_two_prefers_support_when_factories_run_ahead_of_balance(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 60_000
+        self.star.mines = 10
+        self.star.factories = 20
+        self.star.labs = 5
+        self.star.defenses = 4
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 5_000
+        self.star.boranium_inventory = 5_000
+        self.star.germanium_inventory = 5_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            2,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertGreaterEqual(len(candidates), 1)
+        self.assertEqual(candidates[0], 'BUILD_DEFENSE')
 
     def test_level_two_stops_when_queue_already_exceeds_one_year_resources(self):
         self._create_administration_tech(2, 2)
@@ -752,12 +819,12 @@ class AdministrationAutomationTest(TestCase):
                 added_by_micromanager=True
             ).order_by('position')
         )
-        self.assertGreaterEqual(len(orders), 3)
+        self.assertGreaterEqual(len(orders), 2)
         self.assertEqual(
             len(orders),
             len(set(order.order_type for order in orders)),
         )
-        self.assertEqual(orders[0].order_type, 'BUILD_DEFENSE')
+        self.assertEqual(orders[0].order_type, 'BUILD_LAB')
         self.assertGreater(
             sum(
                 order.quantity for order in orders
@@ -775,9 +842,12 @@ class AdministrationAutomationTest(TestCase):
         self.assertGreater(
             sum(
                 order.quantity for order in orders
+                if order.order_type in ('BUILD_LAB', 'BUILD_DEFENSE')
+            ),
+            sum(
+                order.quantity for order in orders
                 if order.order_type == 'BUILD_FACTORY'
             ),
-            12,
         )
 
     def test_level_one_auto_queue_is_limited_by_one_year_affordable_output(self):
@@ -1059,7 +1129,7 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertEqual(self.star.shipyards, 2)
         self.assertEqual(self.star.factories, 20)
-        self.assertEqual(self.star.labs, 0)
+        self.assertLessEqual(self.star.labs, 1)
 
     def test_administration_level_three_queues_then_terraforms(self):
         self._create_administration_tech(3, 3)
