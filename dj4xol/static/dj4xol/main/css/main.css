@@ -6,6 +6,7 @@
 /* Full viewport layout */
 html, body {
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
 }
 
@@ -13,11 +14,6 @@ body.game-page,
 body.spectator-page {
     display: flex;
     flex-direction: column;
-}
-
-.game-page .title-bar .debug-ui-reset-btn {
-    min-width: auto;
-    white-space: nowrap;
 }
 
 /* ============================================
@@ -29,7 +25,7 @@ body.spectator-page {
 .spectator-page .columns {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
+    overflow: hidden;
     padding: 0 10px 10px 10px;
     position: relative;
 }
@@ -319,6 +315,13 @@ body.map-dragging * {
         padding: 0 8px 12px 8px;
     }
 
+    .dest-mode-banner {
+        top: 50px;
+        left: 8px;
+        right: 8px;
+        padding: 8px 10px;
+    }
+
     .game-page .game-layout,
     .spectator-page .columns {
         display: flex;
@@ -570,6 +573,42 @@ body.map-dragging * {
 .marker-btn {
     min-width: 26px;
     text-align: center;
+    color: var(--marker-accent, #ffffff);
+}
+
+.marker-btn--white,
+.marker-colour-swatch--white {
+    --marker-accent: #ffffff;
+}
+
+.marker-btn--red,
+.marker-colour-swatch--red {
+    --marker-accent: #ff5f5f;
+}
+
+.marker-btn--yellow,
+.marker-colour-swatch--yellow {
+    --marker-accent: #ffd84d;
+}
+
+.marker-btn--green,
+.marker-colour-swatch--green {
+    --marker-accent: #67dd79;
+}
+
+.marker-btn--blue,
+.marker-colour-swatch--blue {
+    --marker-accent: #66b8ff;
+}
+
+.marker-btn--indigo,
+.marker-colour-swatch--indigo {
+    --marker-accent: #7d7cff;
+}
+
+.marker-btn--violet,
+.marker-colour-swatch--violet {
+    --marker-accent: #c87cff;
 }
 
 .rename-popover {
@@ -628,6 +667,12 @@ body.map-dragging * {
     gap: 8px;
 }
 
+.marker-colour-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .rename-popover-buttons button,
 .marker-popover-buttons button {
     padding: 4px 12px;
@@ -644,6 +689,21 @@ body.map-dragging * {
 
 .marker-option.is-active {
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+
+.marker-colour-swatch {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 999px;
+    background: var(--marker-accent, #ffffff);
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.marker-colour-swatch.is-active {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
 }
 
 .rename-error {
@@ -1232,22 +1292,30 @@ body.floating-tooltips-enabled .has-tooltip::after {
 
 /* Destination mode banner */
 .dest-mode-banner {
-    margin: 0 10px 10px 10px;
+    position: fixed;
+    top: 56px;
+    left: 10px;
+    right: 10px;
     background: #2a5a8a;
     color: #fff;
     padding: 8px 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    z-index: 100;
+    gap: 12px;
+    z-index: 250;
     box-sizing: border-box;
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
 }
 
 .dest-mode-banner span {
     font-weight: bold;
+    min-width: 0;
 }
 
 .dest-cancel {
+    flex-shrink: 0;
     color: #fff;
     background: #555;
     padding: 4px 12px;

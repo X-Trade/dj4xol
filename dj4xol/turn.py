@@ -129,9 +129,9 @@ from .research import (
     get_player_colony_defense_level,
     apply_research_bonus_rp,
     ensure_player_research_rows,
+    get_global_research_max_level,
     get_player_production_costs,
     get_player_terraforming_profile,
-    _prerequisites_met,
 )
 from .micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
@@ -568,18 +568,16 @@ class GameTurn():
         rows = ensure_player_research_rows(player)
         if not rows:
             return False
-        level_map = {row.category_id: int(row.current_level or 0) for row in rows}
-        eligible = []
-        for row in rows:
-            next_level = int(row.current_level or 0) + 1
-            if not _prerequisites_met(row.category_id, next_level, level_map):
-                continue
-            eligible.append(row)
+        max_level = int(get_global_research_max_level() or 0)
+        eligible = [
+            row for row in rows
+            if int(getattr(row, 'current_level', 0) or 0) < max_level
+        ]
         if not eligible:
             return False
         row = random.choice(eligible)
         old_level = int(row.current_level or 0)
-        row.current_level = old_level + 1
+        row.current_level = max_level
         row.save(update_fields=['current_level'])
         self._create_research_unlock_messages(player, [{
             'category': row.category,
@@ -588,7 +586,7 @@ class GameTurn():
         }])
         self._create_anomaly_message(
             player,
-            "Anomaly breakthrough at %s advanced %s to level %s." % (
+            "Anomaly breakthrough at %s completed %s research, advancing it to level %s." % (
                 format_map_object(anomaly), row.category.name, int(row.current_level or 0)
             ),
             priority=False,
@@ -921,7 +919,26 @@ class GameTurn():
             roll = random.randint(1, 6)
             danger_level = anomaly_danger_level(anomaly)
             if danger_level == DANGER_LOW:
-                if roll in (1, 2):
+                if roll == 1:
+                    continue
+                if roll == 2:
+                    continue
+                if roll == 3:
+                    continue
+                if roll == 4:
+                    self._apply_anomaly_damage(fleet, anomaly)
+                    continue
+                if roll == 5:
+                    self._apply_anomaly_cargo_loss(fleet, anomaly)
+                    continue
+                self._apply_anomaly_research_boon(
+                    fleet, anomaly, allow_breakthrough=False, reward_tier='low'
+                )
+                continue
+            if danger_level == DANGER_MEDIUM:
+                if roll == 1:
+                    continue
+                if roll == 2:
                     continue
                 if roll == 3:
                     self._apply_anomaly_damage(fleet, anomaly)
@@ -929,28 +946,53 @@ class GameTurn():
                 if roll == 4:
                     self._apply_anomaly_cargo_loss(fleet, anomaly)
                     continue
-                self._apply_anomaly_research_boon(fleet, anomaly)
+                if roll == 5:
+                    self._apply_anomaly_research_boon(
+                        fleet, anomaly, allow_breakthrough=False, reward_tier='low'
+                    )
+                    continue
+                self._apply_anomaly_research_boon(
+                    fleet, anomaly, allow_breakthrough=False, reward_tier='medium'
+                )
                 continue
             if danger_level == DANGER_HIGH:
-                if roll in (1, 2):
+                if roll == 1:
+                    continue
+                if roll == 2:
+                    self._apply_anomaly_damage(fleet, anomaly)
                     continue
                 if roll == 3:
-                    self._apply_anomaly_damage(fleet, anomaly)
+                    self._apply_anomaly_cargo_loss(fleet, anomaly)
                     continue
                 if roll == 4:
                     self._apply_anomaly_destruction(fleet, anomaly)
                     continue
-                self._apply_anomaly_research_boon(fleet, anomaly)
+                if roll == 5:
+                    self._apply_anomaly_research_boon(
+                        fleet, anomaly, allow_breakthrough=False, reward_tier='medium'
+                    )
+                    continue
+                self._apply_anomaly_breakthrough(fleet.player, anomaly)
                 continue
-            if roll in (1, 2):
+            if roll == 1:
                 continue
-            if roll == 3:
+            if roll == 2:
                 self._apply_anomaly_damage(fleet, anomaly)
                 continue
-            if roll == 4:
-                self._apply_anomaly_destruction(fleet, anomaly)
+            if roll == 3:
+                self._apply_anomaly_cargo_loss(fleet, anomaly)
                 continue
-            self._apply_anomaly_research_boon(fleet, anomaly)
+            if roll == 4:
+                self._apply_anomaly_research_boon(
+                    fleet, anomaly, allow_breakthrough=False, reward_tier='low'
+                )
+                continue
+            if roll == 5:
+                self._apply_anomaly_research_boon(
+                    fleet, anomaly, allow_breakthrough=False, reward_tier='medium'
+                )
+                continue
+            self._apply_anomaly_breakthrough(fleet.player, anomaly)
 
     def salvage_interactions(self):
         """Apply salvage hazard damage to fleets co-located with special salvage."""
@@ -971,12 +1013,19 @@ class GameTurn():
             danger_level = salvage_danger_level(salvage)
             if not roll_chance(hazard_trigger_chance(danger_level)):
                 continue
-            if salvage_type == Salvage.TYPE_ASTEROID_FIELD:
-                templates = [
-                    "{fleet} took {damage}% integrity damage from rock strikes in {salvage}.",
-                    "{fleet} took {damage}% integrity damage while sheltering in {salvage}.",
-                    "{fleet} took {damage}% integrity damage from shifting debris in {salvage}.",
-                ]
+            if salvage_type in (Salvage.TYPE_SALVAGE, Salvage.TYPE_ASTEROID_FIELD):
+                if salvage_type == Salvage.TYPE_ASTEROID_FIELD:
+                    templates = [
+                        "{fleet} took {damage}% integrity damage from rock strikes in {salvage}.",
+                        "{fleet} took {damage}% integrity damage while sheltering in {salvage}.",
+                        "{fleet} took {damage}% integrity damage from shifting debris in {salvage}.",
+                    ]
+                else:
+                    templates = [
+                        "{fleet} took {damage}% integrity damage while skimming unstable wreckage in {salvage}.",
+                        "{fleet} took {damage}% integrity damage from drifting debris in {salvage}.",
+                        "{fleet} took {damage}% integrity damage from a salvage collision in {salvage}.",
+                    ]
                 self._apply_salvage_damage(
                     fleet,
                     salvage,
@@ -1414,7 +1463,9 @@ class GameTurn():
             )
         self._create_anomaly_message(player, text, priority=True)
 
-    def _apply_anomaly_research_boon(self, fleet, anomaly):
+    def _apply_anomaly_research_boon(
+        self, fleet, anomaly, allow_breakthrough=True, reward_tier='medium'
+    ):
         player = fleet.player
         rows = ensure_player_research_rows(player)
         if not rows:
@@ -1435,12 +1486,18 @@ class GameTurn():
             danger_level,
             getattr(anomaly, 'stability', None),
         )
+        if reward_tier == 'low':
+            boon_multiplier = 0.6
+            text_prefix = 'Minor anomaly data'
+        else:
+            boon_multiplier = 1.0
+            text_prefix = 'Anomaly data'
         breakthrough_chance = {
             DANGER_LOW: 0.01,
             DANGER_MEDIUM: 0.18,
             DANGER_HIGH: 0.25,
         }.get(danger_level, 0.10)
-        if random.random() < breakthrough_chance:
+        if allow_breakthrough and random.random() < breakthrough_chance:
             extra_rp = self._convert_secret_resources_to_rp(fleet)
             extra_rp = int(round(float(extra_rp) * danger_reward_multiplier))
             if self._apply_anomaly_breakthrough(player, anomaly):
@@ -1456,13 +1513,15 @@ class GameTurn():
             ))
             bonus_rp = int(round(float(bonus_rp) * danger_reward_multiplier))
             bonus_rp = int(round(float(bonus_rp) * scanner_multiplier))
+            bonus_rp = int(round(float(bonus_rp) * boon_multiplier))
             extra_rp = self._convert_secret_resources_to_rp(fleet)
             extra_rp = int(round(float(extra_rp) * danger_reward_multiplier))
+            extra_rp = int(round(float(extra_rp) * boon_multiplier))
             total_rp = int(bonus_rp) + int(extra_rp)
             result = apply_research_bonus_rp(player, category.id, total_rp)
             text = (
-                "Anomaly data from %s granted %s bonus RP in %s."
-                % (format_map_object(anomaly), bonus_rp, category.name)
+                "%s from %s granted %s bonus RP in %s."
+                % (text_prefix, format_map_object(anomaly), bonus_rp, category.name)
             )
             if extra_rp > 0:
                 text += " Exotic cargo yielded %s RP." % int(extra_rp)
@@ -1476,13 +1535,15 @@ class GameTurn():
         ))
         bonus_rp = int(round(float(bonus_rp) * danger_reward_multiplier))
         bonus_rp = int(round(float(bonus_rp) * scanner_multiplier))
+        bonus_rp = int(round(float(bonus_rp) * boon_multiplier))
         extra_rp = self._convert_secret_resources_to_rp(fleet)
         extra_rp = int(round(float(extra_rp) * danger_reward_multiplier))
+        extra_rp = int(round(float(extra_rp) * boon_multiplier))
         total_rp = int(bonus_rp) + int(extra_rp)
         result = apply_research_bonus_rp(player, category.id, total_rp)
         text = (
-            "Anomaly data from %s granted %s bonus RP in %s."
-            % (format_map_object(anomaly), bonus_rp, category.name)
+            "%s from %s granted %s bonus RP in %s."
+            % (text_prefix, format_map_object(anomaly), bonus_rp, category.name)
         )
         if extra_rp > 0:
             text += " Exotic cargo yielded %s RP." % int(extra_rp)

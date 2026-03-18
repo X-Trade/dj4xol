@@ -1623,6 +1623,19 @@ class TestRenameObjectView(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['error'], 'Name contains blocked profanity.')
 
+    def test_rename_allowed_after_turn_in(self):
+        self.player.turned_in = True
+        self.player.save(update_fields=['turned_in'])
+
+        response = self.client.post(
+            reverse('dj4xol:rename_object', args=[self.game.short_id, self.fleet.short_id]),
+            {'name': 'Late Rename'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.fleet.refresh_from_db()
+        self.assertEqual(self.fleet.name, 'Late Rename')
+
 
 class TestStarMarkerView(TestCase):
     def setUp(self):
@@ -1657,16 +1670,18 @@ class TestStarMarkerView(TestCase):
     def test_set_star_marker_on_reported_star(self):
         response = self.client.post(
             reverse('dj4xol:set_star_marker', args=[self.game.short_id, self.reported_star.short_id]),
-            {'marker_type': 'CIRCLE'},
+            {'marker_type': 'CIRCLE', 'marker_color': 'BLUE'},
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['marker_type'], 'CIRCLE')
+        self.assertEqual(response.json()['marker_color'], 'BLUE')
         self.assertTrue(
             PlayerStarMarker.objects.filter(
                 player=self.player,
                 star=self.reported_star,
                 marker_type='CIRCLE',
+                marker_color='BLUE',
             ).exists()
         )
 
@@ -1706,7 +1721,7 @@ class TestStarMarkerView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            'class="detail-action-btn marker-btn"',
+            'class="detail-action-btn marker-btn marker-btn--white"',
             html=False,
         )
         self.assertContains(
@@ -1772,6 +1787,15 @@ class TestStarMarkerView(TestCase):
                 star=satellite,
             ).exists()
         )
+
+    def test_rejects_invalid_marker_colour(self):
+        response = self.client.post(
+            reverse('dj4xol:set_star_marker', args=[self.game.short_id, self.reported_star.short_id]),
+            {'marker_type': 'X', 'marker_color': 'ORANGE'},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['error'], 'Invalid marker colour')
 
 
 class TestPlayCliWebApi(TestCase):
@@ -2536,7 +2560,7 @@ class TestFleetOrderViews(TestCase):
             html=False,
         )
 
-    def test_staff_game_view_shows_reset_ui_button_and_helpers(self):
+    def test_staff_game_view_hides_reset_ui_button_but_keeps_helpers(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
         user, _ = get_default_user()
@@ -2551,8 +2575,8 @@ class TestFleetOrderViews(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Reset UI')
-        self.assertContains(response, 'clearGameUiState()', html=False)
+        self.assertNotContains(response, 'Reset UI')
+        self.assertContains(response, 'window.clearGameUiState = function()', html=False)
         self.assertContains(response, 'window.listGameUiStateKeys = function()', html=False)
 
     def test_classic_game_view_does_not_load_lcars_stylesheet(self):

@@ -199,6 +199,8 @@ body.lcars .maparea a.mapstar-name {
 
 .mapstar-marker-circle,
 .mapstar-marker-x {
+    --map-marker-color: #ffffff;
+    --map-marker-glow: rgba(255, 255, 255, 0.7);
     z-index: 50 !important;
 }
 
@@ -207,10 +209,10 @@ body.lcars .maparea a.mapstar-name {
     top: -3px;
     width: 11px;
     height: 11px;
-    border: 1.5px solid #7fd7ff;
+    border: 1.5px solid var(--map-marker-color);
     border-radius: 50%;
     box-sizing: border-box;
-    box-shadow: 0 0 3px rgba(127, 215, 255, 0.65);
+    box-shadow: 0 0 3px var(--map-marker-glow);
 }
 
 .mapstar-marker-x::before,
@@ -219,8 +221,8 @@ body.lcars .maparea a.mapstar-name {
     top: 2px;
     width: 9px;
     height: 1.5px;
-    background: #ff7070;
-    box-shadow: 0 0 3px rgba(255, 112, 112, 0.65);
+    background: var(--map-marker-color);
+    box-shadow: 0 0 3px var(--map-marker-glow);
     transform-origin: center;
 }
 
@@ -231,6 +233,42 @@ body.lcars .maparea a.mapstar-name {
 .mapstar-marker-x::after {
     transform: rotate(-45deg);
 }
+
+.mapstar-marker-color-white {
+    --map-marker-color: #ffffff;
+    --map-marker-glow: rgba(255, 255, 255, 0.7);
+}
+
+.mapstar-marker-color-red {
+    --map-marker-color: #ff5f5f;
+    --map-marker-glow: rgba(255, 95, 95, 0.7);
+}
+
+.mapstar-marker-color-yellow {
+    --map-marker-color: #ffd84d;
+    --map-marker-glow: rgba(255, 216, 77, 0.7);
+}
+
+.mapstar-marker-color-green {
+    --map-marker-color: #67dd79;
+    --map-marker-glow: rgba(103, 221, 121, 0.7);
+}
+
+.mapstar-marker-color-blue {
+    --map-marker-color: #66b8ff;
+    --map-marker-glow: rgba(102, 184, 255, 0.7);
+}
+
+.mapstar-marker-color-indigo {
+    --map-marker-color: #7d7cff;
+    --map-marker-glow: rgba(125, 124, 255, 0.72);
+}
+
+.mapstar-marker-color-violet {
+    --map-marker-color: #c87cff;
+    --map-marker-glow: rgba(200, 124, 255, 0.72);
+}
+
 .mapfleet {
     height: 3.5px;
     width: 3.5px;

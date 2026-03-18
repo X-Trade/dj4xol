@@ -31,7 +31,7 @@ from ..colony_rules import (
 )
 from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, Report, ServerRaceType, DiplomaticContract
 from ..factory import GameFactory
-from ..research import ensure_player_research_rows
+from ..research import ensure_player_research_rows, get_global_research_max_level
 from ..chance_rules import transfer_raid_success_chance
 from ..hazard_rules import DANGER_HIGH, DANGER_LOW, DANGER_MEDIUM, DANGER_NONE
 from ..messages import format_map_object
@@ -853,7 +853,7 @@ class TestAnomalyInteractions(TestCase):
                     return x, y
         raise AssertionError('No star-safe coordinate found for comet test setup.')
 
-    def test_roll_1_and_2_have_no_effect(self):
+    def test_low_danger_roll_1_has_no_effect(self):
         game = default_game()
         game.anomalies_enabled = True
         game.save(update_fields=['anomalies_enabled'])
@@ -880,8 +880,6 @@ class TestAnomalyInteractions(TestCase):
         turn = GameTurn(game)
         with patch('dj4xol.turn.anomaly_danger_level', return_value=DANGER_LOW):
             with patch('dj4xol.turn.random.randint', return_value=1):
-                turn.anomaly_interactions()
-            with patch('dj4xol.turn.random.randint', return_value=2):
                 turn.anomaly_interactions()
         fleet.refresh_from_db()
         self.assertEqual(fleet.integrity, 87)
@@ -967,7 +965,7 @@ class TestAnomalyInteractions(TestCase):
         self.assertEqual(fleet.resource_y_inventory, 0)
         self.assertEqual(fleet.resource_z_inventory, 0)
         self.assertEqual(captured.get('category_id'), row.category_id)
-        self.assertEqual(captured.get('bonus_rp'), 115 + 26)
+        self.assertEqual(captured.get('bonus_rp'), 142)
 
     def test_low_danger_anomaly_research_converts_secret_resources_with_reward_scaling(self):
         game = default_game()
@@ -1014,7 +1012,7 @@ class TestAnomalyInteractions(TestCase):
         self.assertEqual(fleet.resource_y_inventory, 0)
         self.assertEqual(fleet.resource_z_inventory, 0)
         self.assertEqual(captured.get('category_id'), row.category_id)
-        self.assertEqual(captured.get('bonus_rp'), 45 + 10)
+        self.assertEqual(captured.get('bonus_rp'), 34)
 
     def test_anomaly_damage_and_destroy_send_messages(self):
         game = default_game()
@@ -1039,7 +1037,7 @@ class TestAnomalyInteractions(TestCase):
         )
         turn = GameTurn(game)
         with patch('dj4xol.turn.anomaly_danger_level', return_value=DANGER_HIGH):
-            with patch('dj4xol.turn.random.randint', side_effect=[3, 12]):
+            with patch('dj4xol.turn.random.randint', side_effect=[2, 12]):
                 turn.anomaly_interactions()
         self.assertTrue(GameMessage.objects.filter(
             game=game,
@@ -1599,7 +1597,7 @@ class TestAnomalyInteractions(TestCase):
             anomaly_type=Anomaly.TYPE_COMET,
             stability=100,
         )
-        with patch('dj4xol.turn.random.randint', side_effect=[3, 10]):
+        with patch('dj4xol.turn.random.randint', side_effect=[4, 10]):
             GameTurn(game).anomaly_interactions()
         fleet.refresh_from_db()
         self.assertEqual(fleet.integrity, 98)
@@ -1657,7 +1655,7 @@ class TestAnomalyInteractions(TestCase):
         )
         turn = GameTurn(game)
         with patch('dj4xol.turn.anomaly_danger_level', return_value=DANGER_HIGH):
-            with patch('dj4xol.turn.random.randint', side_effect=[3, 30]):
+            with patch('dj4xol.turn.random.randint', side_effect=[2, 30]):
                 turn.anomaly_interactions()
         fleet.refresh_from_db()
         self.assertEqual(fleet.integrity, 65)
@@ -1686,18 +1684,22 @@ class TestAnomalyInteractions(TestCase):
             stability=100,
         )
         turn = GameTurn(game)
-        with patch('dj4xol.turn.anomaly_danger_level', return_value=DANGER_HIGH):
-            with patch('dj4xol.turn.random.randint', return_value=6):
-                with patch('dj4xol.turn.random.random', side_effect=[0.9, 0.1, 0.0]):
-                    turn.anomaly_interactions()
-        self.assertTrue(GameMessage.objects.filter(
-            game=game,
-            player=player,
-            category='RANDOM',
-            message__icontains='176 bonus RP',
-        ).exists())
+        captured = {}
 
-    def test_anomaly_breakthrough_can_grant_one_level(self):
+        def _record_bonus(player_arg, category_id, bonus_rp):
+            captured['category_id'] = category_id
+            captured['bonus_rp'] = bonus_rp
+            return {'old_level': 0, 'new_level': 0}
+
+        with patch('dj4xol.turn.anomaly_danger_level', return_value=DANGER_HIGH):
+            with patch('dj4xol.turn.random.randint', return_value=5):
+                with patch('dj4xol.turn.random.random', side_effect=[0.9, 0.1, 0.0]):
+                    with patch('dj4xol.turn.apply_research_bonus_rp', side_effect=_record_bonus):
+                        turn.anomaly_interactions()
+        self.assertIsNotNone(captured.get('category_id'))
+        self.assertEqual(captured.get('bonus_rp'), 177)
+
+    def test_anomaly_breakthrough_can_complete_category(self):
         game = default_game()
         game.anomalies_enabled = True
         game.save(update_fields=['anomalies_enabled'])
@@ -1721,15 +1723,15 @@ class TestAnomalyInteractions(TestCase):
         )
         row = ensure_player_research_rows(player)[0]
         old_level = int(row.current_level or 0)
-        with patch('dj4xol.turn.anomaly_danger_level', return_value=DANGER_HIGH):
-            with patch('dj4xol.turn.random.random', return_value=0.0):
-                with patch(
-                    'dj4xol.turn.random.choice',
-                    side_effect=lambda seq: row if seq and hasattr(seq[0], 'category_id') else seq[0]
-                ):
-                    GameTurn(game)._apply_anomaly_research_boon(fleet, anomaly)
+        max_level = int(get_global_research_max_level() or 0)
+        with patch(
+            'dj4xol.turn.random.choice',
+            side_effect=lambda seq: row if seq and hasattr(seq[0], 'category_id') else seq[0]
+        ):
+            GameTurn(game)._apply_anomaly_breakthrough(player, anomaly)
         row.refresh_from_db()
-        self.assertEqual(int(row.current_level or 0), old_level + 1)
+        self.assertGreater(int(row.current_level or 0), old_level)
+        self.assertEqual(int(row.current_level or 0), max_level)
         self.assertTrue(GameMessage.objects.filter(
             game=game,
             player=player,
@@ -2087,6 +2089,38 @@ class TestAnomalyInteractions(TestCase):
         msg = player.messages.latest('id')
         self.assertFalse(msg.priority)
         self.assertIn('Asteroid Field', msg.message)
+        self.assertIn('2% integrity damage', msg.message)
+        self.assertIn(fleet.short_id, msg.message)
+
+    def test_low_danger_plain_salvage_uses_light_damage_path(self):
+        game = default_game()
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Wreck Diver',
+            x=42,
+            y=42,
+            integrity=100,
+        )
+        Salvage.objects.create(
+            game=game,
+            x=fleet.x,
+            y=fleet.y,
+            salvage_type=Salvage.TYPE_SALVAGE,
+            danger_level=DANGER_LOW,
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=True):
+            with patch('dj4xol.turn.random.randint', return_value=6):
+                GameTurn(game).salvage_interactions()
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 98)
+        msg = player.messages.latest('id')
+        self.assertFalse(msg.priority)
+        self.assertIn('Salvage', msg.message)
         self.assertIn('2% integrity damage', msg.message)
         self.assertIn(fleet.short_id, msg.message)
 

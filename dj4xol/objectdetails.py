@@ -221,6 +221,7 @@ class DetailBuilder():
                      ),
                      'can_set_marker': bool(self.player and isinstance(self.selected_obj, Star)),
                      'star_marker_type': self._get_star_marker_type() if isinstance(self.selected_obj, Star) else '',
+                     'star_marker_color': self._get_star_marker_color() if isinstance(self.selected_obj, Star) else PlayerStarMarker.COLOR_WHITE,
                      'marker_star_short_id': self._get_marker_star().short_id if isinstance(self.selected_obj, Star) and self._get_marker_star() else None,
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
@@ -361,6 +362,7 @@ class DetailBuilder():
             'thumbnail_blurred': False,
             'can_set_marker': False,
             'star_marker_type': '',
+            'star_marker_color': PlayerStarMarker.COLOR_WHITE,
             'marker_star_short_id': None,
         }
 
@@ -491,6 +493,7 @@ class DetailBuilder():
             detail['star_short_id'] = self.selected_obj.short_id
             detail['can_set_marker'] = bool(self.player)
             detail['star_marker_type'] = self._get_star_marker_type()
+            detail['star_marker_color'] = self._get_star_marker_color()
             marker_star = self._get_marker_star()
             detail['marker_star_short_id'] = marker_star.short_id if marker_star else None
             detail['population'] = data.get('colonists')
@@ -640,7 +643,10 @@ class DetailBuilder():
             if str(data.get('report_tier') or '').lower() in ('advanced', 'encounter'):
                 detail['danger_level'] = data.get('danger_level') or object_danger_level(self.selected_obj)
                 detail['danger_level_display'] = (
-                    danger_level_display(detail['danger_level'])
+                    danger_level_display(
+                        detail['danger_level'],
+                        detail.get('stability') if detail.get('is_anomaly') else None,
+                    )
                     if detail.get('danger_level') else None
                 )
             if 'total_minerals' in data:
@@ -681,14 +687,28 @@ class DetailBuilder():
         return detail
 
     def _get_star_marker_type(self):
+        marker = self._get_star_marker()
+        if marker is None:
+            return ''
+        return getattr(marker, 'marker_type', '') or ''
+
+    def _get_star_marker_color(self):
+        marker = self._get_star_marker()
+        if marker is None:
+            return PlayerStarMarker.COLOR_WHITE
+        color = str(getattr(marker, 'marker_color', '') or '').upper()
+        if color in PlayerStarMarker.COLOR_VALUES:
+            return color
+        return PlayerStarMarker.COLOR_WHITE
+
+    def _get_star_marker(self):
         marker_star = self._get_marker_star()
         if not self.player or marker_star is None:
-            return ''
-        marker = PlayerStarMarker.objects.filter(
+            return None
+        return PlayerStarMarker.objects.filter(
             player=self.player,
             star=marker_star,
-        ).values_list('marker_type', flat=True).first()
-        return marker or ''
+        ).first()
 
     def _get_marker_star(self):
         if not self.selected_obj or not isinstance(self.selected_obj, Star):
