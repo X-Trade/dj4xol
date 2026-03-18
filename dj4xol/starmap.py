@@ -66,34 +66,15 @@ class StarMap():
         self.salvage_report_tiers = {}
         self.star_markers = {}
         self.primary_star_by_position = {}
+        self._raw_star_markers = []
         self.explored_star_ids = set()
         self.explored_salvage_ids = set()
         if self.spectator:
             self.explored_star_ids = set(self.stars.values_list('id', flat=True))
             self.explored_salvage_ids = set(self.salvages.values_list('id', flat=True))
         elif self.player:
-            self.star_markers = dict(
-                (
-                    star_id,
-                    {
-                        'type': marker_type,
-                        'color': (
-                            (
-                                PlayerStarMarker.COLOR_BLUE
-                                if marker_color == PlayerStarMarker.COLOR_WHITE
-                                else marker_color
-                            )
-                            if marker_color in PlayerStarMarker.COLOR_VALUES
-                            else PlayerStarMarker.COLOR_BLUE
-                        ),
-                    },
-                )
-                for star_id, marker_type, marker_color in
-                PlayerStarMarker.objects.filter(player=self.player).values_list(
-                    'star_id',
-                    'marker_type',
-                    'marker_color',
-                )
+            self._raw_star_markers = list(
+                PlayerStarMarker.objects.filter(player=self.player).select_related('star')
             )
             reports = list(Report.objects.filter(
                 game=self.game,
@@ -143,6 +124,7 @@ class StarMap():
             if not getattr(self.game, 'no_scanners', False):
                 self.salvages = self.salvages.filter(id__in=self.explored_salvage_ids)
         self.primary_star_by_position = self._build_primary_star_by_position()
+        self.star_markers = self._build_star_markers_by_position()
         self.map = self.render_map()
 
     @property
@@ -255,6 +237,30 @@ class StarMap():
             pos: self._primary_star_for_group(group)
             for pos, group in stars_by_pos.items()
         }
+
+    def _build_star_markers_by_position(self):
+        markers = {}
+        for marker in self._raw_star_markers:
+            marker_star = getattr(marker, 'star', None)
+            if marker_star is None:
+                continue
+            pos = (marker_star.x, marker_star.y)
+            normalized_color = str(getattr(marker, 'marker_color', '') or '').upper()
+            if normalized_color == PlayerStarMarker.COLOR_WHITE:
+                normalized_color = PlayerStarMarker.COLOR_BLUE
+            if normalized_color not in PlayerStarMarker.COLOR_VALUES:
+                normalized_color = PlayerStarMarker.COLOR_BLUE
+            existing = markers.get(pos)
+            primary_star = self.primary_star_by_position.get(pos)
+            if (
+                existing is None or
+                getattr(marker, 'star_id', None) == getattr(primary_star, 'id', None)
+            ):
+                markers[pos] = {
+                    'type': getattr(marker, 'marker_type', '') or '',
+                    'color': normalized_color,
+                }
+        return markers
 
     def _primary_star_for_group(self, stars):
         """Return the canonical primary star for a stacked star location."""
@@ -439,7 +445,7 @@ class StarMap():
             )
 
     def _get_star_marker_class(self, star):
-        marker = self.star_markers.get(getattr(star, 'id', None))
+        marker = self.star_markers.get((star.x, star.y))
         marker_type = marker
         marker_color = PlayerStarMarker.COLOR_BLUE
         if isinstance(marker, dict):

@@ -707,10 +707,20 @@ class DetailBuilder():
         marker_star = self._get_marker_star()
         if not self.player or marker_star is None:
             return None
-        return PlayerStarMarker.objects.filter(
-            player=self.player,
-            star=marker_star,
-        ).first()
+        markers = list(
+            PlayerStarMarker.objects.filter(
+                player=self.player,
+                star__game=self.game,
+                star__x=marker_star.x,
+                star__y=marker_star.y,
+            ).select_related('star')
+        )
+        if not markers:
+            return None
+        for marker in markers:
+            if getattr(marker, 'star_id', None) == getattr(marker_star, 'id', None):
+                return marker
+        return markers[0]
 
     def _get_marker_star(self):
         if not self.selected_obj or not isinstance(self.selected_obj, Star):
@@ -724,17 +734,23 @@ class DetailBuilder():
         )
         if not stars:
             return self.selected_obj
-        if self.player and self.player.homeworld_id:
-            for star in stars:
-                if star.id == self.player.homeworld_id:
-                    return star
         return sorted(
             stars,
-            key=lambda star: (
-                str(getattr(star, 'short_id', '') or ''),
-                int(getattr(star, 'id', 0) or 0),
-            ),
+            key=self._marker_star_sort_key,
         )[0]
+
+    def _marker_star_sort_key(self, star):
+        owner = getattr(star, 'player', None)
+        owner_priority = 0 if self.player and owner == self.player else (1 if owner else 2)
+        homeworld_priority = -1 if (
+            self.player and self.player.homeworld_id == getattr(star, 'id', None)
+        ) else 0
+        return (
+            owner_priority,
+            homeworld_priority,
+            str(getattr(star, 'short_id', '') or ''),
+            int(getattr(star, 'id', 0) or 0),
+        )
 
     def _apply_fleet_motion_summary(self, detail):
         """Attach a user-facing fleet movement summary line to detail payload."""
