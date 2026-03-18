@@ -538,11 +538,12 @@ input:focus {
 .lcars .diplomacy-action-button {
     background: #9c6f7f;
     border: none;
-    border-radius: 20px;
+    border-radius: 16px;
     color: #1a1a2e;
     font-weight: bold;
-    letter-spacing: 1px;
-    padding: 10px 18px;
+    font-size: 0.88em;
+    letter-spacing: 0.5px;
+    padding: 6px 12px;
     text-transform: uppercase;
 }
 

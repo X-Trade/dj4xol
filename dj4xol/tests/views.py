@@ -3325,7 +3325,11 @@ class TestDiplomacyView(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="diplomacy-compose-toggle-button" disabled', html=False)
+        self.assertContains(
+            response,
+            'id="diplomacy-compose-toggle-button" class="diplomacy-action-button" disabled',
+            html=False,
+        )
         self.assertContains(response, 'class="classic turned-in"', html=False)
 
     def test_diplomacy_hashes_out_compose_form_when_turned_in(self):
@@ -3361,7 +3365,11 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'diplomacy-compose-form diplomacy-compose-locked', html=False)
         self.assertContains(response, 'name="temperature" class="compose-token" disabled', html=False)
-        self.assertContains(response, '<button type="submit" disabled>Send</button>', html=False)
+        self.assertContains(
+            response,
+            '<button type="submit" class="diplomacy-action-button" disabled>Send</button>',
+            html=False,
+        )
         self.assertContains(response, 'window.__applyDiplomacyLock = applyDiplomacyLock;', html=False)
 
     def test_diplomacy_limits_requests_per_race_per_turn_with_warning(self):
