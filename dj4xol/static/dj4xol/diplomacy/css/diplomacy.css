@@ -236,7 +236,6 @@
     font: inherit;
 }
 
-.compose-token,
 .compose-token-static,
 .compose-detail-block {
     min-height: 30px;
@@ -244,14 +243,20 @@
 
 .compose-token,
 .compose-detail-block {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
     max-width: 100%;
 }
 
 .compose-token {
     font: inherit;
+}
+
+select.compose-token {
+    display: inline-block;
+    min-height: 0;
+    line-height: 1.2;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    vertical-align: middle;
 }
 
 .compose-token-static {
@@ -262,7 +267,9 @@
 
 .compose-detail-block {
     display: none;
+    align-items: center;
     flex-wrap: wrap;
+    gap: 6px;
     min-width: 0;
 }
 

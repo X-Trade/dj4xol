@@ -159,7 +159,7 @@
                                 <form method="get" class="diplomacy-compose-toggle-form">
                                     <input type="hidden" name="target" value="{{ selected_target }}">
                                     <input type="hidden" name="compose" value="1">
-                                    <button type="submit" id="diplomacy-compose-toggle-button"{% if diplomacy_locked %} disabled{% endif %}>Draft Negotiation</button>
+                                    <button type="submit" id="diplomacy-compose-toggle-button" class="diplomacy-action-button"{% if diplomacy_locked %} disabled{% endif %}>Draft Negotiation</button>
                                 </form>
                             </p>
                             {% else %}
@@ -349,7 +349,7 @@
                                     Warning: you are giving away your homeworld. Your homeworld marker will transfer to your next most populous colony if you still hold one; otherwise you will be defeated unless this request also grants you another colony in exchange.
                                 </p>
                                 <div class="diplomacy-contract-actions">
-                                    <button type="submit"{% if diplomacy_locked %} disabled{% endif %}>Send</button>
+                                    <button type="submit" class="diplomacy-action-button"{% if diplomacy_locked %} disabled{% endif %}>Send</button>
                                     <a href="?target={{ selected_target }}">Close</a>
                                 </div>
                             </form>
