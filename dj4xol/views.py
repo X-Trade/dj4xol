@@ -3063,6 +3063,7 @@ def message_history(request, game_short_id):
         'current_category': category_filter,
         'priority_only': priority_only,
         'user_theme': account.theme if account else 'classic',
+        'is_owner': account == game.owner,
     })
 
 
@@ -4554,21 +4555,21 @@ def set_star_marker(request, game_short_id, star_short_id):
         return JsonResponse({'error': 'You do not have intel on this star'}, status=403)
 
     stars_at_location = list(Star.objects.filter(game=game, x=star.x, y=star.y))
-    if player.homeworld_id:
-        primary_star = next(
-            (candidate for candidate in stars_at_location if candidate.id == player.homeworld_id),
-            None,
+    def marker_star_sort_key(candidate):
+        owner = getattr(candidate, 'player', None)
+        owner_priority = 0 if owner == player else (1 if owner else 2)
+        homeworld_priority = -1 if player.homeworld_id == getattr(candidate, 'id', None) else 0
+        return (
+            owner_priority,
+            homeworld_priority,
+            str(getattr(candidate, 'short_id', '') or ''),
+            int(getattr(candidate, 'id', 0) or 0),
         )
-    else:
-        primary_star = None
-    if primary_star is None:
-        primary_star = sorted(
-            stars_at_location or [star],
-            key=lambda candidate: (
-                str(getattr(candidate, 'short_id', '') or ''),
-                int(getattr(candidate, 'id', 0) or 0),
-            ),
-        )[0]
+
+    primary_star = sorted(
+        stars_at_location or [star],
+        key=marker_star_sort_key,
+    )[0]
     star = primary_star
 
     marker_type = (request.POST.get('marker_type', '') or '').strip().upper()
@@ -4586,9 +4587,14 @@ def set_star_marker(request, game_short_id, star_short_id):
     if marker_color not in valid_colors:
         return JsonResponse({'error': 'Invalid marker colour'}, status=400)
 
+    location_markers = PlayerStarMarker.objects.filter(
+        player=player,
+        star__in=stars_at_location,
+    )
     if not marker_type:
-        PlayerStarMarker.objects.filter(player=player, star=star).delete()
+        location_markers.delete()
     else:
+        location_markers.exclude(star=star).delete()
         PlayerStarMarker.objects.update_or_create(
             player=player,
             star=star,

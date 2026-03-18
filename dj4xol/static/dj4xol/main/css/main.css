@@ -305,6 +305,11 @@ body.map-dragging * {
         min-height: 100dvh;
     }
 
+    body.win95.game-page,
+    body.win95.spectator-page {
+        font-size: 11px;
+    }
+
     html {
         overflow-x: hidden;
     }
@@ -361,16 +366,16 @@ body.map-dragging * {
 
     .rename-popover,
     .panel-content > .rename-popover {
-        left: 6px;
+        left: auto;
         right: 6px;
-        width: auto;
-        max-width: none;
+        width: min(400px, calc(100vw - 24px));
+        max-width: calc(100vw - 24px);
     }
 
     .marker-popover {
         left: auto;
         right: 6px;
-        width: min(240px, calc(100vw - 24px));
+        width: min(186px, calc(100vw - 24px));
         max-width: calc(100vw - 24px);
     }
 
@@ -634,7 +639,7 @@ body.map-dragging * {
 
 .rename-popover {
     position: absolute;
-    top: 72px;
+    top: 3em;
     left: auto;
     right: 0;
     z-index: 1000;
@@ -649,19 +654,24 @@ body.map-dragging * {
     box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+.win95 .rename-popover,
+.win95 .marker-popover {
+    top: 4em;
+}
+
 .panel-content > .rename-popover {
     width: min(400px, calc(100% - 2px), calc(100vw - 24px));
 }
 
 .panel-content > .marker-popover {
-    width: min(240px, calc(100vw - 24px));
+    width: min(186px, calc(100vw - 24px));
 }
 
 .marker-popover {
     left: auto;
     right: 0;
-    min-width: 220px;
-    width: min(240px, calc(100vw - 24px));
+    min-width: 186px;
+    width: min(186px, calc(100vw - 24px));
 }
 
 .rename-popover-content {
@@ -748,14 +758,14 @@ body.map-dragging * {
 
 .classic .rename-popover::before {
     left: auto;
-    right: 10px;
+    right: 17px;
     border-bottom: 10px solid #808080;
 }
 
 .classic .rename-popover::after {
     top: -8px;
     left: auto;
-    right: 11px;
+    right: 18px;
     border-left-width: 9px;
     border-right-width: 9px;
     border-bottom: 9px solid #333;
@@ -778,14 +788,14 @@ body.map-dragging * {
 
 .win95 .rename-popover::before {
     left: auto;
-    right: 10px;
+    right: 3px;
     border-bottom: 10px solid #000000;
 }
 
 .win95 .rename-popover::after {
     top: -8px;
     left: auto;
-    right: 11px;
+    right: 4px;
     border-left-width: 9px;
     border-right-width: 9px;
     border-bottom: 9px solid #c0c0c0;

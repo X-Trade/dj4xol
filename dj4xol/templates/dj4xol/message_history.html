@@ -15,7 +15,34 @@
         <div class="title-bar">
             <span class="title">{{ game.name }}</span>
             <span class="year"><span class="year-prefix">Year </span><span class="year-value">{{ game.year }}</span></span>
-            <span class="turn-status">Message History</span>
+            <span class="turn-status">
+                {% if game.turn_scheme == 'HOURLY' or game.turn_scheme == 'DAILY' or game.turn_scheme == 'WEEKLY' %}
+                    <span class="turn-prefix">Next turn: </span>
+                    {% if game.next_generation %}
+                    <span class="turn-value" id="next-turn-countdown" data-next-turn-iso="{{ game.next_generation|date:'c' }}">pending</span>
+                    {% else %}
+                    <span class="turn-value">pending</span>
+                    {% endif %}
+                {% elif game.turn_scheme == 'QUORUM' %}
+                    {% if player and player.turned_in %}
+                        <span class="status-done">Turned in</span>
+                    {% elif player %}
+                        <form method="post" action="{% url 'dj4xol:turn_in' game.short_id %}" style="display:inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="return_to" value="message_history">
+                            <button type="submit">Turn In</button>
+                        </form>
+                    {% endif %}
+                    ({{ game.players.all|length }} players)
+                {% elif game.turn_scheme == 'OWNER' and is_owner %}
+                    <form method="post" action="{% url 'dj4xol:generate_turn' game.short_id %}" style="display:inline">
+                        {% csrf_token %}
+                        <button type="submit">Generate Turn</button>
+                    </form>
+                {% else %}
+                    Message History
+                {% endif %}
+            </span>
             {% include 'dj4xol/_nav_menu.html' with current_page='message_history' game=game %}
         </div>
         <div class="research-columns message-history-columns">
@@ -171,6 +198,41 @@
                     }
                 });
             }
+        })();
+        (function nextTurnCountdown() {
+            var countdownEl = document.getElementById('next-turn-countdown');
+            if (!countdownEl) {
+                return;
+            }
+            var iso = countdownEl.getAttribute('data-next-turn-iso');
+            if (!iso) {
+                countdownEl.textContent = 'pending';
+                return;
+            }
+            var targetMs = Date.parse(iso);
+            if (!Number.isFinite(targetMs)) {
+                countdownEl.textContent = 'pending';
+                return;
+            }
+            function renderCountdown() {
+                var remainingMs = targetMs - Date.now();
+                if (remainingMs <= 60000) {
+                    countdownEl.textContent = 'Due';
+                    countdownEl.classList.add('status-due');
+                    return;
+                }
+                countdownEl.classList.remove('status-due');
+                var totalMinutes = Math.floor(remainingMs / 60000);
+                var hours = Math.floor(totalMinutes / 60);
+                var minutes = totalMinutes % 60;
+                if (hours > 0) {
+                    countdownEl.textContent = hours + 'h ' + minutes + 'm';
+                    return;
+                }
+                countdownEl.textContent = minutes + 'm';
+            }
+            renderCountdown();
+            setInterval(renderCountdown, 15000);
         })();
         (function() {
             var panels = document.querySelectorAll('.panel');

@@ -46,7 +46,7 @@
     <div id="rename-popover" class="rename-popover" style="display: none;">
         <div class="rename-popover-content">
             <label for="rename-input">Rename:</label>
-            <input type="text" id="rename-input" maxlength="30" value="{{ detail.name }}">
+            <input type="text" id="rename-input" maxlength="30" value="{{ detail.name }}" data-original-value="{{ detail.name|escape }}">
             <div class="rename-popover-buttons">
                 <button type="button" onclick="submitRename()">Save</button>
                 <button type="button" onclick="hideRenamePopover()">Cancel</button>
@@ -415,8 +415,12 @@ function showRenamePopover() {
 function hideRenamePopover() {
     var popover = document.getElementById('rename-popover');
     var error = document.getElementById('rename-error');
+    var input = document.getElementById('rename-input');
     if (popover) {
         popover.style.display = 'none';
+    }
+    if (input) {
+        input.value = input.getAttribute('data-original-value') || input.value;
     }
     if (error) {
         error.textContent = '';
@@ -469,7 +473,7 @@ function submitStarMarker(markerType) {
     .then(function(response) { return response.json(); })
     .then(function(data) {
         if (data.success) {
-            location.reload();
+            applyMarkerState(data.marker_type || '', data.marker_color || markerColor);
         } else if (errorDiv) {
             errorDiv.textContent = data.error || 'Failed to save marker';
         }
@@ -499,6 +503,53 @@ function updateMarkerColorSwatches() {
     });
 }
 
+function updateMarkerTypeButtons(markerType) {
+    var normalized = String(markerType || '').toUpperCase() || 'CLEAR';
+    var buttons = document.querySelectorAll('.marker-option');
+    Array.prototype.forEach.call(buttons, function(button) {
+        var buttonType = String(button.getAttribute('data-marker-type') || '').toUpperCase();
+        button.classList.toggle('is-active', buttonType === normalized);
+    });
+}
+
+function updateVisibleMapMarker(markerType, markerColor) {
+    var selectedType = String(markerType || '').toUpperCase();
+    var normalizedColor = String(markerColor || '').toUpperCase() || 'BLUE';
+    var starNodes = document.querySelectorAll(
+        'div[data-map-object="1"][data-object-type="star"][data-x="{{ selection.x }}"][data-y="{{ selection.y }}"]'
+    );
+    Array.prototype.forEach.call(starNodes, function(node) {
+        if (node.className.indexOf('mapstar-satellite') !== -1) {
+            return;
+        }
+        node.classList.remove(
+            'mapstar-marker-circle',
+            'mapstar-marker-x',
+            'mapstar-marker-color-blue',
+            'mapstar-marker-color-red',
+            'mapstar-marker-color-yellow',
+            'mapstar-marker-color-green',
+            'mapstar-marker-color-indigo',
+            'mapstar-marker-color-violet'
+        );
+        if (selectedType === 'CIRCLE') {
+            node.classList.add('mapstar-marker-circle', 'mapstar-marker-color-' + normalizedColor.toLowerCase());
+        } else if (selectedType === 'X') {
+            node.classList.add('mapstar-marker-x', 'mapstar-marker-color-' + normalizedColor.toLowerCase());
+        }
+    });
+}
+
+function applyMarkerState(markerType, markerColor) {
+    var input = document.getElementById('marker-colour-input');
+    if (input && markerColor) {
+        input.value = String(markerColor || '').toUpperCase();
+    }
+    updateMarkerTypeButtons(markerType || 'CLEAR');
+    updateMarkerColorSwatches();
+    updateVisibleMapMarker(markerType, markerColor || getSelectedMarkerColor());
+}
+
 function getSelectedMarkerType() {
     var active = document.querySelector('.marker-option.is-active');
     if (!active) {
@@ -519,6 +570,7 @@ function selectMarkerColor(markerColor) {
     }
 }
 
+applyMarkerState(getSelectedMarkerType(), getSelectedMarkerColor());
 updateMarkerColorSwatches();
 
 function submitRename() {
@@ -566,5 +618,29 @@ if (renameInput) {
         }
     });
 }
+
+document.addEventListener('mousedown', function(event) {
+    var renamePopover = document.getElementById('rename-popover');
+    var renameButton = document.querySelector('.rename-control');
+    if (
+        renamePopover &&
+        renamePopover.style.display === 'block' &&
+        !renamePopover.contains(event.target) &&
+        !(renameButton && renameButton.contains(event.target))
+    ) {
+        hideRenamePopover();
+    }
+
+    var markerPopover = document.getElementById('marker-popover');
+    var markerButton = document.querySelector('.marker-btn');
+    if (
+        markerPopover &&
+        markerPopover.style.display === 'block' &&
+        !markerPopover.contains(event.target) &&
+        !(markerButton && markerButton.contains(event.target))
+    ) {
+        hideMarkerPopover();
+    }
+});
 </script>
 {% endif %}

@@ -1819,6 +1819,48 @@ class TestStarMarkerView(TestCase):
             ).exists()
         )
 
+    def test_set_star_marker_reanchors_location_marker_to_current_primary_star(self):
+        primary = self.player.homeworld
+        promoted = self.reported_star
+        promoted.x = primary.x
+        promoted.y = primary.y
+        promoted.save(update_fields=['x', 'y'])
+
+        PlayerStarMarker.objects.create(
+            player=self.player,
+            star=primary,
+            marker_type=PlayerStarMarker.TYPE_CIRCLE,
+            marker_color=PlayerStarMarker.COLOR_BLUE,
+        )
+
+        primary.player = None
+        primary.colonists = 0
+        primary.save(update_fields=['player', 'colonists'])
+        promoted.player = self.player
+        promoted.colonists = 1000
+        promoted.save(update_fields=['player', 'colonists'])
+
+        response = self.client.post(
+            reverse('dj4xol:set_star_marker', args=[self.game.short_id, promoted.short_id]),
+            {'marker_type': 'X', 'marker_color': 'RED'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            PlayerStarMarker.objects.filter(
+                player=self.player,
+                star=promoted,
+                marker_type='X',
+                marker_color='RED',
+            ).exists()
+        )
+        self.assertFalse(
+            PlayerStarMarker.objects.filter(
+                player=self.player,
+                star=primary,
+            ).exists()
+        )
+
     def test_rejects_invalid_marker_colour(self):
         response = self.client.post(
             reverse('dj4xol:set_star_marker', args=[self.game.short_id, self.reported_star.short_id]),
