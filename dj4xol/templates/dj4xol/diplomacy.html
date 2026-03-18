@@ -382,7 +382,7 @@
                                             <input type="hidden" name="target" value="{{ selected_target }}">
                                             <input type="hidden" name="action" value="accept_contract">
                                             <input type="hidden" name="contract_id" value="{{ contract.short_id }}">
-                                            <button type="submit">Accept</button>
+                                            <button type="submit" class="diplomacy-action-button">Accept</button>
                                         </form>
                                         {% endif %}
                                         {% if contract.can_decline %}
@@ -391,7 +391,7 @@
                                             <input type="hidden" name="target" value="{{ selected_target }}">
                                             <input type="hidden" name="action" value="decline_contract">
                                             <input type="hidden" name="contract_id" value="{{ contract.short_id }}">
-                                            <button type="submit">Decline</button>
+                                            <button type="submit" class="diplomacy-action-button">Decline</button>
                                         </form>
                                         {% endif %}
                                         {% if contract.can_counter %}
@@ -399,7 +399,7 @@
                                             <input type="hidden" name="target" value="{{ selected_target }}">
                                             <input type="hidden" name="compose" value="1">
                                             <input type="hidden" name="counter" value="{{ contract.short_id }}">
-                                            <button type="submit">Counter</button>
+                                            <button type="submit" class="diplomacy-action-button">Counter</button>
                                         </form>
                                         {% endif %}
                                     {% if contract.can_revoke %}
@@ -408,13 +408,13 @@
                                             <input type="hidden" name="target" value="{{ selected_target }}">
                                             <input type="hidden" name="action" value="revoke_contract">
                                             <input type="hidden" name="contract_id" value="{{ contract.short_id }}">
-                                            <button type="submit">Revoke</button>
+                                            <button type="submit" class="diplomacy-action-button">Revoke</button>
                                         </form>
                                         {% endif %}
                                         {% if contract.can_extend %}
                                         <button
                                             type="button"
-                                            class="diplomacy-inline-toggle"
+                                            class="diplomacy-action-button diplomacy-inline-toggle"
                                             onclick="toggleContractExtendForm('{{ contract.short_id }}')"
                                         >Extend</button>
                                         {% endif %}
@@ -432,8 +432,8 @@
                                             <input type="hidden" name="contract_id" value="{{ contract.short_id }}">
                                             <label for="extend-years-{{ contract.short_id }}">+ years</label>
                                             <input id="extend-years-{{ contract.short_id }}" type="number" min="1" max="200" name="extend_years" required>
-                                            <button type="submit">Confirm</button>
-                                            <button type="button" onclick="toggleContractExtendForm('{{ contract.short_id }}')">Cancel</button>
+                                            <button type="submit" class="diplomacy-action-button">Confirm</button>
+                                            <button type="button" class="diplomacy-action-button" onclick="toggleContractExtendForm('{{ contract.short_id }}')">Cancel</button>
                                         </form>
                                     {% endif %}
                                 </article>
