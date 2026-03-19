@@ -406,6 +406,28 @@ class SecretResourceDiscoveryMessageFactory(MessageFactory):
         )
 
 
+class UnexplainedScanContactMessageFactory(MessageFactory):
+    """Priority messages for remote scans that detect unknown phenomena."""
+    category = 'RANDOM'
+    priority = True
+
+    def __init__(self, game, player, target=None, subject='', target_label=None, message=None):
+        super().__init__(game, player, message, intensity=0.4)
+        self.target = target
+        self.subject = subject
+        self.target_label = target_label
+
+    def format_message(self):
+        target_label = self.target_label or format_map_object_reference(self.target)
+        return (
+            "Long-range scans of %s have detected %s. "
+            "Our scientists cannot explain it from afar; dispatch a fleet for closer study."
+        ) % (
+            target_label,
+            self.subject,
+        )
+
+
 class ColonyVanishedMessageFactory(MessageFactory):
     """Messages for mysterious colony disappearance (extreme negative)."""
     category = 'RANDOM'

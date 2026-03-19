@@ -761,7 +761,7 @@ def _qualifying_report_for_trade(player, target_type, target_id):
     return None
 
 
-def _shared_report_data(source_report):
+def _shared_report_data(source_report, recipient=None):
     if source_report is None:
         return None
     data = dict(source_report.get_report_data() or {})
@@ -777,6 +777,21 @@ def _shared_report_data(source_report):
     if target_type in ('anomaly', 'salvage'):
         if _report_tier_rank(data.get('report_tier')) < _report_tier_rank('advanced'):
             return None
+        if (
+            target_type == 'salvage' and
+            data.get('salvage_type') == 'ANCIENT_DEBRIS' and
+            recipient is not None and
+            not bool(getattr(recipient, 'discovered_ancient_debris', False))
+        ):
+            data['name'] = '???'
+            data['salvage_type'] = None
+            data.pop('ironium_inventory', None)
+            data.pop('boranium_inventory', None)
+            data.pop('germanium_inventory', None)
+            data.pop('resource_x_inventory', None)
+            data.pop('resource_y_inventory', None)
+            data.pop('resource_z_inventory', None)
+            data['ancient_debris_unknown'] = True
         data['report_tier'] = data.get('report_tier') or 'advanced'
         return data
     return None
@@ -818,7 +833,7 @@ def _grant_report_trade(contract, prefix):
     source_report = _qualifying_report_for_trade(grant_source, target_type, target_id)
     if source_report is None:
         return False
-    shared = _shared_report_data(source_report)
+    shared = _shared_report_data(source_report, recipient=grant_target)
     if shared is None:
         return False
     existing = Report.objects.filter(

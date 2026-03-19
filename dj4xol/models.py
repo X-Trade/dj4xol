@@ -1046,6 +1046,7 @@ class Player(AbstractGameObject, HabitabilityMixin):
     discovered_resource_x = models.BooleanField(default=False)
     discovered_resource_y = models.BooleanField(default=False)
     discovered_resource_z = models.BooleanField(default=False)
+    discovered_ancient_debris = models.BooleanField(default=False)
     default_diplomatic_stance = models.CharField(
         max_length=8,
         choices=STANCE_CHOICES,

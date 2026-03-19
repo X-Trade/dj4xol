@@ -7873,6 +7873,76 @@ class TestSecretResourceSalvageDiscovery(TestCase):
             player.messages.filter(message__icontains=resource_name).exists()
         )
 
+    def test_advanced_scan_warns_about_unknown_resource_without_discovering_it(self):
+        game = default_game(stars=6, fleets=0)
+        player = game.players.first()
+        scanner_star = player.homeworld
+        target_star = game.stars.exclude(id=scanner_star.id).first()
+        target_star.x = scanner_star.x + 2
+        target_star.y = scanner_star.y
+        target_star.resource_x_yield = 15
+        target_star.save(update_fields=['x', 'y', 'resource_x_yield'])
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Deep Scanner',
+            x=scanner_star.x,
+            y=scanner_star.y,
+            basic_scanner_range=0,
+            advanced_scanner_range=5,
+        )
+        player.discovered_resource_x = False
+        player.save(update_fields=['discovered_resource_x'])
+
+        GameTurn(game).generate_scanner_reports()
+
+        player.refresh_from_db()
+        self.assertFalse(player.discovered_resource_x)
+        self.assertTrue(
+            player.messages.filter(priority=True, message__icontains='dispatch a fleet').filter(
+                message__icontains=target_star.name,
+            ).exists()
+        )
+
+    def test_visit_discovers_ancient_debris_for_future_scans(self):
+        from ..models import Fleet
+
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player.discovered_ancient_debris = False
+        player.save(update_fields=['discovered_ancient_debris'])
+        salvage = Salvage.objects.create(
+            game=game,
+            x=14,
+            y=14,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            ironium_inventory=8,
+        )
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Explorer',
+            x=14,
+            y=14,
+            basic_scanner_range=0,
+            advanced_scanner_range=0,
+        )
+
+        GameTurn(game)._generate_reports_for_fleet(fleet)
+
+        player.refresh_from_db()
+        self.assertTrue(player.discovered_ancient_debris)
+        report = Report.objects.get(
+            game=game,
+            player=player,
+            target_type='salvage',
+            target_id=salvage.id,
+        )
+        self.assertEqual(
+            report.get_report_data().get('salvage_type'),
+            Salvage.TYPE_ANCIENT_DEBRIS,
+        )
+
 
 class TestFleetOrderExecution(TestCase):
     """Test fleet order execution behavior fixes."""
@@ -11581,6 +11651,56 @@ class TestBombardmentOrders(TestCase):
             asteroid_field.resource_x_inventory,
             40 + int(round((20 / YIELD_DEPLETION_RATE) * NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION)),
         )
+
+    def test_nova_bomb_remnants_do_not_spawn_while_other_stars_remain_in_system(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_nova_system_def')
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10_000
+        star.defenses = 0
+        star.ironium_inventory = 500
+        star.ironium_yield = 80
+        star.save(update_fields=[
+            'player', 'colonists', 'defenses',
+            'ironium_inventory', 'ironium_yield',
+        ])
+
+        sibling = Star.objects.create(
+            game=game,
+            name='System Sibling',
+            x=star.x,
+            y=star.y,
+            player=defender,
+            colonists=5_000,
+            defenses=0,
+        )
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Nova System Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='NOVA',
+        )
+        FleetOrders.objects.create(game=game, fleet=fleet, order_type='BOMB', target_star=star)
+
+        with patch('dj4xol.turn.roll_chance', return_value=True), patch(
+            'dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet',
+            return_value={'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
+        ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Star.objects.filter(id=star.id).exists())
+        self.assertTrue(Star.objects.filter(id=sibling.id).exists())
+        self.assertFalse(Anomaly.objects.filter(game=game, x=star.x, y=star.y).exists())
+        self.assertFalse(Salvage.objects.filter(game=game, x=star.x, y=star.y).exists())
 
     def test_destroyed_star_retargets_movement_orders_and_deletes_other_orders(self):
         from ..models import FleetOrders
