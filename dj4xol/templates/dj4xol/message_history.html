@@ -54,7 +54,7 @@
                             <div class="detail-row">
                                 <span class="env-label">Year</span>
                                 <span class="detail-value">
-                                    <select name="year" id="year-filter" onchange="this.form.submit()">
+                                    <select name="year" id="year-filter">
                                         <option value="">All years</option>
                                         {% for year in all_years %}
                                         <option value="{{ year }}" {% if current_year == year|stringformat:"d" %}selected{% endif %}>{{ year }}</option>
@@ -65,7 +65,7 @@
                             <div class="detail-row">
                                 <span class="env-label">Category</span>
                                 <span class="detail-value">
-                                    <select name="category" id="category-filter" onchange="this.form.submit()">
+                                    <select name="category" id="category-filter">
                                         <option value="">All categories</option>
                                         {% for code, name in categories %}
                                         <option value="{{ code }}" {% if current_category == code %}selected{% endif %}>{{ name }}</option>
@@ -77,7 +77,7 @@
                                 <span class="env-label">Priority</span>
                                 <span class="detail-value">
                                     <label class="message-priority-toggle">
-                                        <input type="checkbox" name="priority" value="1" id="priority-filter" onchange="this.form.submit()" {% if priority_only %}checked{% endif %}>
+                                        <input type="checkbox" name="priority" value="1" id="priority-filter" {% if priority_only %}checked{% endif %}>
                                         Priority only
                                     </label>
                                 </span>
@@ -181,6 +181,7 @@
                 </div>
             </div>
         </div>
+        <script type="text/javascript" src="{% static 'dj4xol/js/page_ui_state.js' %}"></script>
         <script>
         (function() {
             var hamburger = document.getElementById('hamburger-btn');
@@ -253,6 +254,31 @@
             Array.prototype.forEach.call(panels, function(panel, index) {
                 panel.classList.remove('lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3');
                 panel.classList.add(variants[index % variants.length]);
+            });
+        })();
+        (function() {
+            var uiState = window.initScopedUiStatePersistence({
+                namespace: 'message-history',
+                rootSelector: '.message-history-columns',
+                noScrollFormSelector: '#message-filters-form'
+            });
+            var filterForm = document.getElementById('message-filters-form');
+            if (!filterForm) {
+                return;
+            }
+            ['year-filter', 'category-filter', 'priority-filter'].forEach(function(id) {
+                var control = document.getElementById(id);
+                if (!control) {
+                    return;
+                }
+                control.addEventListener('change', function() {
+                    uiState.saveAndMark({ includeScrolls: false });
+                    if (typeof filterForm.requestSubmit === 'function') {
+                        filterForm.requestSubmit();
+                    } else {
+                        filterForm.submit();
+                    }
+                });
             });
         })();
         </script>

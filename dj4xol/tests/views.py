@@ -125,6 +125,19 @@ class TestMessageFiltering(TestCase):
         self.assertContains(response, 'data-panel="filters"')
         self.assertContains(response, 'data-panel="messages"')
 
+    def test_message_history_includes_page_ui_state_script_and_no_inline_filter_submit(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        GameMessage.objects.create(game=game, player=player, year=game.year, message="Filter test")
+        client = Client()
+        client.force_login(player.account.django_user)
+
+        response = client.get(reverse('dj4xol:message_history', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'dj4xol/js/page_ui_state.js')
+        self.assertNotContains(response, 'onchange="this.form.submit()"')
+
     def test_messages_filtered_by_messages_seen_year(self):
         """Messages should be filtered to year >= messages_seen_year."""
         game = default_game(stars=5)
@@ -1654,6 +1667,12 @@ class TestResearchView(TestCase):
         response = self.client.get(reverse('dj4xol:research', args=[self.game.short_id]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'dj4xol/js/number_stepper.js')
+
+    def test_research_view_includes_page_ui_state_script_and_category_link_hooks(self):
+        response = self.client.get(reverse('dj4xol:research', args=[self.game.short_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'dj4xol/js/page_ui_state.js')
+        self.assertContains(response, 'data-category-link="1"')
 
 
 class TestGameCreationView(TestCase):
@@ -3473,6 +3492,17 @@ class TestDiplomacyView(TestCase):
         response = client.get(reverse('dj4xol:diplomacy', args=[game.short_id]))
 
         self.assertEqual(response.status_code, 200)
+
+    def test_diplomacy_page_includes_page_ui_state_script(self):
+        game = default_game(stars=5, fleets=0)
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:diplomacy', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'dj4xol/js/page_ui_state.js')
         self.assertContains(response, "panel.classList.toggle('open');", html=False)
         self.assertContains(response, "lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3", html=False)
 

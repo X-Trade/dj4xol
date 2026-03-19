@@ -131,12 +131,12 @@
                                     <span class="diplomacy-effects-name">Reveal cloaked fleets</span>
                                     <span class="diplomacy-effects-summary">
                                         <input
+                                            id="reveal-cloaked-fleets-toggle"
                                             type="checkbox"
                                             name="reveal_cloaked_fleets"
                                             value="1"
                                             {% if detail.reveal_cloaked_fleets_checked %}checked{% endif %}
                                             {% if diplomacy_locked %}disabled{% endif %}
-                                            onchange="this.form.submit()"
                                         >
                                     </span>
                                 </form>
@@ -447,6 +447,7 @@
                 </div>
             </div>
         </div>
+        <script type="text/javascript" src="{% static 'dj4xol/js/page_ui_state.js' %}"></script>
         <script>
         window.playerTurnedIn = {{ player.turned_in|yesno:'true,false' }};
         window.currentYear = {{ game.year }};
@@ -494,6 +495,14 @@
             Array.prototype.forEach.call(panels, function(panel, index) {
                 panel.classList.remove('lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3');
                 panel.classList.add(variants[index % variants.length]);
+            });
+        })();
+        (function() {
+            window.__diplomacyUiState = window.initScopedUiStatePersistence({
+                namespace: 'diplomacy',
+                rootSelector: '.diplomacy-columns',
+                noScrollFormSelector: '#diplomacy-form',
+                noScrollLinkSelector: '.diplomacy-name'
             });
         })();
         (function nextTurnCountdown() {
@@ -626,12 +635,31 @@
             Array.prototype.forEach.call(radios, function(radio) {
                 radio.addEventListener('change', function() {
                     targetInput.value = radio.getAttribute('data-target') || 'default';
+                    if (window.__diplomacyUiState) {
+                        window.__diplomacyUiState.saveAndMark({ includeScrolls: false });
+                    }
                     if (typeof form.requestSubmit === 'function') {
                         form.requestSubmit();
                     } else {
                         form.submit();
                     }
                 });
+            });
+        })();
+        (function() {
+            var toggle = document.getElementById('reveal-cloaked-fleets-toggle');
+            if (!toggle || !toggle.form) {
+                return;
+            }
+            toggle.addEventListener('change', function() {
+                if (window.__diplomacyUiState) {
+                    window.__diplomacyUiState.saveAndMark();
+                }
+                if (typeof toggle.form.requestSubmit === 'function') {
+                    toggle.form.requestSubmit();
+                } else {
+                    toggle.form.submit();
+                }
             });
         })();
         (function() {
