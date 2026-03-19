@@ -45,6 +45,30 @@ def parse_args():
         default="thumb",
         help="Filename prefix for output files (default: thumb)",
     )
+    parser.add_argument(
+        "--trim-left",
+        type=int,
+        default=0,
+        help="Pixels to trim from each tile's left edge after extraction",
+    )
+    parser.add_argument(
+        "--trim-top",
+        type=int,
+        default=0,
+        help="Pixels to trim from each tile's top edge after extraction",
+    )
+    parser.add_argument(
+        "--trim-right",
+        type=int,
+        default=0,
+        help="Pixels to trim from each tile's right edge after extraction",
+    )
+    parser.add_argument(
+        "--trim-bottom",
+        type=int,
+        default=0,
+        help="Pixels to trim from each tile's bottom edge after extraction",
+    )
     return parser.parse_args()
 
 
@@ -63,7 +87,8 @@ def grid_bounds(size, steps):
 
 
 def extract_tiles(
-    input_image, grid_width, grid_height, output_dir, prefix
+    input_image, grid_width, grid_height, output_dir, prefix,
+    trim_left=0, trim_top=0, trim_right=0, trim_bottom=0,
 ):
     image = Image.open(input_image)
     width, height = image.size
@@ -82,6 +107,19 @@ def extract_tiles(
             top = y_edges[row]
             bottom = y_edges[row + 1]
             tile = image.crop((left, top, right, bottom))
+            trimmed_right = tile.width - trim_right
+            trimmed_bottom = tile.height - trim_bottom
+            if (
+                trim_left < 0 or trim_top < 0 or trim_right < 0 or trim_bottom < 0 or
+                trim_left >= trimmed_right or trim_top >= trimmed_bottom
+            ):
+                raise ValueError(
+                    "Invalid trim values for tile size {}x{}".format(
+                        tile.width, tile.height
+                    )
+                )
+            if trim_left or trim_top or trim_right or trim_bottom:
+                tile = tile.crop((trim_left, trim_top, trimmed_right, trimmed_bottom))
 
             filename = "{prefix}_r{row:02d}_c{col:02d}{ext}".format(
                 prefix=prefix,
@@ -102,6 +140,12 @@ def main():
     if args.grid_width < 1 or args.grid_height < 1:
         print("Error: --grid-width and --grid-height must be >= 1")
         return 2
+    for trim_value in (
+        args.trim_left, args.trim_top, args.trim_right, args.trim_bottom
+    ):
+        if trim_value < 0:
+            print("Error: trim values must be >= 0")
+            return 2
 
     if not os.path.isfile(args.input_image):
         print("Error: input image not found: {}".format(args.input_image))
@@ -117,6 +161,10 @@ def main():
         grid_height=args.grid_height,
         output_dir=output_dir,
         prefix=args.prefix,
+        trim_left=args.trim_left,
+        trim_top=args.trim_top,
+        trim_right=args.trim_right,
+        trim_bottom=args.trim_bottom,
     )
 
     print(

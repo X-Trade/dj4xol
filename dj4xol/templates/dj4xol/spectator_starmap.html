@@ -8,8 +8,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/starmap/css/map.css' %}">
-        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
-        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
         <script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.0/jquery.min.js"></script>
         <script type="text/javascript" src="{% static 'dj4xol/starmap/js/mapscrollpersist.js' %}"></script>
     </head>

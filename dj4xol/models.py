@@ -303,7 +303,9 @@ class Account(models.Model):
     THEME_CHOICES = [
         ('classic', 'Classic'),
         ('lcars', 'LCARS'),
-        ('win95', 'Windows 95'),
+        ('win95', 'Win95'),
+        ('haxxor', 'Haxxor'),
+        ('retro', 'Retro Arcade'),
     ]
     ONBOARDING_STEP_COMPLETE = 'COMPLETE'
     ONBOARDING_STEP_THEME = 'THEME'

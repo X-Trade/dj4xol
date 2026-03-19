@@ -1454,7 +1454,9 @@ $(document).ready(function() {
 
     function refreshCustomPanelScrollbars() {
         if (!document.body.classList.contains('lcars') &&
-            !document.body.classList.contains('win95')) {
+            !document.body.classList.contains('win95') &&
+            !document.body.classList.contains('retro') &&
+            !document.body.classList.contains('haxxor')) {
             return;
         }
         var scrollEls = document.querySelectorAll('.panel-scrollable-list, .panel-scrollable-text');

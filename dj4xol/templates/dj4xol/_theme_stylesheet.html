@@ -1,0 +1,4 @@
+{% load static %}
+{% if active_theme and active_theme != 'classic' %}
+<link rel="stylesheet" href="{% static 'dj4xol/css/theme-'|add:active_theme|add:'.css' %}">
+{% endif %}

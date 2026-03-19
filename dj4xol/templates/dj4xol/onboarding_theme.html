@@ -8,8 +8,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
-        {% if selected_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
-        {% if selected_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        {% include 'dj4xol/_theme_stylesheet.html' with active_theme=selected_theme %}
     </head>
     <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} onboarding single-panel-page">
         <div class="title-bar">
@@ -22,18 +21,22 @@
                 <div class="panel no-transition open" data-panel="theme">
                     <h2><span>Choose Theme</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
-                        <section class="panel-scrollable-text">
+                        <section class="theme-selector-panel">
                         <p>Select your preferred visual theme. You can always change this later in your 4x Profile.</p>
                         <form method="post">
                             {% csrf_token %}
-                            <div class="theme-selector">
-                                {% for theme_code, theme_name in theme_choices %}
-                                <label class="theme-option{% if selected_theme == theme_code %} selected{% endif %}">
-                                    <input type="radio" name="theme" value="{{ theme_code }}" {% if selected_theme == theme_code %}checked{% endif %}>
-                                    <div class="theme-preview {{ theme_code }}"></div>
-                                    <span class="theme-name">{{ theme_name }}</span>
-                                </label>
-                                {% endfor %}
+                            <div class="theme-selector-frame">
+                                <button type="button" class="theme-carousel-button theme-carousel-button--prev" data-scroll-dir="-1" aria-label="Scroll themes left">&lt;</button>
+                                <div class="theme-selector">
+                                    {% for theme_code, theme_name in theme_choices %}
+                                    <label class="theme-option{% if selected_theme == theme_code %} selected{% endif %}">
+                                        <input type="radio" name="theme" value="{{ theme_code }}" {% if selected_theme == theme_code %}checked{% endif %}>
+                                        <div class="theme-preview {{ theme_code }}"></div>
+                                        <span class="theme-name">{{ theme_name }}</span>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                                <button type="button" class="theme-carousel-button theme-carousel-button--next" data-scroll-dir="1" aria-label="Scroll themes right">&gt;</button>
                             </div>
                             <div class="form-nav">
                                 <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:register' %}'">&laquo; Prev</button>

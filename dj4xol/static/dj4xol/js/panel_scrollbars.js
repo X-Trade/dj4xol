@@ -1,4 +1,11 @@
 (function() {
+    function useCustomThemeScrollbars() {
+        return document.body.classList.contains('lcars') ||
+            document.body.classList.contains('win95') ||
+            document.body.classList.contains('retro') ||
+            document.body.classList.contains('haxxor');
+    }
+
     function ensureScrollFrame(el) {
         if (!el) return null;
         var parent = el.parentElement;
@@ -122,6 +129,20 @@
         };
     }
 
+    function scheduleCustomPanelScrollbarUpdate(el) {
+        if (!el) return;
+        if (el.__customScrollbarUpdateQueued) {
+            return;
+        }
+        el.__customScrollbarUpdateQueued = true;
+        window.requestAnimationFrame(function() {
+            window.requestAnimationFrame(function() {
+                el.__customScrollbarUpdateQueued = false;
+                updateCustomPanelScrollbar(el);
+            });
+        });
+    }
+
     function ensureCustomScrollbarOverlay(el) {
         if (!el || el.__customScrollbarOverlay) {
             return el ? el.__customScrollbarOverlay : null;
@@ -148,6 +169,15 @@
         el.__customScrollbarOverlay = overlay;
         overlay.__trackEl = track;
         overlay.__thumbEl = thumb;
+
+        if (window.ResizeObserver && !el.__customScrollbarResizeObserver) {
+            var resizeObserver = new ResizeObserver(function() {
+                scheduleCustomPanelScrollbarUpdate(el);
+            });
+            resizeObserver.observe(el);
+            resizeObserver.observe(parent);
+            el.__customScrollbarResizeObserver = resizeObserver;
+        }
 
         overlay.addEventListener('pointerdown', function(ev) {
             if (ev.target === thumb) return;
@@ -203,8 +233,7 @@
     }
 
     function refreshCustomPanelScrollbars() {
-        if (!document.body.classList.contains('lcars') &&
-            !document.body.classList.contains('win95')) {
+        if (!useCustomThemeScrollbars()) {
             return;
         }
 
@@ -220,6 +249,299 @@
             }
             ensureCustomScrollbarOverlay(el);
             updateCustomPanelScrollbar(el);
+            scheduleCustomPanelScrollbarUpdate(el);
+        }
+    }
+
+    function updateThemeCarouselScrollbar(el) {
+        if (!el) return;
+        var overlay = el.__themeCarouselOverlay;
+        var clientWidth = el.clientWidth;
+        var scrollWidth = el.scrollWidth;
+        if (clientWidth <= 0) return;
+
+        var atStart = el.scrollLeft <= 1;
+        var atEnd = el.scrollLeft + clientWidth >= scrollWidth - 1;
+        if (el.__themeCarouselButtons) {
+            if (el.__themeCarouselButtons.prev) {
+                el.__themeCarouselButtons.prev.disabled = atStart;
+            }
+            if (el.__themeCarouselButtons.next) {
+                el.__themeCarouselButtons.next.disabled = atEnd;
+            }
+        }
+
+        if (!overlay) return;
+        var thumb = overlay.__thumbEl;
+        if (!thumb) return;
+
+        var track = overlay.__trackEl;
+        if (track) {
+            track.style.left = '0px';
+            track.style.right = '0px';
+        }
+
+        var thumbWidth;
+        var thumbLeft;
+        var thumbOpacity;
+        var maxLeft;
+
+        if (scrollWidth <= clientWidth + 1) {
+            thumbWidth = Math.max(28, Math.min(clientWidth, Math.round(clientWidth * 0.35)));
+            maxLeft = Math.max(0, clientWidth - thumbWidth);
+            thumbLeft = Math.round(maxLeft / 2);
+            thumbOpacity = 0;
+        } else {
+            var ratio = clientWidth / scrollWidth;
+            thumbWidth = Math.max(28, Math.round(clientWidth * ratio));
+            maxLeft = Math.max(0, clientWidth - thumbWidth);
+            thumbLeft = Math.round((el.scrollLeft / (scrollWidth - clientWidth)) * maxLeft);
+            thumbOpacity = 1;
+        }
+
+        maxLeft = Math.max(0, clientWidth - thumbWidth);
+        thumbLeft = Math.max(0, Math.min(thumbLeft, maxLeft));
+        thumb.style.width = thumbWidth + 'px';
+        thumb.style.transform = 'translateX(' + thumbLeft + 'px)';
+        thumb.style.opacity = String(thumbOpacity);
+
+        el.__themeCarouselMetrics = {
+            clientWidth: clientWidth,
+            scrollWidth: scrollWidth,
+            thumbWidth: thumbWidth,
+            maxLeft: maxLeft
+        };
+    }
+
+    function bindThemeCarouselControls(el) {
+        if (!el || el.__themeCarouselControlsBound) {
+            return;
+        }
+        el.__themeCarouselControlsBound = true;
+
+        var frame = el.parentElement;
+        if (!frame) return;
+        var prevBtn = frame.querySelector('.theme-carousel-button--prev');
+        var nextBtn = frame.querySelector('.theme-carousel-button--next');
+        el.__themeCarouselButtons = {
+            prev: prevBtn,
+            next: nextBtn
+        };
+
+        function scrollByPage(direction) {
+            var amount = Math.max(120, Math.round(el.clientWidth * 0.72)) * direction;
+            var target = el.scrollLeft + amount;
+            if (typeof el.scrollTo === 'function') {
+                el.scrollTo({
+                    left: target,
+                    behavior: 'smooth'
+                });
+            } else {
+                el.scrollLeft = target;
+            }
+            updateThemeCarouselScrollbar(el);
+        }
+
+        if (prevBtn) {
+            prevBtn.addEventListener('click', function(ev) {
+                ev.preventDefault();
+                scrollByPage(-1);
+            });
+        }
+        if (nextBtn) {
+            nextBtn.addEventListener('click', function(ev) {
+                ev.preventDefault();
+                scrollByPage(1);
+            });
+        }
+
+        var dragState = null;
+        el.addEventListener('pointerdown', function(ev) {
+            if (ev.button !== undefined && ev.button !== 0) return;
+            if (ev.target.closest && ev.target.closest('.theme-carousel-button')) return;
+            ev.preventDefault();
+            dragState = {
+                pointerId: ev.pointerId,
+                startX: ev.clientX,
+                startScrollLeft: el.scrollLeft,
+                moved: false
+            };
+            try {
+                el.setPointerCapture(ev.pointerId);
+            } catch (err) {}
+        });
+
+        el.addEventListener('pointermove', function(ev) {
+            if (!dragState || dragState.pointerId !== ev.pointerId) return;
+            var dx = ev.clientX - dragState.startX;
+            if (!dragState.moved && Math.abs(dx) > 4) {
+                dragState.moved = true;
+                el.classList.add('is-dragging');
+                document.body.classList.add('theme-carousel-dragging');
+                if (window.getSelection) {
+                    var selection = window.getSelection();
+                    if (selection && selection.removeAllRanges) {
+                        selection.removeAllRanges();
+                    }
+                }
+            }
+            if (dragState.moved) {
+                ev.preventDefault();
+                el.scrollLeft = dragState.startScrollLeft - dx;
+                updateThemeCarouselScrollbar(el);
+            }
+        });
+
+        function endDrag(ev) {
+            if (!dragState || dragState.pointerId !== ev.pointerId) return;
+            var moved = dragState.moved;
+            dragState = null;
+            el.classList.remove('is-dragging');
+            document.body.classList.remove('theme-carousel-dragging');
+            if (moved) {
+                el.__suppressThemeCarouselClickUntil = Date.now() + 80;
+            }
+            try {
+                el.releasePointerCapture(ev.pointerId);
+            } catch (err) {}
+        }
+
+        el.addEventListener('pointerup', endDrag);
+        el.addEventListener('pointercancel', endDrag);
+
+        el.addEventListener('click', function(ev) {
+            if (el.__suppressThemeCarouselClickUntil &&
+                Date.now() < el.__suppressThemeCarouselClickUntil) {
+                ev.preventDefault();
+                ev.stopPropagation();
+            }
+        }, true);
+    }
+
+    function scrollThemeCarouselToSelection(el) {
+        if (!el || el.__themeCarouselInitialScrollDone) {
+            return;
+        }
+        el.__themeCarouselInitialScrollDone = true;
+
+        var selected = el.querySelector('.theme-option.selected');
+        if (!selected) {
+            var checkedInput = el.querySelector('input[name="theme"]:checked');
+            if (checkedInput && checkedInput.closest) {
+                selected = checkedInput.closest('.theme-option');
+            }
+        }
+        if (!selected) return;
+
+        var targetLeft = selected.offsetLeft - Math.max(
+            0,
+            Math.round((el.clientWidth - selected.offsetWidth) / 2)
+        );
+        targetLeft = Math.max(0, Math.min(
+            targetLeft,
+            Math.max(0, el.scrollWidth - el.clientWidth)
+        ));
+
+        if (typeof el.scrollTo === 'function') {
+            el.scrollTo({ left: targetLeft, behavior: 'auto' });
+        } else {
+            el.scrollLeft = targetLeft;
+        }
+    }
+
+    function ensureThemeCarouselOverlay(el) {
+        if (!el || el.__themeCarouselOverlay) {
+            return el ? el.__themeCarouselOverlay : null;
+        }
+        var frame = el.parentElement;
+        if (!frame) return null;
+        frame.classList.add('theme-selector-frame--custom');
+
+        var overlay = document.createElement('span');
+        overlay.className = 'theme-carousel-scrollbar-overlay';
+        var track = document.createElement('span');
+        track.className = 'theme-carousel-scrollbar-track';
+        var thumb = document.createElement('span');
+        thumb.className = 'theme-carousel-scrollbar-thumb';
+        overlay.appendChild(track);
+        overlay.appendChild(thumb);
+        frame.appendChild(overlay);
+
+        el.__themeCarouselOverlay = overlay;
+        overlay.__trackEl = track;
+        overlay.__thumbEl = thumb;
+
+        overlay.addEventListener('pointerdown', function(ev) {
+            if (ev.target === thumb) return;
+            var metrics = el.__themeCarouselMetrics;
+            if (!metrics || metrics.scrollWidth <= metrics.clientWidth || metrics.maxLeft <= 0) return;
+            var rect = overlay.getBoundingClientRect();
+            var x = ev.clientX - rect.left;
+            var targetLeft = x - (metrics.thumbWidth / 2);
+            targetLeft = Math.max(0, Math.min(targetLeft, metrics.maxLeft));
+            el.scrollLeft = (targetLeft / metrics.maxLeft) * (metrics.scrollWidth - metrics.clientWidth);
+            updateThemeCarouselScrollbar(el);
+        });
+
+        thumb.addEventListener('pointerdown', function(ev) {
+            ev.preventDefault();
+            var startX = ev.clientX;
+            var startScrollLeft = el.scrollLeft;
+            var metrics = el.__themeCarouselMetrics;
+            if (!metrics || metrics.maxLeft <= 0 || metrics.scrollWidth <= metrics.clientWidth) return;
+            var pxToScroll = (metrics.scrollWidth - metrics.clientWidth) / metrics.maxLeft;
+
+            try {
+                thumb.setPointerCapture(ev.pointerId);
+            } catch (err) {}
+
+            function onMove(moveEv) {
+                var dx = moveEv.clientX - startX;
+                el.scrollLeft = startScrollLeft + (dx * pxToScroll);
+                updateThemeCarouselScrollbar(el);
+            }
+
+            function onEnd(endEv) {
+                document.removeEventListener('pointermove', onMove);
+                document.removeEventListener('pointerup', onEnd);
+                document.removeEventListener('pointercancel', onEnd);
+                try {
+                    thumb.releasePointerCapture(endEv.pointerId);
+                } catch (err) {}
+            }
+
+            document.addEventListener('pointermove', onMove);
+            document.addEventListener('pointerup', onEnd);
+            document.addEventListener('pointercancel', onEnd);
+        });
+
+        overlay.addEventListener('wheel', function(ev) {
+            ev.preventDefault();
+            var delta = Math.abs(ev.deltaX) > Math.abs(ev.deltaY) ? ev.deltaX : ev.deltaY;
+            el.scrollLeft += delta;
+            updateThemeCarouselScrollbar(el);
+        }, { passive: false });
+
+        return overlay;
+    }
+
+    function refreshThemeCarouselScrollbars() {
+        var carousels = document.querySelectorAll('.theme-selector');
+        var useCustom = useCustomThemeScrollbars();
+        for (var i = 0; i < carousels.length; i += 1) {
+            var el = carousels[i];
+            if (!el.__themeCarouselBound) {
+                el.__themeCarouselBound = true;
+                el.addEventListener('scroll', function(ev) {
+                    updateThemeCarouselScrollbar(ev.currentTarget);
+                });
+            }
+            bindThemeCarouselControls(el);
+            if (useCustom) {
+                ensureThemeCarouselOverlay(el);
+            }
+            scrollThemeCarouselToSelection(el);
+            updateThemeCarouselScrollbar(el);
         }
     }
 
@@ -227,12 +549,16 @@
 
     document.addEventListener('DOMContentLoaded', function() {
         refreshCustomPanelScrollbars();
+        refreshThemeCarouselScrollbars();
         setTimeout(refreshCustomPanelScrollbars, 0);
+        setTimeout(refreshThemeCarouselScrollbars, 0);
     });
     document.addEventListener('click', function(ev) {
         var header = ev.target && ev.target.closest ? ev.target.closest('.panel > h2') : null;
         if (!header) return;
         setTimeout(refreshCustomPanelScrollbars, 260);
+        setTimeout(refreshThemeCarouselScrollbars, 260);
     });
     window.addEventListener('resize', refreshCustomPanelScrollbars);
+    window.addEventListener('resize', refreshThemeCarouselScrollbars);
 })();

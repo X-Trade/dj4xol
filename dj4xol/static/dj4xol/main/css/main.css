@@ -1260,6 +1260,10 @@ body.turned-in.lcars .order-params::after {
     overflow-wrap: break-word;
 }
 
+.message-category {
+    font-weight: bold;
+}
+
 .no-messages {
     color: #888;
     font-style: italic;

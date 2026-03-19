@@ -158,6 +158,7 @@ class DetailBuilder():
 
             if not can_view:
                 # Return unexplored placeholder
+                marker_star = self._get_marker_star() if isinstance(self.selected_obj, Star) else None
                 return {
                     'name': self.get_object_name(),
                     'selected_id': self.selected_obj.short_id,
@@ -173,6 +174,11 @@ class DetailBuilder():
                     'position_status': 'unknown' if isinstance(self.selected_obj, Fleet) else 'current',
                     'suppress_locate': isinstance(self.selected_obj, Fleet),
                     'thumbnail_blurred': False,
+                    'can_set_marker': bool(self.player and isinstance(self.selected_obj, Star)),
+                    'star_marker_type': self._get_star_marker_type() if isinstance(self.selected_obj, Star) else '',
+                    'star_marker_color': self._get_star_marker_color() if isinstance(self.selected_obj, Star) else PlayerStarMarker.COLOR_BLUE,
+                    'marker_star_short_id': marker_star.short_id if marker_star else None,
+                    'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                 }
 
             if report_year is not None:

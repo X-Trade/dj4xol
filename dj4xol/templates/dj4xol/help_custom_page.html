@@ -8,8 +8,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/help/css/help_editor.css' %}">
-        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
-        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
         <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
     </head>
     <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index single-panel-page">

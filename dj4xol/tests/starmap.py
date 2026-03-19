@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from ..factory import GameFactory
+from ..fleet_thumbnails import choose_fleet_thumbnail
 from ..models import (
     Account,
     Report,
@@ -207,6 +208,27 @@ class TestStarMap(TestCase):
         self.assertIn(f'sel={home.short_id}', html)
         self.assertIn('data-object-type="star"', html)
         self.assertIn(f'data-object-id="{home.short_id}"', html)
+
+    def test_fleet_map_includes_thumbnail_class_hook_and_rotation_variable(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.thumbnail_path = choose_fleet_thumbnail('retro-hook', 'fighter')
+        fleet.heading = 45
+        fleet.save(update_fields=['thumbnail_path', 'heading'])
+
+        starmap = StarMap(game, player)
+        html = starmap.render_fleet(fleet)
+
+        self.assertIn('mapfleet-thumb', html)
+        self.assertIn('mapfleet-thumb-fighter', html)
+        self.assertIn('mapfleet-thumb-has-sprite', html)
+        self.assertIn('data-fleet-class="fighter"', html)
+        self.assertIn('var(--mapfleet-rotation-offset, 0deg)', html)
+        self.assertIn(
+            "--retro-mapfleet-sprite: url('/static/dj4xol/images/mapfleet/retro/source/friendly/fighter",
+            html,
+        )
 
     def test_wormhole_anomaly_uses_wormhole_css_class(self):
         game = default_game(stars=5, fleets=0)

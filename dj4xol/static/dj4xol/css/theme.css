@@ -83,7 +83,7 @@ label {
 }
 
 .classic .order-param-hint,
-body:not(.lcars):not(.win95) .order-param-hint {
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .order-param-hint {
     font-size: 0.8em;
 }
 
@@ -306,13 +306,13 @@ body:not(.lcars):not(.win95) .order-param-hint {
     margin: 10px 0;
 }
 
-body:not(.lcars):not(.win95) .detail-header {
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .detail-header {
     border: 1px solid var(--panel-border);
     background: linear-gradient(to bottom, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.02));
     padding-left: 0;
 }
 
-body:not(.lcars):not(.win95) .detail-header.detail-header-unexplored {
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .detail-header.detail-header-unexplored {
     padding-left: 10px;
 }
 
@@ -428,7 +428,7 @@ body:not(.lcars):not(.win95) .detail-header.detail-header-unexplored {
 
 /* Subtle label emphasis for Classic theme detail rows. */
 .classic .env-label,
-body:not(.lcars):not(.win95) .env-label {
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .env-label {
     color: #5f6d7a;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -659,23 +659,23 @@ body:not(.lcars):not(.win95) .env-label {
     z-index: 1;
 }
 
-body:not(.lcars):not(.win95) .number-stepper-btn {
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .number-stepper-btn {
     border: 1px solid var(--panel-border);
     background: linear-gradient(to bottom, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.04));
     color: var(--theme-text);
 }
 
-body:not(.lcars):not(.win95) .number-stepper-btn--minus {
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .number-stepper-btn--minus {
     border-right: none;
     border-radius: 4px 0 0 4px;
 }
 
-body:not(.lcars):not(.win95) .number-stepper-btn--plus {
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .number-stepper-btn--plus {
     border-left: none;
     border-radius: 0 4px 4px 0;
 }
 
-body:not(.lcars):not(.win95) .number-stepper-input {
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .number-stepper-input {
     border-radius: 0;
 }
 
@@ -880,12 +880,29 @@ body:not(.lcars):not(.win95) .number-stepper-input {
     flex-wrap: nowrap;
     justify-content: flex-start;
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 6px;
+    scroll-behavior: smooth;
+    padding: 2px 2px 12px 2px;
+    cursor: grab;
 }
 
-.onboarding .theme-selector {
-    justify-content: center;
+.theme-selector-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 8px 12px 8px;
+    overflow: hidden;
+}
+
+.theme-selector-frame {
+    position: relative;
+    overflow: hidden;
+    min-height: 118px;
+}
+
+.theme-selector-frame.theme-selector-frame--custom {
+    padding-bottom: 24px;
 }
 
 .theme-option {
@@ -900,6 +917,8 @@ body:not(.lcars):not(.win95) .number-stepper-input {
     transition: border-color 0.2s, background-color 0.2s;
     background: #fafafa;
     flex: 0 0 auto;
+    min-width: 132px;
+    margin-bottom: 2px;
 }
 
 .theme-option:hover {
@@ -987,8 +1006,200 @@ body:not(.lcars):not(.win95) .number-stepper-input {
     box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000;
 }
 
+.theme-preview.haxxor {
+    background:
+        radial-gradient(circle at 18% 28%, #9bdcff 0 2px, transparent 2px),
+        radial-gradient(circle at 72% 22%, #7cffb6 0 2px, transparent 2px),
+        radial-gradient(circle at 58% 68%, #ffef8f 0 1px, transparent 1px),
+        linear-gradient(to bottom, #08101d 0%, #04070d 100%);
+    position: relative;
+    border-radius: 0;
+}
+
+.theme-preview.haxxor::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    right: 6px;
+    height: 12px;
+    background: #102038;
+    border: 2px solid #67e4a6;
+    box-shadow: inset 0 0 0 2px #08101d;
+}
+
+.theme-preview.haxxor::after {
+    content: '';
+    position: absolute;
+    left: 16px;
+    top: 28px;
+    right: 16px;
+    bottom: 14px;
+    background:
+        radial-gradient(circle at 22% 28%, #d9e4ef 0 1px, transparent 1px),
+        radial-gradient(circle at 58% 42%, #67e4a6 0 1px, transparent 1px),
+        radial-gradient(circle at 76% 24%, #ffef8f 0 1px, transparent 1px),
+        radial-gradient(circle at 40% 70%, #67e4a6 0 1px, transparent 1px);
+}
+
+.theme-preview.retro {
+    background:
+        repeating-linear-gradient(0deg, #06090f 0 8px, #09111b 8px 16px),
+        linear-gradient(to bottom, #0a1430 0%, #05080f 100%);
+    position: relative;
+    border-radius: 0;
+    border: 0.35em solid #6dd3ff;
+}
+
+.theme-preview.retro::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    height: 12px;
+    background: #13274c;
+    border: 0.35em solid #ffd36a;
+}
+
+.theme-preview.retro::after {
+    content: '';
+    position: absolute;
+    left: 16px;
+    top: 30px;
+    width: 8px;
+    height: 8px;
+    background: #72ffb1;
+    box-shadow:
+        16px 0 0 #72ffb1,
+        8px 8px 0 #72ffb1,
+        16px 8px 0 #72ffb1,
+        24px 8px 0 #72ffb1,
+        0 16px 0 #72ffb1,
+        8px 16px 0 #72ffb1,
+        16px 16px 0 #72ffb1,
+        24px 16px 0 #72ffb1,
+        8px 24px 0 #ffd36a,
+        16px 24px 0 #ffd36a;
+}
+
 .theme-name {
     font-weight: 600;
     font-size: 0.9em;
     color: var(--theme-text);
+}
+
+.theme-carousel-scrollbar-overlay {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 14px;
+    display: none;
+    pointer-events: auto;
+}
+
+.theme-carousel-scrollbar-track,
+.theme-carousel-scrollbar-thumb {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    box-sizing: border-box;
+}
+
+.theme-carousel-scrollbar-track {
+    left: 0;
+    right: 0;
+}
+
+.theme-carousel-scrollbar-thumb {
+    left: 0;
+    min-width: 28px;
+    transform: translateX(0);
+}
+
+.theme-carousel-button {
+    display: none;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    transform: none;
+    width: 26px;
+    height: auto;
+    padding: 0;
+    z-index: 2;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+    border: none;
+    box-shadow: none;
+}
+
+.theme-carousel-button--prev {
+    left: 0;
+}
+
+.theme-carousel-button--next {
+    right: 0;
+}
+
+.theme-selector.is-dragging {
+    cursor: grabbing;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.theme-selector.is-dragging .theme-option {
+    pointer-events: none;
+}
+
+body.theme-carousel-dragging,
+body.theme-carousel-dragging * {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+}
+
+.classic .theme-selector-frame,
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .theme-selector-frame {
+    min-height: 128px;
+    padding-left: 24px;
+    padding-right: 24px;
+}
+
+.classic .theme-selector-panel > p,
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .theme-selector-panel > p {
+    margin: 0 0 4px 0;
+}
+
+.classic .theme-carousel-button,
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .theme-carousel-button {
+    display: inline-flex;
+    color: rgba(51, 51, 51, 0.7);
+    background: transparent;
+}
+
+.classic .theme-carousel-button:hover:not(:disabled),
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .theme-carousel-button:hover:not(:disabled) {
+    color: rgba(51, 51, 51, 0.95);
+}
+
+.classic .theme-carousel-button:disabled,
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .theme-carousel-button:disabled {
+    opacity: 0.18;
+    cursor: default;
+}
+
+.classic .theme-carousel-button--prev,
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .theme-carousel-button--prev {
+    left: 0;
+    background: linear-gradient(to right, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0));
+}
+
+.classic .theme-carousel-button--next,
+body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .theme-carousel-button--next {
+    right: 0;
+    background: linear-gradient(to left, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0));
 }
