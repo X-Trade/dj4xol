@@ -92,6 +92,7 @@
                                     <div class="allocation-progress-fill" style="width: {{ row.progress_percent }}%;"></div>
                                 </div>
                                 <a href="?category={{ row.category.id }}"
+                                   data-category-link="1"
                                    class="allocation-name{% if selected_category and selected_category.id == row.category.id %} selected{% endif %}">
                                    {{ row.category.name }}
                                 </a>
@@ -273,6 +274,7 @@
                 </div>
             </div>
         </div>
+        <script type="text/javascript" src="{% static 'dj4xol/js/page_ui_state.js' %}"></script>
         <script>
         window.playerTurnedIn = {{ player.turned_in|yesno:'true,false' }};
         window.currentYear = {{ game.year }};
@@ -424,6 +426,105 @@
             });
         })();
         (function() {
+            var uiState = window.initScopedUiStatePersistence({
+                namespace: 'research',
+                rootSelector: '.research-columns',
+                noScrollLinkSelector: 'a[data-category-link="1"]'
+            });
+            window.__researchUiState = uiState;
+
+            var storage;
+            try {
+                storage = window.sessionStorage;
+            } catch (err) {
+                storage = null;
+            }
+            if (!storage) {
+                return;
+            }
+
+            var draftKey = 'research-draft:' + window.location.pathname;
+            var draftPendingKey = draftKey + ':pending';
+
+            function saveDraft() {
+                var form = document.getElementById('research-allocation-form');
+                if (!form) {
+                    return;
+                }
+                var values = {};
+                Array.prototype.forEach.call(form.querySelectorAll('.allocation-input'), function(input) {
+                    values[input.name] = input.value;
+                });
+                var selectedFocus = form.querySelector('input[name="focus_category"]:checked');
+                if (selectedFocus) {
+                    values.focus_category = selectedFocus.value;
+                }
+                storage.setItem(draftKey, JSON.stringify(values));
+                storage.setItem(draftPendingKey, JSON.stringify({ ts: Date.now() }));
+            }
+
+            function clearDraft() {
+                storage.removeItem(draftKey);
+                storage.removeItem(draftPendingKey);
+            }
+
+            function restoreDraft() {
+                var pending;
+                try {
+                    pending = JSON.parse(storage.getItem(draftPendingKey) || 'null');
+                } catch (err) {
+                    pending = null;
+                }
+                if (!pending || !pending.ts || Math.abs(Date.now() - pending.ts) > 60000) {
+                    clearDraft();
+                    return;
+                }
+                storage.removeItem(draftPendingKey);
+                var values;
+                try {
+                    values = JSON.parse(storage.getItem(draftKey) || '{}');
+                } catch (err) {
+                    values = {};
+                }
+                storage.removeItem(draftKey);
+
+                var form = document.getElementById('research-allocation-form');
+                if (!form) {
+                    return;
+                }
+                Array.prototype.forEach.call(form.querySelectorAll('.allocation-input'), function(input) {
+                    if (Object.prototype.hasOwnProperty.call(values, input.name)) {
+                        input.value = values[input.name];
+                    }
+                });
+                if (Object.prototype.hasOwnProperty.call(values, 'focus_category')) {
+                    var radio = form.querySelector('input[name="focus_category"][value="' + values.focus_category + '"]');
+                    if (radio) {
+                        radio.checked = true;
+                    }
+                }
+            }
+
+            restoreDraft();
+            window.__saveResearchDraft = saveDraft;
+            window.__clearResearchDraft = clearDraft;
+
+            Array.prototype.forEach.call(document.querySelectorAll('a[data-category-link="1"]'), function(link) {
+                link.addEventListener('click', function(ev) {
+                    if (ev.defaultPrevented || (ev.button !== undefined && ev.button !== 0) || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) {
+                        return;
+                    }
+                    saveDraft();
+                    uiState.saveAndMark({ includeScrolls: false });
+                });
+            });
+
+            var form = document.getElementById('research-allocation-form');
+            if (form) {
+                form.addEventListener('submit', clearDraft);
+            }
+        })();
+        (function() {
             var singularResearch = {% if singular_research %}true{% else %}false{% endif %};
             if (!singularResearch) return;
             var form = document.getElementById('research-allocation-form');
@@ -432,6 +533,12 @@
             Array.prototype.forEach.call(radios, function(radio) {
                 radio.addEventListener('change', function() {
                     if (this.checked) {
+                        if (window.__clearResearchDraft) {
+                            window.__clearResearchDraft();
+                        }
+                        if (window.__researchUiState) {
+                            window.__researchUiState.saveAndMark();
+                        }
                         form.submit();
                     }
                 });
@@ -446,6 +553,12 @@
             evenBtn.addEventListener('click', function() {
                 if (actionInput) {
                     actionInput.value = 'even';
+                }
+                if (window.__clearResearchDraft) {
+                    window.__clearResearchDraft();
+                }
+                if (window.__researchUiState) {
+                    window.__researchUiState.saveAndMark();
                 }
                 form.submit();
             });
