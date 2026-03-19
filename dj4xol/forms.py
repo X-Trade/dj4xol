@@ -309,6 +309,11 @@ class NewGameForm(forms.Form):
         required=False,
         help_text="Add companion stars to 25% of stars"
     )
+    improved_star_names = forms.BooleanField(
+        label="Improved Star Names",
+        required=False,
+        help_text="Use related names for systems and nearby clusters (requires Systems)"
+    )
     public = forms.BooleanField(
         label="Public",
         required=False,
@@ -434,6 +439,7 @@ class NewGameForm(forms.Form):
             'clusters',
             'spiral_arms',
             'systems',
+            'improved_star_names',
             'public',
             'joinable',
             'join_open_years',
@@ -486,6 +492,8 @@ class NewGameForm(forms.Form):
         if cleaned.get('clusters') and cleaned.get('spiral_arms'):
             self.add_error('clusters', 'Clusters cannot be combined with spiral arm galaxy generation.')
             self.add_error('spiral_arms', 'Spiral arm galaxy generation cannot be combined with clusters.')
+        if cleaned.get('improved_star_names') and not cleaned.get('systems'):
+            self.add_error('improved_star_names', 'Improved star names require Systems to be enabled.')
         return cleaned
 
     def parse_invitations(self):

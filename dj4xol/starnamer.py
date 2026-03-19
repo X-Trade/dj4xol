@@ -147,9 +147,15 @@ class StarNamer():
     _prefixes = _additional + ['New', 'Old', 'Nova', 'Neo', 'Free', 'High',
                                'Low']
     history = []
+    cluster_prefixes = [
+        'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta',
+        'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi',
+        'Omicron', 'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi',
+        'Chi', 'Psi', 'Omega',
+    ]
 
     def __init__(self, history=None):
-        if history is list:
+        if isinstance(history, list):
             self.history = history
 
 
@@ -200,3 +206,21 @@ class StarNamer():
 
         self.history.append(name)
         return name
+
+    def _random_root_name(self):
+        while True:
+            name = self._data[random.randint(0, len(self._data) - 1)]
+            if name.endswith('-n'):
+                continue
+            return name
+
+    def get_unique_root(self, used_roots=None):
+        used_roots = used_roots or set()
+        while True:
+            name = self._random_root_name()
+            if name in used_roots:
+                continue
+            if name in self.history:
+                continue
+            self.history.append(name)
+            return name

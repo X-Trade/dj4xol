@@ -1974,6 +1974,7 @@ def create_game(request):
                 clusters=d.get('clusters', False),
                 spiral_arms=d.get('spiral_arms', False),
                 systems=d.get('systems', False),
+                improved_names=d.get('improved_star_names', False),
             )
             game = factory.save()
             factory.join_player(account, d['race'])

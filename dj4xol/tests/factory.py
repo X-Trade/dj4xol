@@ -305,6 +305,39 @@ class testGameFactory(TestCase):
         unique_coords = set(coords)
         self.assertLess(len(unique_coords), len(coords))
 
+    def test_improved_star_names_number_stacked_system_members(self):
+        gf = GameFactory()
+        gf.set_map_size(200, 200)
+        gf.stars = [
+            Star(name='Old A', x=10, y=10),
+            Star(name='Old B', x=10, y=10),
+            Star(name='Old C', x=10, y=10),
+        ]
+        with patch.object(gf.starnamer, 'get_unique_root', return_value='Centauri'):
+            gf._apply_improved_star_names(clusters=False)
+
+        self.assertEqual(
+            [star.name for star in gf.stars],
+            ['Centauri I', 'Centauri II', 'Centauri III'],
+        )
+
+    def test_improved_star_names_use_related_cluster_names(self):
+        gf = GameFactory()
+        gf.set_map_size(200, 200)
+        gf.stars = [
+            Star(name='Old A', x=10, y=10),
+            Star(name='Old B', x=10, y=10),
+            Star(name='Old C', x=18, y=12),
+            Star(name='Old D', x=26, y=15),
+        ]
+        with patch.object(gf.starnamer, 'get_unique_root', return_value='Centauri'):
+            gf._apply_improved_star_names(clusters=True)
+
+        self.assertEqual(gf.stars[0].name, 'Alpha Centauri I')
+        self.assertEqual(gf.stars[1].name, 'Alpha Centauri II')
+        self.assertEqual(gf.stars[2].name, 'Beta Centauri')
+        self.assertEqual(gf.stars[3].name, 'Gamma Centauri')
+
     def test_join_player_applies_starting_tech_level_to_research_rows(self):
         self.races[0].starting_tech_level = 3
         self.races[0].save(update_fields=['starting_tech_level'])
