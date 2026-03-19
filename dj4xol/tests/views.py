@@ -376,7 +376,24 @@ class TestProductionOrders(TestCase):
         self.assertContains(response, 'name="quantity"', html=False)
         self.assertContains(response, 'inputmode="numeric"', html=False)
         self.assertContains(response, 'pattern="[0-9]*"', html=False)
+        self.assertContains(response, 'data-step-thresholds="15:5,50:10,100:50"', html=False)
         self.assertContains(response, 'readonly onfocus="this.removeAttribute(\'readonly\');"', html=False)
+
+    def test_game_view_includes_number_stepper_script(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': homeworld.x, 'y': homeworld.y, 'sel': homeworld.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'dj4xol/js/number_stepper.js')
 
     def test_toggle_production_order_repeat(self):
         """Production order repeat can be toggled from the list button."""
@@ -1152,6 +1169,11 @@ class TestRaceCreationView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="race-type-description"')
 
+    def test_create_race_includes_number_stepper_script(self):
+        response = self.client.get(reverse('dj4xol:create_race'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'dj4xol/js/number_stepper.js')
+
     def test_create_race_marks_inline_race_type_points_target(self):
         response = self.client.get(reverse('dj4xol:create_race'))
         self.assertEqual(response.status_code, 200)
@@ -1614,6 +1636,23 @@ class TestResearchView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'RP/Year')
         self.assertContains(response, '(+20%)')
+
+    def test_research_view_includes_number_stepper_script(self):
+        response = self.client.get(reverse('dj4xol:research', args=[self.game.short_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'dj4xol/js/number_stepper.js')
+
+
+class TestGameCreationView(TestCase):
+    def setUp(self):
+        self.user, self.account = get_default_user()
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_create_game_includes_number_stepper_script(self):
+        response = self.client.get(reverse('dj4xol:create_game'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'dj4xol/js/number_stepper.js')
 
 
 class TestRenameObjectView(TestCase):

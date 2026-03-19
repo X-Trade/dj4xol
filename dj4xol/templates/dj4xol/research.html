@@ -10,6 +10,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/research/css/research.css' %}">
         {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
         {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        <script defer type="text/javascript" src="{% static 'dj4xol/js/number_stepper.js' %}"></script>
     </head>
     <body{% if user_theme %} class="{{ user_theme }}"{% endif %}>
         <div class="title-bar">

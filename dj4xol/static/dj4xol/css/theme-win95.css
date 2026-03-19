@@ -418,6 +418,32 @@ input:focus {
     outline: 1px dotted #000000;
 }
 
+.win95 .number-stepper-btn {
+    background: #c0c0c0;
+    border: none;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+    border-radius: 0;
+    color: #000000;
+    padding: 0 8px;
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 11px;
+}
+
+.win95 .number-stepper-btn:active:not(:disabled) {
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+.win95 .number-stepper-input {
+    border-radius: 0;
+}
+
+.win95 .order-type-row .number-stepper--compact .number-stepper-input.quantity-input {
+    width: 3em;
+    min-width: 2em;
+}
+
 /* ============================================
    Win95 Tables
    ============================================ */

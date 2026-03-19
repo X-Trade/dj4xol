@@ -178,7 +178,10 @@
                     <option value="SCUTTLE"{% if request.GET.order_type == 'SCUTTLE' %} selected{% endif %}>Scuttle</option>
                     <option value="PATROL"{% if request.GET.order_type == 'PATROL' %} selected{% endif %}>Patrol</option>
                 </select>
-                <label class="repeat-checkbox{% if request.GET.order_type == 'GIVE' or request.GET.order_type == 'COLONISE' or request.GET.order_type == 'MERGE' or request.GET.order_type == 'SCUTTLE' %} is-disabled{% endif %}"><input type="checkbox" name="repeat" id="repeat-checkbox"{% if request.GET.order_type == 'GIVE' or request.GET.order_type == 'COLONISE' or request.GET.order_type == 'MERGE' or request.GET.order_type == 'SCUTTLE' %} disabled{% endif %}> &#x21bb;</label>
+                <label class="repeat-checkbox{% if request.GET.order_type == 'GIVE' or request.GET.order_type == 'COLONISE' or request.GET.order_type == 'MERGE' or request.GET.order_type == 'SCUTTLE' %} is-disabled{% endif %}" title="Repeat order">
+                    <input type="checkbox" name="repeat" id="repeat-checkbox"{% if request.GET.order_type == 'GIVE' or request.GET.order_type == 'COLONISE' or request.GET.order_type == 'MERGE' or request.GET.order_type == 'SCUTTLE' %} disabled{% endif %}>
+                    <span class="repeat-checkbox-icon" aria-hidden="true">&#x21bb;</span>
+                </label>
                 <button type="submit" class="order-add-btn" id="add-order-btn" {% if not dest_star_id and not dest_fleet_id and not dest_salvage_id and not dest_anomaly_id and not dest_x and not dest_y %}disabled{% endif %}>+</button>
             </div>
 

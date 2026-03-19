@@ -499,6 +499,29 @@ input:focus {
     outline: none;
 }
 
+.lcars .number-stepper-btn {
+    background: #1a1a2e;
+    border: 2px solid #cc6633;
+    color: #ff9966;
+    padding: 0 10px;
+}
+
+.lcars .number-stepper-btn--minus {
+    border-right-width: 0;
+    border-radius: 15px 0 0 15px;
+}
+
+.lcars .number-stepper-btn--plus {
+    border-left-width: 0;
+    border-radius: 0 15px 15px 0;
+}
+
+.lcars .number-stepper-input {
+    border-left-width: 0;
+    border-right-width: 0;
+    border-radius: 0;
+}
+
 /* ============================================
    LCARS Tables
    ============================================ */
@@ -934,6 +957,41 @@ input:focus {
     background: #1a1a2e;
     border: 2px solid #cc6633;
     color: #ff9966;
+}
+
+.lcars .order-type-row {
+    gap: 4px;
+}
+
+.lcars .order-type-row .order-select {
+    flex: 1 1 140px;
+    min-width: 120px;
+}
+
+.lcars .order-type-row .number-stepper--compact .number-stepper-input.quantity-input {
+    width: 3em;
+    min-width: 2em;
+    padding: 4px 2px;
+    font-size: 0.95em;
+    border-radius: 0;
+    border-left-width: 0;
+    border-right-width: 0;
+}
+
+.lcars .order-type-row .number-stepper--compact .number-stepper-btn {
+    min-width: 18px;
+    padding: 0 5px;
+}
+
+.lcars .order-type-row .order-add-btn {
+    width: 30px;
+    min-width: 30px;
+    padding: 0;
+}
+
+.lcars .order-type-row .repeat-checkbox {
+    gap: 0;
+    flex: 0 0 auto;
 }
 
 /* Sliders */
