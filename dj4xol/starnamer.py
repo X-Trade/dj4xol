@@ -1,4 +1,5 @@
 import random
+import re
 
 
 class StarNamer():
@@ -153,6 +154,9 @@ class StarNamer():
         'Omicron', 'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi',
         'Chi', 'Psi', 'Omega',
     ]
+    catalogue_roots = {
+        'MESSIER', 'CALDWELL', 'LALANDE', 'GLIESE', 'WISE',
+    }
 
     def __init__(self, history=None):
         if isinstance(history, list):
@@ -224,3 +228,13 @@ class StarNamer():
                 continue
             self.history.append(name)
             return name
+
+    def is_traditional_name(self, name):
+        name = str(name or '').strip()
+        if not name:
+            return False
+        if re.search(r'\d', name):
+            return False
+        if name.upper() in self.catalogue_roots:
+            return False
+        return True
