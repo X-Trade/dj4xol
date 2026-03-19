@@ -359,6 +359,25 @@ class TestProductionOrders(TestCase):
         self.assertContains(response, 'order-params--costs order-params--columns is-empty', html=False)
         self.assertContains(response, 'Select a production item to view costs.')
 
+    def test_production_quantity_input_uses_mobile_safe_numeric_attrs(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': homeworld.x, 'y': homeworld.y, 'sel': homeworld.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="quantity"', html=False)
+        self.assertContains(response, 'inputmode="numeric"', html=False)
+        self.assertContains(response, 'pattern="[0-9]*"', html=False)
+        self.assertContains(response, 'readonly onfocus="this.removeAttribute(\'readonly\');"', html=False)
+
     def test_toggle_production_order_repeat(self):
         """Production order repeat can be toggled from the list button."""
         game = default_game(stars=5)

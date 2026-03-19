@@ -69,7 +69,7 @@
     text-shadow: 0 0 2px #000, 0 0 4px #000;
     text-decoration: none;
     opacity: 0;
-    z-index: 3;
+    z-index: 7;
     pointer-events: none;
 }
 
@@ -91,7 +91,7 @@ body.lcars .maparea a.mapstar-name {
     top: 0;
     left: 0;
     pointer-events: none;
-    z-index: 1;
+    z-index: 6;
 }
 
 .scanner-range-overlay {
@@ -201,7 +201,7 @@ body.lcars .maparea a.mapstar-name {
 .mapstar-marker-x {
     --map-marker-color: #ffffff;
     --map-marker-glow: rgba(255, 255, 255, 0.7);
-    z-index: 50 !important;
+    z-index: 5 !important;
 }
 
 .mapstar-marker-circle::after {

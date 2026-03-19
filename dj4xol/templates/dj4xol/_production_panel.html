@@ -75,7 +75,7 @@
                     </option>
                     {% endfor %}
                 </select>
-                <input type="number" name="quantity" value="1" min="1" class="quantity-input" title="Quantity">
+                <input type="number" name="quantity" value="1" min="1" step="1" class="quantity-input" title="Quantity" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly');">
                 <label class="repeat-checkbox"><input type="checkbox" name="repeat" id="production-repeat"> &#x21bb;</label>
                 <button type="submit" class="order-add-btn">+</button>
             </div>
