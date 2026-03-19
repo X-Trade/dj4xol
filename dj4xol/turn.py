@@ -1,5 +1,5 @@
 from datetime import timedelta
-from math import atan2, ceil, cos, degrees, log2, pi, sin, sqrt
+from math import atan2, atanh, ceil, cos, degrees, log2, pi, sin, sqrt, tanh
 from numpy import array as nparray, linalg
 from django.db import models
 from django.utils import timezone
@@ -6836,7 +6836,10 @@ class GameTurn():
             max_safe_warp=tech_effects['max_warp_speed'],
             fuel_efficiency=tech_effects.get('fuel_efficiency', 1.0),
             overmax_fuel_penalty=tech_effects.get('overmax_fuel_penalty', 1.0),
-            warp_advantage=getattr(player.race_type, 'warp_advantage', 0.0) or 0.0,
+            warp_advantage=combine_speed_advantages(
+                getattr(player.race_type, 'warp_advantage', 0.0) or 0.0,
+                tech_effects.get('warp_advantage', 0.0) or 0.0,
+            ),
             wormhole_fuel_per_ly=tech_effects.get('wormhole_fuel_per_ly', 5.0),
             wormhole_destruction_chance=tech_effects.get('wormhole_destruction_chance', 0.0),
             offense_level=tech_effects['offense_level'],
@@ -7565,3 +7568,27 @@ def apply_population_change(population, factor):
         # Ensure at least 1 colonist dies to prevent infinite decay
         new_pop = min(new_pop, population - 1)
         return max(0, new_pop)
+def combine_speed_advantages(*advantages):
+    """Combine bounded speed advantages and cap the result within +/-0.99.
+
+    This keeps moderate race/hull bonuses feeling additive while preventing
+    stacked sources from producing runaway >1 warp-equivalent advantages.
+    """
+    total = 0.0
+    for raw in advantages:
+        try:
+            value = float(raw or 0.0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value > 0.99:
+            value = 0.99
+        elif value < -0.99:
+            value = -0.99
+        if value:
+            total += atanh(value)
+    combined = tanh(total) if total else 0.0
+    if combined > 0.99:
+        return 0.99
+    if combined < -0.99:
+        return -0.99
+    return combined

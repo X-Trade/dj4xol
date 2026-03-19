@@ -243,6 +243,8 @@ def _race_type_special_technology_rows(race_type):
             'level': int(getattr(tech, 'level', 0) or 0),
             'type': tech_type_labels.get(tech.tech_type, tech.tech_type),
             'thumbnail_path': get_technology_thumbnail_path(tech),
+            'thumbnail_paths': get_technology_thumbnail_paths(tech),
+            'thumbnail_initial_index': get_technology_thumbnail_initial_index(tech),
             'is_excluded': status == 'excluded',
         })
     return rows
@@ -2150,6 +2152,10 @@ def _apply_hull_defaults_from_technology(hull, technology, force_name=False):
     except (TypeError, ValueError):
         hull.defense_offset = 0.0
     try:
+        hull.speed_advantage = float(params.get('warp_advantage', 0.0) or 0.0)
+    except (TypeError, ValueError):
+        hull.speed_advantage = 0.0
+    try:
         hull.cargo_capacity = int(params.get('max_cargo_capacity', 0) or 0)
     except (TypeError, ValueError):
         hull.cargo_capacity = 0
@@ -2170,6 +2176,7 @@ def _sync_hull_technology_from_design(technology, hull):
     )
     params['offense_level'] = float(hull.offense_offset or 0.0)
     params['defense_level'] = float(hull.defense_offset or 0.0)
+    params['warp_advantage'] = float(hull.speed_advantage or 0.0)
     technology.params_json = json.dumps(params, sort_keys=True)
 
 
@@ -2266,6 +2273,7 @@ def hull_design_edit(request, hull_id=None):
     thumbnail_class_choices = _hull_thumbnail_class_choices(hull.thumbnail_class)
     offense_offset_display = _hull_modifier_to_display(hull.offense_offset)
     defense_offset_display = _hull_modifier_to_display(hull.defense_offset)
+    speed_advantage_display = _hull_modifier_to_display(hull.speed_advantage)
     tech_categories = list(
         ResearchCategory.objects.filter(enabled=True).order_by(
             'display_order',
@@ -2298,8 +2306,10 @@ def hull_design_edit(request, hull_id=None):
         try:
             offense_offset_display = float(request.POST.get('offense_offset') or 0)
             defense_offset_display = float(request.POST.get('defense_offset') or 0)
+            speed_advantage_display = float(request.POST.get('speed_advantage') or 0)
             hull.offense_offset = _hull_modifier_from_display(offense_offset_display)
             hull.defense_offset = _hull_modifier_from_display(defense_offset_display)
+            hull.speed_advantage = _hull_modifier_from_display(speed_advantage_display)
             hull.ironium_cost = int(request.POST.get('ironium_cost') or 0)
             hull.boranium_cost = int(request.POST.get('boranium_cost') or 0)
             hull.germanium_cost = int(request.POST.get('germanium_cost') or 0)
@@ -2393,10 +2403,7 @@ def hull_design_edit(request, hull_id=None):
         'technology': technology,
         'errors': errors,
         'secret_resource_labels': {
-            key: get_secret_resource_label(
-                key,
-                bool(getattr(account, f'discovered_{key}', False)) if account else False,
-            )
+            key: get_secret_resource_label(key, True)
             for key in SECRET_RESOURCE_KEYS
         },
         'initial_slots_json': initial_slots,
@@ -2414,6 +2421,7 @@ def hull_design_edit(request, hull_id=None):
         ),
         'offense_offset_display': offense_offset_display,
         'defense_offset_display': defense_offset_display,
+        'speed_advantage_display': speed_advantage_display,
     })
 
 
@@ -2694,6 +2702,7 @@ def _format_tech_param_key(key):
         'overmax_fuel_penalty': 'Overmax Fuel Penalty',
         'wormhole_destruction_chance': 'Wormhole Destruction Chance',
         'hull_thumbnail_class': 'Hull Class',
+        'warp_advantage': 'Warp Advantage',
         'offense_level': 'Offense Level',
         'defense_level': 'Defense Level',
         'colony_defense_level': 'Colony Defense Level',
@@ -2706,7 +2715,7 @@ def _format_tech_param_key(key):
 
 
 def _format_tech_param_value(key, value):
-    if key in ('offense_level', 'defense_level', 'colony_defense_level'):
+    if key in ('offense_level', 'defense_level', 'colony_defense_level', 'warp_advantage'):
         try:
             scaled = int(round(float(value) * 10))
             return '{:+d}'.format(scaled)

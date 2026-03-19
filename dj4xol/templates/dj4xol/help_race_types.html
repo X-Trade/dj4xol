@@ -79,8 +79,17 @@
                                     <div class="race-type-tech-list">
                                         {% for tech in special_technology_rows %}
                                         <div class="race-type-tech-item{% if tech.is_excluded %} race-type-tech-item--excluded{% endif %}">
-                                            <div class="race-type-tech-thumb-wrap{% if tech.is_excluded %} race-type-tech-thumb-wrap--excluded{% endif %}">
-                                                <img class="race-type-tech-thumb" src="{% static tech.thumbnail_path %}" alt="{{ tech.type }}">
+                                            <div class="race-type-tech-thumb-wrap tech-thumb-wrap{% if tech.is_excluded %} race-type-tech-thumb-wrap--excluded{% endif %}">
+                                                <img
+                                                    class="race-type-tech-thumb tech-thumb"
+                                                    src="{% static tech.thumbnail_path %}"
+                                                    alt="{{ tech.type }}"
+                                                    data-icons="{% for path in tech.thumbnail_paths %}{% static path %}{% if not forloop.last %}|{% endif %}{% endfor %}"
+                                                    data-index="{{ tech.thumbnail_initial_index }}"
+                                                >
+                                                {% if tech.thumbnail_paths|length > 1 %}
+                                                <span class="tech-thumb-corner" title="Multiple variants (long-press to zoom)"></span>
+                                                {% endif %}
                                                 {% if tech.is_excluded %}
                                                 <span class="race-type-tech-excluded-mark" aria-hidden="true">&times;</span>
                                                 {% endif %}
@@ -143,6 +152,14 @@
             })();
         </script>
         <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/brython@3.13.1/brython_stdlib.js"></script>
+        <script type="text/python" src="{% static 'dj4xol/brython/tech_thumbs.py' %}"></script>
+        <script>
+        if (window.brython) {
+            brython();
+        }
+        </script>
         {% include 'dj4xol/_site_footer.html' %}
     </body>
 </html>

@@ -1,6 +1,7 @@
 """Sync factory default race/research/technology rows from fixtures."""
 
 import json
+import uuid
 import os
 import uuid
 
@@ -98,7 +99,10 @@ def _unique_hull_design_name(HullDesign, base_name, technology):
 def _ensure_hull_design_for_technology(HullDesign, technology):
     if str(getattr(technology, 'tech_type', '') or '') != 'HULL':
         return
-    if 'technology_id' not in _table_column_names(HullDesign._meta.db_table):
+    columns = set(_table_column_names(HullDesign._meta.db_table))
+    if 'technology_id' not in columns:
+        return
+    if HullDesign.objects.only('id').filter(technology_id=technology.pk).exists():
         return
     try:
         if technology.hull_design:
@@ -106,26 +110,58 @@ def _ensure_hull_design_for_technology(HullDesign, technology):
     except Exception:
         pass
 
-    hull = HullDesign.objects.filter(
+    hull_qs = HullDesign.objects.filter(
         technology__isnull=True,
         name=technology.name,
-    ).order_by('id').first()
+    ).order_by('id')
+    readable_fields = ['id', 'name']
+    if 'technology_id' in columns:
+        readable_fields.append('technology')
+    hull = hull_qs.only(*readable_fields).first()
     if hull is None:
         params = _safe_tech_params(technology)
-        hull = HullDesign(
-            technology=technology,
-            name=_unique_hull_design_name(HullDesign, technology.name, technology),
-            thumbnail_class=(
+        create_values = {
+            'technology_id': technology.pk,
+            'name': _unique_hull_design_name(HullDesign, technology.name, technology),
+        }
+        if 'thumbnail_class' in columns:
+            create_values['thumbnail_class'] = (
                 str(params.get('hull_thumbnail_class') or '').strip().lower()
                 or 'scout'
-            ),
-            offense_offset=float(params.get('offense_level', 0.0) or 0.0),
-            defense_offset=float(params.get('defense_level', 0.0) or 0.0),
-            cargo_capacity=int(params.get('max_cargo_capacity', 0) or 0),
-            fuel_capacity=int(params.get('max_fuel', 100) or 100),
-            enabled=bool(getattr(technology, 'enabled', True)),
-        )
-        hull.save()
+            )
+        if 'offense_offset' in columns:
+            create_values['offense_offset'] = float(params.get('offense_level', 0.0) or 0.0)
+        if 'defense_offset' in columns:
+            create_values['defense_offset'] = float(params.get('defense_level', 0.0) or 0.0)
+        if 'speed_advantage' in columns:
+            create_values['speed_advantage'] = float(params.get('warp_advantage', 0.0) or 0.0)
+        if 'cargo_capacity' in columns:
+            create_values['cargo_capacity'] = int(params.get('max_cargo_capacity', 0) or 0)
+        if 'fuel_capacity' in columns:
+            create_values['fuel_capacity'] = int(params.get('max_fuel', 100) or 100)
+        if 'ironium_cost' in columns:
+            create_values['ironium_cost'] = int(params.get('ironium_cost', 0) or 0)
+        if 'boranium_cost' in columns:
+            create_values['boranium_cost'] = int(params.get('boranium_cost', 0) or 0)
+        if 'germanium_cost' in columns:
+            create_values['germanium_cost'] = int(params.get('germanium_cost', 0) or 0)
+        if 'resource_x_cost' in columns:
+            create_values['resource_x_cost'] = int(params.get('resource_x_cost', 0) or 0)
+        if 'resource_y_cost' in columns:
+            create_values['resource_y_cost'] = int(params.get('resource_y_cost', 0) or 0)
+        if 'resource_z_cost' in columns:
+            create_values['resource_z_cost'] = int(params.get('resource_z_cost', 0) or 0)
+        if 'cargo_hold_grid_width' in columns:
+            create_values['cargo_hold_grid_width'] = int(params.get('cargo_hold_grid_width', 0) or 0)
+        if 'cargo_hold_grid_height' in columns:
+            create_values['cargo_hold_grid_height'] = int(params.get('cargo_hold_grid_height', 0) or 0)
+        if 'grid_columns' in columns:
+            create_values['grid_columns'] = int(params.get('grid_columns', 8) or 8)
+        if 'grid_rows' in columns:
+            create_values['grid_rows'] = int(params.get('grid_rows', 8) or 8)
+        if 'enabled' in columns:
+            create_values['enabled'] = bool(getattr(technology, 'enabled', True))
+        _insert_row_with_available_columns(HullDesign._meta.db_table, create_values)
         return
 
     hull.technology = technology
@@ -136,6 +172,27 @@ def _table_column_names(table_name):
     with connection.cursor() as cursor:
         description = connection.introspection.get_table_description(cursor, table_name)
     return [getattr(column, 'name', column[0]) for column in description]
+
+
+def _insert_row_with_available_columns(table_name, values):
+    if not values:
+        return
+    quote = connection.ops.quote_name
+    columns = list(values.keys())
+    placeholders = ', '.join(['%s'] * len(columns))
+    sql = 'INSERT INTO {table} ({columns}) VALUES ({placeholders})'.format(
+        table=quote(table_name),
+        columns=', '.join(quote(column) for column in columns),
+        placeholders=placeholders,
+    )
+    params = []
+    for column in columns:
+        value = values[column]
+        if isinstance(value, uuid.UUID):
+            value = str(value)
+        params.append(value)
+    with connection.cursor() as cursor:
+        cursor.execute(sql, params)
 
 
 def _legacy_server_race_type_defaults():

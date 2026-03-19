@@ -163,6 +163,40 @@
     object-fit: contain;
 }
 
+.race-type-tech-thumb-wrap .tech-thumb-corner {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 9px;
+    height: 9px;
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.96) 0%,
+        rgba(255, 255, 255, 0.78) 68%,
+        rgba(222, 222, 222, 0.62) 100%
+    );
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
+    border-top-right-radius: 2px;
+    filter: drop-shadow(-1px 1px 0 rgba(0, 0, 0, 0.16));
+    pointer-events: none;
+}
+
+.race-type-tech-thumb-wrap .tech-thumb-corner::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 9px;
+    height: 9px;
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
+    border-top-right-radius: 2px;
+    background: radial-gradient(
+        circle at 100% 0,
+        rgba(255, 255, 255, 0.92) 0 38%,
+        rgba(255, 255, 255, 0.0) 62%
+    );
+}
+
 .race-type-tech-thumb-wrap--excluded::after {
     content: "";
     position: absolute;
