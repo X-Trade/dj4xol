@@ -10,6 +10,7 @@
         {% include 'dj4xol/_theme_stylesheet.html' with active_theme=selected_theme %}
         <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/css/hull_editor.css' %}">
+        <script defer type="text/javascript" src="{% static 'dj4xol/js/number_stepper.js' %}"></script>
     </head>
     <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} hull-editor-page">
         <div class="title-bar">
@@ -75,6 +76,7 @@
                                     </div>
                                     {% endif %}
                                     <div class="hull-form-fields">
+                                        <div class="hull-form-section-title">General</div>
                                         <div class="hull-name-row">
                                             <label>
                                                 Name
@@ -126,11 +128,11 @@
                                         <div class="hull-form-row">
                                             <label>
                                                 Tech Level
-                                                <input type="number" name="tech_level" min="0" value="{{ technology.level|default:0 }}" required>
+                                                <input type="number" name="tech_level" min="0" value="{{ technology.level|default:0 }}" required inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                             </label>
                                             <label>
                                                 Tech Display Order
-                                                <input type="number" name="tech_display_order" value="{{ technology.display_order|default:0 }}">
+                                                <input type="number" name="tech_display_order" value="{{ technology.display_order|default:0 }}" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                             </label>
                                         </div>
                                         <label>
@@ -154,71 +156,79 @@
                                         <div class="hull-form-row">
                                             <label>
                                                 Offense Offset
-                                                <input type="number" name="offense_offset" step="1" value="{{ offense_offset_display|floatformat:'-1' }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <input type="number" name="offense_offset" step="1" value="{{ offense_offset_display|floatformat:'-1' }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="decimal" readonly onfocus="this.removeAttribute('readonly');">
                                             </label>
                                             <label>
                                                 Defense Offset
-                                                <input type="number" name="defense_offset" step="1" value="{{ defense_offset_display|floatformat:'-1' }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <input type="number" name="defense_offset" step="1" value="{{ defense_offset_display|floatformat:'-1' }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="decimal" readonly onfocus="this.removeAttribute('readonly');">
                                             </label>
                                         </div>
                                         <div class="hull-form-row">
+                                            <label>
+                                                Speed Advantage
+                                                <input type="number" name="speed_advantage" step="1" value="{{ speed_advantage_display|floatformat:'-1' }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="decimal" readonly onfocus="this.removeAttribute('readonly');">
+                                            </label>
+                                        </div>
+                                        <div class="hull-form-section-title">Cost</div>
+                                        <div class="hull-form-row">
                                             <label class="hull-cost-input">
                                                 Ironium Cost
-                                                <input type="number" name="ironium_cost" min="0" value="{{ hull.ironium_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <input type="number" name="ironium_cost" min="0" value="{{ hull.ironium_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                                 <span class="hull-input-suffix">kt</span>
                                             </label>
                                             <label class="hull-cost-input">
                                                 Boranium Cost
-                                                <input type="number" name="boranium_cost" min="0" value="{{ hull.boranium_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <input type="number" name="boranium_cost" min="0" value="{{ hull.boranium_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                                 <span class="hull-input-suffix">kt</span>
                                             </label>
                                         </div>
                                         <div class="hull-form-row">
                                             <label class="hull-cost-input">
                                                 Germanium Cost
-                                                <input type="number" name="germanium_cost" min="0" value="{{ hull.germanium_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-                                                <span class="hull-input-suffix">kt</span>
-                                            </label>
-                                            <label class="hull-cost-input">
-                                                Cargo Capacity
-                                                <input type="number" name="cargo_capacity" min="0" value="{{ hull.cargo_capacity|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly');">
+                                                <input type="number" name="germanium_cost" min="0" value="{{ hull.germanium_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                                 <span class="hull-input-suffix">kt</span>
                                             </label>
                                         </div>
                                         <div class="hull-form-row">
                                             <label class="hull-cost-input">
                                                 {{ secret_resource_labels.resource_x|default:"Resource X" }} Cost
-                                                <input type="number" name="resource_x_cost" min="0" value="{{ hull.resource_x_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <input type="number" name="resource_x_cost" min="0" value="{{ hull.resource_x_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                                 <span class="hull-input-suffix">kt</span>
                                             </label>
                                             <label class="hull-cost-input">
                                                 {{ secret_resource_labels.resource_y|default:"Resource Y" }} Cost
-                                                <input type="number" name="resource_y_cost" min="0" value="{{ hull.resource_y_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <input type="number" name="resource_y_cost" min="0" value="{{ hull.resource_y_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                                 <span class="hull-input-suffix">kt</span>
                                             </label>
                                         </div>
                                         <div class="hull-form-row">
                                             <label class="hull-cost-input">
                                                 {{ secret_resource_labels.resource_z|default:"Resource Z" }} Cost
-                                                <input type="number" name="resource_z_cost" min="0" value="{{ hull.resource_z_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <input type="number" name="resource_z_cost" min="0" value="{{ hull.resource_z_cost|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                                 <span class="hull-input-suffix">kt</span>
                                             </label>
                                         </div>
+                                        <div class="hull-form-section-title">Capacity</div>
                                         <div class="hull-form-row">
                                             <label class="hull-cost-input">
+                                                Cargo Capacity
+                                                <input type="number" name="cargo_capacity" min="0" value="{{ hull.cargo_capacity|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
+                                                <span class="hull-input-suffix">kt</span>
+                                            </label>
+                                            <label class="hull-cost-input">
                                                 Fuel Capacity
-                                                <input type="number" name="fuel_capacity" min="0" value="{{ hull.fuel_capacity|default:100 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                                                <input type="number" name="fuel_capacity" min="0" value="{{ hull.fuel_capacity|default:100 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                                 <span class="hull-input-suffix">mg</span>
                                             </label>
                                             <label>
                                                 Cargo Hold Width
-                                                <input type="number" min="0" max="24" name="cargo_hold_grid_width" id="cargo-hold-grid-width" value="{{ hull.cargo_hold_grid_width|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly');">
+                                                <input type="number" min="0" max="24" name="cargo_hold_grid_width" id="cargo-hold-grid-width" value="{{ hull.cargo_hold_grid_width|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                             </label>
                                         </div>
                                         <div class="hull-form-row">
                                             <label>
                                                 Cargo Hold Height
-                                                <input type="number" min="0" max="24" name="cargo_hold_grid_height" id="cargo-hold-grid-height" value="{{ hull.cargo_hold_grid_height|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly');">
+                                                <input type="number" min="0" max="24" name="cargo_hold_grid_height" id="cargo-hold-grid-height" value="{{ hull.cargo_hold_grid_height|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                             </label>
                                             <label>
                                                 Design Enabled
@@ -626,12 +636,15 @@
             canvas.addEventListener('mouseleave', hideGhost);
             canvas.addEventListener('click', function() {
                 if (!hovered) return;
+                var defaultMaxTechLevel = SLOT_MAX_LEVELS.length
+                    ? SLOT_MAX_LEVELS[SLOT_MAX_LEVELS.length - 1]
+                    : 0;
                 var newSlot = {
                     x: hovered.x,
                     y: hovered.y,
                     tech_type: TECH_TYPES[0] ? TECH_TYPES[0].value : 'OTHER',
                     item_count: SLOT_ITEM_COUNTS[0] || 1,
-                    max_tech_level: (SLOT_MAX_LEVELS.indexOf(5) !== -1 ? 5 : (SLOT_MAX_LEVELS[0] || 0))
+                    max_tech_level: defaultMaxTechLevel
                 };
                 if (!canPlace(newSlot, undefined)) return;
                 slots.push(newSlot);

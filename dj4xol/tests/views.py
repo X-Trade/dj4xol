@@ -1443,6 +1443,18 @@ class TestRaceTypeHelpView(TestCase):
         self.assertIn('Mini Cloak', names)
         self.assertIn('Prototype Wormhole Drive', names)
 
+    def test_help_race_types_includes_thumbnail_cycling_data_and_script(self):
+        sci = ServerRaceType.objects.get(code='SCI')
+
+        response = self.client.get(
+            reverse('dj4xol:help_race_types'),
+            {'race_type': sci.code},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-icons="', html=False)
+        self.assertContains(response, 'dj4xol/brython/tech_thumbs.py')
+
     def test_help_race_types_joat_lists_cloak_technologies_when_not_no_stealth(self):
         joat = ServerRaceType.objects.get(code='JOAT')
 
@@ -3267,6 +3279,37 @@ class TestHullDesignViews(TestCase):
         self.assertContains(response, '"value": "SCANNER"', html=False)
         self.assertContains(response, '"label": "Scanner"', html=False)
 
+    def test_hull_design_editor_defaults_new_slot_to_highest_max_level_and_groups_capacity_fields(self):
+        response = self.client.get(reverse('dj4xol:hull_design_new'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'var defaultMaxTechLevel = SLOT_MAX_LEVELS.length', html=False)
+        self.assertContains(response, '<div class="hull-form-section-title">Capacity</div>', html=True)
+        self.assertContains(response, 'Cargo Capacity')
+        self.assertContains(response, 'Fuel Capacity')
+        self.assertContains(response, 'Cargo Hold Width')
+        self.assertContains(response, 'Cargo Hold Height')
+        self.assertContains(response, 'Speed Advantage')
+
+    def test_hull_design_editor_shows_real_secret_resource_names_for_staff(self):
+        response = self.client.get(reverse('dj4xol:hull_design_new'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Uniquium Cost')
+        self.assertContains(response, 'Rarium Cost')
+        self.assertContains(response, 'Mysterium Cost')
+        self.assertNotContains(response, '??? Cost')
+
+    def test_hull_design_editor_includes_number_stepper_script_and_numeric_attrs(self):
+        response = self.client.get(reverse('dj4xol:hull_design_new'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'dj4xol/js/number_stepper.js')
+        self.assertContains(response, 'name="tech_level"', html=False)
+        self.assertContains(response, 'name="speed_advantage"', html=False)
+        self.assertContains(response, 'inputmode="numeric"', html=False)
+        self.assertContains(response, 'readonly onfocus="this.removeAttribute(\'readonly\');"', html=False)
+
     def test_hull_design_new_creates_linked_hull_technology(self):
         response = self.client.post(
             reverse('dj4xol:hull_design_new'),
@@ -3275,6 +3318,7 @@ class TestHullDesignViews(TestCase):
                 'thumbnail_class': 'scout',
                 'offense_offset': '2',
                 'defense_offset': '3',
+                'speed_advantage': '4',
                 'ironium_cost': '10',
                 'boranium_cost': '20',
                 'germanium_cost': '30',
@@ -3302,6 +3346,8 @@ class TestHullDesignViews(TestCase):
         self.assertEqual(hull.technology.tech_type, 'HULL')
         self.assertEqual(hull.technology.category_id, self.energy.id)
         self.assertEqual(hull.technology.level, 7)
+        self.assertAlmostEqual(hull.speed_advantage, 0.4, places=4)
+        self.assertIn('"warp_advantage": 0.4', hull.technology.params_json)
         self.assertEqual(hull.technology.name, 'Admin Scout Hull')
         self.assertEqual(
             json.loads(hull.technology.params_json),
@@ -3311,6 +3357,7 @@ class TestHullDesignViews(TestCase):
                 'max_cargo_capacity': 80,
                 'max_fuel': 120,
                 'offense_level': 0.2,
+                'warp_advantage': 0.4,
             },
         )
 

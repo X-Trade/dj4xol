@@ -14,9 +14,34 @@
     min-height: 0;
 }
 
+.hull-editor-page .hull-editor-columns .panel[data-panel="hull-specs"].open {
+    max-height: 75vh;
+    max-height: 75dvh;
+}
+
 .hull-editor-page .hull-editor-columns .panel-content {
     flex: 1 1 auto;
     min-height: 0;
+}
+
+.hull-editor-page .hull-editor-columns .panel[data-panel="hull-specs"] > .panel-content.panel-stack {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.hull-editor-page .hull-editor-columns .panel[data-panel="hull-specs"] .panel-scroll-frame {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.hull-editor-page .hull-editor-columns .panel[data-panel="hull-specs"] .panel-scrollable-text {
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.hull-editor-page .hull-editor-columns .panel[data-panel="hull-specs"] .form-nav {
+    flex-shrink: 0;
 }
 
 .autofill-decoy {
@@ -33,6 +58,20 @@
 .hull-form-fields {
     display: grid;
     gap: 8px;
+}
+
+.hull-form-section-title {
+    margin-top: 12px;
+    padding-top: 2px;
+    font-size: 0.88em;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0.8;
+}
+
+.hull-form-fields > .hull-form-section-title:first-child {
+    margin-top: 0;
 }
 
 .hull-name-row {
@@ -112,10 +151,26 @@
     flex-direction: column;
     gap: 3px;
     font-size: 0.92em;
+    margin-top: 0;
 }
 
 .hull-cost-input {
     position: relative;
+}
+
+.hull-form-fields .number-stepper {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+}
+
+.hull-form-fields .number-stepper-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.hull-cost-input .number-stepper {
+    width: calc(100% - 2.6em);
 }
 
 .hull-cost-input input {

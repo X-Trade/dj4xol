@@ -49,6 +49,7 @@ TECH_PARAM_LABELS = {
     'wormhole_fuel_per_ly': 'Wormhole Fuel (mg/ly)',
     'wormhole_destruction_chance': 'Wormhole Destruction Chance',
     'hull_thumbnail_class': 'Hull Class',
+    'warp_advantage': 'Warp Advantage',
     'offense_level': 'Offense Level',
     'defense_level': 'Defense Level',
     'colony_defense_level': 'Colony Defense Level',
@@ -108,7 +109,7 @@ def _format_param_key(key):
 
 def _format_param_value(key, value):
     """Return player-facing display value for technology parameter values."""
-    if key in ('offense_level', 'defense_level', 'colony_defense_level'):
+    if key in ('offense_level', 'defense_level', 'colony_defense_level', 'warp_advantage'):
         try:
             scaled = int(round(float(value) * 10))
             return '{:+d}'.format(scaled)
@@ -1257,6 +1258,7 @@ def get_player_tech_effects(player):
         'hull_thumbnail_class': 'scout',
         'offense_level': 0.0,
         'defense_level': 0.0,
+        'warp_advantage': 0.0,
         'has_bombs': None,
         'has_miners': None,
         'has_fuel_factory': False,
@@ -1332,6 +1334,12 @@ def get_player_tech_effects(player):
         if defense_level is not None:
             try:
                 effects['defense_level'] += float(defense_level)
+            except (TypeError, ValueError):
+                pass
+        warp_advantage = params.get('warp_advantage')
+        if warp_advantage is not None:
+            try:
+                effects['warp_advantage'] += float(warp_advantage)
             except (TypeError, ValueError):
                 pass
         bomb_type = normalize_bomb_type(params.get('has_bombs'))

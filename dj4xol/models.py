@@ -1791,6 +1791,7 @@ class HullDesign(models.Model):
     thumbnail_class = models.CharField(max_length=32, blank=True, default='scout')
     offense_offset = models.FloatField(default=0.0)
     defense_offset = models.FloatField(default=0.0)
+    speed_advantage = models.FloatField(default=0.0)
     ironium_cost = models.IntegerField(default=0)
     boranium_cost = models.IntegerField(default=0)
     germanium_cost = models.IntegerField(default=0)

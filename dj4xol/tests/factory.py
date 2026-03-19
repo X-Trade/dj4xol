@@ -5,6 +5,8 @@ from ..models import (
     Game, Account, ServerRaceType, ServerRace, ResearchCategory, Technology, Anomaly,
     Star, Fleet, random_anomaly_stability_init, random_wormhole_stability_init,
 )
+from math import atanh, tanh
+
 from ..research import get_player_tech_effects
 from ..mineral_rules import random_asteroid_field_minerals
 from ._util import default_game
@@ -443,7 +445,41 @@ class testGameFactory(TestCase):
             fleet.fuel_factory_max_warp,
             effects['fuel_factory_max_warp'],
         )
-        self.assertIn('/capital/', fleet.thumbnail_path)
+
+    def test_starting_fleets_combine_race_and_hull_speed_advantage_with_cap(self):
+        self.race_type.warp_advantage = 0.6
+        self.race_type.save(update_fields=['warp_advantage'])
+        category, _ = ResearchCategory.objects.get_or_create(
+            code='TEST_HULL_SPEED',
+            defaults={'name': 'Test Hull Speed', 'description': 'Test hull speed tech'}
+        )
+        Technology.objects.create(
+            category=category,
+            level=4,
+            name='Test L4 Swift Hull',
+            tech_type='HULL',
+            params_json='{"max_cargo_capacity": 200, "max_fuel": 100, "hull_thumbnail_class": "scout", "warp_advantage": 0.5}',
+            enabled=True,
+            display_order=9999,
+        )
+
+        self.races[0].starting_tech_level = 4
+        self.races[0].starting_fleets = 1
+        self.races[0].save(update_fields=['starting_tech_level', 'starting_fleets'])
+
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(5)
+        gf.save()
+        player = gf.join_player(self.accounts[0], self.races[0])
+        fleet = player.fleets.first()
+        effects = get_player_tech_effects(player)
+
+        expected = tanh(atanh(0.6) + atanh(0.5))
+        self.assertAlmostEqual(effects['warp_advantage'], 0.5, places=4)
+        self.assertAlmostEqual(fleet.warp_advantage, expected, places=4)
+        self.assertIn('/scout/', fleet.thumbnail_path)
 
     def test_initial_anomalies_have_unique_short_ids(self):
         gf = GameFactory()

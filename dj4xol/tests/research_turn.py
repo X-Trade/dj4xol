@@ -796,6 +796,40 @@ class ResearchTurnTest(TestCase):
         self.assertAlmostEqual(effects['offense_level'], 1.75, places=4)
         self.assertAlmostEqual(effects['defense_level'], 0.5, places=4)
 
+    def test_tech_effects_include_warp_advantage_from_selected_hull_and_propulsion(self):
+        self._reset_research_catalog()
+        hull = ResearchCategory.objects.create(
+            code='HUL2', name='Hull2', enabled=True
+        )
+        propulsion = ResearchCategory.objects.create(
+            code='PRO2', name='Propulsion2', enabled=True
+        )
+
+        Technology.objects.create(
+            category=hull,
+            level=3,
+            name='Swift Hull',
+            tech_type='HULL',
+            params_json='{"warp_advantage": 0.4}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=propulsion,
+            level=4,
+            name='Impulse Tuning',
+            tech_type='PROPULSION',
+            params_json='{"warp_advantage": 0.2}',
+            enabled=True,
+        )
+
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 4.0
+            row.save(update_fields=['current_level'])
+
+        effects = get_player_tech_effects(self.player)
+        self.assertAlmostEqual(effects['warp_advantage'], 0.6, places=4)
+
     def test_tech_effects_ignore_infrastructure_for_fleet_modifiers(self):
         self._reset_research_catalog()
         energy = ResearchCategory.objects.create(
