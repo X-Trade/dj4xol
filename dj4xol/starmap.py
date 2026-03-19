@@ -614,9 +614,11 @@ class StarMap():
             return salvage.name
         if getattr(salvage, 'salvage_type', None) != Salvage.TYPE_ANCIENT_DEBRIS:
             return salvage.name
+        if bool(getattr(self.player, 'discovered_ancient_debris', False)):
+            return salvage.name
         tier = self.salvage_report_tiers.get(salvage.id)
         if tier in ('advanced', 'encounter'):
-            return salvage.name
+            return '???'
         return format_basic_hidden_salvage_name(salvage)
 
     def render_anomaly(self, anomaly):

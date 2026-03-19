@@ -45,6 +45,7 @@ from .messages import (
     ResearchBreakthroughMessageFactory,
     ScannerHabitableWorldRollupMessageFactory,
     SecretResourceDiscoveryMessageFactory,
+    UnexplainedScanContactMessageFactory,
     AnomalyTargetLostMessageFactory,
     DiplomaticStanceChangedMessageFactory,
     format_map_object,
@@ -1037,6 +1038,7 @@ class GameTurn():
                     message_priority=False,
                 )
             elif salvage_type == Salvage.TYPE_ANCIENT_DEBRIS:
+                self._mark_ancient_debris_discovered(fleet.player)
                 templates = [
                     "Unknown forces within {salvage} inflicted {damage}% integrity damage on {fleet}.",
                     "Automated defences in {salvage} struck {fleet}, causing {damage}% integrity damage.",
@@ -1821,7 +1823,6 @@ class GameTurn():
                     created = self._create_or_update_report(
                         player, 'star', star, self.game.year, report_tier='advanced'
                     )
-                    self._discover_secret_resources_from_star(player, star)
                     self._queue_scanner_habitable_star(
                         habitable_stars_found,
                         player,
@@ -1912,9 +1913,8 @@ class GameTurn():
 
         # Report on all stars at this location
         for star in Star.objects.filter(game=self.game, x=x, y=y):
+            self._discover_secret_resources_from_star(player, star, fleet=fleet)
             self._create_or_update_report(player, 'star', star, year, report_tier=report_tier)
-            if report_tier in ('encounter', 'advanced'):
-                self._discover_secret_resources_from_star(player, star, fleet=fleet)
 
         # Report on other players' fleets at this location
         for other_fleet in Fleet.objects.filter(
@@ -1931,6 +1931,8 @@ class GameTurn():
 
         # Report on all salvage at this location
         for salvage in Salvage.objects.filter(game=self.game, x=x, y=y):
+            if getattr(salvage, 'salvage_type', None) == Salvage.TYPE_ANCIENT_DEBRIS:
+                self._mark_ancient_debris_discovered(player)
             self._create_or_update_report(player, 'salvage', salvage, year, report_tier=report_tier)
 
         for anomaly in Anomaly.objects.filter(game=self.game, x=x, y=y):
@@ -1989,6 +1991,7 @@ class GameTurn():
             report.save()
             created = False
         else:
+            existing_data = {}
             report_data = self._build_report_data(
                 player,
                 obj,
@@ -2007,6 +2010,17 @@ class GameTurn():
             report.set_report_data(report_data)
             report.save()
             created = True
+
+        if target_type == 'star':
+            old_unknown = list((existing_data or {}).get('unknown_secret_resources') or [])
+            new_unknown = list((report_data or {}).get('unknown_secret_resources') or [])
+            if new_unknown and any(key not in old_unknown for key in new_unknown):
+                self._send_unexplained_scan_contact_message(player, obj, 'star')
+        elif target_type == 'salvage':
+            old_unknown = bool((existing_data or {}).get('ancient_debris_unknown'))
+            new_unknown = bool((report_data or {}).get('ancient_debris_unknown'))
+            if new_unknown and not old_unknown:
+                self._send_unexplained_scan_contact_message(player, obj, 'salvage')
 
         owner_now_known = bool(report_data.get('player_name'))
         if (
@@ -2120,6 +2134,53 @@ class GameTurn():
             if int(getattr(star, f'{key}_yield', 0) or 0) > 0 or int(getattr(star, f'{key}_inventory', 0) or 0) > 0:
                 self._mark_secret_resource_discovered(player, key, star=star, fleet=fleet)
 
+    def _player_knows_ancient_debris(self, player):
+        return bool(player and getattr(player, 'discovered_ancient_debris', False))
+
+    def _mark_ancient_debris_discovered(self, player):
+        if not player or self._player_knows_ancient_debris(player):
+            return False
+        player.discovered_ancient_debris = True
+        player.save(update_fields=['discovered_ancient_debris'])
+        return True
+
+    def _unknown_secret_resource_keys_for_star(self, player, star):
+        if not player or not star:
+            return []
+        unknown = []
+        for key in SECRET_RESOURCE_KEYS:
+            amount_present = (
+                int(getattr(star, '%s_yield' % key, 0) or 0) > 0 or
+                int(getattr(star, '%s_inventory' % key, 0) or 0) > 0
+            )
+            if not amount_present:
+                continue
+            if not bool(getattr(player, 'discovered_%s' % key, False)):
+                unknown.append(key)
+        return unknown
+
+    def _send_unexplained_scan_contact_message(self, player, obj, target_type):
+        if not player or obj is None:
+            return
+        if target_type == 'star':
+            subject = 'traces of an unexplained material'
+            target_label = None
+        elif target_type == 'salvage':
+            subject = 'an inexplicable debris signature'
+            target_label = format_location(x=obj.x, y=obj.y, game=self.game)
+        else:
+            return
+        factory = UnexplainedScanContactMessageFactory(
+            self.game,
+            player,
+            target=obj,
+            subject=subject,
+            target_label=target_label,
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
     def _discover_secret_resources_from_fleet(self, player, fleet):
         if not player or not fleet:
             return
@@ -2158,11 +2219,13 @@ class GameTurn():
     def _build_report_data(self, player, obj, target_type, report_tier='advanced', include_cargo=False):
         """Build the data dict to cache in a report."""
         if target_type == 'star':
+            unknown_secret_resources = self._unknown_secret_resource_keys_for_star(player, obj)
             base = {
                 'name': obj.name,
                 'x': obj.x,
                 'y': obj.y,
                 'report_tier': report_tier,
+                'unknown_secret_resources': unknown_secret_resources,
             }
             if report_tier == 'ownership':
                 base['player_name'] = obj.player.name if obj.player else None
@@ -2286,14 +2349,21 @@ class GameTurn():
                 })
             return data
         elif target_type == 'salvage':
+            ancient_debris_unknown = (
+                getattr(obj, 'salvage_type', None) == 'ANCIENT_DEBRIS' and
+                not self._player_knows_ancient_debris(player)
+            )
             if report_tier == 'ownership':
                 data = {
                     'name': obj.name,
                     'x': obj.x,
                     'y': obj.y,
-                    'salvage_type': obj.salvage_type,
+                    'salvage_type': (
+                        None if ancient_debris_unknown else obj.salvage_type
+                    ),
                     'total_minerals': obj.total_minerals,
                     'report_tier': report_tier,
+                    'ancient_debris_unknown': ancient_debris_unknown,
                 }
                 return data
             if report_tier == 'basic' and not getattr(self.game, 'no_scanners', False):
@@ -2307,8 +2377,20 @@ class GameTurn():
                     'salvage_type': salvage_type,
                     'total_minerals': obj.total_minerals,
                     'report_tier': report_tier,
+                    'ancient_debris_unknown': bool(getattr(obj, 'salvage_type', None) == 'ANCIENT_DEBRIS'),
                 }
                 return data
+            if ancient_debris_unknown:
+                return {
+                    'name': format_basic_hidden_salvage_name(obj),
+                    'x': obj.x,
+                    'y': obj.y,
+                    'salvage_type': None,
+                    'danger_level': salvage_danger_level(obj),
+                    'total_minerals': obj.total_minerals,
+                    'report_tier': report_tier,
+                    'ancient_debris_unknown': True,
+                }
             return {
                 'name': obj.name,
                 'x': obj.x,
@@ -2323,6 +2405,7 @@ class GameTurn():
                 'resource_z_inventory': obj.resource_z_inventory,
                 'total_minerals': obj.total_minerals,
                 'report_tier': report_tier,
+                'ancient_debris_unknown': False,
             }
         elif target_type == 'anomaly':
             if report_tier in ('ownership', 'basic'):
@@ -5038,6 +5121,8 @@ class GameTurn():
             transfers = {key: int(val) for key, val in transfers.items()}
 
         # Execute the transfer
+        if getattr(salvage, 'salvage_type', None) == 'ANCIENT_DEBRIS':
+            self._mark_ancient_debris_discovered(fleet.player)
         for key in ALL_RESOURCE_KEYS:
             setattr(
                 salvage,
@@ -5393,12 +5478,24 @@ class GameTurn():
             )
         return snapshot
 
+    def _stars_remain_at_location(self, x, y):
+        """Return True if any star in this game still exists at the coordinate."""
+        from .models import Star
+        try:
+            x = int(x)
+            y = int(y)
+        except (TypeError, ValueError):
+            return False
+        return Star.objects.filter(game=self.game, x=x, y=y).exists()
+
     def _create_nova_star_remnant(self, star_snapshot):
         """Create a black hole or asteroid field after nova star destruction."""
         if not star_snapshot:
             return None
         x = int(star_snapshot.get('x', 0) or 0)
         y = int(star_snapshot.get('y', 0) or 0)
+        if self._stars_remain_at_location(x, y):
+            return None
         if self._maybe_spawn_black_hole_from_nova(x, y):
             return 'black_hole'
         if roll_chance(NOVA_ASTEROID_FIELD_SPAWN_CHANCE):
@@ -5410,6 +5507,8 @@ class GameTurn():
     def _maybe_spawn_black_hole_from_nova(self, x, y):
         """Create a black hole at a nova-destroyed star location when it rolls."""
         if not roll_chance(NOVA_BLACK_HOLE_SPAWN_CHANCE):
+            return None
+        if self._stars_remain_at_location(x, y):
             return None
         from .models import Anomaly
         if Anomaly.objects.filter(game=self.game, x=x, y=y).exists():
@@ -5442,6 +5541,8 @@ class GameTurn():
 
         x = int(star_snapshot.get('x', 0) or 0)
         y = int(star_snapshot.get('y', 0) or 0)
+        if self._stars_remain_at_location(x, y):
+            return None
         minerals = {}
         for key in ALL_RESOURCE_KEYS:
             surface = int(star_snapshot.get('%s_inventory' % key, 0) or 0)

@@ -2779,6 +2779,39 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'Mineral composition unknown.')
         self.assertNotContains(response, 'Ironium')
 
+    def test_advanced_ancient_debris_report_stays_masked_until_player_has_discovered_it(self):
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=self.star.x + 1,
+            y=self.star.y + 1,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            ironium_inventory=13,
+            boranium_inventory=7,
+        )
+        self.player.discovered_ancient_debris = False
+        self.player.save(update_fields=['discovered_ancient_debris'])
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='salvage',
+            target_id=salvage.id,
+            cached_report=json.dumps({
+                'name': '???',
+                'x': salvage.x,
+                'y': salvage.y,
+                'salvage_type': None,
+                'danger_level': 'HIGH',
+                'total_minerals': salvage.total_minerals,
+                'report_tier': 'advanced',
+                'ancient_debris_unknown': True,
+            }),
+        )
+        response = self._get_detail_response(salvage)
+        self.assertContains(response, '???')
+        self.assertNotContains(response, 'Ancient Debris')
+        self.assertContains(response, 'Mineral composition unknown.')
+
 
 class TestFleetOrderViews(TestCase):
     def test_game_view_uses_stable_layout_wrappers(self):
@@ -4327,6 +4360,82 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(shared_data.get('report_tier'), 'ownership')
         self.assertEqual(shared_data.get('player_name'), other_player.name)
 
+    def test_diplomacy_shared_ancient_debris_report_stays_masked_for_receiver(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_report_ancient_mask', 'diplo_report_ancient_mask@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DAM')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Mask Receiver',
+            plural_name='Mask Receivers',
+            race_type=race_type,
+        )
+        salvage = Salvage.objects.create(
+            game=game,
+            x=12,
+            y=14,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            ironium_inventory=11,
+            resource_x_inventory=4,
+        )
+        player.discovered_ancient_debris = True
+        player.save(update_fields=['discovered_ancient_debris'])
+        other_player.discovered_ancient_debris = False
+        other_player.save(update_fields=['discovered_ancient_debris'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year - 1,
+            target_type='salvage',
+            target_id=salvage.id,
+            cached_report=json.dumps({
+                'name': salvage.name,
+                'x': salvage.x,
+                'y': salvage.y,
+                'salvage_type': Salvage.TYPE_ANCIENT_DEBRIS,
+                'danger_level': 'HIGH',
+                'ironium_inventory': 11,
+                'resource_x_inventory': 4,
+                'total_minerals': salvage.total_minerals,
+                'report_tier': 'encounter',
+                'ancient_debris_unknown': False,
+            }),
+        )
+
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='REPORT',
+            offer_report_target_type='salvage',
+            offer_report_target_id=salvage.id,
+        )
+
+        other_client = Client()
+        other_client.force_login(other_user)
+        response = other_client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': player.short_id, 'action': 'accept_contract', 'contract_id': contract.short_id},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        shared_report = Report.objects.get(player=other_player, target_type='salvage', target_id=salvage.id)
+        shared_data = shared_report.get_report_data()
+        self.assertEqual(shared_data.get('report_tier'), 'encounter')
+        self.assertIsNone(shared_data.get('salvage_type'))
+        self.assertTrue(shared_data.get('ancient_debris_unknown'))
+        self.assertNotIn('ironium_inventory', shared_data)
+        self.assertNotIn('resource_x_inventory', shared_data)
+
     def test_diplomacy_report_choices_only_include_directional_colonies_and_advanced_intel(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
@@ -4585,7 +4694,9 @@ class TestDiplomacyView(TestCase):
         self.assertContains(response, player_recent_colony.name)
         self.assertContains(response, '%s (their home)' % other_colony.name)
         self.assertContains(response, anomaly.name)
-        self.assertContains(response, ancient.name)
+        self.assertContains(response, 'Unexplained Finds')
+        self.assertContains(response, '>???<', html=False)
+        self.assertNotContains(response, ancient.name)
         self.assertContains(response, 'value="star:%s"' % player_colony.id)
         self.assertContains(response, 'value="star:%s"' % player_recent_colony.id)
         self.assertContains(response, 'value="star:%s"' % other_colony.id)

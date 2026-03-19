@@ -993,6 +993,11 @@ class ScannerReportTest(TestCase):
     def test_advanced_scanner_reports_star_minerals_no_infrastructure(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=6, x=12, y=12)
         star = self._place_enemy_star_near(fleet.x, fleet.y, distance=4)
+        star.resource_x_yield = 9
+        star.resource_x_inventory = 30
+        star.save(update_fields=['resource_x_yield', 'resource_x_inventory'])
+        self.player1.discovered_resource_x = False
+        self.player1.save(update_fields=['discovered_resource_x'])
 
         GameTurn(self.game).generate_scanner_reports()
         report = Report.objects.get(
@@ -1009,6 +1014,9 @@ class ScannerReportTest(TestCase):
         self.assertIn('colonists', data)
         self.assertNotIn('mines', data)
         self.assertNotIn('factories', data)
+        self.assertEqual(data.get('unknown_secret_resources'), ['resource_x'])
+        self.player1.refresh_from_db()
+        self.assertFalse(self.player1.discovered_resource_x)
 
     def test_advanced_scanner_refreshes_stale_encounter_star_ownership(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=6, x=12, y=12)
@@ -1639,13 +1647,37 @@ class ScannerReportTest(TestCase):
             target_id=anomaly.id,
         )
         self.assertEqual(salvage_report.get_report_data().get('report_tier'), 'advanced')
+        self.assertIsNone(salvage_report.get_report_data().get('salvage_type'))
+        self.assertTrue(salvage_report.get_report_data().get('ancient_debris_unknown'))
+        self.assertEqual(salvage_report.get_report_data().get('danger_level'), 'HIGH')
+        self.assertEqual(anomaly_report.get_report_data().get('report_tier'), 'advanced')
+        self.assertIn(anomaly_report.get_report_data().get('danger_level'), ('LOW', 'MEDIUM', 'HIGH'))
+
+    def test_advanced_scanner_reports_known_ancient_debris_with_real_type(self):
+        fleet = self._create_scanner_fleet(basic=6, advanced=6, x=20, y=20)
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=fleet.x + 2,
+            y=fleet.y,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            danger_level='HIGH',
+            ironium_inventory=10,
+        )
+        self.player1.discovered_ancient_debris = True
+        self.player1.save(update_fields=['discovered_ancient_debris'])
+
+        GameTurn(self.game).generate_scanner_reports()
+        salvage_report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='salvage',
+            target_id=salvage.id,
+        )
         self.assertEqual(
             salvage_report.get_report_data().get('salvage_type'),
             Salvage.TYPE_ANCIENT_DEBRIS,
         )
-        self.assertEqual(salvage_report.get_report_data().get('danger_level'), 'HIGH')
-        self.assertEqual(anomaly_report.get_report_data().get('report_tier'), 'advanced')
-        self.assertIn(anomaly_report.get_report_data().get('danger_level'), ('LOW', 'MEDIUM', 'HIGH'))
+        self.assertFalse(salvage_report.get_report_data().get('ancient_debris_unknown'))
 
     def test_basic_scanner_reports_ancient_debris_total_without_type_and_anomaly_type(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=0, x=20, y=20)
@@ -1955,6 +1987,18 @@ class NoScannerReportTierTest(TestCase):
         self.assertEqual(data.get('report_tier'), 'advanced')
         self.assertIn('ironium_yield', data)
         self.assertNotIn('mines', data)
+
+    def test_visit_reveals_secret_resource_identity_without_prior_scan_discovery(self):
+        self.enemy_star.resource_x_yield = 12
+        self.enemy_star.save(update_fields=['resource_x_yield'])
+        self.player1.discovered_resource_x = False
+        self.player1.save(update_fields=['discovered_resource_x'])
+
+        data = self._visit_enemy_star(basic=5, advanced=10)
+
+        self.player1.refresh_from_db()
+        self.assertTrue(self.player1.discovered_resource_x)
+        self.assertEqual(data.get('unknown_secret_resources'), [])
 
     def test_visit_with_high_advanced_scanners_reports_encounter(self):
         self.enemy_star.mines = 3
