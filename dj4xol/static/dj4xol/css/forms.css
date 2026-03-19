@@ -411,6 +411,19 @@ body.lcars.onboarding .hint.starting-tech-warning.form-errors {
     gap: 6px;
 }
 
+.create-game .profile-table .number-stepper,
+.create-race .profile-table .number-stepper,
+.onboarding .profile-table .number-stepper {
+    max-width: 100%;
+}
+
+.create-game .profile-table .number-stepper-input,
+.create-race .profile-table .number-stepper-input,
+.onboarding .profile-table .number-stepper-input {
+    width: 7ch;
+    min-width: 0;
+}
+
 .invite-token-widget {
     min-height: 38px;
     border: 1px solid var(--panel-content-border);

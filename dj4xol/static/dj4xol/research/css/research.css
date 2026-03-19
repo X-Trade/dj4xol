@@ -48,7 +48,7 @@ body {
 .allocation-row {
     position: relative;
     display: grid;
-    grid-template-columns: 1fr auto 90px auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 8px;
     align-items: center;
     margin-bottom: 6px;
@@ -93,7 +93,6 @@ body {
 .allocation-control {
     position: relative;
     display: inline-flex;
-    grid-column: 3 / 5;
     align-items: center;
     gap: 6px;
     justify-self: end;
@@ -101,8 +100,19 @@ body {
     border-radius: 3px;
 }
 
-.allocation-input {
-    width: 90px;
+.allocation-control .number-stepper {
+    flex: 0 0 auto;
+}
+
+.allocation-input,
+.allocation-control .number-stepper-input {
+    width: 44px;
+    min-width: 44px;
+}
+
+.allocation-control .number-stepper-btn {
+    min-width: 22px;
+    padding: 0 7px;
 }
 
 .allocation-locked .allocation-control::after {
