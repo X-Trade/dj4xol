@@ -38,6 +38,11 @@ class GameFactory():
         self.owner = None
         self.game = game or Game()
 
+    _ROMAN_NUMERALS = [
+        'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X',
+        'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI',
+    ]
+
     def new(self):
         """Create a new game instance."""
         self.game = Game()
@@ -358,7 +363,7 @@ class GameFactory():
         self.game.map_size_y = y
         return self
 
-    def create_stars(self, stars, clusters=False, spiral_arms=False, systems=False):
+    def create_stars(self, stars, clusters=False, spiral_arms=False, systems=False, improved_names=False):
         if not (self.game.map_size_x or self.game.map_size_y):
             raise Exception("cannot add stars to game until map size is set")
         if spiral_arms:
@@ -369,7 +374,88 @@ class GameFactory():
             self._create_random_stars(stars)
         if systems:
             self._add_systems()
+        if systems and improved_names:
+            self._apply_improved_star_names(clusters=clusters)
         return self
+
+    def _roman_numeral(self, index):
+        if index <= 0:
+            return 'I'
+        if index <= len(self._ROMAN_NUMERALS):
+            return self._ROMAN_NUMERALS[index - 1]
+        return str(index)
+
+    def _system_name_assignments(self, stars_by_coord, cluster_coords):
+        used_roots = set()
+        assignments = {}
+        for coord_group in cluster_coords:
+            root = self.starnamer.get_unique_root(used_roots=used_roots)
+            used_roots.add(root)
+            ordered_coords = sorted(coord_group)
+            for idx, coord in enumerate(ordered_coords):
+                if idx < len(self.starnamer.cluster_prefixes):
+                    base_name = '%s %s' % (self.starnamer.cluster_prefixes[idx], root)
+                else:
+                    base_name = '%s %s' % (root, idx + 1)
+                assignments[coord] = base_name
+        for coord in sorted(stars_by_coord):
+            if coord in assignments:
+                continue
+            root = self.starnamer.get_unique_root(used_roots=used_roots)
+            used_roots.add(root)
+            assignments[coord] = root
+        return assignments
+
+    def _find_system_clusters(self, coords, clusters=False):
+        coords = list(coords)
+        if not coords:
+            return []
+        if clusters:
+            link_distance = 30.0
+        else:
+            link_distance = 16.0
+        remaining = set(coords)
+        groups = []
+        while remaining:
+            start = remaining.pop()
+            component = {start}
+            frontier = [start]
+            while frontier:
+                current = frontier.pop()
+                neighbors = [
+                    other for other in list(remaining)
+                    if math.sqrt((current[0] - other[0]) ** 2 + (current[1] - other[1]) ** 2) <= link_distance
+                ]
+                for other in neighbors:
+                    remaining.remove(other)
+                    component.add(other)
+                    frontier.append(other)
+            if len(component) >= 2:
+                groups.append(component)
+        return groups
+
+    def _apply_improved_star_names(self, clusters=False):
+        stars_by_coord = {}
+        for star in self.stars:
+            stars_by_coord.setdefault((star.x, star.y), []).append(star)
+
+        cluster_coords = self._find_system_clusters(stars_by_coord.keys(), clusters=clusters)
+        assignments = self._system_name_assignments(stars_by_coord, cluster_coords)
+
+        for coord, stars in stars_by_coord.items():
+            ordered_stars = sorted(
+                stars,
+                key=lambda star: (
+                    str(getattr(star, 'short_id', '') or ''),
+                    str(getattr(star, 'name', '') or ''),
+                ),
+            )
+            base_name = assignments[coord]
+            if len(ordered_stars) == 1:
+                ordered_stars[0].name = base_name
+                continue
+            for idx, star in enumerate(ordered_stars, start=1):
+                star.name = '%s %s' % (base_name, self._roman_numeral(idx))
 
     def _reserve_spiral_black_holes(self, center_x, center_y, total_stars):
         if not bool(getattr(self.game, 'anomalies_enabled', False)):

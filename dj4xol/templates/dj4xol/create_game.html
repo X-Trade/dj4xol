@@ -90,6 +90,8 @@
 
                 var clusters = document.querySelector('input[name="clusters"]');
                 var spiral = document.querySelector('input[name="spiral_arms"]');
+                var systems = document.querySelector('input[name="systems"]');
+                var improvedStarNames = document.querySelector('input[name="improved_star_names"]');
                 var anomalies = document.querySelector('input[name="anomalies_enabled"]');
                 var anomalyRate = document.querySelector('select[name="anomaly_spawn_rate"]');
                 function syncGalaxyOptions() {
@@ -116,6 +118,22 @@
                     spiral.addEventListener('change', syncGalaxyOptions);
                 }
                 syncGalaxyOptions();
+
+                function syncImprovedStarNames() {
+                    if (!systems || !improvedStarNames) {
+                        return;
+                    }
+                    if (!systems.checked) {
+                        improvedStarNames.checked = false;
+                        improvedStarNames.disabled = true;
+                    } else {
+                        improvedStarNames.disabled = false;
+                    }
+                }
+                if (systems) {
+                    systems.addEventListener('change', syncImprovedStarNames);
+                }
+                syncImprovedStarNames();
 
                 function syncAnomalyRate() {
                     if (!anomalies || !anomalyRate) {

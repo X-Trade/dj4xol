@@ -1698,6 +1698,40 @@ class TestGameCreationView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'dj4xol/js/number_stepper.js')
 
+    def test_create_game_includes_improved_star_names_option_and_sync_script(self):
+        response = self.client.get(reverse('dj4xol:create_game'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="improved_star_names"', html=False)
+        self.assertContains(response, 'syncImprovedStarNames')
+
+    def test_new_game_form_rejects_improved_star_names_without_systems(self):
+        race = get_default_race()
+        form = NewGameForm(self.account, data={
+            'name': 'Improved Names Test',
+            'description': '',
+            'race': race.id,
+            'starting_year': 2400,
+            'map_size_x': 128,
+            'map_size_y': 128,
+            'num_stars': 50,
+            'systems': '',
+            'improved_star_names': 'on',
+            'public': '',
+            'joinable': '',
+            'turn_scheme': 'QUORUM',
+            'years_per_turn': 1,
+            'research_cost_multiplier': 1.0,
+            'warp_speed_multiplier': 1.0,
+            'random_events': '',
+            'anomalies_enabled': '',
+            'anomaly_spawn_rate': 'NORMAL',
+            'no_scanners': '',
+            'max_starting_tech_level': 5,
+            'invitations': '',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('improved_star_names', form.errors)
+
 
 class TestRenameObjectView(TestCase):
     def setUp(self):
