@@ -55,7 +55,7 @@
         });
     }
 
-    function resolveStepAmount(input) {
+    function resolveStepAmount(input, direction) {
         var stepAttr = input.getAttribute('step');
         var defaultStep = stepAttr && stepAttr !== 'any' ? parseFloat(stepAttr) : 1;
         if (!isFinite(defaultStep) || defaultStep <= 0) {
@@ -71,6 +71,10 @@
         if (!isFinite(current)) {
             var min = parseBoundary(input.getAttribute('min'));
             current = min !== null ? min : 0;
+        }
+
+        if (direction < 0) {
+            current -= 1e-9;
         }
 
         var resolvedStep = defaultStep;
@@ -115,7 +119,7 @@
             }
         }
 
-        var step = resolveStepAmount(input);
+        var step = resolveStepAmount(input, direction);
         var current = parseFloat(input.value);
         if (!isFinite(current)) {
             var min = parseBoundary(input.getAttribute('min'));
