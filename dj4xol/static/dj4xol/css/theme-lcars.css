@@ -695,6 +695,32 @@ input:focus {
     cursor: ns-resize;
 }
 
+.lcars .theme-selector {
+    scrollbar-width: none;
+}
+
+.lcars .theme-selector::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.lcars .theme-carousel-scrollbar-overlay {
+    display: block;
+    height: 16px;
+}
+
+.lcars .theme-carousel-scrollbar-track {
+    background: #000;
+    border: 2px solid #000;
+    border-radius: 0;
+}
+
+.lcars .theme-carousel-scrollbar-thumb {
+    background: #cc99cc;
+    border: 2px solid #000;
+    border-radius: 0;
+}
+
 .order-item {
     border-bottom: none;
 }
@@ -1431,6 +1457,10 @@ input[type="range"]::-webkit-slider-thumb {
 
 .lcars .message-header-actions {
     margin-right: 24px;
+}
+
+.lcars .theme-selector-panel > p {
+    margin: 0 0 4px 0;
 }
 
 .message-history .message-category.RANDOM { background: #cc6633; color: #000; }

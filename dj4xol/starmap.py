@@ -1,7 +1,10 @@
 from math import cos, sin, radians
 from html import escape
+from django.conf import settings
 from .models import Game, Player, Fleet, Star, Salvage, Anomaly, Report, PlayerStarMarker
 from .anomaly_thumbnails import nebula_palette_from_thumbnail
+from .fleet_thumbnails import get_ship_class_from_path
+from .retro_mapfleet_sprites import choose_retro_mapfleet_sprite
 from .scanners import (
     fleet_visible_to_player,
     get_scanner_sources_for_player,
@@ -507,15 +510,65 @@ class StarMap():
     def render_fleet(self, fleet):
         """Render a fleet object on map using HTML with heading rotation"""
         # Base rotation of -135deg makes heading 0 point north
-        rotation = -135 + fleet.heading
-        extra_style = f" transform: translate(-20%, -20%) rotate({rotation}deg);"
+        heading = float(getattr(fleet, 'heading', 0.0) or 0.0)
+        rotation = -135.0 + heading
+        extra_style = (
+            " transform: translate(var(--mapfleet-offset-x, -20%%), "
+            "var(--mapfleet-offset-y, -20%%)) "
+            "rotate(calc(%.1fdeg + var(--mapfleet-rotation-offset, 0deg)));"
+        ) % rotation
         selection_object = self.primary_star_by_position.get((fleet.x, fleet.y)) or fleet
+        fleet_class = self._fleet_thumbnail_class(fleet)
+        sprite_path = self._retro_mapfleet_sprite_path(fleet, fleet_class)
+        extra_classes = "mapfleet-thumb"
+        if fleet_class:
+            extra_classes = "%s mapfleet-thumb-%s" % (extra_classes, fleet_class)
+        if sprite_path:
+            extra_classes = "%s mapfleet-thumb-has-sprite" % extra_classes
+            extra_style += " --retro-mapfleet-sprite: url('%s');" % escape(
+                self._static_asset_url(sprite_path)
+            )
+        extra_data_attrs = (
+            'data-fleet-class="%s"' % escape(fleet_class)
+            if fleet_class else ''
+        )
         return self.render_object(
             fleet,
             extra_style,
             name_override=self._fleet_display_name(fleet),
             selection_object=selection_object,
+            extra_classes=extra_classes,
+            extra_data_attrs=extra_data_attrs,
         )
+
+    def _fleet_thumbnail_class(self, fleet):
+        """Return the fleet hull thumbnail class slug for map sprite theming."""
+        path = getattr(fleet, 'effective_thumbnail_path', '') or getattr(fleet, 'thumbnail_path', '')
+        ship_class = get_ship_class_from_path(path)
+        return str(ship_class or '').strip().lower()
+
+    def _retro_mapfleet_palette(self, fleet):
+        if self.player and getattr(fleet, 'player_id', None) == getattr(self.player, 'id', None):
+            return 'friendly'
+        if self._is_allied_owner(getattr(fleet, 'player', None)):
+            return 'allied'
+        return 'enemy'
+
+    def _retro_mapfleet_sprite_path(self, fleet, fleet_class):
+        if not fleet_class:
+            return ''
+        seed = getattr(fleet, 'id', None) or getattr(fleet, 'short_id', None) or getattr(fleet, 'name', None)
+        return choose_retro_mapfleet_sprite(
+            seed,
+            fleet_class,
+            palette=self._retro_mapfleet_palette(fleet),
+        )
+
+    def _static_asset_url(self, path):
+        base = str(settings.STATIC_URL or '/static/')
+        if not base.endswith('/'):
+            base += '/'
+        return base + str(path).lstrip('/')
 
     def render_salvage(self, salvage):
         """Render a salvage pile on map using HTML (hollow yellow square)"""

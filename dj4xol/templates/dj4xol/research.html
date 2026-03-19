@@ -8,8 +8,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/research/css/research.css' %}">
-        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
-        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
         <script defer type="text/javascript" src="{% static 'dj4xol/js/number_stepper.js' %}"></script>
     </head>
     <body{% if user_theme %} class="{{ user_theme }}"{% endif %}>
@@ -119,7 +118,7 @@
                             {% if not singular_research %}
                             <div class="allocation-actions">
                                 <button type="button" id="alloc-even-btn" {% if player.turned_in %}disabled{% endif %}>Even Split</button>
-                                <button type="submit" {% if player.turned_in %}disabled{% endif %}>Update Allocation</button>
+                                <button type="submit" {% if player.turned_in %}disabled{% endif %}>Submit Allocations</button>
                             </div>
                             {% endif %}
                         </form>

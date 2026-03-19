@@ -112,6 +112,25 @@ class OnboardingRegistrationTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse('dj4xol:onboarding_theme'))
 
+    def test_onboarding_theme_uses_horizontal_carousel_markup(self):
+        user = User.objects.create_user('themepanel', 'themepanel@example.com', 'pass1234')
+        Account.objects.create(
+            django_user=user,
+            alias='themepanel',
+            email='themepanel@example.com',
+            full_name='Theme Panel',
+            onboarding_step=Account.ONBOARDING_STEP_THEME,
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse('dj4xol:onboarding_theme'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="theme-selector-panel"', html=False)
+        self.assertContains(response, 'class="theme-selector-frame"', html=False)
+        self.assertContains(response, 'class="theme-selector"', html=False)
+        self.assertContains(response, 'class="theme-carousel-button theme-carousel-button--prev"', html=False)
+
     def test_gamelist_redirects_incomplete_account_to_onboarding_race(self):
         user = User.objects.create_user('racewait', 'racewait@example.com', 'pass1234')
         Account.objects.create(

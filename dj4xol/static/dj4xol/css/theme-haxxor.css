@@ -1,0 +1,427 @@
+/*
+ * Haxxor Theme
+ * Monospace hacker-console theme with dark translucent rails and neon map sprites.
+ */
+
+body.haxxor {
+    --haxxor-bg: #04070d;
+    --haxxor-panel: #08101d;
+    --haxxor-panel-alt: #102038;
+    --haxxor-border: #31567a;
+    --haxxor-border-bright: #67e4a6;
+    --haxxor-text: #d8e0e8;
+    --haxxor-dim: #8ea1b3;
+    --haxxor-blue: #7bc3ff;
+    --haxxor-green: #72ffb1;
+    --haxxor-cyan: #6ef1ff;
+    --haxxor-red: #ff7a72;
+    --haxxor-gold: #ffd36a;
+    --haxxor-thumb: #56d4a1;
+
+    --theme-bg: var(--haxxor-bg);
+    --theme-text: var(--haxxor-text);
+    --theme-accent: var(--haxxor-green);
+    --theme-accent-hover: #92ffcb;
+    --panel-header-bg: var(--haxxor-panel-alt);
+    --panel-header-text: var(--haxxor-green);
+    --panel-border: var(--haxxor-border);
+    --panel-content-bg: var(--haxxor-panel);
+    --panel-content-border: var(--haxxor-border);
+    --titlebar-bg: var(--haxxor-panel-alt);
+    --titlebar-text: var(--haxxor-text);
+    --titlebar-link: var(--haxxor-blue);
+    --toggle-colour: var(--haxxor-green);
+    --border-radius: 0px;
+
+    background: linear-gradient(to bottom, #07101d 0%, #04070d 100%);
+    color: var(--haxxor-text);
+    font-family: "Courier New", "Lucida Console", "Andale Mono", monospace;
+    font-size: 12px;
+    letter-spacing: 0.01em;
+    text-rendering: optimizeSpeed;
+}
+
+.haxxor a {
+    color: var(--haxxor-blue);
+}
+
+.haxxor a:hover {
+    color: #a8d8ff;
+}
+
+.haxxor label {
+    margin-top: 0.5em;
+}
+
+.haxxor .title-bar {
+    background: linear-gradient(to right, #0e1c31, #132946 55%, #0b1626);
+    color: var(--haxxor-text);
+    border-bottom: 2px solid var(--haxxor-border-bright);
+    box-shadow: inset 0 -2px 0 rgba(111, 255, 186, 0.2);
+    min-height: 40px;
+}
+
+.haxxor .title-bar .title {
+    color: var(--haxxor-green);
+    background: transparent;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.haxxor .title-bar .year,
+.haxxor .title-bar .tagline,
+.haxxor .title-bar .turn-status {
+    background: #08101d;
+    border: 2px solid var(--haxxor-border);
+    color: var(--haxxor-text);
+    border-radius: 0;
+}
+
+.haxxor .title-bar .status-done {
+    color: var(--haxxor-green);
+}
+
+.haxxor .title-bar button,
+.haxxor button,
+.haxxor .action-link,
+.haxxor .nav-button,
+.haxxor .diplomacy-action-button {
+    background: #102038;
+    color: var(--haxxor-text);
+    border: 2px solid var(--haxxor-border);
+    border-radius: 0;
+    box-shadow: inset 0 0 0 1px rgba(111, 255, 186, 0.08);
+    font: inherit;
+}
+
+.haxxor .title-bar button:hover,
+.haxxor button:hover:not(:disabled),
+.haxxor .action-link:hover,
+.haxxor .nav-button:hover:not(:disabled),
+.haxxor .diplomacy-action-button:hover:not(:disabled) {
+    background: #152a48;
+    border-color: var(--haxxor-border-bright);
+    color: #f0fff7;
+}
+
+.haxxor .title-bar button:active,
+.haxxor button:active:not(:disabled),
+.haxxor .action-link:active,
+.haxxor .nav-button:active:not(:disabled),
+.haxxor .diplomacy-action-button:active:not(:disabled) {
+    background: #0a1525;
+    box-shadow: inset 0 0 0 1px rgba(111, 255, 186, 0.15);
+}
+
+.haxxor input,
+.haxxor select,
+.haxxor textarea {
+    background: #060b14;
+    color: var(--haxxor-text);
+    border: 2px solid var(--haxxor-border);
+    border-radius: 0;
+    font: inherit;
+    box-shadow: inset 0 0 0 1px rgba(123, 195, 255, 0.08);
+}
+
+.haxxor input:focus,
+.haxxor select:focus,
+.haxxor textarea:focus {
+    outline: none;
+    border-color: var(--haxxor-border-bright);
+    box-shadow: inset 0 0 0 1px rgba(111, 255, 186, 0.18), 0 0 0 1px rgba(111, 255, 186, 0.12);
+}
+
+.haxxor .hamburger,
+.haxxor .nav-dropdown {
+    background: #0b1626;
+    border: 2px solid var(--haxxor-border);
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.haxxor .hamburger span {
+    background: var(--haxxor-green);
+}
+
+.haxxor .nav-dropdown a {
+    color: var(--haxxor-text);
+}
+
+.haxxor .nav-dropdown a:hover {
+    background: #132946;
+    color: #f3fffb;
+}
+
+.haxxor .panel > h2 {
+    background: linear-gradient(to right, #102038 0%, #102038 70%, #0c1728 100%);
+    color: var(--haxxor-green);
+    border: 2px solid var(--haxxor-border);
+    border-bottom: none;
+    border-radius: 0;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    text-shadow: 0 0 4px rgba(111, 255, 186, 0.18);
+}
+
+.haxxor .panel {
+    background: transparent;
+}
+
+.haxxor .panel-content {
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+.haxxor .panel-content > div,
+.haxxor .panel-content.panel-stack {
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02)),
+        repeating-linear-gradient(to bottom, rgba(111, 255, 186, 0.025) 0 1px, transparent 1px 4px),
+        #08101d;
+    border: 2px solid var(--haxxor-border);
+    border-radius: 0;
+    color: var(--haxxor-text);
+    box-shadow: inset 0 0 0 1px rgba(111, 255, 186, 0.05);
+}
+
+.haxxor .panel-content.panel-stack > .panel-footer,
+.haxxor .panel-content.panel-stack > form,
+.haxxor .panel-content.panel-stack > div:not(.panel-scroll-frame):not(.panel-scroll-frame-list):not(.panel-scroll-frame-text):not(.rename-popover):not(.marker-popover) {
+    border-top-color: rgba(123, 195, 255, 0.22);
+}
+
+.haxxor .panel-footer,
+.haxxor .panel-footer-form {
+    background: #0b1626;
+    margin: 4px 0 0 0;
+}
+
+.haxxor .panel-content > .marker-popover,
+.haxxor .marker-popover {
+    min-width: 220px;
+    width: min(220px, calc(100vw - 24px));
+}
+
+.haxxor .marker-popover-buttons button,
+.haxxor .marker-colour-swatch {
+    min-height: 24px;
+}
+
+.haxxor .marker-colour-swatch {
+    background: var(--marker-accent, #ffffff) !important;
+    border-color: var(--haxxor-border-bright);
+    box-shadow: inset 0 0 0 1px rgba(4, 7, 13, 0.4);
+}
+
+.haxxor .marker-colour-swatch:hover {
+    border-color: #f0fff7;
+}
+
+.haxxor .marker-colour-swatch.is-active {
+    box-shadow: 0 0 0 2px rgba(111, 255, 186, 0.9);
+}
+
+.haxxor .detail-header,
+.haxxor .detail-subpanel,
+.haxxor .order-params,
+.haxxor #production-costs-panel {
+    border-radius: 0;
+}
+
+.haxxor .theme-option {
+    background: #060b14;
+    border-color: var(--haxxor-border);
+}
+
+.haxxor .theme-option:hover {
+    background: #0b1626;
+    border-color: var(--haxxor-border-bright);
+}
+
+.haxxor .theme-option.selected {
+    background: #102038;
+    border-color: var(--haxxor-border-bright);
+}
+
+.haxxor .messages-scroll .message.priority {
+    background: rgba(74, 20, 24, 0.82);
+    color: #f1d7d9;
+    box-shadow: inset 0 0 0 1px rgba(143, 50, 58, 0.6);
+}
+
+.haxxor .messages-scroll .message.priority a {
+    color: #ffb8bf !important;
+}
+
+.haxxor .messages-scroll .message.diplomatic-priority {
+    background: rgba(41, 28, 68, 0.82);
+    color: #e1dcff;
+    box-shadow: inset 0 0 0 1px rgba(102, 95, 176, 0.55);
+}
+
+.haxxor .messages-scroll .message.diplomatic-priority a {
+    color: #cfd7ff !important;
+}
+
+.haxxor .panel-scrollable-list,
+.haxxor .panel-scrollable-text {
+    padding-right: 16px;
+    scrollbar-width: auto;
+    scrollbar-color: var(--haxxor-thumb) #08101d;
+}
+
+.haxxor .panel-scrollable-list::-webkit-scrollbar,
+.haxxor .panel-scrollable-text::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.haxxor .starmap::-webkit-scrollbar {
+    width: 1em;
+    height: 1em;
+}
+
+.haxxor .starmap::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.58);
+}
+
+.haxxor .starmap::-webkit-scrollbar-thumb {
+    background: var(--haxxor-thumb);
+    border: 2px solid #103524;
+    border-radius: 0;
+}
+
+.haxxor .panel-scrollbar-overlay {
+    position: absolute;
+    top: 0;
+    width: 1em;
+    right: 0;
+    overflow: hidden;
+    display: block;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+    pointer-events: auto;
+    z-index: 3;
+}
+
+.haxxor .panel-scrollbar-track {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.58);
+    border-left: 2px solid var(--haxxor-border);
+}
+
+.haxxor .panel-scrollbar-thumb {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 1em;
+    min-height: 1em;
+    border-radius: 0;
+    background: var(--haxxor-thumb);
+    border: 2px solid #103524;
+    box-shadow: none;
+    transform: translateY(0);
+    box-sizing: border-box;
+}
+
+.haxxor .theme-selector {
+    scrollbar-width: none;
+}
+
+.haxxor .theme-selector::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.haxxor .theme-carousel-scrollbar-overlay {
+    display: block;
+    height: 1em;
+}
+
+.haxxor .theme-carousel-scrollbar-track {
+    background: rgba(0, 0, 0, 0.58);
+    border: 2px solid var(--haxxor-border);
+}
+
+.haxxor .theme-carousel-scrollbar-thumb {
+    background: var(--haxxor-thumb);
+    border: 2px solid #103524;
+}
+
+.haxxor .number-stepper-btn {
+    background: #102038;
+    border: 2px solid var(--haxxor-border);
+    color: var(--haxxor-green);
+    border-radius: 0;
+    padding: 0 8px;
+}
+
+.haxxor .number-stepper-btn--minus {
+    border-right-width: 0;
+}
+
+.haxxor .number-stepper-btn--plus {
+    border-left-width: 0;
+}
+
+.haxxor .number-stepper-input {
+    border-left-width: 0;
+    border-right-width: 0;
+    border-radius: 0;
+}
+
+.haxxor .order-edit-btn,
+.haxxor .repeat-toggle-btn,
+.haxxor .order-add-btn,
+.haxxor .repeat-checkbox-icon,
+.haxxor .order-remove-btn {
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.haxxor .order-edit-btn,
+.haxxor .repeat-toggle-btn,
+.haxxor .repeat-checkbox-icon {
+    background: #102038;
+    color: var(--haxxor-cyan);
+}
+
+.haxxor .repeat-toggle-btn.active,
+.haxxor .repeat-checkbox input:checked + .repeat-checkbox-icon {
+    background: #1c3d30;
+    color: var(--haxxor-green);
+}
+
+.haxxor .repeat-toggle-btn.ghost {
+    opacity: 1;
+    background: #0f1d31;
+    color: #6c8aa4;
+}
+
+.haxxor .order-add-btn {
+    background: #173122;
+    color: var(--haxxor-green);
+}
+
+.haxxor .order-remove-btn {
+    background: #3a171a;
+    color: #ffd8d6;
+}
+
+.haxxor .panel[data-panel="starmap"] .panel-content,
+.haxxor .starmap {
+    background: #02050b;
+    border-radius: 0;
+}
+
+.haxxor .starmap {
+    border: 2px solid var(--haxxor-border);
+    box-shadow: inset 0 0 0 1px rgba(111, 255, 186, 0.06);
+}

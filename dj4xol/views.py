@@ -605,7 +605,7 @@ def _landing_context(request=None):
             'Race creation, colony economy, fleet planning, research progression, and turn reports',
             'Space combat, invasions, scanners, and the core turn-resolution loop',
             'Recent MVP extensions including anomalies, secret resources, and wormholes',
-            'Open source web UI with Classic, LCARS, and Win95 themes',
+            'Open source web UI with Classic, LCARS, Win95, Haxxor, and Retro Arcade themes',
         ]
     if not priorities:
         priorities = [
@@ -4535,7 +4535,7 @@ def rename_object(request, game_short_id, object_short_id):
 
 @player_only_view()
 def set_star_marker(request, game_short_id, star_short_id):
-    """Create, update, or clear the player's personal marker for a visible star."""
+    """Create, update, or clear the player's personal marker for a star location."""
     if request.method != 'POST':
         return JsonResponse({'error': 'POST required'}, status=405)
 
@@ -4548,11 +4548,6 @@ def set_star_marker(request, game_short_id, star_short_id):
     star = Star.objects.filter(short_id=star_short_id, game=game).first()
     if star is None:
         return JsonResponse({'error': 'Star not found'}, status=404)
-
-    builder = DetailBuilder(game, star.x, star.y, star.short_id, player=player)
-    can_view, _report_year = builder.can_view_object(star)
-    if not can_view:
-        return JsonResponse({'error': 'You do not have intel on this star'}, status=403)
 
     stars_at_location = list(Star.objects.filter(game=game, x=star.x, y=star.y))
     def marker_star_sort_key(candidate):

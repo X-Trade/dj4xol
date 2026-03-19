@@ -7,8 +7,7 @@
         {% include 'dj4xol/_web_app_meta.html' %}
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
-        {% if user_theme == 'lcars' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-lcars.css' %}">{% endif %}
-        {% if user_theme == 'win95' %}<link rel="stylesheet" href="{% static 'dj4xol/css/theme-win95.css' %}">{% endif %}
+        {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
     </head>
     <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} profile-page">
         <div class="title-bar">
@@ -107,15 +106,19 @@
                 <div class="panel no-transition open" data-panel="theme">
                     <h2><span>Theme</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
-                        <section class="panel-scrollable-text">
+                        <section class="theme-selector-panel">
                         <p>Select your preferred visual theme:</p>
-                        <div class="theme-selector">
-                            {% for theme_code, theme_name in theme_choices %}
-                            <div class="theme-option{% if account.theme == theme_code %} selected{% endif %}" data-theme="{{ theme_code }}">
-                                <div class="theme-preview {{ theme_code }}"></div>
-                                <span class="theme-name">{{ theme_name }}</span>
+                        <div class="theme-selector-frame">
+                            <button type="button" class="theme-carousel-button theme-carousel-button--prev" data-scroll-dir="-1" aria-label="Scroll themes left">&lt;</button>
+                            <div class="theme-selector">
+                                {% for theme_code, theme_name in theme_choices %}
+                                <div class="theme-option{% if account.theme == theme_code %} selected{% endif %}" data-theme="{{ theme_code }}">
+                                    <div class="theme-preview {{ theme_code }}"></div>
+                                    <span class="theme-name">{{ theme_name }}</span>
+                                </div>
+                                {% endfor %}
                             </div>
-                        {% endfor %}
+                            <button type="button" class="theme-carousel-button theme-carousel-button--next" data-scroll-dir="1" aria-label="Scroll themes right">&gt;</button>
                         </div>
                         <p id="theme-status"></p>
                         </section>

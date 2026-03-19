@@ -892,6 +892,19 @@ class TestProfileView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Turned in')
 
+    def test_profile_theme_panel_uses_horizontal_carousel_markup(self):
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:profile'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="theme-selector-panel"', html=False)
+        self.assertContains(response, 'class="theme-selector-frame"', html=False)
+        self.assertContains(response, 'class="theme-selector"', html=False)
+        self.assertContains(response, 'class="theme-carousel-button theme-carousel-button--prev"', html=False)
+
     def test_profile_can_delete_owned_game(self):
         game = default_game(stars=5)
         user, account = get_default_user()
@@ -1841,14 +1854,45 @@ class TestStarMarkerView(TestCase):
             ).exists()
         )
 
-    def test_rejects_star_marker_without_intel(self):
-        response = self.client.post(
-            reverse('dj4xol:set_star_marker', args=[self.game.short_id, self.hidden_star.short_id]),
-            {'marker_type': 'X'},
+    def test_game_view_shows_marker_button_for_unexplored_star(self):
+        response = self.client.get(
+            reverse('dj4xol:game', args=[self.game.short_id]),
+            {
+                'x': self.hidden_star.x,
+                'y': self.hidden_star.y,
+                'sel': self.hidden_star.short_id,
+            },
         )
 
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()['error'], 'You do not have intel on this star')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'class="detail-action-btn marker-btn"',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            "var starId = '%s';" % self.hidden_star.short_id,
+            html=False,
+        )
+
+    def test_set_star_marker_allowed_on_unexplored_star(self):
+        response = self.client.post(
+            reverse('dj4xol:set_star_marker', args=[self.game.short_id, self.hidden_star.short_id]),
+            {'marker_type': 'X', 'marker_color': 'RED'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['marker_type'], 'X')
+        self.assertEqual(response.json()['marker_color'], 'RED')
+        self.assertTrue(
+            PlayerStarMarker.objects.filter(
+                player=self.player,
+                star=self.hidden_star,
+                marker_type='X',
+                marker_color='RED',
+            ).exists()
+        )
 
     def test_satellite_star_marker_is_saved_on_primary_star(self):
         primary = self.player.homeworld
@@ -2772,6 +2816,40 @@ class TestFleetOrderViews(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'theme-lcars.css', html=False)
+
+    def test_haxxor_game_view_loads_haxxor_stylesheet(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        user, account = get_default_user()
+        account.theme = 'haxxor'
+        account.save(update_fields=['theme'])
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': player.homeworld.x, 'y': player.homeworld.y, 'sel': player.homeworld.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'theme-haxxor.css', html=False)
+
+    def test_retro_game_view_loads_retro_stylesheet(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        user, account = get_default_user()
+        account.theme = 'retro'
+        account.save(update_fields=['theme'])
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': player.homeworld.x, 'y': player.homeworld.y, 'sel': player.homeworld.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'theme-retro.css', html=False)
 
     def test_staff_debug_actions_keep_detail_panel_markup_balanced(self):
         game = default_game(stars=5, fleets=1)

@@ -702,6 +702,44 @@ input:focus {
     background: #d4d4d4;
 }
 
+.win95 .theme-selector {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-items: stretch;
+    gap: 10px;
+    padding-bottom: 16px;
+    scrollbar-width: none;
+}
+
+.win95 .theme-selector::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.win95 .theme-selector-frame {
+    min-height: 132px;
+}
+
+.win95 .theme-selector-frame.theme-selector-frame--custom {
+    padding-bottom: 20px;
+}
+
+.win95 .theme-carousel-scrollbar-overlay {
+    display: block;
+    height: 14px;
+}
+
+.win95 .theme-carousel-scrollbar-track {
+    background: repeating-conic-gradient(#c0c0c0 0% 25%, #ffffff 0% 50%) 50% / 2px 2px;
+    border: 1px solid #808080;
+}
+
+.win95 .theme-carousel-scrollbar-thumb {
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+}
+
 .order-item {
     border-bottom: 1px solid #c0c0c0;
 }
@@ -1151,8 +1189,8 @@ input[type="range"]::-webkit-slider-thumb {
 .theme-selector {
     display: flex;
     gap: 10px;
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
 }
 
 .theme-option {
