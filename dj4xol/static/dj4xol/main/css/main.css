@@ -1638,6 +1638,7 @@ body.floating-tooltips-enabled .has-tooltip::after {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    margin-top: 0;
 }
 
 /* Themes can opt in to extra spacing before the params box. */
@@ -1656,6 +1657,8 @@ body.floating-tooltips-enabled .has-tooltip::after {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    line-height: 1;
+    margin: 0;
 }
 
 .order-add-btn:hover:not(:disabled) {
@@ -2220,34 +2223,32 @@ body.order-params-overlay-open {
 }
 
 .repeat-checkbox-icon {
-    background: #2a5a8a;
+    background: #8aa2bb;
     color: #fff;
     border: none;
-    width: 20px;
-    height: 20px;
+    width: 32px;
+    height: 32px;
     border-radius: 3px;
-    font-size: 12px;
+    font: inherit;
+    font-weight: bold;
     line-height: 1;
     padding: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    opacity: 0.35;
-}
-
-.repeat-checkbox:hover .repeat-checkbox-icon {
-    opacity: 0.9;
+    opacity: 1;
 }
 
 .repeat-checkbox input:checked + .repeat-checkbox-icon {
-    opacity: 1;
+    background: #2a5a8a;
 }
 
 .repeat-checkbox input:disabled + .repeat-checkbox-icon,
 .repeat-checkbox.is-disabled .repeat-checkbox-icon {
     cursor: default;
-    opacity: 0.15;
+    background: #aab4bf;
+    color: rgba(255, 255, 255, 0.65);
 }
 
 .order-quantity {
@@ -2283,14 +2284,6 @@ body.order-params-overlay-open {
     .transfer-slider-row,
     .transfer-target-row {
         width: 100%;
-    }
-}
-
-@media (hover: none), (pointer: coarse) {
-    .repeat-checkbox-icon {
-        width: 24px;
-        height: 24px;
-        font-size: 14px;
     }
 }
 

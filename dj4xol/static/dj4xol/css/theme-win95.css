@@ -739,6 +739,7 @@ input:focus {
                 inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
     border-radius: 0;
     font-weight: normal;
+    font-size: 13px;
 }
 
 .order-add-btn:hover:not(:disabled) {
@@ -751,6 +752,32 @@ input:focus {
 }
 
 .order-add-btn:disabled {
+    background: #c0c0c0;
+    color: #808080;
+}
+
+.win95 .order-type-row .repeat-checkbox-icon {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    background: #c0c0c0;
+    color: #606060;
+    border-radius: 0;
+    font-size: 13px;
+    font-weight: bold;
+    box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #000000,
+                inset 2px 2px 0 #dfdfdf, inset -2px -2px 0 #808080;
+}
+
+.win95 .order-type-row .repeat-checkbox input:checked + .repeat-checkbox-icon {
+    background: #2a5a8a;
+    color: #ffffff;
+    box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+}
+
+.win95 .order-type-row .repeat-checkbox input:disabled + .repeat-checkbox-icon,
+.win95 .order-type-row .repeat-checkbox.is-disabled .repeat-checkbox-icon {
     background: #c0c0c0;
     color: #808080;
 }

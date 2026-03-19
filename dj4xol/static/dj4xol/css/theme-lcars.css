@@ -994,6 +994,27 @@ input:focus {
     flex: 0 0 auto;
 }
 
+.lcars .order-type-row .repeat-checkbox-icon {
+    width: 30px;
+    min-width: 30px;
+    height: 32px;
+    border-radius: 15px;
+    background: #446666;
+    color: #000;
+    font-weight: bold;
+}
+
+.lcars .order-type-row .repeat-checkbox input:checked + .repeat-checkbox-icon {
+    background: #66cccc;
+    color: #000;
+}
+
+.lcars .order-type-row .repeat-checkbox input:disabled + .repeat-checkbox-icon,
+.lcars .order-type-row .repeat-checkbox.is-disabled .repeat-checkbox-icon {
+    background: #2f4b4b;
+    color: #666;
+}
+
 /* Sliders */
 input[type="range"] {
     -webkit-appearance: none;
