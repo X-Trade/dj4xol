@@ -385,27 +385,6 @@ class GameFactory():
             return self._ROMAN_NUMERALS[index - 1]
         return str(index)
 
-    def _system_name_assignments(self, stars_by_coord, cluster_coords):
-        used_roots = set()
-        assignments = {}
-        for coord_group in cluster_coords:
-            root = self.starnamer.get_unique_root(used_roots=used_roots)
-            used_roots.add(root)
-            ordered_coords = sorted(coord_group)
-            for idx, coord in enumerate(ordered_coords):
-                if idx < len(self.starnamer.cluster_prefixes):
-                    base_name = '%s %s' % (self.starnamer.cluster_prefixes[idx], root)
-                else:
-                    base_name = '%s %s' % (root, idx + 1)
-                assignments[coord] = base_name
-        for coord in sorted(stars_by_coord):
-            if coord in assignments:
-                continue
-            root = self.starnamer.get_unique_root(used_roots=used_roots)
-            used_roots.add(root)
-            assignments[coord] = root
-        return assignments
-
     def _find_system_clusters(self, coords, clusters=False):
         coords = list(coords)
         if not coords:
@@ -434,23 +413,72 @@ class GameFactory():
                 groups.append(component)
         return groups
 
+    def _ordered_coord_stars(self, stars):
+        return sorted(
+            stars,
+            key=lambda star: (
+                str(getattr(star, 'short_id', '') or ''),
+                str(getattr(star, 'name', '') or ''),
+            ),
+        )
+
+    def _coord_anchor_name(self, stars):
+        ordered = self._ordered_coord_stars(stars)
+        if not ordered:
+            return ''
+        return str(getattr(ordered[0], 'name', '') or '').strip()
+
+    def _coord_uses_related_name(self, stars):
+        anchor_name = self._coord_anchor_name(stars)
+        if not self.starnamer.is_traditional_name(anchor_name):
+            return False
+        return random.random() >= 0.25
+
+    def _cluster_root_name(self, coords, stars_by_coord, used_roots):
+        for coord in sorted(coords):
+            anchor_name = self._coord_anchor_name(stars_by_coord.get(coord, []))
+            if (
+                self.starnamer.is_traditional_name(anchor_name) and
+                ' ' not in anchor_name and
+                anchor_name not in used_roots
+            ):
+                used_roots.add(anchor_name)
+                return anchor_name
+        root = self.starnamer.get_unique_root(used_roots=used_roots)
+        used_roots.add(root)
+        return root
+
     def _apply_improved_star_names(self, clusters=False):
         stars_by_coord = {}
         for star in self.stars:
             stars_by_coord.setdefault((star.x, star.y), []).append(star)
+        related_coords = {
+            coord for coord, stars in stars_by_coord.items()
+            if self._coord_uses_related_name(stars)
+        }
+        cluster_groups = self._find_system_clusters(related_coords, clusters=clusters)
+        used_roots = set()
+        assignments = {}
 
-        cluster_coords = self._find_system_clusters(stars_by_coord.keys(), clusters=clusters)
-        assignments = self._system_name_assignments(stars_by_coord, cluster_coords)
+        for coord_group in cluster_groups:
+            ordered_coords = sorted(coord_group)
+            if len(ordered_coords) < 2:
+                continue
+            root = self._cluster_root_name(ordered_coords, stars_by_coord, used_roots)
+            for idx, coord in enumerate(ordered_coords):
+                if idx < len(self.starnamer.cluster_prefixes):
+                    assignments[coord] = '%s %s' % (self.starnamer.cluster_prefixes[idx], root)
+                else:
+                    assignments[coord] = '%s %s' % (root, idx + 1)
 
         for coord, stars in stars_by_coord.items():
-            ordered_stars = sorted(
-                stars,
-                key=lambda star: (
-                    str(getattr(star, 'short_id', '') or ''),
-                    str(getattr(star, 'name', '') or ''),
-                ),
-            )
-            base_name = assignments[coord]
+            ordered_stars = self._ordered_coord_stars(stars)
+            if coord in assignments:
+                base_name = assignments[coord]
+            elif len(ordered_stars) > 1 and coord in related_coords:
+                base_name = self._coord_anchor_name(ordered_stars)
+            else:
+                continue
             if len(ordered_stars) == 1:
                 ordered_stars[0].name = base_name
                 continue

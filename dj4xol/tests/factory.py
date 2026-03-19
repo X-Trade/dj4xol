@@ -309,11 +309,11 @@ class testGameFactory(TestCase):
         gf = GameFactory()
         gf.set_map_size(200, 200)
         gf.stars = [
-            Star(name='Old A', x=10, y=10),
+            Star(name='Centauri', x=10, y=10),
             Star(name='Old B', x=10, y=10),
             Star(name='Old C', x=10, y=10),
         ]
-        with patch.object(gf.starnamer, 'get_unique_root', return_value='Centauri'):
+        with patch('dj4xol.factory.random.random', return_value=0.9):
             gf._apply_improved_star_names(clusters=False)
 
         self.assertEqual(
@@ -325,18 +325,45 @@ class testGameFactory(TestCase):
         gf = GameFactory()
         gf.set_map_size(200, 200)
         gf.stars = [
-            Star(name='Old A', x=10, y=10),
+            Star(name='Centauri', x=10, y=10),
             Star(name='Old B', x=10, y=10),
-            Star(name='Old C', x=18, y=12),
-            Star(name='Old D', x=26, y=15),
+            Star(name='Bellatrix', x=18, y=12),
+            Star(name='Rigel', x=26, y=15),
         ]
-        with patch.object(gf.starnamer, 'get_unique_root', return_value='Centauri'):
+        with patch('dj4xol.factory.random.random', return_value=0.9):
             gf._apply_improved_star_names(clusters=True)
 
         self.assertEqual(gf.stars[0].name, 'Alpha Centauri I')
         self.assertEqual(gf.stars[1].name, 'Alpha Centauri II')
         self.assertEqual(gf.stars[2].name, 'Beta Centauri')
         self.assertEqual(gf.stars[3].name, 'Gamma Centauri')
+
+    def test_improved_star_names_can_leave_traditional_system_unique(self):
+        gf = GameFactory()
+        gf.set_map_size(200, 200)
+        gf.stars = [
+            Star(name='Centauri', x=10, y=10),
+            Star(name='Bellatrix', x=10, y=10),
+        ]
+        with patch('dj4xol.factory.random.random', return_value=0.1):
+            gf._apply_improved_star_names(clusters=False)
+
+        self.assertEqual([star.name for star in gf.stars], ['Centauri', 'Bellatrix'])
+
+    def test_improved_star_names_leave_catalogue_system_names_alone(self):
+        gf = GameFactory()
+        gf.set_map_size(200, 200)
+        gf.stars = [
+            Star(name='NGC-127', x=10, y=10),
+            Star(name='LV-426', x=10, y=10),
+            Star(name='Centauri', x=20, y=20),
+        ]
+        with patch('dj4xol.factory.random.random', return_value=0.9):
+            gf._apply_improved_star_names(clusters=True)
+
+        self.assertEqual(gf.stars[0].name, 'NGC-127')
+        self.assertEqual(gf.stars[1].name, 'LV-426')
+        self.assertEqual(gf.stars[2].name, 'Centauri')
 
     def test_join_player_applies_starting_tech_level_to_research_rows(self):
         self.races[0].starting_tech_level = 3
