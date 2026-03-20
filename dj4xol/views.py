@@ -3284,13 +3284,6 @@ def _diplomacy_report_item_label(target_type, target, owner=None, viewer=None):
     if target_type == 'anomaly':
         return getattr(target, 'name', None) or 'Unknown Anomaly'
     if target_type == 'salvage':
-        if (
-            target is not None and
-            getattr(target, 'salvage_type', None) == Salvage.TYPE_ANCIENT_DEBRIS and
-            viewer is not None and
-            not bool(getattr(viewer, 'discovered_ancient_debris', False))
-        ):
-            return '???'
         return getattr(target, 'name', None) or 'Unknown Ancient Debris'
     return 'Unknown report'
 
@@ -3321,7 +3314,6 @@ def _diplomacy_report_choice_groups(report_owner, viewer=None):
         )
     ]
     anomaly_items = []
-    unexplained_salvage_items = []
     ancient_debris_items = []
     seen = {item['id'] for item in colony_items}
     reports = Report.objects.filter(
@@ -3355,32 +3347,16 @@ def _diplomacy_report_choice_groups(report_owner, viewer=None):
             salvage = _resolve_report_target(report_owner.game, 'salvage', report.target_id)
             if salvage is None:
                 continue
-            viewer_player = viewer or report_owner
-            salvage_is_masked = (
-                data.get('ancient_debris_unknown') or
-                (
-                    data.get('salvage_type') == 'ANCIENT_DEBRIS' and
-                    viewer_player is not None and
-                    not bool(getattr(viewer_player, 'discovered_ancient_debris', False))
-                )
-            )
-            if salvage_is_masked:
-                unexplained_salvage_items.append({
-                    'id': item_id,
-                    'label': _diplomacy_report_item_label('salvage', salvage, viewer=viewer_player),
-                })
-            elif data.get('salvage_type') == 'ANCIENT_DEBRIS':
+            if data.get('salvage_type') == 'ANCIENT_DEBRIS':
                 ancient_debris_items.append({
                     'id': item_id,
-                    'label': _diplomacy_report_item_label('salvage', salvage, viewer=viewer_player),
+                    'label': _diplomacy_report_item_label('salvage', salvage, viewer=viewer or report_owner),
                 })
             seen.add(item_id)
     if colony_items:
         groups.append({'label': 'Colonies', 'items': colony_items})
     if anomaly_items:
         groups.append({'label': 'Anomalies', 'items': anomaly_items})
-    if unexplained_salvage_items:
-        groups.append({'label': 'Unexplained Finds', 'items': unexplained_salvage_items})
     if ancient_debris_items:
         groups.append({'label': 'Ancient Debris', 'items': ancient_debris_items})
     return groups

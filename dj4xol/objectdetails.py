@@ -232,21 +232,9 @@ class DetailBuilder():
                      'star_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Star) else None,
                      'fleet_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Fleet) else None,
                      'salvage_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Salvage) else None,
-                     'salvage_type': (
-                         None
-                         if (
-                             isinstance(self.selected_obj, Salvage) and
-                             self._should_hide_live_ancient_debris(self.selected_obj)
-                         )
-                         else (self.selected_obj.salvage_type if isinstance(self.selected_obj, Salvage) else None)
-                     ),
+                     'salvage_type': self.selected_obj.salvage_type if isinstance(self.selected_obj, Salvage) else None,
                      'salvage_type_display': (
-                         '???'
-                         if (
-                             isinstance(self.selected_obj, Salvage) and
-                             self._should_hide_live_ancient_debris(self.selected_obj)
-                         )
-                         else self.selected_obj.get_salvage_type_display()
+                         self.selected_obj.get_salvage_type_display()
                          if isinstance(self.selected_obj, Salvage) else None
                      ),
                      'danger_level': (
@@ -346,13 +334,9 @@ class DetailBuilder():
             'star_short_id': obj.short_id if isinstance(obj, Star) else None,
             'fleet_short_id': obj.short_id if isinstance(obj, Fleet) else None,
             'salvage_short_id': obj.short_id if isinstance(obj, Salvage) else None,
-            'salvage_type': (
-                None if (isinstance(obj, Salvage) and self._should_hide_live_ancient_debris(obj))
-                else (obj.salvage_type if isinstance(obj, Salvage) else None)
-            ),
+            'salvage_type': obj.salvage_type if isinstance(obj, Salvage) else None,
             'salvage_type_display': (
-                '???' if (isinstance(obj, Salvage) and self._should_hide_live_ancient_debris(obj))
-                else (obj.get_salvage_type_display() if isinstance(obj, Salvage) else None)
+                obj.get_salvage_type_display() if isinstance(obj, Salvage) else None
             ),
             'danger_level': object_danger_level(obj) if isinstance(obj, (Salvage, Anomaly)) else None,
             'danger_level_display': (
@@ -965,24 +949,6 @@ class DetailBuilder():
     def _salvage_display_name(self, salvage):
         if salvage is None:
             return ""
-        if salvage.salvage_type == Salvage.TYPE_ANCIENT_DEBRIS and self.player:
-            if not self._player_knows_ancient_debris():
-                can_view, _ = self.can_view_object(salvage)
-                if not can_view:
-                    return "???"
-            can_view, _ = self.can_view_object(salvage)
-            if not can_view:
-                return "???"
-            if not getattr(self.game, 'no_scanners', False):
-                report = Report.objects.filter(
-                    player=self.player,
-                    target_type='salvage',
-                    target_id=salvage.id
-                ).first()
-                if report:
-                    data = report.get_report_data()
-                    if self._report_hides_ancient_debris_type(data):
-                        return "???"
         if salvage.name is None or len(salvage.name) == 0:
             return f"{salvage.__class__.__name__} {salvage.id}"
         return salvage.name
@@ -999,18 +965,8 @@ class DetailBuilder():
                 target_type == 'salvage' and
                 not getattr(self.game, 'no_scanners', False)
             ):
-                if data.get('ancient_debris_unknown') or data.get('report_tier') == 'basic':
+                if data.get('report_tier') == 'basic':
                     return format_basic_hidden_salvage_name(obj)
-        if (
-            target_type == 'salvage' and (
-                data.get('ancient_debris_unknown') or
-                (
-                    data.get('salvage_type') == Salvage.TYPE_ANCIENT_DEBRIS and
-                    not self._player_knows_ancient_debris()
-                )
-            )
-        ):
-            return format_basic_hidden_salvage_name(obj)
         return data.get('name') or obj.name or f"{obj.__class__.__name__} {obj.id}"
 
     def _get_cached_report_data(self, obj, target_type):
@@ -1032,27 +988,10 @@ class DetailBuilder():
     def _report_hides_ancient_debris_type(self, data):
         if getattr(self.game, 'no_scanners', False):
             return False
-        if bool(data.get('ancient_debris_unknown')):
-            return True
-        if (
-            data.get('salvage_type') == Salvage.TYPE_ANCIENT_DEBRIS and
-            not self._player_knows_ancient_debris()
-        ):
-            return True
         return (
             data.get('report_tier') == 'basic' and
             isinstance(self.selected_obj, Salvage) and
             getattr(self.selected_obj, 'salvage_type', None) == Salvage.TYPE_ANCIENT_DEBRIS
-        )
-
-    def _player_knows_ancient_debris(self):
-        return bool(self.player and getattr(self.player, 'discovered_ancient_debris', False))
-
-    def _should_hide_live_ancient_debris(self, salvage):
-        return (
-            isinstance(salvage, Salvage) and
-            getattr(salvage, 'salvage_type', None) == Salvage.TYPE_ANCIENT_DEBRIS and
-            not self._player_knows_ancient_debris()
         )
 
     def _salvage_type_display_from_code(self, salvage_type):
@@ -2320,12 +2259,6 @@ class DetailBuilder():
         """Build salvage mineral inventory data."""
         if not self.selected_obj or not isinstance(self.selected_obj, Salvage):
             return None
-        if self._should_hide_live_ancient_debris(self.selected_obj):
-            return {
-                'items': [],
-                'total': self.selected_obj.total_minerals,
-                'composition_unknown': True,
-            }
         items = []
         for key in ALL_RESOURCE_KEYS:
             amount = int(getattr(self.selected_obj, f'{key}_inventory', 0) or 0)
