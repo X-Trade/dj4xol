@@ -1251,6 +1251,8 @@ class DetailBuilder():
         factor *= float(
             raw_multiplier
         )
+        if factor > 0 and bool(getattr(self.player.race_type, 'is_mechanical', False)):
+            factor = 0
         current = self.selected_obj.colonists
         new_pop = apply_population_change(current, factor)
         if factor > 0 and population_growth_uses_surface_resources(self.player):

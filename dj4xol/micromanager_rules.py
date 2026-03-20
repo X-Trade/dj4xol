@@ -91,6 +91,8 @@ def _projected_population_growth_and_reserve(player, star, growth_cap=None):
     population = int(getattr(star, 'colonists', 0) or 0)
     if population <= 0 or not player or not getattr(player, 'race_type', None):
         return 0, {'ironium': 0, 'boranium': 0}
+    if bool(getattr(player.race_type, 'is_mechanical', False)):
+        return 0, {'ironium': 0, 'boranium': 0}
     factor = calculate_growth_factor(player, star)
     raw_multiplier = getattr(player.race_type, 'population_growth_multiplier', 1.0)
     if raw_multiplier is None:

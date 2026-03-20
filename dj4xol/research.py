@@ -359,6 +359,19 @@ def get_player_available_production_orders(player, star):
             'label': 'Build Fleet',
             'repeat_allowed': True,
         })
+    if bool(getattr(getattr(player, 'race_type', None), 'is_mechanical', False)):
+        orders.extend([
+            {
+                'value': 'BUILD_COLONISTS_1K',
+                'label': 'Produce 1k Colonists',
+                'repeat_allowed': True,
+            },
+            {
+                'value': 'BUILD_COLONISTS_1M',
+                'label': 'Produce 1m Colonists',
+                'repeat_allowed': True,
+            },
+        ])
     orders.extend([
         {
             'value': 'BUILD_MINE',

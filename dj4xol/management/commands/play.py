@@ -1209,6 +1209,8 @@ class Command(BaseCommand):
             "star_production_order_types": {
                 "BUILD_MINE": {"aliases": ["MINE"], "params": ["quantity", "repeat"]},
                 "BUILD_FACTORY": {"aliases": ["FACTORY"], "params": ["quantity", "repeat"]},
+                "BUILD_COLONISTS_1K": {"aliases": ["POP1K", "COLONISTS1K"], "params": ["quantity", "repeat"]},
+                "BUILD_COLONISTS_1M": {"aliases": ["POP1M", "COLONISTS1M"], "params": ["quantity", "repeat"]},
                 "BUILD_LAB": {"aliases": ["LAB"], "params": ["quantity", "repeat"]},
                 "BUILD_DEFENSE": {"aliases": ["DEFENSE"], "params": ["quantity", "repeat"]},
                 "BUILD_SHIPYARD": {"aliases": ["SHIPYARD"], "params": ["quantity", "repeat"]},
@@ -1237,6 +1239,10 @@ class Command(BaseCommand):
         aliases = {
             "MINE": "BUILD_MINE",
             "FACTORY": "BUILD_FACTORY",
+            "POP1K": "BUILD_COLONISTS_1K",
+            "COLONISTS1K": "BUILD_COLONISTS_1K",
+            "POP1M": "BUILD_COLONISTS_1M",
+            "COLONISTS1M": "BUILD_COLONISTS_1M",
             "LAB": "BUILD_LAB",
             "DEFENSE": "BUILD_DEFENSE",
             "SHIPYARD": "BUILD_SHIPYARD",
