@@ -2043,6 +2043,8 @@ class Spectator(models.Model):
 PRODUCTION_COSTS = {
     'BUILD_MINE': {'bp': 0, 'ironium': 10, 'boranium': 0, 'germanium': 0, 'colonists': 1000},
     'BUILD_FACTORY': {'bp': 0, 'ironium': 20, 'boranium': 0, 'germanium': 0, 'colonists': 1000},
+    'BUILD_COLONISTS_1K': {'bp': 0, 'ironium': 1, 'boranium': 0, 'germanium': 0, 'colonists': 1000},
+    'BUILD_COLONISTS_1M': {'bp': 0, 'ironium': 250000, 'boranium': 100000, 'germanium': 100000, 'colonists': 10000},
     'BUILD_LAB': {'bp': 20, 'ironium': 50, 'boranium': 20, 'germanium': 20, 'colonists': 0},
     'BUILD_DEFENSE': {'bp': 50, 'ironium': 100, 'boranium': 50, 'germanium': 50, 'colonists': 0},
     'BUILD_SHIPYARD': {'bp': 100, 'ironium': 250, 'boranium': 50, 'germanium': 100,
@@ -2067,6 +2069,8 @@ class ProductionOrder(AbstractGameObject):
         ('BUILD_FLEET', 'Build Fleet'),
         ('BUILD_MINE', 'Build Mine'),
         ('BUILD_FACTORY', 'Build Factory'),
+        ('BUILD_COLONISTS_1K', 'Produce 1k Colonists'),
+        ('BUILD_COLONISTS_1M', 'Produce 1m Colonists'),
         ('BUILD_LAB', 'Build Lab'),
         ('BUILD_DEFENSE', 'Build Defense'),
         ('BUILD_SHIPYARD', 'Build Shipyard'),

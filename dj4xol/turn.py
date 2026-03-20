@@ -6438,6 +6438,8 @@ class GameTurn():
             factor *= float(
                 raw_multiplier
             )
+            if factor > 0 and bool(getattr(player.race_type, 'is_mechanical', False)):
+                factor = 0.0
             star.colonists = apply_population_change(star.colonists, factor)
             if (
                 factor > 0 and
@@ -6848,6 +6850,10 @@ class GameTurn():
         elif order_type == 'BUILD_FACTORY':
             self._build_factory(star)
             production_counts['factory'] += 1
+        elif order_type == 'BUILD_COLONISTS_1K':
+            self._build_colonists(star, 1000)
+        elif order_type == 'BUILD_COLONISTS_1M':
+            self._build_colonists(star, 1000000)
         elif order_type == 'BUILD_LAB':
             self._build_lab(star)
             production_counts['lab'] += 1
@@ -6932,6 +6938,10 @@ class GameTurn():
     def _build_factory(self, star):
         """Build a factory at the given star."""
         star.factories += 1
+
+    def _build_colonists(self, star, amount):
+        """Add produced colonists to a mechanical colony."""
+        star.colonists = int(star.colonists or 0) + int(amount or 0)
 
     def _build_lab(self, star):
         """Build a lab at the given star."""

@@ -31,7 +31,12 @@ from ..colony_rules import (
 )
 from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, Report, ServerRaceType, DiplomaticContract
 from ..factory import GameFactory
-from ..research import ensure_player_research_rows, get_global_research_max_level, get_player_production_costs
+from ..research import (
+    ensure_player_research_rows,
+    get_global_research_max_level,
+    get_player_available_production_orders,
+    get_player_production_costs,
+)
 from ..chance_rules import transfer_raid_success_chance
 from ..hazard_rules import DANGER_HIGH, DANGER_LOW, DANGER_MEDIUM, DANGER_NONE
 from ..messages import format_map_object
@@ -534,6 +539,87 @@ class TestPopulationGrowth(TestCase):
 
         self.assertEqual(homeworld.colonists, 16000)
         self.assertEqual(homeworld.ironium_inventory, 0)
+
+    def test_mechanical_race_has_no_positive_natural_growth(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        player.race_type.is_mechanical = True
+        player.race_type.save(update_fields=['is_mechanical'])
+
+        homeworld.gravity = player.gravity_center
+        homeworld.temperature = player.temperature_center
+        homeworld.radiation = player.radiation_center
+        homeworld.colonists = 50000
+        homeworld.save()
+
+        GameTurn(game).population_growth()
+        homeworld.refresh_from_db()
+
+        self.assertEqual(homeworld.colonists, 50000)
+
+    def test_mechanical_population_orders_are_available_only_to_mechanical_races(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+
+        normal_orders = {
+            entry['value']
+            for entry in get_player_available_production_orders(player, homeworld)
+        }
+        self.assertNotIn('BUILD_COLONISTS_1K', normal_orders)
+        self.assertNotIn('BUILD_COLONISTS_1M', normal_orders)
+
+        player.race_type.is_mechanical = True
+        player.race_type.save(update_fields=['is_mechanical'])
+
+        mechanical_orders = {
+            entry['value']
+            for entry in get_player_available_production_orders(player, homeworld)
+        }
+        self.assertIn('BUILD_COLONISTS_1K', mechanical_orders)
+        self.assertIn('BUILD_COLONISTS_1M', mechanical_orders)
+
+    def test_mechanical_population_orders_build_colonists(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        player.race_type.is_mechanical = True
+        player.race_type.save(update_fields=['is_mechanical'])
+
+        homeworld.mines = 0
+        homeworld.factories = 0
+        homeworld.labs = 0
+        homeworld.defenses = 0
+        homeworld.shipyards = 0
+        homeworld.colonists = 50000
+        homeworld.ironium_inventory = 250001
+        homeworld.boranium_inventory = 100000
+        homeworld.germanium_inventory = 100000
+        homeworld.save()
+
+        ProductionOrder.objects.create(
+            game=game,
+            star=homeworld,
+            order_type='BUILD_COLONISTS_1K',
+            quantity=1,
+            position=1,
+        )
+        ProductionOrder.objects.create(
+            game=game,
+            star=homeworld,
+            order_type='BUILD_COLONISTS_1M',
+            quantity=1,
+            position=2,
+        )
+
+        GameTurn(game).production()
+        homeworld.refresh_from_db()
+
+        self.assertEqual(homeworld.colonists, 1051000)
+        self.assertEqual(homeworld.ironium_inventory, 0)
+        self.assertEqual(homeworld.boranium_inventory, 0)
+        self.assertEqual(homeworld.germanium_inventory, 0)
 
     def test_population_growth_multiplier_can_suppress_decline(self):
         game = default_game(stars=5)
