@@ -612,7 +612,7 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertEqual(planned, [])
 
-    def test_micromanager_preserves_growth_resources_for_overemployed_mechanical_colony(self):
+    def test_micromanager_can_spend_growth_resources_for_overemployed_mechanical_colony(self):
         self._create_administration_tech(2, 2)
         self.star.has_administration = True
         self.star.colonists = 60_000
@@ -646,7 +646,7 @@ class AdministrationAutomationTest(TestCase):
             cost_map=get_player_production_costs(self.player),
         )
 
-        self.assertEqual(planned, [])
+        self.assertIn('BUILD_FACTORY', planned)
 
     def test_micromanager_can_spend_surplus_after_growth_reserve(self):
         self._create_administration_tech(2, 2)

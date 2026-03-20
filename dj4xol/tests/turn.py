@@ -31,7 +31,7 @@ from ..colony_rules import (
 )
 from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, Report, ServerRaceType, DiplomaticContract
 from ..factory import GameFactory
-from ..research import ensure_player_research_rows, get_global_research_max_level
+from ..research import ensure_player_research_rows, get_global_research_max_level, get_player_production_costs
 from ..chance_rules import transfer_raid_success_chance
 from ..hazard_rules import DANGER_HIGH, DANGER_LOW, DANGER_MEDIUM, DANGER_NONE
 from ..messages import format_map_object
@@ -485,6 +485,55 @@ class TestPopulationGrowth(TestCase):
         self.assertEqual(homeworld.colonists, 50000 + baseline_growth)
         self.assertEqual(homeworld.ironium_inventory, 0)
         self.assertEqual(homeworld.boranium_inventory, 0)
+
+    def test_growth_resource_trait_uses_remaining_surface_resources_after_production(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        player.race_type.population_growth_uses_resources = True
+        player.race_type.save(update_fields=['population_growth_uses_resources'])
+
+        homeworld.gravity = player.gravity_center
+        homeworld.temperature = player.temperature_center
+        homeworld.radiation = player.radiation_center
+        homeworld.colonists = 15000
+        homeworld.mines = 0
+        homeworld.factories = 0
+        homeworld.labs = 0
+        homeworld.defenses = 0
+        homeworld.shipyards = 0
+
+        costs = get_player_production_costs(player).get('BUILD_FACTORY', {})
+        factory_ironium_cost = int(costs.get('ironium', 0) or 0)
+        self.assertGreater(factory_ironium_cost, 0)
+
+        factor = calculate_growth_factor(player, homeworld)
+        baseline_growth = apply_population_change(homeworld.colonists, factor) - homeworld.colonists
+        self.assertGreater(baseline_growth, 1000)
+
+        homeworld.ironium_inventory = factory_ironium_cost + 1
+        homeworld.boranium_inventory = int(costs.get('boranium', 0) or 0) + 5000
+        homeworld.germanium_inventory = int(costs.get('germanium', 0) or 0) + 5000
+        homeworld.save()
+
+        ProductionOrder.objects.create(
+            game=game,
+            star=homeworld,
+            order_type='BUILD_FACTORY',
+            quantity=1,
+        )
+
+        turn = GameTurn(game)
+        turn.production()
+        homeworld.refresh_from_db()
+        self.assertEqual(homeworld.factories, 1)
+        self.assertEqual(homeworld.ironium_inventory, 1)
+
+        turn.population_growth()
+        homeworld.refresh_from_db()
+
+        self.assertEqual(homeworld.colonists, 16000)
+        self.assertEqual(homeworld.ironium_inventory, 0)
 
     def test_population_growth_multiplier_can_suppress_decline(self):
         game = default_game(stars=5)
