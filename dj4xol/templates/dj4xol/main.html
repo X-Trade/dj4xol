@@ -493,8 +493,16 @@
             var destinationFlowKey = (
                 'mobileDestinationFlow:' + window.location.pathname
             );
+            var starmapPanelStateKey = (
+                'starmap:' + window.location.pathname + ':panel:starmap'
+            );
+            var urlParams = new URLSearchParams(window.location.search);
+            var hasLocateRequest = urlParams.get('locate') === '1';
             var destinationFlow = localStorage.getItem(destinationFlowKey);
             var hasDestinationBanner = !!document.querySelector('.dest-mode-banner');
+            var starmapPanel = document.querySelector(
+                '.game-map-slot .panel[data-panel="starmap"]'
+            ) || document.querySelector('.panel[data-panel="starmap"]');
             var ordersPanel = document.querySelector('.orders-section');
             var detailPanel = document.querySelector('.detail-section');
             var destinationCancel = document.querySelector('.dest-cancel');
@@ -514,6 +522,17 @@
                 });
             }
 
+            function scrollToStarmapPanel() {
+                if (!starmapPanel) {
+                    window.scrollTo(0, 0);
+                    return;
+                }
+                starmapPanel.scrollIntoView({
+                    block: 'start',
+                    behavior: 'auto',
+                });
+            }
+
             var savedScroll = localStorage.getItem(storageKey);
             if (hasDestinationBanner) {
                 requestAnimationFrame(function() {
@@ -525,6 +544,12 @@
             } else if (destinationFlow === 'to_orders') {
                 requestAnimationFrame(function() {
                     scrollToOrdersPanel();
+                    clearDestinationFlow();
+                });
+            } else if (hasLocateRequest) {
+                localStorage.setItem(starmapPanelStateKey, 'true');
+                requestAnimationFrame(function() {
+                    scrollToStarmapPanel();
                     clearDestinationFlow();
                 });
             } else if (savedScroll) {

@@ -2878,6 +2878,23 @@ class TestFleetOrderViews(TestCase):
             html=False,
         )
 
+    def test_mobile_locate_links_bias_one_column_game_view_to_starmap(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': player.homeworld.x, 'y': player.homeworld.y, 'sel': player.homeworld.short_id, 'locate': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "var hasLocateRequest = urlParams.get('locate') === '1';", html=False)
+        self.assertContains(response, "localStorage.setItem(starmapPanelStateKey, 'true');", html=False)
+        self.assertContains(response, 'function scrollToStarmapPanel()', html=False)
+
     def test_staff_game_view_hides_reset_ui_button_but_keeps_helpers(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
