@@ -2813,7 +2813,7 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'Mineral composition unknown.')
         self.assertNotContains(response, 'Ironium')
 
-    def test_advanced_ancient_debris_report_stays_masked_until_player_has_discovered_it(self):
+    def test_advanced_ancient_debris_report_shows_real_type(self):
         salvage = Salvage.objects.create(
             game=self.game,
             x=self.star.x + 1,
@@ -2822,8 +2822,6 @@ class TestDetailPanelReportTiers(TestCase):
             ironium_inventory=13,
             boranium_inventory=7,
         )
-        self.player.discovered_ancient_debris = False
-        self.player.save(update_fields=['discovered_ancient_debris'])
         Report.objects.create(
             game=self.game,
             player=self.player,
@@ -2831,20 +2829,21 @@ class TestDetailPanelReportTiers(TestCase):
             target_type='salvage',
             target_id=salvage.id,
             cached_report=json.dumps({
-                'name': '???',
+                'name': salvage.name,
                 'x': salvage.x,
                 'y': salvage.y,
-                'salvage_type': None,
+                'salvage_type': Salvage.TYPE_ANCIENT_DEBRIS,
                 'danger_level': 'HIGH',
+                'ironium_inventory': 13,
+                'boranium_inventory': 7,
                 'total_minerals': salvage.total_minerals,
                 'report_tier': 'advanced',
-                'ancient_debris_unknown': True,
             }),
         )
         response = self._get_detail_response(salvage)
-        self.assertContains(response, '???')
-        self.assertNotContains(response, 'Ancient Debris')
-        self.assertContains(response, 'Mineral composition unknown.')
+        self.assertContains(response, 'Ancient Debris')
+        self.assertContains(response, 'Ironium')
+        self.assertContains(response, 'Boranium')
 
 
 class TestFleetOrderViews(TestCase):
@@ -4394,7 +4393,7 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(shared_data.get('report_tier'), 'ownership')
         self.assertEqual(shared_data.get('player_name'), other_player.name)
 
-    def test_diplomacy_shared_ancient_debris_report_stays_masked_for_receiver(self):
+    def test_diplomacy_shared_ancient_debris_report_keeps_real_type_for_receiver(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
         race_type = get_default_race_type()
@@ -4415,10 +4414,6 @@ class TestDiplomacyView(TestCase):
             ironium_inventory=11,
             resource_x_inventory=4,
         )
-        player.discovered_ancient_debris = True
-        player.save(update_fields=['discovered_ancient_debris'])
-        other_player.discovered_ancient_debris = False
-        other_player.save(update_fields=['discovered_ancient_debris'])
         Report.objects.create(
             game=game,
             player=player,
@@ -4435,7 +4430,6 @@ class TestDiplomacyView(TestCase):
                 'resource_x_inventory': 4,
                 'total_minerals': salvage.total_minerals,
                 'report_tier': 'encounter',
-                'ancient_debris_unknown': False,
             }),
         )
 
@@ -4465,10 +4459,9 @@ class TestDiplomacyView(TestCase):
         shared_report = Report.objects.get(player=other_player, target_type='salvage', target_id=salvage.id)
         shared_data = shared_report.get_report_data()
         self.assertEqual(shared_data.get('report_tier'), 'encounter')
-        self.assertIsNone(shared_data.get('salvage_type'))
-        self.assertTrue(shared_data.get('ancient_debris_unknown'))
-        self.assertNotIn('ironium_inventory', shared_data)
-        self.assertNotIn('resource_x_inventory', shared_data)
+        self.assertEqual(shared_data.get('salvage_type'), Salvage.TYPE_ANCIENT_DEBRIS)
+        self.assertEqual(shared_data.get('ironium_inventory'), 11)
+        self.assertEqual(shared_data.get('resource_x_inventory'), 4)
 
     def test_diplomacy_report_choices_only_include_directional_colonies_and_advanced_intel(self):
         game = default_game(stars=5, fleets=0)
@@ -4728,9 +4721,8 @@ class TestDiplomacyView(TestCase):
         self.assertContains(response, player_recent_colony.name)
         self.assertContains(response, '%s (their home)' % other_colony.name)
         self.assertContains(response, anomaly.name)
-        self.assertContains(response, 'Unexplained Finds')
-        self.assertContains(response, '>???<', html=False)
-        self.assertNotContains(response, ancient.name)
+        self.assertContains(response, 'Ancient Debris')
+        self.assertContains(response, ancient.name)
         self.assertContains(response, 'value="star:%s"' % player_colony.id)
         self.assertContains(response, 'value="star:%s"' % player_recent_colony.id)
         self.assertContains(response, 'value="star:%s"' % other_colony.id)
@@ -4738,7 +4730,6 @@ class TestDiplomacyView(TestCase):
         self.assertNotContains(response, wreck.name)
         self.assertNotContains(response, 'Shallow Echo')
         self.assertNotContains(response, 'Unknown Anomaly')
-        self.assertNotContains(response, 'Unknown Ancient Debris')
         self.assertNotContains(response, 'colony %s' % player_colony.name)
         self.assertNotContains(response, 'anomaly %s' % anomaly.name)
         self.assertNotContains(response, 'ancient debris %s' % ancient.name)

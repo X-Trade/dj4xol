@@ -1647,37 +1647,13 @@ class ScannerReportTest(TestCase):
             target_id=anomaly.id,
         )
         self.assertEqual(salvage_report.get_report_data().get('report_tier'), 'advanced')
-        self.assertIsNone(salvage_report.get_report_data().get('salvage_type'))
-        self.assertTrue(salvage_report.get_report_data().get('ancient_debris_unknown'))
-        self.assertEqual(salvage_report.get_report_data().get('danger_level'), 'HIGH')
-        self.assertEqual(anomaly_report.get_report_data().get('report_tier'), 'advanced')
-        self.assertIn(anomaly_report.get_report_data().get('danger_level'), ('LOW', 'MEDIUM', 'HIGH'))
-
-    def test_advanced_scanner_reports_known_ancient_debris_with_real_type(self):
-        fleet = self._create_scanner_fleet(basic=6, advanced=6, x=20, y=20)
-        salvage = Salvage.objects.create(
-            game=self.game,
-            x=fleet.x + 2,
-            y=fleet.y,
-            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
-            danger_level='HIGH',
-            ironium_inventory=10,
-        )
-        self.player1.discovered_ancient_debris = True
-        self.player1.save(update_fields=['discovered_ancient_debris'])
-
-        GameTurn(self.game).generate_scanner_reports()
-        salvage_report = Report.objects.get(
-            game=self.game,
-            player=self.player1,
-            target_type='salvage',
-            target_id=salvage.id,
-        )
         self.assertEqual(
             salvage_report.get_report_data().get('salvage_type'),
             Salvage.TYPE_ANCIENT_DEBRIS,
         )
-        self.assertFalse(salvage_report.get_report_data().get('ancient_debris_unknown'))
+        self.assertEqual(salvage_report.get_report_data().get('danger_level'), 'HIGH')
+        self.assertEqual(anomaly_report.get_report_data().get('report_tier'), 'advanced')
+        self.assertIn(anomaly_report.get_report_data().get('danger_level'), ('LOW', 'MEDIUM', 'HIGH'))
 
     def test_basic_scanner_reports_ancient_debris_total_without_type_and_anomaly_type(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=0, x=20, y=20)

@@ -7904,44 +7904,6 @@ class TestSecretResourceSalvageDiscovery(TestCase):
             ).exists()
         )
 
-    def test_visit_discovers_ancient_debris_for_future_scans(self):
-        from ..models import Fleet
-
-        game = default_game(stars=5, fleets=0)
-        player = game.players.first()
-        player.discovered_ancient_debris = False
-        player.save(update_fields=['discovered_ancient_debris'])
-        salvage = Salvage.objects.create(
-            game=game,
-            x=14,
-            y=14,
-            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
-            ironium_inventory=8,
-        )
-        fleet = Fleet.objects.create(
-            game=game,
-            player=player,
-            name='Explorer',
-            x=14,
-            y=14,
-            basic_scanner_range=0,
-            advanced_scanner_range=0,
-        )
-
-        GameTurn(game)._generate_reports_for_fleet(fleet)
-
-        player.refresh_from_db()
-        self.assertTrue(player.discovered_ancient_debris)
-        report = Report.objects.get(
-            game=game,
-            player=player,
-            target_type='salvage',
-            target_id=salvage.id,
-        )
-        self.assertEqual(
-            report.get_report_data().get('salvage_type'),
-            Salvage.TYPE_ANCIENT_DEBRIS,
-        )
 
 
 class TestFleetOrderExecution(TestCase):

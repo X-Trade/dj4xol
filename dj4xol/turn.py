@@ -1038,7 +1038,6 @@ class GameTurn():
                     message_priority=False,
                 )
             elif salvage_type == Salvage.TYPE_ANCIENT_DEBRIS:
-                self._mark_ancient_debris_discovered(fleet.player)
                 templates = [
                     "Unknown forces within {salvage} inflicted {damage}% integrity damage on {fleet}.",
                     "Automated defences in {salvage} struck {fleet}, causing {damage}% integrity damage.",
@@ -1931,8 +1930,6 @@ class GameTurn():
 
         # Report on all salvage at this location
         for salvage in Salvage.objects.filter(game=self.game, x=x, y=y):
-            if getattr(salvage, 'salvage_type', None) == Salvage.TYPE_ANCIENT_DEBRIS:
-                self._mark_ancient_debris_discovered(player)
             self._create_or_update_report(player, 'salvage', salvage, year, report_tier=report_tier)
 
         for anomaly in Anomaly.objects.filter(game=self.game, x=x, y=y):
@@ -2016,11 +2013,6 @@ class GameTurn():
             new_unknown = list((report_data or {}).get('unknown_secret_resources') or [])
             if new_unknown and any(key not in old_unknown for key in new_unknown):
                 self._send_unexplained_scan_contact_message(player, obj, 'star')
-        elif target_type == 'salvage':
-            old_unknown = bool((existing_data or {}).get('ancient_debris_unknown'))
-            new_unknown = bool((report_data or {}).get('ancient_debris_unknown'))
-            if new_unknown and not old_unknown:
-                self._send_unexplained_scan_contact_message(player, obj, 'salvage')
 
         owner_now_known = bool(report_data.get('player_name'))
         if (
@@ -2134,16 +2126,6 @@ class GameTurn():
             if int(getattr(star, f'{key}_yield', 0) or 0) > 0 or int(getattr(star, f'{key}_inventory', 0) or 0) > 0:
                 self._mark_secret_resource_discovered(player, key, star=star, fleet=fleet)
 
-    def _player_knows_ancient_debris(self, player):
-        return bool(player and getattr(player, 'discovered_ancient_debris', False))
-
-    def _mark_ancient_debris_discovered(self, player):
-        if not player or self._player_knows_ancient_debris(player):
-            return False
-        player.discovered_ancient_debris = True
-        player.save(update_fields=['discovered_ancient_debris'])
-        return True
-
     def _unknown_secret_resource_keys_for_star(self, player, star):
         if not player or not star:
             return []
@@ -2165,9 +2147,6 @@ class GameTurn():
         if target_type == 'star':
             subject = 'traces of an unexplained material'
             target_label = None
-        elif target_type == 'salvage':
-            subject = 'an inexplicable debris signature'
-            target_label = format_location(x=obj.x, y=obj.y, game=self.game)
         else:
             return
         factory = UnexplainedScanContactMessageFactory(
@@ -2349,21 +2328,14 @@ class GameTurn():
                 })
             return data
         elif target_type == 'salvage':
-            ancient_debris_unknown = (
-                getattr(obj, 'salvage_type', None) == 'ANCIENT_DEBRIS' and
-                not self._player_knows_ancient_debris(player)
-            )
             if report_tier == 'ownership':
                 data = {
                     'name': obj.name,
                     'x': obj.x,
                     'y': obj.y,
-                    'salvage_type': (
-                        None if ancient_debris_unknown else obj.salvage_type
-                    ),
+                    'salvage_type': obj.salvage_type,
                     'total_minerals': obj.total_minerals,
                     'report_tier': report_tier,
-                    'ancient_debris_unknown': ancient_debris_unknown,
                 }
                 return data
             if report_tier == 'basic' and not getattr(self.game, 'no_scanners', False):
@@ -2377,20 +2349,8 @@ class GameTurn():
                     'salvage_type': salvage_type,
                     'total_minerals': obj.total_minerals,
                     'report_tier': report_tier,
-                    'ancient_debris_unknown': bool(getattr(obj, 'salvage_type', None) == 'ANCIENT_DEBRIS'),
                 }
                 return data
-            if ancient_debris_unknown:
-                return {
-                    'name': format_basic_hidden_salvage_name(obj),
-                    'x': obj.x,
-                    'y': obj.y,
-                    'salvage_type': None,
-                    'danger_level': salvage_danger_level(obj),
-                    'total_minerals': obj.total_minerals,
-                    'report_tier': report_tier,
-                    'ancient_debris_unknown': True,
-                }
             return {
                 'name': obj.name,
                 'x': obj.x,
@@ -2405,7 +2365,6 @@ class GameTurn():
                 'resource_z_inventory': obj.resource_z_inventory,
                 'total_minerals': obj.total_minerals,
                 'report_tier': report_tier,
-                'ancient_debris_unknown': False,
             }
         elif target_type == 'anomaly':
             if report_tier in ('ownership', 'basic'):
@@ -5121,8 +5080,6 @@ class GameTurn():
             transfers = {key: int(val) for key, val in transfers.items()}
 
         # Execute the transfer
-        if getattr(salvage, 'salvage_type', None) == 'ANCIENT_DEBRIS':
-            self._mark_ancient_debris_discovered(fleet.player)
         for key in ALL_RESOURCE_KEYS:
             setattr(
                 salvage,
