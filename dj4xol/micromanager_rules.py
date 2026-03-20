@@ -353,7 +353,6 @@ def _planning_limit_for_star(player, star, limit):
 def _one_year_planning_budget(player, star, queue_requirements=None):
     """Return remaining one-year BP/mineral budget after queued work."""
     queue_requirements = queue_requirements or empty_queue_requirements()
-    growth_reserve = _population_growth_resource_reserve(player, star)
     mining_output = projected_mining_output(star)
     budget = {
         'bp': max(
@@ -368,8 +367,6 @@ def _one_year_planning_budget(player, star, queue_requirements=None):
             int(mining_output.get(key, 0) or 0) -
             int(queue_requirements.get(key, 0) or 0)
         )
-        if key in growth_reserve:
-            available -= int(growth_reserve.get(key, 0) or 0)
         budget[key] = max(0, available)
     return budget
 
@@ -419,36 +416,12 @@ def _has_resource_surplus_for_order(player, star, cost_map, order_type, reserve_
     )
     if bp_needed > calculate_available_buildpoints(star):
         return False
-    growth_reserve = _population_growth_resource_reserve(player, star)
     for key in ALL_RESOURCE_KEYS:
         demand = (
             int(getattr(star, 'queue_%s' % key, 0) or 0) +
             max(0, int(cost.get(key, 0) or 0)) * int(reserve_factor or 0)
         )
-        if key in growth_reserve:
-            demand += int(growth_reserve.get(key, 0) or 0)
         if demand > int(getattr(star, '%s_inventory' % key, 0) or 0):
-            return False
-    return True
-
-
-def _preserves_population_growth_reserve(player, star, cost_map, order_type):
-    """Return True when adding this order won't spend into growth reserves."""
-    if not cost_map:
-        return True
-    growth_reserve = _population_growth_resource_reserve(player, star)
-    if not any(int(value or 0) > 0 for value in growth_reserve.values()):
-        return True
-    cost = cost_map.get(order_type, {})
-    for key in ('ironium', 'boranium'):
-        reserve = int(growth_reserve.get(key, 0) or 0)
-        if reserve <= 0:
-            continue
-        inventory = int(getattr(star, '%s_inventory' % key, 0) or 0)
-        queue_demand = int(getattr(star, 'queue_%s' % key, 0) or 0)
-        added_cost = max(0, int(cost.get(key, 0) or 0))
-        remaining_after_spend = inventory - min(inventory, queue_demand + added_cost)
-        if remaining_after_spend < reserve:
             return False
     return True
 
@@ -500,13 +473,6 @@ def get_micromanager_candidate_orders(
     candidates = []
 
     def append_candidate(order_type):
-        if not _preserves_population_growth_reserve(
-            player,
-            star,
-            cost_map,
-            order_type,
-        ):
-            return
         candidates.append(order_type)
     current_mines = int(getattr(star, 'mines', 0) or 0)
     current_factories = int(getattr(star, 'factories', 0) or 0)
