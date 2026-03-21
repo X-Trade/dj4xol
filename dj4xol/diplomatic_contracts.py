@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.utils.html import escape
 
 from .models import DiplomaticContract, GameMessage, PlayerDiplomaticStance, PlayerTechnologyGrant, Report
+from .map_object_rules import build_map_href
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
 
 
@@ -203,7 +204,8 @@ def format_contract_clause(contract, prefix, viewer=None, include_links=True):
         label = escape(getattr(fleet, 'name', 'Unknown Fleet'))
         if include_links:
             base = reverse('dj4xol:game', args=[contract.game.short_id])
-            return '<a href="%s?sel=%s">%s</a>' % (base, fleet.short_id, label)
+            href = build_map_href(base, fleet.x, fleet.y, short_id=fleet.short_id, locate=True)
+            return '<a href="%s">%s</a>' % (href, label)
         return label
     if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
         star = getattr(contract, '%s_star' % prefix)
@@ -212,7 +214,8 @@ def format_contract_clause(contract, prefix, viewer=None, include_links=True):
         label = escape(getattr(star, 'name', 'Unknown Colony'))
         if include_links:
             base = reverse('dj4xol:game', args=[contract.game.short_id])
-            return 'colony <a href="%s?sel=%s">%s</a>' % (base, star.short_id, label)
+            href = build_map_href(base, star.x, star.y, short_id=star.short_id, locate=True)
+            return 'colony <a href="%s">%s</a>' % (href, label)
         return 'colony %s' % label
     if clause_type == DiplomaticContract.CLAUSE_REPORT:
         label = format_report_trade_label(

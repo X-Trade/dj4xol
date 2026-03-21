@@ -8039,6 +8039,37 @@ class TestSecretResourceSalvageDiscovery(TestCase):
             ).exists()
         )
 
+    def test_basic_scan_does_not_warn_about_unknown_resource(self):
+        game = default_game(stars=6, fleets=0)
+        player = game.players.first()
+        scanner_star = player.homeworld
+        target_star = game.stars.exclude(id=scanner_star.id).first()
+        target_star.x = scanner_star.x + 2
+        target_star.y = scanner_star.y
+        target_star.resource_x_yield = 15
+        target_star.save(update_fields=['x', 'y', 'resource_x_yield'])
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Basic Scanner',
+            x=scanner_star.x,
+            y=scanner_star.y,
+            basic_scanner_range=5,
+            advanced_scanner_range=0,
+        )
+        player.discovered_resource_x = False
+        player.save(update_fields=['discovered_resource_x'])
+
+        GameTurn(game).generate_scanner_reports()
+
+        player.refresh_from_db()
+        self.assertFalse(player.discovered_resource_x)
+        self.assertFalse(
+            player.messages.filter(priority=True, message__icontains='dispatch a fleet').filter(
+                message__icontains=target_star.name,
+            ).exists()
+        )
+
 
 
 class TestFleetOrderExecution(TestCase):
