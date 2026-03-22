@@ -28,6 +28,7 @@ from .messages import (
     ProductionOrdersCompletedMessageFactory,
     FleetWarpDamageMessageFactory,
     FleetBussardRecoveryMessageFactory,
+    FleetWormholeFuelFailureMessageFactory,
     FleetWarpDestroyedMessageFactory,
     FleetWormholeDestroyedMessageFactory,
     FleetMergedMessageFactory,
@@ -3375,6 +3376,10 @@ class GameTurn():
         if distance > 0:
             if warp_speed == WORMHOLE_WARPFACTOR and bool(fleet.has_wormhole_drive):
                 if not self._consume_wormhole_jump_fuel(fleet, distance):
+                    self._create_wormhole_fuel_failure_message(
+                        fleet,
+                        self._wormhole_jump_fuel_cost(fleet, distance),
+                    )
                     return False
             else:
                 if warp_speed == WORMHOLE_WARPFACTOR:
@@ -3641,6 +3646,20 @@ class GameTurn():
     def _create_bussard_recovery_message(self, fleet, fuel_gain, warp, requested_warp):
         factory = FleetBussardRecoveryMessageFactory(
             self.game, fleet.player, fleet, fuel_gain, warp, requested_warp
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+    def _create_wormhole_fuel_failure_message(self, fleet, required_fuel):
+        if fleet.player is None:
+            return
+        factory = FleetWormholeFuelFailureMessageFactory(
+            self.game,
+            fleet.player,
+            fleet,
+            getattr(fleet, 'fuel', 0.0),
+            required_fuel,
         )
         msg = factory.new_message()
         msg.year = self.game.year
