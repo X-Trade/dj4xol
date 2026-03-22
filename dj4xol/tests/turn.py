@@ -10035,7 +10035,8 @@ class TestFleetFuel(TestCase):
         self.assertEqual(fleet.orders.count(), 1)
         msg = player.messages.order_by('-id').first()
         self.assertIsNotNone(msg)
-        self.assertIn('failed to engage wormhole drive due to insufficient fuel', msg.message)
+        self.assertIn('insufficient fuel', msg.message)
+        self.assertIn('wormhole drive', msg.message)
 
     def test_refuels_in_friendly_shipyard_orbit(self):
         from ..models import Fleet

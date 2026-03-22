@@ -287,7 +287,7 @@ class TestMessageFiltering(TestCase):
         client = Client()
         client.force_login(user)
 
-        response = client.get(reverse('dj4xol:game', args=[game.short_id]))
+        response = client.get(reverse('dj4xol:game', args=[game.short_id]), {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id})
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'data-current-fuel="12.5"', html=False)
