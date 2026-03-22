@@ -1346,6 +1346,16 @@ input[type="range"]::-webkit-slider-thumb {
     background: #99ccff;
 }
 
+@media (hover: none), (pointer: coarse) {
+    .starmap-controls button:hover {
+        background: #9999cc;
+    }
+
+    .starmap-controls button.active:hover {
+        background: #99ccff;
+    }
+}
+
 /* ============================================
    LCARS Theme Selector
    ============================================ */

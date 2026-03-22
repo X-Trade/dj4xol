@@ -137,6 +137,8 @@ class TestMessageFiltering(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'dj4xol/js/page_ui_state.js')
+        self.assertContains(response, 'dj4xol/js/turn_submit.js')
+        self.assertContains(response, 'data-turn-submit-form="1"', html=False)
         self.assertNotContains(response, 'onchange="this.form.submit()"')
 
     def test_messages_filtered_by_messages_seen_year(self):
@@ -3634,6 +3636,8 @@ class TestDiplomacyView(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'dj4xol/js/page_ui_state.js')
+        self.assertContains(response, 'dj4xol/js/turn_submit.js')
+        self.assertContains(response, 'data-turn-submit-form="1"', html=False)
         self.assertContains(response, "panel.classList.toggle('open');", html=False)
         self.assertContains(response, "lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3", html=False)
 

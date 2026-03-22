@@ -29,6 +29,8 @@ class ResearchViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Research Budget')
         self.assertContains(response, 'Allocations')
+        self.assertContains(response, 'dj4xol/js/turn_submit.js')
+        self.assertContains(response, 'data-turn-submit-form="1"', html=False)
 
     def test_research_allocation_normalises_without_error(self):
         response = self.client.post(

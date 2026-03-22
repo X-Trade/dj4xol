@@ -1452,15 +1452,42 @@ $(document).ready(function() {
         return overlay;
     }
 
+    function shouldUseNativeTouchScrollbars() {
+        if (window.matchMedia) {
+            return window.matchMedia('(hover: none), (pointer: coarse)').matches;
+        }
+        return false;
+    }
+
+    function removeCustomScrollbarOverlay(el) {
+        if (!el) {
+            return;
+        }
+        if (el.__customScrollbarOverlay && el.__customScrollbarOverlay.parentNode) {
+            el.__customScrollbarOverlay.parentNode.removeChild(el.__customScrollbarOverlay);
+        }
+        el.__customScrollbarOverlay = null;
+        el.__customScrollbarMetrics = null;
+    }
+
     function refreshCustomPanelScrollbars() {
+        var scrollEls = document.querySelectorAll('.panel-scrollable-list, .panel-scrollable-text');
+        var i;
         if (!document.body.classList.contains('lcars') &&
             !document.body.classList.contains('win95') &&
             !document.body.classList.contains('retro') &&
             !document.body.classList.contains('haxxor')) {
             return;
         }
-        var scrollEls = document.querySelectorAll('.panel-scrollable-list, .panel-scrollable-text');
-        for (var i = 0; i < scrollEls.length; i += 1) {
+
+        if (shouldUseNativeTouchScrollbars()) {
+            for (i = 0; i < scrollEls.length; i += 1) {
+                removeCustomScrollbarOverlay(scrollEls[i]);
+            }
+            return;
+        }
+
+        for (i = 0; i < scrollEls.length; i += 1) {
             var el = scrollEls[i];
             ensureScrollFrame(el);
             if (!el.__customScrollbarBound) {

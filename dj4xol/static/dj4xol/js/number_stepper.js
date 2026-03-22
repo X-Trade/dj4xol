@@ -92,6 +92,13 @@
         });
     }
 
+    function shouldFocusInputAfterStep() {
+        if (!window.matchMedia) {
+            return true;
+        }
+        return !window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    }
+
     function syncStepperButtons(input, minusButton, plusButton) {
         var disabled = !!input.disabled;
         var min = parseBoundary(input.getAttribute('min'));
@@ -111,7 +118,7 @@
             input.removeAttribute('readonly');
         }
 
-        if (document.activeElement !== input && typeof input.focus === 'function') {
+        if (shouldFocusInputAfterStep() && document.activeElement !== input && typeof input.focus === 'function') {
             try {
                 input.focus({ preventScroll: true });
             } catch (err) {

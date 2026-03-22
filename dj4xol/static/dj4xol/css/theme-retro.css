@@ -380,6 +380,16 @@ body.retro {
     border: none;
 }
 
+@media (hover: none), (pointer: coarse) {
+    .retro .starmap-controls button:hover {
+        background: #102038;
+    }
+
+    .retro .starmap-controls button.active:hover {
+        background: #1b5f8a;
+    }
+}
+
 .retro .panel-scrollable-list,
 .retro .panel-scrollable-text {
     padding-right: 18px;

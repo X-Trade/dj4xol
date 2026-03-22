@@ -1183,6 +1183,16 @@ input[type="range"]::-webkit-slider-thumb {
                 inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
 }
 
+@media (hover: none), (pointer: coarse) {
+    .starmap-controls button:hover {
+        background: #c0c0c0;
+    }
+
+    .starmap-controls button.active:hover {
+        background: #c0c0c0;
+    }
+}
+
 /* ============================================
    Win95 Theme Selector
    ============================================ */

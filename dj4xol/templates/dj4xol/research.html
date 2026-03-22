@@ -10,6 +10,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/research/css/research.css' %}">
         {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
         <script defer type="text/javascript" src="{% static 'dj4xol/js/number_stepper.js' %}"></script>
+        <script defer type="text/javascript" src="{% static 'dj4xol/js/turn_submit.js' %}"></script>
     </head>
     <body{% if user_theme %} class="{{ user_theme }}"{% endif %}>
         <div class="title-bar">
@@ -24,18 +25,20 @@
                     <span class="turn-value">pending</span>
                     {% endif %}
                 {% elif game.turn_scheme == 'QUORUM' %}
-                    {% if player.turned_in %}
-                        <span class="status-done">Turned in</span>
-                    {% else %}
-                        <form method="post" action="{% url 'dj4xol:turn_in' game.short_id %}" style="display:inline">
-                            {% csrf_token %}
-                            <input type="hidden" name="return_to" value="research">
-                            {% if selected_category %}
-                            <input type="hidden" name="category" value="{{ selected_category.id }}">
-                            {% endif %}
-                            <button type="submit">Turn In</button>
-                        </form>
-                    {% endif %}
+                    <span data-turn-submit-slot>
+                        {% if player.turned_in %}
+                            <span class="status-done">Turned in</span>
+                        {% else %}
+                            <form method="post" action="{% url 'dj4xol:turn_in' game.short_id %}" style="display:inline" data-turn-submit-form="1">
+                                {% csrf_token %}
+                                <input type="hidden" name="return_to" value="research">
+                                {% if selected_category %}
+                                <input type="hidden" name="category" value="{{ selected_category.id }}">
+                                {% endif %}
+                                <button type="submit">Turn In</button>
+                            </form>
+                        {% endif %}
+                    </span>
                     ({{ game.players.all|length }} players)
                 {% elif game.turn_scheme == 'OWNER' and is_owner %}
                     <form method="post" action="{% url 'dj4xol:generate_turn' game.short_id %}" style="display:inline">

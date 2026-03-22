@@ -6,6 +6,13 @@
             document.body.classList.contains('haxxor');
     }
 
+    function shouldUseNativeTouchScrollbars() {
+        if (window.matchMedia) {
+            return window.matchMedia('(hover: none), (pointer: coarse)').matches;
+        }
+        return false;
+    }
+
     function ensureScrollFrame(el) {
         if (!el) return null;
         var parent = el.parentElement;
@@ -232,13 +239,32 @@
         return overlay;
     }
 
+    function removeCustomScrollbarOverlay(el) {
+        if (!el) {
+            return;
+        }
+        if (el.__customScrollbarResizeObserver) {
+            el.__customScrollbarResizeObserver.disconnect();
+            el.__customScrollbarResizeObserver = null;
+        }
+        if (el.__customScrollbarOverlay && el.__customScrollbarOverlay.parentNode) {
+            el.__customScrollbarOverlay.parentNode.removeChild(el.__customScrollbarOverlay);
+        }
+        el.__customScrollbarOverlay = null;
+        el.__customScrollbarMetrics = null;
+    }
+
     function refreshCustomPanelScrollbars() {
-        if (!useCustomThemeScrollbars()) {
+        var scrollEls = document.querySelectorAll('.panel-scrollable-list, .panel-scrollable-text');
+        var i;
+        if (!useCustomThemeScrollbars() || shouldUseNativeTouchScrollbars()) {
+            for (i = 0; i < scrollEls.length; i += 1) {
+                removeCustomScrollbarOverlay(scrollEls[i]);
+            }
             return;
         }
 
-        var scrollEls = document.querySelectorAll('.panel-scrollable-list, .panel-scrollable-text');
-        for (var i = 0; i < scrollEls.length; i += 1) {
+        for (i = 0; i < scrollEls.length; i += 1) {
             var el = scrollEls[i];
             ensureScrollFrame(el);
             if (!el.__customScrollbarBound) {
