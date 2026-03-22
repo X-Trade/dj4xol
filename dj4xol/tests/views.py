@@ -6149,10 +6149,159 @@ class TestDiplomacyView(TestCase):
         game_response = client.get(reverse('dj4xol:game', args=[game.short_id]))
 
         self.assertEqual(diplo_response.status_code, 200)
-        self.assertContains(diplo_response, '?sel=%s' % contact_star.short_id)
+        self.assertContains(
+            diplo_response,
+            '?x=%s&y=%s&sel=%s&locate=1' % (
+                contact_star.x,
+                contact_star.y,
+                contact_star.short_id,
+            ),
+            html=False,
+        )
         self.assertEqual(game_response.status_code, 200)
-        self.assertContains(game_response, '?sel=%s' % contact_star.short_id)
+        self.assertContains(
+            game_response,
+            '?x=%s&y=%s&sel=%s&locate=1' % (
+                contact_star.x,
+                contact_star.y,
+                contact_star.short_id,
+            ),
+            html=False,
+        )
         self.assertContains(game_response, 'Respond</a>', html=False)
+
+    def test_diplomacy_fleet_names_use_locate_links_in_contract_list(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_fleet_link', 'diplo_fleet_link@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DFL')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Fleet Link Race',
+            plural_name='Fleet Link Races',
+            race_type=race_type,
+        )
+        offered_fleet = player.fleets.first()
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_clause_type='SPECIFIC_FLEET',
+            offer_fleet=offered_fleet,
+        )
+        self.assertIsNotNone(contract.id)
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            '?x=%s&y=%s&sel=%s&locate=1' % (
+                offered_fleet.x,
+                offered_fleet.y,
+                offered_fleet.short_id,
+            ),
+            html=False,
+        )
+
+    def test_diplomacy_contract_summary_fleet_links_use_locate_flag_for_recipient(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_summary_fleet_recipient', 'diplo_summary_fleet_recipient@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DSFR')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Fleet Summary Race',
+            plural_name='Fleet Summary Races',
+            race_type=race_type,
+        )
+        offered_fleet = player.fleets.first()
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_clause_type='SPECIFIC_FLEET',
+            offer_fleet=offered_fleet,
+        )
+
+        summary = format_contract_summary(
+            contract,
+            viewer=other_player,
+            include_links=True,
+            include_sender_account=False,
+        )
+
+        self.assertIn(
+            '?x=%s&y=%s&sel=%s&locate=1' % (
+                offered_fleet.x,
+                offered_fleet.y,
+                offered_fleet.short_id,
+            ),
+            summary,
+        )
+
+    def test_diplomacy_contract_statement_fleet_links_use_locate_flag_for_sender(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_statement_fleet_sender', 'diplo_statement_fleet_sender@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DSFS')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Fleet Statement Race',
+            plural_name='Fleet Statement Races',
+            race_type=race_type,
+        )
+        offered_fleet = player.fleets.first()
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_clause_type='SPECIFIC_FLEET',
+            offer_fleet=offered_fleet,
+        )
+
+        statement = format_contract_statement(
+            contract,
+            viewer=player,
+            include_links=True,
+            include_sender_account=False,
+        )
+
+        self.assertIn(
+            '?x=%s&y=%s&sel=%s&locate=1' % (
+                offered_fleet.x,
+                offered_fleet.y,
+                offered_fleet.short_id,
+            ),
+            statement,
+        )
 
     def test_diplomacy_compose_form_uses_narrative_layout_and_grouped_technology_choices(self):
         game = default_game(stars=5, fleets=0)

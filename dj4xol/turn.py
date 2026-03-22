@@ -2011,7 +2011,11 @@ class GameTurn():
         if target_type == 'star':
             old_unknown = list((existing_data or {}).get('unknown_secret_resources') or [])
             new_unknown = list((report_data or {}).get('unknown_secret_resources') or [])
-            if new_unknown and any(key not in old_unknown for key in new_unknown):
+            if (
+                self._report_tier_rank(report_tier) >= self._report_tier_rank('advanced') and
+                new_unknown and
+                any(key not in old_unknown for key in new_unknown)
+            ):
                 self._send_unexplained_scan_contact_message(player, obj, 'star')
 
         owner_now_known = bool(report_data.get('player_name'))

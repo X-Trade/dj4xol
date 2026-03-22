@@ -8039,6 +8039,125 @@ class TestSecretResourceSalvageDiscovery(TestCase):
             ).exists()
         )
 
+    def test_basic_scan_does_not_warn_about_unknown_resource(self):
+        game = default_game(stars=6, fleets=0)
+        player = game.players.first()
+        scanner_star = player.homeworld
+        target_star = game.stars.exclude(id=scanner_star.id).first()
+        target_star.x = scanner_star.x + 2
+        target_star.y = scanner_star.y
+        target_star.resource_x_yield = 15
+        target_star.save(update_fields=['x', 'y', 'resource_x_yield'])
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Basic Scanner',
+            x=scanner_star.x,
+            y=scanner_star.y,
+            basic_scanner_range=5,
+            advanced_scanner_range=0,
+        )
+        player.discovered_resource_x = False
+        player.save(update_fields=['discovered_resource_x'])
+
+        GameTurn(game).generate_scanner_reports()
+
+        player.refresh_from_db()
+        self.assertFalse(player.discovered_resource_x)
+        self.assertFalse(
+            player.messages.filter(priority=True, message__icontains='dispatch a fleet').filter(
+                message__icontains=target_star.name,
+            ).exists()
+        )
+
+    def test_advanced_scan_unknown_resource_warning_is_not_repeated_without_change(self):
+        game = default_game(stars=6, fleets=0)
+        player = game.players.first()
+        scanner_star = player.homeworld
+        target_star = game.stars.exclude(id=scanner_star.id).first()
+        target_star.x = scanner_star.x + 2
+        target_star.y = scanner_star.y
+        target_star.resource_x_yield = 15
+        target_star.save(update_fields=['x', 'y', 'resource_x_yield'])
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Deep Scanner',
+            x=scanner_star.x,
+            y=scanner_star.y,
+            basic_scanner_range=0,
+            advanced_scanner_range=5,
+        )
+
+        turn = GameTurn(game)
+        turn.generate_scanner_reports()
+        first_count = player.messages.filter(
+            priority=True,
+            message__icontains='dispatch a fleet',
+        ).filter(
+            message__icontains=target_star.name,
+        ).count()
+        turn.generate_scanner_reports()
+        second_count = player.messages.filter(
+            priority=True,
+            message__icontains='dispatch a fleet',
+        ).filter(
+            message__icontains=target_star.name,
+        ).count()
+
+        self.assertEqual(first_count, 1)
+        self.assertEqual(second_count, 1)
+
+    def test_advanced_scan_unknown_resource_warning_fires_once_when_resource_appears(self):
+        game = default_game(stars=6, fleets=0)
+        player = game.players.first()
+        scanner_star = player.homeworld
+        target_star = game.stars.exclude(id=scanner_star.id).first()
+        target_star.x = scanner_star.x + 2
+        target_star.y = scanner_star.y
+        target_star.resource_x_yield = 0
+        target_star.save(update_fields=['x', 'y', 'resource_x_yield'])
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Deep Scanner',
+            x=scanner_star.x,
+            y=scanner_star.y,
+            basic_scanner_range=0,
+            advanced_scanner_range=5,
+        )
+
+        turn = GameTurn(game)
+        turn.generate_scanner_reports()
+        self.assertFalse(
+            player.messages.filter(
+                priority=True,
+                message__icontains='dispatch a fleet',
+            ).filter(
+                message__icontains=target_star.name,
+            ).exists()
+        )
+
+        target_star.resource_x_yield = 15
+        target_star.save(update_fields=['resource_x_yield'])
+        turn.generate_scanner_reports()
+        first_count = player.messages.filter(
+            priority=True,
+            message__icontains='dispatch a fleet',
+        ).filter(
+            message__icontains=target_star.name,
+        ).count()
+        turn.generate_scanner_reports()
+        second_count = player.messages.filter(
+            priority=True,
+            message__icontains='dispatch a fleet',
+        ).filter(
+            message__icontains=target_star.name,
+        ).count()
+
+        self.assertEqual(first_count, 1)
+        self.assertEqual(second_count, 1)
+
 
 
 class TestFleetOrderExecution(TestCase):

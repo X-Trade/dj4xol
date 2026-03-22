@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.utils.html import escape
 
 from .models import DiplomaticContract, GameMessage, PlayerDiplomaticStance, PlayerTechnologyGrant, Report
+from .map_object_rules import build_map_href
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
 
 
@@ -140,6 +141,17 @@ def format_resource_quantity_for_player(player, resource_key, quantity):
     return '%s%s %s' % (quantity, unit, resource_label_for_player(player, resource_key))
 
 
+def _map_object_contract_link(game, obj, label=None):
+    """Return a starmap link for contract text that preserves locate behaviour."""
+    if game is None or obj is None:
+        return escape(label or getattr(obj, 'name', '') or '')
+    base = reverse('dj4xol:game', args=[game.short_id])
+    return '<a href="%s">%s</a>' % (
+        build_map_href(base, obj.x, obj.y, short_id=obj.short_id, locate=True),
+        escape(label or getattr(obj, 'name', '')),
+    )
+
+
 def contract_resource_bundle(contract):
     return {
         'ironium': int(getattr(contract, 'request_ironium', 0) or 0),
@@ -202,8 +214,7 @@ def format_contract_clause(contract, prefix, viewer=None, include_links=True):
             return 'the promised fleet'
         label = escape(getattr(fleet, 'name', 'Unknown Fleet'))
         if include_links:
-            base = reverse('dj4xol:game', args=[contract.game.short_id])
-            return '<a href="%s?sel=%s">%s</a>' % (base, fleet.short_id, label)
+            return _map_object_contract_link(contract.game, fleet, label=getattr(fleet, 'name', 'Unknown Fleet'))
         return label
     if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
         star = getattr(contract, '%s_star' % prefix)
@@ -211,8 +222,11 @@ def format_contract_clause(contract, prefix, viewer=None, include_links=True):
             return 'the promised colony'
         label = escape(getattr(star, 'name', 'Unknown Colony'))
         if include_links:
-            base = reverse('dj4xol:game', args=[contract.game.short_id])
-            return 'colony <a href="%s?sel=%s">%s</a>' % (base, star.short_id, label)
+            return 'colony %s' % _map_object_contract_link(
+                contract.game,
+                star,
+                label=getattr(star, 'name', 'Unknown Colony'),
+            )
         return 'colony %s' % label
     if clause_type == DiplomaticContract.CLAUSE_REPORT:
         label = format_report_trade_label(
@@ -284,8 +298,11 @@ def format_contract_clause_as_form_phrase(contract, prefix, viewer=None, include
                 return 'give %s the promised fleet' % object_pronoun
             label = escape(getattr(fleet, 'name', 'Unknown Fleet'))
             if include_links:
-                base = reverse('dj4xol:game', args=[contract.game.short_id])
-                label = '<a href="%s?sel=%s">%s</a>' % (base, fleet.short_id, label)
+                label = _map_object_contract_link(
+                    contract.game,
+                    fleet,
+                    label=getattr(fleet, 'name', 'Unknown Fleet'),
+                )
             object_pronoun = 'them' if sender_is_viewer else 'us'
             return 'give %s %s' % (object_pronoun, label)
         if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
@@ -788,20 +805,17 @@ def format_report_trade_label(target_type, target_id, game, include_links=False)
     if target_type == 'star':
         label = escape(getattr(target, 'name', None) or 'Unknown Colony')
         if include_links and target is not None:
-            base = reverse('dj4xol:game', args=[game.short_id])
-            label = '<a href="%s?sel=%s">%s</a>' % (base, target.short_id, label)
+            label = _map_object_contract_link(game, target, label=getattr(target, 'name', None) or 'Unknown Colony')
         return 'colony %s' % label
     if target_type == 'anomaly':
         label = escape(getattr(target, 'name', None) or 'Unknown Anomaly')
         if include_links and target is not None:
-            base = reverse('dj4xol:game', args=[game.short_id])
-            label = '<a href="%s?sel=%s">%s</a>' % (base, target.short_id, label)
+            label = _map_object_contract_link(game, target, label=getattr(target, 'name', None) or 'Unknown Anomaly')
         return 'anomaly %s' % label
     if target_type == 'salvage':
         label = escape(getattr(target, 'name', None) or 'Unknown Ancient Debris')
         if include_links and target is not None:
-            base = reverse('dj4xol:game', args=[game.short_id])
-            label = '<a href="%s?sel=%s">%s</a>' % (base, target.short_id, label)
+            label = _map_object_contract_link(game, target, label=getattr(target, 'name', None) or 'Unknown Ancient Debris')
         return 'ancient debris %s' % label
     return 'unknown report'
 
