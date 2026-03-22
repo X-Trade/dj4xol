@@ -1173,6 +1173,29 @@ class FleetBussardRecoveryMessageFactory(MessageFactory):
         )
 
 
+class FleetWormholeFuelFailureMessageFactory(MessageFactory):
+    """Message when a fleet cannot engage wormhole drive due to fuel shortage."""
+    category = 'GENERAL'
+    templates = [
+        "{fleet} failed to engage wormhole drive due to insufficient fuel ({fuel:.1f}mg available, {required_fuel:.1f}mg required).",
+        "Wormhole jump aborted for {fleet}: insufficient fuel ({fuel:.1f}mg available, {required_fuel:.1f}mg required).",
+        "{fleet} could not start wormhole transit; fuel stores were too low ({fuel:.1f}mg available, {required_fuel:.1f}mg required).",
+    ]
+
+    def __init__(self, game, player, fleet, fuel, required_fuel, message=None):
+        super().__init__(game, player, message, intensity=0.1)
+        self.fleet = fleet
+        self.fuel = float(fuel or 0.0)
+        self.required_fuel = float(required_fuel or 0.0)
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            fleet=format_map_object(self.fleet),
+            fuel=self.fuel,
+            required_fuel=self.required_fuel,
+        )
+
+
 class FleetWarpDestroyedMessageFactory(MessageFactory):
     """Messages for fleets destroyed by exceeding safe warp speed."""
     category = 'GENERAL'

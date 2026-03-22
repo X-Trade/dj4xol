@@ -391,7 +391,7 @@
                     <div class="order-param-row order-param-row--with-hint">
                         <label for="warp-slider">Speed</label>
                         <div class="speed-row">
-                            <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{% if request.GET.warp and request.GET.order_type != 'INTERCEPT' %}{{ dest_warp }}{% else %}{{ detail.fleet_cargo.move_default_warp|default:5 }}{% endif %}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}">
+                            <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{% if request.GET.warp and request.GET.order_type != 'INTERCEPT' %}{{ dest_warp }}{% else %}{{ detail.fleet_cargo.move_default_warp|default:5 }}{% endif %}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}" data-current-fuel="{{ detail.fleet_cargo.fuel|default:0 }}" data-current-x="{% if detail.effective_location %}{{ detail.effective_location.0 }}{% endif %}" data-current-y="{% if detail.effective_location %}{{ detail.effective_location.1 }}{% endif %}" data-wormhole-fuel-per-ly="{{ detail.fleet_cargo.wormhole_fuel_per_ly|default:5 }}">
                             <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.move_default_warp|default:5 }}</span>
                         </div>
                         <div class="order-param-hints">
@@ -749,7 +749,7 @@
         }
     }
 
-    function updateWarpHintState(riskNote, cloakNote, fuelFactoryNote, state) {
+    function updateWarpHintState(riskNote, cloakNote, fuelFactoryNote, state, riskText) {
         if (riskNote) {
             riskNote.classList.add('is-hidden');
             riskNote.classList.remove('warp-warning', 'warp-danger');
@@ -764,9 +764,17 @@
             fuelFactoryNote.textContent = 'Producing fuel at this speed.';
         }
 
+        if (state === 'wormhole-fuel') {
+            if (riskNote) {
+                riskNote.textContent = riskText || 'Insufficient fuel for wormhole jump.';
+                riskNote.classList.remove('is-hidden');
+                riskNote.classList.add('warp-warning');
+            }
+            return;
+        }
         if (state === 'danger') {
             if (riskNote) {
-                riskNote.textContent = 'Danger of destruction at this speed.';
+                riskNote.textContent = riskText || 'Danger of destruction at this speed.';
                 riskNote.classList.remove('is-hidden');
                 riskNote.classList.add('warp-danger');
             }
@@ -774,7 +782,7 @@
         }
         if (state === 'warning') {
             if (riskNote) {
-                riskNote.textContent = 'Danger of damage at this speed.';
+                riskNote.textContent = riskText || 'Danger of damage at this speed.';
                 riskNote.classList.remove('is-hidden');
                 riskNote.classList.add('warp-warning');
             }
@@ -800,6 +808,55 @@
                 fuelFactoryNote.classList.remove('is-hidden');
             }
         }
+    }
+
+    function roundToOneDecimal(value) {
+        return Math.round(value * 10) / 10;
+    }
+
+    function buildWormholeFuelWarning(sliderEl) {
+        if (!sliderEl) {
+            return null;
+        }
+        var moveDestination = document.getElementById('move-destination');
+        var currentFuel = parseFloat(sliderEl.dataset.currentFuel || '0');
+        var currentX = parseFloat(sliderEl.dataset.currentX || '');
+        var currentY = parseFloat(sliderEl.dataset.currentY || '');
+        var wormholeFuelPerLy = parseFloat(
+            sliderEl.dataset.wormholeFuelPerLy || '5'
+        );
+        var destX = parseFloat(targetXInput && targetXInput.value ? targetXInput.value : '');
+        var destY = parseFloat(targetYInput && targetYInput.value ? targetYInput.value : '');
+        if (isNaN(destX) && moveDestination) {
+            destX = parseFloat(moveDestination.getAttribute('data-location-x') || '');
+        }
+        if (isNaN(destY) && moveDestination) {
+            destY = parseFloat(moveDestination.getAttribute('data-location-y') || '');
+        }
+        if (
+            isNaN(currentFuel) ||
+            isNaN(currentX) ||
+            isNaN(currentY) ||
+            isNaN(wormholeFuelPerLy) ||
+            isNaN(destX) ||
+            isNaN(destY)
+        ) {
+            return null;
+        }
+        var dx = destX - currentX;
+        var dy = destY - currentY;
+        var distance = Math.sqrt((dx * dx) + (dy * dy));
+        var requiredFuel = wormholeFuelPerLy * distance;
+        if (requiredFuel <= currentFuel) {
+            return null;
+        }
+        return (
+            'Insufficient fuel for wormhole jump (' +
+            roundToOneDecimal(currentFuel).toFixed(1) +
+            'mg / ' +
+            roundToOneDecimal(requiredFuel).toFixed(1) +
+            'mg needed).'
+        );
     }
 
     function setMoveTargetInputs(targetValue, optionEl) {
@@ -2149,6 +2206,9 @@
             applyWarpSliderBounds();
             var val = parseInt(warpSlider.value);
             var allowWormhole = hasWormholeDrive && orderType && orderType.value !== 'INTERCEPT';
+            var wormholeFuelWarning = (
+                val === 14 && allowWormhole
+            ) ? buildWormholeFuelWarning(warpSlider) : null;
             var cloakedAtSpeed = maxCloakedWarp >= 0 && val <= maxCloakedWarp && !(val === 14 && allowWormhole);
             var fuelFactoryAtSpeed = (
                 fuelFactoryRate > 0 &&
@@ -2166,7 +2226,12 @@
             warpInput.value = val;
             warpDisplay.classList.remove('warp-warning', 'warp-danger');
             var warpHintState = null;
-            if (val === 14 && allowWormhole) {
+            var warpHintText = null;
+            if (wormholeFuelWarning) {
+                warpDisplay.classList.add('warp-warning');
+                warpHintState = 'wormhole-fuel';
+                warpHintText = wormholeFuelWarning;
+            } else if (val === 14 && allowWormhole) {
                 warpDisplay.classList.add('warp-danger');
                 warpHintState = 'danger';
             } else if (val > maxSafeWarp) {
@@ -2188,7 +2253,8 @@
                 warpRiskNote,
                 warpCloakNote,
                 warpFuelFactoryNote,
-                warpHintState
+                warpHintState,
+                warpHintText
             );
         }
         warpSlider.addEventListener('input', updateWarpDisplay);
