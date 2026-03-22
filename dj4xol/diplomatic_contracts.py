@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
 
+from .map_object_rules import format_map_link
 from .models import DiplomaticContract, GameMessage, PlayerDiplomaticStance, PlayerTechnologyGrant, Report
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
 
@@ -130,6 +131,20 @@ def resource_label_for_player(player, resource_key):
     return str(resource_key).title()
 
 
+def _format_contract_map_target(game, obj, fallback_label):
+    label = escape(getattr(obj, 'name', fallback_label))
+    if obj is None:
+        return label
+    base = reverse('dj4xol:game', args=[game.short_id])
+    return format_map_link(
+        base,
+        getattr(obj, 'x', 0),
+        getattr(obj, 'y', 0),
+        getattr(obj, 'name', fallback_label),
+        short_id=getattr(obj, 'short_id', None),
+    )
+
+
 def format_resource_quantity_for_player(player, resource_key, quantity):
     quantity = int(quantity or 0)
     if quantity <= 0:
@@ -200,20 +215,16 @@ def format_contract_clause(contract, prefix, viewer=None, include_links=True):
         fleet = getattr(contract, '%s_fleet' % prefix)
         if fleet is None:
             return 'the promised fleet'
-        label = escape(getattr(fleet, 'name', 'Unknown Fleet'))
         if include_links:
-            base = reverse('dj4xol:game', args=[contract.game.short_id])
-            return '<a href="%s?sel=%s">%s</a>' % (base, fleet.short_id, label)
-        return label
+            return _format_contract_map_target(contract.game, fleet, 'Unknown Fleet')
+        return escape(getattr(fleet, 'name', 'Unknown Fleet'))
     if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
         star = getattr(contract, '%s_star' % prefix)
         if star is None:
             return 'the promised colony'
-        label = escape(getattr(star, 'name', 'Unknown Colony'))
         if include_links:
-            base = reverse('dj4xol:game', args=[contract.game.short_id])
-            return 'colony <a href="%s?sel=%s">%s</a>' % (base, star.short_id, label)
-        return 'colony %s' % label
+            return 'colony %s' % _format_contract_map_target(contract.game, star, 'Unknown Colony')
+        return 'colony %s' % escape(getattr(star, 'name', 'Unknown Colony'))
     if clause_type == DiplomaticContract.CLAUSE_REPORT:
         label = format_report_trade_label(
             getattr(contract, '%s_report_target_type' % prefix, ''),
@@ -282,10 +293,10 @@ def format_contract_clause_as_form_phrase(contract, prefix, viewer=None, include
             if fleet is None:
                 object_pronoun = 'them' if sender_is_viewer else 'us'
                 return 'give %s the promised fleet' % object_pronoun
-            label = escape(getattr(fleet, 'name', 'Unknown Fleet'))
             if include_links:
-                base = reverse('dj4xol:game', args=[contract.game.short_id])
-                label = '<a href="%s?sel=%s">%s</a>' % (base, fleet.short_id, label)
+                label = _format_contract_map_target(contract.game, fleet, 'Unknown Fleet')
+            else:
+                label = escape(getattr(fleet, 'name', 'Unknown Fleet'))
             object_pronoun = 'them' if sender_is_viewer else 'us'
             return 'give %s %s' % (object_pronoun, label)
         if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
@@ -700,10 +711,11 @@ def _report_tier_rank(tier):
 
 
 def _report_target_model(target_type):
-    from .models import Anomaly, Salvage, Star
+    from .models import Anomaly, Fleet, Salvage, Star
 
     models = {
         'star': Star,
+        'fleet': Fleet,
         'anomaly': Anomaly,
         'salvage': Salvage,
     }
@@ -726,25 +738,29 @@ def _qualifying_report_for_trade(player, target_type, target_id):
         target_id=target_id,
     ).first()
     if report is None:
-        if str(target_type or '').lower() == 'star':
-            star = _resolve_report_target(getattr(player, 'game', None), target_type, target_id)
-            if star is not None and getattr(star, 'player_id', None) == getattr(player, 'id', None):
-                report = Report.objects.create(
-                    game=player.game,
-                    player=player,
-                    year=player.game.year,
-                    target_type='star',
-                    target_id=star.id,
-                    cached_report='{}',
-                )
-                report.set_report_data({
-                    'name': star.name,
-                    'x': star.x,
-                    'y': star.y,
-                    'player_name': player.name,
-                    'report_tier': 'ownership',
-                })
-                report.save()
+        normalized_target_type = str(target_type or '').lower()
+        target = _resolve_report_target(getattr(player, 'game', None), normalized_target_type, target_id)
+        owner_field = 'player_id'
+        if (
+            target is not None and
+            getattr(target, owner_field, None) == getattr(player, 'id', None) and
+            normalized_target_type in ('star', 'fleet')
+        ):
+            from .turn import GameTurn
+
+            GameTurn(player.game)._create_or_update_report(
+                player,
+                normalized_target_type,
+                target,
+                player.game.year,
+                report_tier='ownership',
+            )
+            report = Report.objects.filter(
+                player=player,
+                target_type=normalized_target_type,
+                target_id=target.id,
+            ).first()
+            if report is not None:
                 return report
         return None
     data = report.get_report_data()
@@ -753,6 +769,8 @@ def _qualifying_report_for_trade(player, target_type, target_id):
         if data.get('player_name'):
             return report
         return None
+    if target_type == 'fleet':
+        return report
     if target_type == 'anomaly':
         return report if rank >= _report_tier_rank('advanced') else None
     if target_type == 'salvage':
@@ -766,14 +784,22 @@ def _shared_report_data(source_report, recipient=None):
         return None
     data = dict(source_report.get_report_data() or {})
     target_type = source_report.target_type
-    if target_type == 'star':
-        return {
-            'name': data.get('name'),
-            'x': data.get('x'),
-            'y': data.get('y'),
-            'player_name': data.get('player_name'),
-            'report_tier': 'ownership',
-        }
+    if target_type in ('star', 'fleet'):
+        unknown = list(data.get('unknown_secret_resources') or [])
+        for key in SECRET_RESOURCE_KEYS:
+            if recipient is not None and bool(getattr(recipient, 'discovered_%s' % key, False)):
+                continue
+            present = key in unknown
+            if target_type == 'star':
+                present = present or int(data.get('%s_yield' % key, 0) or 0) > 0
+            present = present or int(data.get('%s_inventory' % key, 0) or 0) > 0
+            if not present:
+                continue
+            if key not in unknown:
+                unknown.append(key)
+        data['unknown_secret_resources'] = unknown
+        data['report_tier'] = data.get('report_tier') or 'advanced'
+        return data
     if target_type in ('anomaly', 'salvage'):
         if _report_tier_rank(data.get('report_tier')) < _report_tier_rank('advanced'):
             return None
@@ -788,25 +814,24 @@ def format_report_trade_label(target_type, target_id, game, include_links=False)
     if target_type == 'star':
         label = escape(getattr(target, 'name', None) or 'Unknown Colony')
         if include_links and target is not None:
-            base = reverse('dj4xol:game', args=[game.short_id])
-            label = '<a href="%s?sel=%s">%s</a>' % (base, target.short_id, label)
+            label = _format_contract_map_target(game, target, 'Unknown Colony')
         return 'colony %s' % label
     if target_type == 'anomaly':
         label = escape(getattr(target, 'name', None) or 'Unknown Anomaly')
         if include_links and target is not None:
-            base = reverse('dj4xol:game', args=[game.short_id])
-            label = '<a href="%s?sel=%s">%s</a>' % (base, target.short_id, label)
+            label = _format_contract_map_target(game, target, 'Unknown Anomaly')
         return 'anomaly %s' % label
     if target_type == 'salvage':
         label = escape(getattr(target, 'name', None) or 'Unknown Ancient Debris')
         if include_links and target is not None:
-            base = reverse('dj4xol:game', args=[game.short_id])
-            label = '<a href="%s?sel=%s">%s</a>' % (base, target.short_id, label)
+            label = _format_contract_map_target(game, target, 'Unknown Ancient Debris')
         return 'ancient debris %s' % label
     return 'unknown report'
 
 
 def _grant_report_trade(contract, prefix):
+    from .messages import UnexplainedScanContactMessageFactory
+
     if prefix == 'request':
         grant_source = contract.recipient
         grant_target = contract.sender
@@ -827,28 +852,58 @@ def _grant_report_trade(contract, prefix):
         target_id=target_id,
     ).first()
     incoming_rank = _report_tier_rank(shared.get('report_tier'))
+    source_rank = _report_tier_rank((source_report.get_report_data() or {}).get('report_tier'))
+    old_unknown = []
+    new_unknown = list((shared or {}).get('unknown_secret_resources') or [])
+    should_warn = False
     if existing is not None:
         existing_data = existing.get_report_data()
+        old_unknown = list((existing_data or {}).get('unknown_secret_resources') or [])
         existing_rank = _report_tier_rank(existing_data.get('report_tier'))
         if existing_rank > incoming_rank:
             return True
-        if existing_rank == incoming_rank and int(existing.year or 0) >= int(source_report.year or 0):
+        should_warn = bool(
+            target_type == 'star' and
+            source_rank >= _report_tier_rank('advanced') and
+            new_unknown and
+            any(key not in old_unknown for key in new_unknown)
+        )
+        if (
+            existing_rank == incoming_rank and
+            int(existing.year or 0) >= int(source_report.year or 0) and
+            not should_warn
+        ):
             return True
         existing.year = source_report.year
         existing.game = contract.game
         existing.set_report_data(shared)
         existing.save()
-        return True
-    report = Report.objects.create(
-        game=contract.game,
-        player=grant_target,
-        year=source_report.year,
-        target_type=target_type,
-        target_id=target_id,
-        cached_report='{}',
-    )
-    report.set_report_data(shared)
-    report.save()
+    else:
+        report = Report.objects.create(
+            game=contract.game,
+            player=grant_target,
+            year=source_report.year,
+            target_type=target_type,
+            target_id=target_id,
+            cached_report='{}',
+        )
+        report.set_report_data(shared)
+        report.save()
+        should_warn = bool(
+            target_type == 'star' and
+            source_rank >= _report_tier_rank('advanced') and
+            new_unknown
+        )
+    if should_warn:
+        factory = UnexplainedScanContactMessageFactory(
+            contract.game,
+            grant_target,
+            target=_resolve_report_target(contract.game, target_type, target_id),
+            subject='traces of an unexplained material',
+        )
+        msg = factory.new_message()
+        msg.year = contract.game.year
+        msg.save()
     return True
 
 
@@ -1153,32 +1208,59 @@ def ensure_specific_fleet_report(contract):
         not bool(getattr(contract, 'offer_fleet_include_report', True))
     ):
         return
-    from .turn import GameTurn
-
-    turn = GameTurn(contract.game)
-    turn._create_or_update_report(
-        contract.recipient,
+    source_report = _qualifying_report_for_trade(
+        contract.sender,
         'fleet',
-        contract.offer_fleet,
-        contract.game.year,
-        report_tier='encounter',
-        include_cargo=True,
+        contract.offer_fleet.id,
     )
+    if source_report is None:
+        return
+    shared = _shared_report_data(source_report, recipient=contract.recipient)
+    if shared is None:
+        return
+    report, _created = Report.objects.get_or_create(
+        game=contract.game,
+        player=contract.recipient,
+        target_type='fleet',
+        target_id=contract.offer_fleet.id,
+        defaults={
+            'year': source_report.year,
+            'cached_report': '{}',
+        },
+    )
+    report.year = source_report.year
+    report.game = contract.game
+    report.set_report_data(shared)
+    report.save()
 
 
 def ensure_specific_colony_report(contract):
     if contract.offer_clause_type != DiplomaticContract.CLAUSE_SPECIFIC_COLONY or contract.offer_star is None:
         return
-    from .turn import GameTurn
-
-    turn = GameTurn(contract.game)
-    turn._create_or_update_report(
-        contract.recipient,
+    source_report = _qualifying_report_for_trade(
+        contract.sender,
         'star',
-        contract.offer_star,
-        contract.game.year,
-        report_tier='encounter',
+        contract.offer_star.id,
     )
+    if source_report is None:
+        return
+    shared = _shared_report_data(source_report, recipient=contract.recipient)
+    if shared is None:
+        return
+    report, _created = Report.objects.get_or_create(
+        game=contract.game,
+        player=contract.recipient,
+        target_type='star',
+        target_id=contract.offer_star.id,
+        defaults={
+            'year': source_report.year,
+            'cached_report': '{}',
+        },
+    )
+    report.year = source_report.year
+    report.game = contract.game
+    report.set_report_data(shared)
+    report.save()
 
 
 def refresh_contract_integrity(game):
