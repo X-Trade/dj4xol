@@ -275,6 +275,25 @@ class TestMessageFiltering(TestCase):
         self.assertEqual(player.last_seen_year, 2405)
         self.assertEqual(player.messages_seen_year, 2404)
 
+    def test_wormhole_move_slider_exposes_fuel_warning_metadata(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.has_wormhole_drive = True
+        fleet.fuel = 12.5
+        fleet.wormhole_fuel_per_ly = 4.0
+        fleet.save(update_fields=['has_wormhole_drive', 'fuel', 'wormhole_fuel_per_ly'])
+        user, _account = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:game', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-current-fuel="12.5"', html=False)
+        self.assertContains(response, 'data-wormhole-fuel-per-ly="4.0"', html=False)
+        self.assertContains(response, 'Insufficient fuel for wormhole jump', html=False)
+
 
 class TestProductionOrders(TestCase):
     def _unlock_administration(self, player, tech_level=1, administration_level=1):

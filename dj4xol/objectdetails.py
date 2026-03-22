@@ -1933,6 +1933,9 @@ class DetailBuilder():
         cargo['fuel_factory_max_warp'] = getattr(
             self.selected_obj, 'fuel_factory_max_warp', -1
         )
+        cargo['wormhole_fuel_per_ly'] = getattr(
+            self.selected_obj, 'wormhole_fuel_per_ly', 5.0
+        )
         cargo['move_default_warp'] = self._fleet_default_move_warp(self.selected_obj)
         cargo['move_default_cloaked'] = self._fleet_move_speed_is_cloaked(
             self.selected_obj,
