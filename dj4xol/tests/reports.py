@@ -1219,6 +1219,107 @@ class ScannerReportTest(TestCase):
         self.assertIsNotNone(report)
         self.assertEqual(report.get_report_data().get('report_tier'), 'basic')
 
+    def test_allied_advanced_scanner_sharing_keeps_secret_resource_unknown_and_sends_warning(self):
+        scanner = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Shared Deep Scanner',
+            x=70,
+            y=70,
+            basic_scanner_range=6,
+            advanced_scanner_range=6,
+        )
+        star = self.game.stars.exclude(id=self.player1.homeworld_id).exclude(id=self.player2.homeworld_id).first()
+        star.x = scanner.x + 4
+        star.y = scanner.y
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
+        star.resource_y_inventory = 0
+        star.resource_z_inventory = 0
+        star.resource_x_yield = 9
+        star.resource_x_inventory = 30
+        star.save(update_fields=[
+            'x', 'y',
+            'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
+            'resource_x_inventory', 'resource_y_inventory', 'resource_z_inventory',
+        ])
+        self.player1.discovered_resource_x = False
+        self.player1.save(update_fields=['discovered_resource_x'])
+
+        PlayerDiplomaticStance.objects.create(
+            player=self.player2,
+            target_player=self.player1,
+            stance='ALLIED',
+        )
+
+        GameTurn(self.game).generate_scanner_reports()
+
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=star.id,
+        )
+        data = report.get_report_data()
+        self.player1.refresh_from_db()
+        self.assertEqual(data.get('report_tier'), 'advanced')
+        self.assertFalse(self.player1.discovered_resource_x)
+        self.assertEqual(data.get('unknown_secret_resources'), ['resource_x'])
+        self.assertEqual(data.get('resource_x_yield'), 9)
+        self.assertEqual(data.get('resource_x_inventory'), 30)
+        self.assertTrue(
+            GameMessage.objects.filter(
+                game=self.game,
+                player=self.player1,
+                priority=True,
+                message__icontains='dispatch a fleet',
+            ).filter(
+                message__icontains=star.name,
+            ).exists()
+        )
+
+    def test_unknown_resource_warning_only_sent_once_per_star(self):
+        scanner = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Shared Deep Scanner',
+            x=70,
+            y=70,
+            basic_scanner_range=6,
+            advanced_scanner_range=6,
+        )
+        star = self.player2.homeworld
+        star.x = scanner.x + 4
+        star.y = scanner.y
+        star.resource_x_yield = 9
+        star.resource_x_inventory = 30
+        star.save(update_fields=['x', 'y', 'resource_x_yield', 'resource_x_inventory'])
+        self.player1.discovered_resource_x = False
+        self.player1.save(update_fields=['discovered_resource_x'])
+
+        PlayerDiplomaticStance.objects.create(
+            player=self.player2,
+            target_player=self.player1,
+            stance='ALLIED',
+        )
+
+        turn = GameTurn(self.game)
+        turn.generate_scanner_reports()
+        turn.generate_scanner_reports()
+        turn.generate_shared_intel_reports()
+
+        self.assertEqual(
+            GameMessage.objects.filter(
+                game=self.game,
+                player=self.player1,
+                priority=True,
+                message__icontains='dispatch a fleet',
+            ).filter(
+                message__icontains=star.name,
+            ).count(),
+            1,
+        )
+
     def test_allied_intel_sharing_creates_encounter_fleet_and_encounter_colony_reports(self):
         shared_fleet = Fleet.objects.create(
             game=self.game,
@@ -1364,6 +1465,45 @@ class ScannerReportTest(TestCase):
                 player=self.player1,
                 target_type='fleet',
                 target_id=shared_fleet.id,
+            ).exists()
+        )
+
+    def test_allied_intel_keeps_secret_resource_unknown_and_sends_warning(self):
+        shared_star = self.player2.homeworld
+        shared_star.resource_x_yield = 9
+        shared_star.resource_x_inventory = 30
+        shared_star.save(update_fields=['resource_x_yield', 'resource_x_inventory'])
+        self.player1.discovered_resource_x = False
+        self.player1.save(update_fields=['discovered_resource_x'])
+
+        PlayerDiplomaticStance.objects.create(
+            player=self.player2,
+            target_player=self.player1,
+            stance='ALLIED',
+        )
+
+        GameTurn(self.game).generate_shared_intel_reports()
+
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='star',
+            target_id=shared_star.id,
+        )
+        data = report.get_report_data()
+        self.player1.refresh_from_db()
+        self.assertFalse(self.player1.discovered_resource_x)
+        self.assertEqual(data.get('unknown_secret_resources'), ['resource_x'])
+        self.assertEqual(data.get('resource_x_yield'), 9)
+        self.assertEqual(data.get('resource_x_inventory'), 30)
+        self.assertTrue(
+            GameMessage.objects.filter(
+                game=self.game,
+                player=self.player1,
+                priority=True,
+                message__icontains='dispatch a fleet',
+            ).filter(
+                message__icontains=shared_star.name,
             ).exists()
         )
 

@@ -8008,6 +8008,59 @@ class TestSecretResourceSalvageDiscovery(TestCase):
             player.messages.filter(message__icontains=resource_name).exists()
         )
 
+    def test_secret_resource_discovery_only_notifies_once_per_resource(self):
+        from ..secret_resources import get_secret_resource_name
+
+        game = default_game(stars=6, fleets=1)
+        player = game.players.first()
+        account = player.account
+        fleet = game.fleets.first()
+        stars = list(game.stars.exclude(id=player.homeworld_id).order_by('id')[:2])
+        first_star = stars[0]
+        second_star = stars[1]
+
+        player.discovered_resource_x = False
+        player.save(update_fields=['discovered_resource_x'])
+        if account:
+            account.discovered_resource_x = False
+            account.save(update_fields=['discovered_resource_x'])
+
+        turn = GameTurn(game)
+        self.assertTrue(
+            turn._mark_secret_resource_discovered(
+                player,
+                'resource_x',
+                star=first_star,
+                fleet=fleet,
+            )
+        )
+        self.assertFalse(
+            turn._mark_secret_resource_discovered(
+                player,
+                'resource_x',
+                star=second_star,
+                fleet=fleet,
+            )
+        )
+
+        player.refresh_from_db()
+        if account:
+            account.refresh_from_db()
+        self.assertTrue(player.discovered_resource_x)
+        if account:
+            self.assertTrue(account.discovered_resource_x)
+
+        resource_name = get_secret_resource_name('resource_x')
+        self.assertEqual(
+            GameMessage.objects.filter(
+                game=game,
+                player=player,
+                priority=True,
+                message__icontains=resource_name,
+            ).count(),
+            1,
+        )
+
     def test_advanced_scan_warns_about_unknown_resource_without_discovering_it(self):
         game = default_game(stars=6, fleets=0)
         player = game.players.first()

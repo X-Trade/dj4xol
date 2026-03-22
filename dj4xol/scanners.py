@@ -17,6 +17,50 @@ def _coerce_ranges(basic, advanced):
     return max(0, basic), max(0, advanced)
 
 
+def _append_sources_for_owner(game, owner, output, get_player_colony_scanner_ranges):
+    for fleet in game.fleets.filter(player=owner):
+        basic, advanced = _coerce_ranges(
+            getattr(fleet, 'basic_scanner_range', 0),
+            getattr(fleet, 'advanced_scanner_range', 0),
+        )
+        if basic <= 0 and advanced <= 0:
+            continue
+        output.append({
+            'x': int(fleet.x),
+            'y': int(fleet.y),
+            'basic': basic,
+            'advanced': advanced,
+            'source_type': 'fleet',
+            'owner_id': getattr(owner, 'id', None),
+        })
+
+    colony_basic, colony_advanced = get_player_colony_scanner_ranges(owner)
+    colony_basic, colony_advanced = _coerce_ranges(colony_basic, colony_advanced)
+    if colony_basic > 0 or colony_advanced > 0:
+        for star in game.stars.filter(player=owner):
+            output.append({
+                'x': int(star.x),
+                'y': int(star.y),
+                'basic': colony_basic,
+                'advanced': colony_advanced,
+                'source_type': 'colony',
+                'owner_id': getattr(owner, 'id', None),
+            })
+
+
+def get_owned_scanner_sources_for_player(game, player):
+    """Return scanner source dicts for the player's own fleets and colonies."""
+    if not player:
+        return []
+    if getattr(game, 'no_scanners', False):
+        return []
+    from .research import get_player_colony_scanner_ranges
+
+    sources = []
+    _append_sources_for_owner(game, player, sources, get_player_colony_scanner_ranges)
+    return sources
+
+
 def get_scanner_sources_for_player(game, player):
     """Return scanner source dicts for a player (fleets + colonies)."""
     if not player:
@@ -30,41 +74,13 @@ def get_scanner_sources_for_player(game, player):
     from .models import Player
     from .research import get_player_colony_scanner_ranges
 
-    def _append_sources_for_owner(owner, output):
-        for fleet in game.fleets.filter(player=owner):
-            basic, advanced = _coerce_ranges(
-                getattr(fleet, 'basic_scanner_range', 0),
-                getattr(fleet, 'advanced_scanner_range', 0),
-            )
-            if basic <= 0 and advanced <= 0:
-                continue
-            output.append({
-                'x': int(fleet.x),
-                'y': int(fleet.y),
-                'basic': basic,
-                'advanced': advanced,
-                'source_type': 'fleet',
-            })
-
-        colony_basic, colony_advanced = get_player_colony_scanner_ranges(owner)
-        colony_basic, colony_advanced = _coerce_ranges(colony_basic, colony_advanced)
-        if colony_basic > 0 or colony_advanced > 0:
-            for star in game.stars.filter(player=owner):
-                output.append({
-                    'x': int(star.x),
-                    'y': int(star.y),
-                    'basic': colony_basic,
-                    'advanced': colony_advanced,
-                    'source_type': 'colony',
-                })
-
     sources = []
-    _append_sources_for_owner(player, sources)
+    _append_sources_for_owner(game, player, sources, get_player_colony_scanner_ranges)
 
     scanner_grantors = Player.objects.filter(game=game).exclude(id=player.id).exclude(defeated=True)
     for grantor in scanner_grantors:
         if player_grants_permission(grantor, player, PERMISSION_SHARE_SCANNERS):
-            _append_sources_for_owner(grantor, sources)
+            _append_sources_for_owner(game, grantor, sources, get_player_colony_scanner_ranges)
     return sources
 
 

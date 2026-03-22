@@ -165,6 +165,7 @@ from .scanners import (
     fleet_is_cloaked,
     fleet_targetable_by_patrol,
     fleet_visible_to_player,
+    get_owned_scanner_sources_for_player,
     get_scanner_sources_for_player,
     position_in_scanner_range,
 )
@@ -1758,6 +1759,7 @@ class GameTurn():
                         star,
                         self.game.year,
                         report_tier=colony_report_tier,
+                        conceal_secret_resources=True,
                     )
                 for fleet in fleets_by_player.get(grantor.id, []):
                     if (
@@ -1801,6 +1803,7 @@ class GameTurn():
             sources = get_scanner_sources_for_player(self.game, player)
             if not sources:
                 continue
+            owned_sources = get_owned_scanner_sources_for_player(self.game, player)
 
             colony_positions = set(player.stars.values_list('x', 'y'))
             player_fleet_positions = set(
@@ -1819,8 +1822,16 @@ class GameTurn():
                 if has_advanced and position_in_scanner_range(
                     star.x, star.y, sources, range_key='advanced'
                 ):
+                    conceal_secret_resources = not position_in_scanner_range(
+                        star.x, star.y, owned_sources, range_key='advanced'
+                    )
                     created = self._create_or_update_report(
-                        player, 'star', star, self.game.year, report_tier='advanced'
+                        player,
+                        'star',
+                        star,
+                        self.game.year,
+                        report_tier='advanced',
+                        conceal_secret_resources=conceal_secret_resources,
                     )
                     self._queue_scanner_habitable_star(
                         habitable_stars_found,
@@ -1943,6 +1954,7 @@ class GameTurn():
         year,
         report_tier='advanced',
         include_cargo=False,
+        conceal_secret_resources=False,
     ):
         """Create or update a report for an object."""
         from .models import Report, Fleet
@@ -1968,6 +1980,12 @@ class GameTurn():
                 report_tier=report_tier,
                 include_cargo=include_cargo,
             )
+            if conceal_secret_resources:
+                fresh_data = self._conceal_report_secret_resources(
+                    player,
+                    target_type,
+                    fresh_data,
+                )
             if self._report_tier_rank(existing_tier) > self._report_tier_rank(report_tier):
                 report_data = self._merge_report_refresh(
                     target_type,
@@ -1996,6 +2014,12 @@ class GameTurn():
                 report_tier=report_tier,
                 include_cargo=include_cargo,
             )
+            if conceal_secret_resources:
+                report_data = self._conceal_report_secret_resources(
+                    player,
+                    target_type,
+                    report_data,
+                )
             report = Report.objects.create(
                 player=player,
                 target_type=target_type,
@@ -2011,7 +2035,11 @@ class GameTurn():
         if target_type == 'star':
             old_unknown = list((existing_data or {}).get('unknown_secret_resources') or [])
             new_unknown = list((report_data or {}).get('unknown_secret_resources') or [])
-            if new_unknown and any(key not in old_unknown for key in new_unknown):
+            if (
+                self._report_tier_rank(report_tier) >= self._report_tier_rank('advanced') and
+                new_unknown and
+                any(key not in old_unknown for key in new_unknown)
+            ):
                 self._send_unexplained_scan_contact_message(player, obj, 'star')
 
         owner_now_known = bool(report_data.get('player_name'))
@@ -2140,6 +2168,29 @@ class GameTurn():
             if not bool(getattr(player, 'discovered_%s' % key, False)):
                 unknown.append(key)
         return unknown
+
+    def _conceal_report_secret_resources(self, player, target_type, report_data):
+        """Hide secret-resource identity in non-local star intel sharing."""
+        data = dict(report_data or {})
+        if target_type != 'star':
+            return data
+        unknown = list(data.get('unknown_secret_resources') or [])
+        for key in SECRET_RESOURCE_KEYS:
+            if bool(getattr(player, 'discovered_%s' % key, False)):
+                continue
+            yield_key = '%s_yield' % key
+            inventory_key = '%s_inventory' % key
+            present = (
+                int(data.get(yield_key, 0) or 0) > 0 or
+                int(data.get(inventory_key, 0) or 0) > 0 or
+                key in unknown
+            )
+            if not present:
+                continue
+            if key not in unknown:
+                unknown.append(key)
+        data['unknown_secret_resources'] = unknown
+        return data
 
     def _send_unexplained_scan_contact_message(self, player, obj, target_type):
         if not player or obj is None:
