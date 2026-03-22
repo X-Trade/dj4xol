@@ -6151,7 +6151,7 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(diplo_response.status_code, 200)
         self.assertContains(
             diplo_response,
-            '?x=%s&amp;y=%s&amp;sel=%s&amp;locate=1' % (
+            '?x=%s&y=%s&sel=%s&locate=1' % (
                 contact_star.x,
                 contact_star.y,
                 contact_star.short_id,
@@ -6161,7 +6161,7 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(game_response.status_code, 200)
         self.assertContains(
             game_response,
-            '?x=%s&amp;y=%s&amp;sel=%s&amp;locate=1' % (
+            '?x=%s&y=%s&sel=%s&locate=1' % (
                 contact_star.x,
                 contact_star.y,
                 contact_star.short_id,
@@ -6209,7 +6209,7 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            '?x=%s&amp;y=%s&amp;sel=%s&amp;locate=1' % (
+            '?x=%s&y=%s&sel=%s&locate=1' % (
                 offered_fleet.x,
                 offered_fleet.y,
                 offered_fleet.short_id,
