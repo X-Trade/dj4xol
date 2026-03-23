@@ -7,6 +7,7 @@ Usage examples:
   dev_scripts/commit --minor "Ship new movement path controls"
   dev_scripts/commit --major "Release 1.0 gameplay baseline"
   dev_scripts/commit --version 0.9.0 "Set explicit release version"
+  dev_scripts/commit --skip-add "Reuse existing staged changes"
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Run tests, optionally bump/set app version, append changelog entry, "
-            "stage ./dj4xol, and commit."
+            "stage ./dj4xol up-front (unless skipped), and commit."
         )
     )
     bump = parser.add_mutually_exclusive_group()
@@ -58,6 +59,16 @@ def parse_args() -> argparse.Namespace:
         "message",
         nargs="+",
         help="Commit message and changelog bullet text.",
+    )
+    parser.add_argument(
+        "--no-add",
+        "--skip-add",
+        dest="skip_add",
+        action="store_true",
+        help=(
+            "Do not run git add. Useful for reruns when you want to keep the "
+            "currently staged set unchanged."
+        ),
     )
     return parser.parse_args()
 
@@ -171,6 +182,9 @@ def main() -> int:
     current_version, current_tuple, version_content = read_current_version(version_path)
     target_version, start_new_version = compute_target_version(args, current_tuple)
 
+    if not args.skip_add:
+        run(["git", "add", "./dj4xol"], cwd=repo_root)
+
     run(["pyenv", "exec", "python", "manage.py", "test"], cwd=repo_root)
 
     if start_new_version and target_version != current_version:
@@ -189,7 +203,16 @@ def main() -> int:
     )
     print("Updated changelog:", changelog_path)
 
-    run(["git", "add", "./dj4xol"], cwd=repo_root)
+    if not args.skip_add:
+        run(
+            [
+                "git",
+                "add",
+                str(version_path.relative_to(repo_root)),
+                str(changelog_path.relative_to(repo_root)),
+            ],
+            cwd=repo_root,
+        )
     run(["git", "commit", "-m", commit_message], cwd=repo_root)
     return 0
 
