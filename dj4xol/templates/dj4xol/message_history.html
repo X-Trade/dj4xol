@@ -10,7 +10,7 @@
         <link rel="stylesheet" href="{% static 'dj4xol/research/css/research.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/messages/css/messages.css' %}">
         {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
-        <script defer type="text/javascript" src="{% static 'dj4xol/js/turn_submit.js' %}"></script>
+        <script defer type="text/javascript" src="{% static 'dj4xol/js/turn_submit.js' %}?v=20260323b"></script>
     </head>
     <body class="message-history{% if user_theme %} {{ user_theme }}{% endif %}{% if player and player.turned_in %} turned-in{% endif %}">
         <div class="title-bar">

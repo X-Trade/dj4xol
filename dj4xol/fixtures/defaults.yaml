@@ -1278,7 +1278,7 @@
     name: 'Administration Level 1'
     description: 'Colony administrations can coordinate basic local industry.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"administration_level": 1, "production_cost_overrides": {"BUILD_ADMINISTRATION": {"bp": 120, "ironium": 300, "boranium": 0, "germanium": 450, "colonists": 0}}}'
+    params_json: '{"administration_level": 1, "production_cost_overrides": {"BUILD_ADMINISTRATION": {"bp": 120, "ironium": 350, "boranium": 0, "germanium": 250, "colonists": 0}}}'
     display_order: 210
     enabled: True
 
@@ -1317,7 +1317,7 @@
     name: 'Administration Level 4'
     description: 'Strategic administrations can coordinate colony logistics and fleet dispatch.'
     tech_type: 'INFRASTRUCTURE'
-    params_json: '{"administration_level": 4, "production_cost_overrides": {"BUILD_ADMINISTRATION": {"bp": 70, "ironium": 175, "boranium": 0, "germanium": 250, "colonists": 0}}}'
+    params_json: '{"administration_level": 4, "production_cost_overrides": {"BUILD_ADMINISTRATION": {"bp": 60, "ironium": 100, "boranium": 0, "germanium": 260, "colonists": 0}}}'
     display_order: 213
     enabled: True
 

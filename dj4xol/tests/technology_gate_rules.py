@@ -124,5 +124,9 @@ class TechnologyGateRulesTest(TestCase):
         )
         self.assertEqual(
             describe_race_type_requirement('has has_no_stealth == False'),
-            'Has no stealth systems == False',
+            'Has no stealth systems is False',
+        )
+        self.assertEqual(
+            describe_race_type_requirement('has has_no_stealth != False'),
+            'Has no stealth systems is not False',
         )

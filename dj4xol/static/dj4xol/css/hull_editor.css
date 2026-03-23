@@ -277,6 +277,7 @@
 .hull-slot.slot-tech-torpedo { background: linear-gradient(135deg, rgba(220, 150, 80, 0.5), rgba(75, 45, 10, 0.35)); }
 .hull-slot.slot-tech-shield { background: linear-gradient(135deg, rgba(80, 170, 180, 0.5), rgba(15, 45, 50, 0.35)); }
 .hull-slot.slot-tech-armour { background: linear-gradient(135deg, rgba(150, 155, 165, 0.5), rgba(40, 45, 55, 0.35)); }
+.hull-slot.slot-tech-elec_or_mech { background: linear-gradient(135deg, rgba(130, 185, 115, 0.5), rgba(35, 55, 25, 0.35)); }
 .hull-slot.slot-tech-infrastructure { background: linear-gradient(135deg, rgba(95, 175, 120, 0.5), rgba(20, 55, 25, 0.35)); }
 .hull-slot.slot-tech-other { background: linear-gradient(135deg, rgba(165, 165, 165, 0.45), rgba(45, 45, 45, 0.35)); }
 

@@ -121,9 +121,15 @@ def describe_race_type_requirement(expression):
     if parsed['kind'] == 'has':
         return 'Has %s' % _humanise_field_name(parsed['field']).lower()
 
+    display_operator = parsed['operator']
+    if display_operator in ('=', '=='):
+        display_operator = 'is'
+    elif display_operator == '!=':
+        display_operator = 'is not'
+
     return 'Has %s %s %s' % (
         _humanise_field_name(parsed['field']).lower(),
-        parsed['operator'],
+        display_operator,
         parsed['raw_value'],
     )
 

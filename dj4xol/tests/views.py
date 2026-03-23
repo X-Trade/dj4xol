@@ -298,9 +298,10 @@ class TestMessageFiltering(TestCase):
 class TestProductionOrders(TestCase):
     def _unlock_administration(self, player, tech_level=1, administration_level=1):
         build_cost = {
-            1: {'bp': 120, 'ironium': 300, 'boranium': 0, 'germanium': 450},
+            1: {'bp': 120, 'ironium': 350, 'boranium': 0, 'germanium': 250},
             2: {'bp': 90, 'ironium': 225, 'boranium': 0, 'germanium': 325},
             3: {'bp': 70, 'ironium': 175, 'boranium': 0, 'germanium': 250},
+            4: {'bp': 60, 'ironium': 100, 'boranium': 0, 'germanium': 260},
         }[administration_level]
         category = ResearchCategory.objects.create(
             code='VIEWAUTO%s' % tech_level,
@@ -3461,6 +3462,8 @@ class TestHullDesignViews(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '"value": "SCANNER"', html=False)
         self.assertContains(response, '"label": "Scanner"', html=False)
+        self.assertContains(response, '"value": "ELEC_OR_MECH"', html=False)
+        self.assertContains(response, '"label": "Electrical or Mechanical"', html=False)
 
     def test_hull_design_editor_defaults_new_slot_to_highest_max_level_and_groups_capacity_fields(self):
         response = self.client.get(reverse('dj4xol:hull_design_new'))

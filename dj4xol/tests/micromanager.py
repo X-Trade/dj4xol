@@ -45,10 +45,10 @@ class AdministrationAutomationTest(TestCase):
             enabled=True,
         )
         build_cost = {
-            1: {'bp': 120, 'ironium': 300, 'boranium': 0, 'germanium': 450},
+            1: {'bp': 120, 'ironium': 350, 'boranium': 0, 'germanium': 250},
             2: {'bp': 90, 'ironium': 225, 'boranium': 0, 'germanium': 325},
             3: {'bp': 70, 'ironium': 175, 'boranium': 0, 'germanium': 250},
-            4: {'bp': 70, 'ironium': 175, 'boranium': 0, 'germanium': 250},
+            4: {'bp': 60, 'ironium': 100, 'boranium': 0, 'germanium': 260},
         }[administration_level]
         Technology.objects.create(
             category=category,
@@ -103,7 +103,7 @@ class AdministrationAutomationTest(TestCase):
         self.assertFalse(administration['repeat_allowed'])
         self.assertEqual(
             get_player_production_costs(self.player)['BUILD_ADMINISTRATION']['germanium'],
-            450,
+            250,
         )
 
         ProductionOrder.objects.create(
@@ -247,14 +247,14 @@ class AdministrationAutomationTest(TestCase):
         self.star.refresh_from_db()
 
         self.assertFalse(self.star.has_administration)
-        self.assertEqual(self.star.ironium_inventory, 310)
+        self.assertEqual(self.star.ironium_inventory, 360)
 
     def test_higher_administration_levels_reduce_build_cost(self):
         self._create_administration_tech(1, 1)
         level_one_costs = get_player_production_costs(self.player)
         self.assertEqual(level_one_costs['BUILD_ADMINISTRATION']['bp'], 120)
-        self.assertEqual(level_one_costs['BUILD_ADMINISTRATION']['ironium'], 300)
-        self.assertEqual(level_one_costs['BUILD_ADMINISTRATION']['germanium'], 450)
+        self.assertEqual(level_one_costs['BUILD_ADMINISTRATION']['ironium'], 350)
+        self.assertEqual(level_one_costs['BUILD_ADMINISTRATION']['germanium'], 250)
 
         self._create_administration_tech(2, 2)
         level_two_costs = get_player_production_costs(self.player)
@@ -267,6 +267,12 @@ class AdministrationAutomationTest(TestCase):
         self.assertEqual(level_three_costs['BUILD_ADMINISTRATION']['bp'], 70)
         self.assertEqual(level_three_costs['BUILD_ADMINISTRATION']['ironium'], 175)
         self.assertEqual(level_three_costs['BUILD_ADMINISTRATION']['germanium'], 250)
+
+        self._create_administration_tech(4, 4)
+        level_four_costs = get_player_production_costs(self.player)
+        self.assertEqual(level_four_costs['BUILD_ADMINISTRATION']['bp'], 60)
+        self.assertEqual(level_four_costs['BUILD_ADMINISTRATION']['ironium'], 100)
+        self.assertEqual(level_four_costs['BUILD_ADMINISTRATION']['germanium'], 260)
 
     def test_player_added_orders_stay_ahead_of_micromanager_orders(self):
         self._create_administration_tech(1, 1)
@@ -1047,7 +1053,7 @@ class AdministrationAutomationTest(TestCase):
             if item['value'] == 'BUILD_ADMINISTRATION'
         )
         self.assertFalse(administration['repeat_allowed'])
-        self.assertEqual(administration['cost']['germanium'], 450)
+        self.assertEqual(administration['cost']['germanium'], 250)
 
     def test_available_production_details_show_remove_administration_refund(self):
         self._create_administration_tech(2, 2)

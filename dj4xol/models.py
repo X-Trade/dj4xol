@@ -1849,6 +1849,7 @@ class HullDesignSlot(models.Model):
         ('ARMOUR', 'Armour'),
         ('SCANNER', 'Scanner'),
         ('INFRASTRUCTURE', 'Infrastructure'),
+        ('ELEC_OR_MECH', 'Electrical or Mechanical'),
         ('ELECTRICAL', 'Electrical'),
         ('MECHANICAL', 'Mechanical'),
         ('OTHER', 'Other'),
