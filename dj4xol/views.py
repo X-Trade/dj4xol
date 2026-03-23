@@ -2275,7 +2275,7 @@ def hull_design_edit(request, hull_id=None):
     thumbnail_class_choices = _hull_thumbnail_class_choices(hull.thumbnail_class)
     offense_offset_display = _hull_modifier_to_display(hull.offense_offset)
     defense_offset_display = _hull_modifier_to_display(hull.defense_offset)
-    speed_advantage_display = _hull_modifier_to_display(hull.speed_advantage)
+    speed_advantage_display = float(hull.speed_advantage or 0.0)
     tech_categories = list(
         ResearchCategory.objects.filter(enabled=True).order_by(
             'display_order',
@@ -2311,7 +2311,7 @@ def hull_design_edit(request, hull_id=None):
             speed_advantage_display = float(request.POST.get('speed_advantage') or 0)
             hull.offense_offset = _hull_modifier_from_display(offense_offset_display)
             hull.defense_offset = _hull_modifier_from_display(defense_offset_display)
-            hull.speed_advantage = _hull_modifier_from_display(speed_advantage_display)
+            hull.speed_advantage = speed_advantage_display
             hull.ironium_cost = int(request.POST.get('ironium_cost') or 0)
             hull.boranium_cost = int(request.POST.get('boranium_cost') or 0)
             hull.germanium_cost = int(request.POST.get('germanium_cost') or 0)

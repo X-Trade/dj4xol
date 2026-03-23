@@ -3492,7 +3492,7 @@ class TestHullDesignViews(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'dj4xol/js/number_stepper.js')
         self.assertContains(response, 'name="tech_level"', html=False)
-        self.assertContains(response, 'name="speed_advantage"', html=False)
+        self.assertContains(response, 'name="speed_advantage" step="0.1"', html=False)
         self.assertContains(response, 'inputmode="numeric"', html=False)
         self.assertContains(response, 'readonly onfocus="this.removeAttribute(\'readonly\');"', html=False)
 
@@ -3504,7 +3504,7 @@ class TestHullDesignViews(TestCase):
                 'thumbnail_class': 'scout',
                 'offense_offset': '2',
                 'defense_offset': '3',
-                'speed_advantage': '4',
+                'speed_advantage': '0.4',
                 'ironium_cost': '10',
                 'boranium_cost': '20',
                 'germanium_cost': '30',
