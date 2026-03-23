@@ -9892,6 +9892,7 @@ class TestFleetFuel(TestCase):
         self.assertLess(fleet.fuel, projected_fuel)
         self.assertGreater(player.messages.count(), start_messages)
         msg = player.messages.order_by('-id').first()
+        self.assertEqual(msg.category, 'EXCEPTION')
         self.assertIn('ordered warp 6', msg.message)
         self.assertIn('warp %s' % expected_warp, msg.message)
 
@@ -10013,6 +10014,9 @@ class TestFleetFuel(TestCase):
         game.save(update_fields=['random_events'])
         player = game.players.first()
         star = player.homeworld
+        existing_message_ids = set(
+            player.messages.values_list('id', flat=True)
+        )
 
         fleet = Fleet.objects.create(
             game=game, player=player, name="Dry Wormhole Fleet",
@@ -10033,10 +10037,21 @@ class TestFleetFuel(TestCase):
         self.assertEqual((fleet.x, fleet.y), (star.x, star.y))
         self.assertAlmostEqual(fleet.fuel, 20.0, places=4)
         self.assertEqual(fleet.orders.count(), 1)
-        msg = player.messages.order_by('-id').first()
+        new_messages = list(
+            player.messages.exclude(id__in=existing_message_ids).order_by('-id')
+        )
+        msg = None
+        for candidate in new_messages:
+            text = (candidate.message or '').lower()
+            if 'wormhole' in text and 'fuel' in text:
+                msg = candidate
+                break
         self.assertIsNotNone(msg)
-        self.assertIn('insufficient fuel', msg.message)
-        self.assertIn('wormhole drive', msg.message)
+        self.assertEqual(msg.category, 'EXCEPTION')
+        self.assertTrue(
+            ('insufficient fuel' in msg.message.lower()) or
+            ('fuel stores were too low' in msg.message.lower())
+        )
 
     def test_refuels_in_friendly_shipyard_orbit(self):
         from ..models import Fleet

@@ -1522,6 +1522,7 @@ def add_fleet_order(request, game_short_id):
         order.bomb_until = 'COLONISTS_ZERO'
         order.mine_until_full = True
         order.remotemine_focus = ''
+        order.added_by_micromanager = False
     else:
         # Create order based on type
         order = FleetOrders(game=game, fleet=fleet, order_type=order_type, repeat=repeat)

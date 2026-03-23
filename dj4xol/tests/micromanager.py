@@ -1,6 +1,6 @@
 from django.test import TestCase
 
-from ..models import Fleet, FleetOrders, ProductionOrder, ResearchCategory, Technology
+from ..models import Fleet, FleetOrders, ProductionOrder, ResearchCategory, Salvage, Technology
 from ..colony_rules import calculate_employment_percent
 from ..research import (
     ensure_player_research_rows,
@@ -48,6 +48,7 @@ class AdministrationAutomationTest(TestCase):
             1: {'bp': 120, 'ironium': 300, 'boranium': 0, 'germanium': 450},
             2: {'bp': 90, 'ironium': 225, 'boranium': 0, 'germanium': 325},
             3: {'bp': 70, 'ironium': 175, 'boranium': 0, 'germanium': 250},
+            4: {'bp': 70, 'ironium': 175, 'boranium': 0, 'germanium': 250},
         }[administration_level]
         Technology.objects.create(
             category=category,
@@ -579,6 +580,36 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertGreaterEqual(len(candidates), 1)
         self.assertEqual(candidates[0], 'BUILD_DEFENSE')
+
+    def test_level_two_falls_back_to_factory_when_support_is_unaffordable(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 5_000_000
+        self.star.mines = 10
+        self.star.factories = 100
+        self.star.labs = 5
+        self.star.defenses = 5
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 200
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=0,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertGreaterEqual(len(planned), 1)
+        self.assertEqual(planned[0], 'BUILD_FACTORY')
 
     def test_level_two_stops_when_queue_already_exceeds_one_year_resources(self):
         self._create_administration_tech(2, 2)
@@ -1168,6 +1199,340 @@ class AdministrationAutomationTest(TestCase):
         self.star.refresh_from_db()
 
         self.assertAlmostEqual(self.star.gravity, 0.1, places=4)
+
+    def test_administration_level_four_dispatches_weak_idle_fleet_for_resupply(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 10
+        self.star.factories = 10
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        donor = self.game.stars.exclude(id=self.star.id).first()
+        donor.player = self.player
+        donor.colonists = 100_000
+        donor.mines = 0
+        donor.factories = 0
+        donor.labs = 0
+        donor.defenses = 0
+        donor.shipyards = 0
+        donor.ironium_inventory = 500
+        donor.boranium_inventory = 0
+        donor.germanium_inventory = 0
+        donor.ironium_yield = 0
+        donor.boranium_yield = 0
+        donor.germanium_yield = 0
+        donor.save()
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            quantity=1,
+            position=1,
+        )
+
+        self.player.fleets.all().delete()
+        strong = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Strong Guard',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=5,
+            offense_level=5,
+            defense_level=5,
+        )
+        weak = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Weak Courier',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+        )
+
+        turn = GameTurn(self.game)
+        turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertFalse(strong.orders.exists())
+        weak_orders = list(weak.orders.order_by('position', 'id'))
+        self.assertEqual(len(weak_orders), 4)
+        self.assertTrue(all(order.added_by_micromanager for order in weak_orders))
+        self.assertEqual(weak_orders[0].order_type, 'MOVE')
+        self.assertEqual(weak_orders[1].order_type, 'TRANSFER')
+        self.assertEqual(weak_orders[1].transfer_type, 'LOAD')
+        self.assertEqual(weak_orders[2].order_type, 'MOVE')
+        self.assertEqual(weak_orders[3].order_type, 'TRANSFER')
+        self.assertEqual(weak_orders[3].transfer_type, 'UNLOAD')
+        self.assertEqual(weak_orders[0].target_star_id, donor.id)
+        self.assertIsNone(weak_orders[0].target_salvage_id)
+        self.assertEqual(weak_orders[1].target_star_id, donor.id)
+        self.assertIsNone(weak_orders[1].target_salvage_id)
+        self.assertEqual(weak_orders[2].target_star_id, self.star.id)
+        self.assertEqual(weak_orders[3].target_star_id, self.star.id)
+
+        cost_map = get_player_production_costs(self.player)
+        expected_transfers = turn._transfer_amounts_for_need_and_supply(
+            turn._resource_deficits_for_star(self.star, cost_map),
+            turn._resource_surplus_for_star(donor, cost_map, reserve_factor=1),
+            weak.cargo_remaining,
+        )
+        for key in (
+            'ironium',
+            'boranium',
+            'germanium',
+            'resource_x',
+            'resource_y',
+            'resource_z',
+        ):
+            self.assertEqual(
+                getattr(weak_orders[1], 'transfer_%s' % key),
+                int(expected_transfers.get(key, 0) or 0),
+            )
+            self.assertEqual(
+                getattr(weak_orders[3], 'transfer_%s' % key),
+                int(expected_transfers.get(key, 0) or 0),
+            )
+
+        details = DetailBuilder(
+            self.game,
+            x=weak.x,
+            y=weak.y,
+            selected=weak.short_id.lower(),
+            player=self.player,
+        ).build_detail()
+        self.assertTrue(details['fleet_orders'][0]['added_by_micromanager'])
+
+    def test_administration_level_three_does_not_dispatch_fleet_resupply(self):
+        self._create_administration_tech(3, 3)
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 10
+        self.star.factories = 10
+        self.star.ironium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.save()
+
+        donor = self.game.stars.exclude(id=self.star.id).first()
+        donor.player = self.player
+        donor.colonists = 100_000
+        donor.ironium_inventory = 500
+        donor.ironium_yield = 0
+        donor.save()
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            quantity=1,
+            position=1,
+        )
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Idle Fleet',
+            x=self.star.x,
+            y=self.star.y,
+        )
+
+        turn = GameTurn(self.game)
+        turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertFalse(fleet.orders.exists())
+
+    def test_administration_level_four_can_collect_from_asteroids_when_colonies_cannot_spare(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 10
+        self.star.factories = 10
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        donor = self.game.stars.exclude(id=self.star.id).first()
+        donor.player = self.player
+        donor.colonists = 100_000
+        donor.ironium_inventory = 0
+        donor.boranium_inventory = 0
+        donor.germanium_inventory = 0
+        donor.ironium_yield = 0
+        donor.boranium_yield = 0
+        donor.germanium_yield = 0
+        donor.save()
+
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=int(self.star.x) + 1,
+            y=int(self.star.y),
+            salvage_type=Salvage.TYPE_ASTEROID_FIELD,
+            ironium_inventory=500,
+        )
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            quantity=1,
+            position=1,
+        )
+
+        self.player.fleets.all().delete()
+        strong = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Strong Guard',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=5,
+            offense_level=5,
+            defense_level=5,
+        )
+        weak = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Weak Courier',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+        )
+
+        turn = GameTurn(self.game)
+        turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertFalse(strong.orders.exists())
+        weak_orders = list(weak.orders.order_by('position', 'id'))
+        self.assertEqual(len(weak_orders), 4)
+        self.assertEqual(weak_orders[0].order_type, 'MOVE')
+        self.assertEqual(weak_orders[0].target_salvage_id, salvage.id)
+        self.assertEqual(weak_orders[1].order_type, 'TRANSFER')
+        self.assertEqual(weak_orders[1].transfer_type, 'LOAD')
+        self.assertEqual(weak_orders[1].target_salvage_id, salvage.id)
+        self.assertEqual(weak_orders[2].order_type, 'MOVE')
+        self.assertEqual(weak_orders[2].target_star_id, self.star.id)
+        self.assertEqual(weak_orders[3].order_type, 'TRANSFER')
+        self.assertEqual(weak_orders[3].transfer_type, 'UNLOAD')
+        self.assertEqual(weak_orders[3].target_star_id, self.star.id)
+
+    def test_administration_level_four_can_send_outbound_excess_delivery(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 1_000
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        self.star.production_orders.all().delete()
+
+        needy = self.game.stars.exclude(id=self.star.id).first()
+        needy.player = self.player
+        needy.colonists = 100_000
+        needy.ironium_inventory = 0
+        needy.boranium_inventory = 0
+        needy.germanium_inventory = 0
+        needy.ironium_yield = 0
+        needy.boranium_yield = 0
+        needy.germanium_yield = 0
+        needy.save()
+        needy.production_orders.all().delete()
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=needy,
+            order_type='BUILD_FACTORY',
+            quantity=1,
+            position=1,
+        )
+
+        self.player.fleets.all().delete()
+        strong = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Strong Guard',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=5,
+            offense_level=5,
+            defense_level=5,
+        )
+        weak = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Weak Courier',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+        )
+
+        turn = GameTurn(self.game)
+        turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertFalse(strong.orders.exists())
+        weak_orders = list(weak.orders.order_by('position', 'id'))
+        self.assertEqual(len(weak_orders), 4)
+        self.assertEqual(weak_orders[0].order_type, 'TRANSFER')
+        self.assertEqual(weak_orders[0].transfer_type, 'LOAD')
+        self.assertEqual(weak_orders[0].target_star_id, self.star.id)
+        self.assertEqual(weak_orders[1].order_type, 'MOVE')
+        self.assertEqual(weak_orders[1].target_star_id, needy.id)
+        self.assertEqual(weak_orders[2].order_type, 'TRANSFER')
+        self.assertEqual(weak_orders[2].transfer_type, 'UNLOAD')
+        self.assertEqual(weak_orders[2].target_star_id, needy.id)
+        self.assertEqual(weak_orders[3].order_type, 'MOVE')
+        self.assertEqual(weak_orders[3].target_star_id, self.star.id)
+
+        cost_map = get_player_production_costs(self.player)
+        expected_transfers = turn._transfer_amounts_for_need_and_supply(
+            turn._resource_deficits_for_star(needy, cost_map),
+            turn._resource_surplus_for_star(self.star, cost_map, reserve_factor=2),
+            weak.cargo_remaining,
+        )
+        for key in (
+            'ironium',
+            'boranium',
+            'germanium',
+            'resource_x',
+            'resource_y',
+            'resource_z',
+        ):
+            self.assertEqual(
+                getattr(weak_orders[0], 'transfer_%s' % key),
+                int(expected_transfers.get(key, 0) or 0),
+            )
+            self.assertEqual(
+                getattr(weak_orders[2], 'transfer_%s' % key),
+                int(expected_transfers.get(key, 0) or 0),
+            )
 
     def test_micromanager_keeps_one_auto_order_per_type_over_multiple_years(self):
         self._create_administration_tech(2, 2)

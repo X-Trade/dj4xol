@@ -4,7 +4,7 @@
         <section id="orders" class="orders-list panel-scrollable-list">
             {% if detail.fleet_orders %}
                 {% for order in detail.fleet_orders %}
-                <div class="order-item">
+                <div class="order-item{% if order.added_by_micromanager %} order-item--automated{% endif %}">
                     <div class="order-info">
                     {% if order.order_type == 'MOVE' or not order.order_type %}
                         <span>{% if order.warpfactor == 14 %}Wormhole{% else %}Warp {{ order.warpfactor }}{% endif %} to {% if order.target_link %}<a href="{{ order.target_link }}" class="order-target-link">{{ order.target }}</a>{% else %}{{ order.target }}{% endif %}</span>
@@ -67,6 +67,7 @@
                     {% else %}
                         <span>Unknown order type: {{ order.order_type }}</span>
                     {% endif %}
+                    {% if order.added_by_micromanager %} <span class="order-automation-tag">Auto</span>{% endif %}
                     </div>
                     <div class="order-actions">
                         {% if order.order_type == 'TRANSFER' or order.order_type == 'GIVE' or order.order_type == 'BOMB' or order.order_type == 'REMOTEMINE' or order.order_type == 'PATROL' %}

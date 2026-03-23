@@ -778,7 +778,23 @@ def plan_micromanager_orders(
             selected = candidate
             break
         if selected is None:
-            break
+            # Tier-2/3 may surface support-only candidate sets. If none of
+            # those are affordable, allow an initial factory bootstrap so the
+            # queue does not go empty while still preserving support priority.
+            if (
+                not planned and
+                not existing and
+                'BUILD_FACTORY' not in candidates and
+                _can_add_jobs_without_breaking_limit(
+                    player, projected, 'BUILD_FACTORY'
+                ) and
+                _can_afford_from_budget(
+                    cost_map, planning_budget, 'BUILD_FACTORY'
+                )
+            ):
+                selected = 'BUILD_FACTORY'
+            else:
+                break
         planned.append(selected)
         _spend_budget(cost_map, planning_budget, selected)
         apply_projected_order(

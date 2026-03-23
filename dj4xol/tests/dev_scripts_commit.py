@@ -2,6 +2,7 @@ import importlib.machinery
 import importlib.util
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.test import TestCase
 
@@ -53,3 +54,18 @@ class CommitScriptChangelogTest(TestCase):
         )
         self.assertNotIn('<ul class="game-list">\n\n', updated)
         self.assertNotIn('</li>\n\n            <li>', updated)
+
+
+class CommitScriptArgsTest(TestCase):
+    def test_parse_args_defaults_to_staging(self):
+        with patch('sys.argv', ['commit', 'Ship update']):
+            args = COMMIT_SCRIPT.parse_args()
+        self.assertFalse(args.skip_add)
+
+    def test_parse_args_supports_skip_add_aliases(self):
+        with patch('sys.argv', ['commit', '--skip-add', 'Ship update']):
+            args_skip = COMMIT_SCRIPT.parse_args()
+        with patch('sys.argv', ['commit', '--no-add', 'Ship update']):
+            args_no = COMMIT_SCRIPT.parse_args()
+        self.assertTrue(args_skip.skip_add)
+        self.assertTrue(args_no.skip_add)

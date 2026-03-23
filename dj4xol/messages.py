@@ -1150,7 +1150,7 @@ class FleetWarpDamageMessageFactory(MessageFactory):
 
 class FleetBussardRecoveryMessageFactory(MessageFactory):
     """Message when a fleet scavenges emergency fuel and continues moving."""
-    category = 'GENERAL'
+    category = 'EXCEPTION'
     templates = [
         "{fleet} gathered {fuel_gain}mg with Bussard collectors and continued at warp {warp} (ordered warp {requested_warp}).",
         "Low fuel emergency on {fleet}: Bussard collectors recovered {fuel_gain}mg, allowing warp {warp} movement (ordered warp {requested_warp}).",
@@ -1175,7 +1175,7 @@ class FleetBussardRecoveryMessageFactory(MessageFactory):
 
 class FleetWormholeFuelFailureMessageFactory(MessageFactory):
     """Message when a fleet cannot engage wormhole drive due to fuel shortage."""
-    category = 'GENERAL'
+    category = 'EXCEPTION'
     templates = [
         "{fleet} failed to engage wormhole drive due to insufficient fuel ({fuel:.1f}mg available, {required_fuel:.1f}mg required).",
         "Wormhole jump aborted for {fleet}: insufficient fuel ({fuel:.1f}mg available, {required_fuel:.1f}mg required).",

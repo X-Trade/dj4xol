@@ -1224,6 +1224,7 @@ class FleetOrders(AbstractGameObject):
             on_delete=models.CASCADE)
     order_type = models.CharField(max_length=10, choices=ORDER_TYPE_CHOICES, default='MOVE')
     repeat = models.BooleanField(default=False)
+    added_by_micromanager = models.BooleanField(default=False)
     position = models.IntegerField(default=0)
 
     # Movement parameters

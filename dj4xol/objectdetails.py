@@ -1838,6 +1838,9 @@ class DetailBuilder():
                 'eta_years': eta_years,
                 'repeat': o.repeat,
                 'repeat_allowed': repeat_allowed,
+                'added_by_micromanager': bool(
+                    getattr(o, 'added_by_micromanager', False)
+                ),
                 'order_type': o.order_type,
                 'transfer_player_name': (
                     o.transfer_player.name if getattr(o, 'transfer_player_id', None) else None
