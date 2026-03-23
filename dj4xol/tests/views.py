@@ -3113,6 +3113,62 @@ class TestFleetOrderViews(TestCase):
         )
         self.assertContains(response, 'id="intercept-speed-slider"', html=False)
 
+    def test_wormhole_fleet_keeps_zero_cloak_and_fuel_factory_thresholds_in_order_slider_data(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.max_safe_warp = 8
+        fleet.max_cloaked_warp = 0
+        fleet.fuel_factory_mg_per_year = 1.5
+        fleet.fuel_factory_max_warp = 0
+        fleet.has_wormhole_drive = True
+        fleet.save(update_fields=[
+            'max_safe_warp',
+            'max_cloaked_warp',
+            'fuel_factory_mg_per_year',
+            'fuel_factory_max_warp',
+            'has_wormhole_drive',
+        ])
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-has-wormhole-drive="1"', html=False)
+        self.assertContains(response, 'data-max-cloaked-warp="0"', html=False)
+        self.assertContains(response, 'data-fuel-factory-max-warp="0"', html=False)
+        self.assertContains(
+            response,
+            'id="warp-cloak-note" class="order-param-hint">Cloaked at this speed.</div>',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'id="warp-fuel-factory-note" class="order-param-hint">Producing fuel at this speed.</div>',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            "warpSlider.addEventListener('change', updateWarpDisplay);",
+            html=False,
+        )
+        self.assertContains(
+            response,
+            "interceptSpeedSlider.addEventListener('change', updateInterceptDisplay);",
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'Insufficient fuel for wormhole jump.',
+            html=False,
+        )
+
     def test_move_target_selection_preserves_requested_warp(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
@@ -3151,6 +3207,28 @@ class TestFleetOrderViews(TestCase):
             html=False,
         )
         self.assertContains(response, 'warp=7', html=False)
+
+    def test_transfer_edit_script_uses_inverse_cubic_slider_mapping(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'function transferActualToSliderPosition(', html=False)
+        self.assertContains(response, 'Math.cbrt(ratio)', html=False)
+        self.assertContains(
+            response,
+            'slider.value = transferActualToSliderPosition(value, slider.max);',
+            html=False,
+        )
 
     def test_move_single_target_render_includes_explicit_anomaly_target(self):
         game = default_game(stars=5, fleets=2)

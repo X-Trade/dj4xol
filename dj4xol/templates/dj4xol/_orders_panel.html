@@ -392,8 +392,8 @@
                     <div class="order-param-row order-param-row--with-hint">
                         <label for="warp-slider">Speed</label>
                         <div class="speed-row">
-                            <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{% if request.GET.warp and request.GET.order_type != 'INTERCEPT' %}{{ dest_warp }}{% else %}{{ detail.fleet_cargo.move_default_warp|default:5 }}{% endif %}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}" data-current-fuel="{{ detail.fleet_cargo.fuel|default:0 }}" data-current-x="{% if detail.effective_location %}{{ detail.effective_location.0 }}{% endif %}" data-current-y="{% if detail.effective_location %}{{ detail.effective_location.1 }}{% endif %}" data-wormhole-fuel-per-ly="{{ detail.fleet_cargo.wormhole_fuel_per_ly|default:5 }}">
-                            <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.move_default_warp|default:5 }}</span>
+                            <input type="range" id="warp-slider" min="0" max="{% if detail.fleet_cargo.has_wormhole_drive %}14{% else %}13{% endif %}" value="{% if request.GET.warp and request.GET.order_type != 'INTERCEPT' %}{{ dest_warp }}{% else %}{{ detail.fleet_cargo.move_default_warp|default_if_none:5 }}{% endif %}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default_if_none:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default_if_none:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default_if_none:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default_if_none:-1 }}" data-has-wormhole-drive="{% if detail.fleet_cargo.has_wormhole_drive %}1{% else %}0{% endif %}" data-current-fuel="{{ detail.fleet_cargo.fuel|default_if_none:0 }}" data-current-x="{% if detail.effective_location %}{{ detail.effective_location.0 }}{% endif %}" data-current-y="{% if detail.effective_location %}{{ detail.effective_location.1 }}{% endif %}" data-wormhole-fuel-per-ly="{{ detail.fleet_cargo.wormhole_fuel_per_ly|default_if_none:5 }}">
+                            <span id="warp-value" class="warp-value">Warp {{ detail.fleet_cargo.move_default_warp|default_if_none:5 }}</span>
                         </div>
                         <div class="order-param-hints">
                             <div id="warp-risk-note" class="order-param-hint is-hidden"></div>
@@ -428,8 +428,8 @@
                     <div class="order-param-row order-param-row--with-hint">
                         <label for="intercept-speed-slider">Intercept Speed</label>
                         <div class="speed-row">
-                            <input type="range" id="intercept-speed-slider" min="0" max="13" value="{% if request.GET.warp and request.GET.order_type == 'INTERCEPT' %}{{ dest_warp }}{% else %}{{ detail.fleet_cargo.max_safe_warp|default:5 }}{% endif %}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default:-1 }}">
-                            <span id="intercept-speed-value" class="warp-value">Warp {{ detail.fleet_cargo.max_safe_warp|default:5 }}</span>
+                            <input type="range" id="intercept-speed-slider" min="0" max="13" value="{% if request.GET.warp and request.GET.order_type == 'INTERCEPT' %}{{ dest_warp }}{% else %}{{ detail.fleet_cargo.max_safe_warp|default_if_none:5 }}{% endif %}" class="warp-slider" data-max-safe-warp="{{ detail.fleet_cargo.max_safe_warp|default_if_none:5 }}" data-max-cloaked-warp="{{ detail.fleet_cargo.max_cloaked_warp|default_if_none:-1 }}" data-fuel-factory-rate="{{ detail.fleet_cargo.fuel_factory_mg_per_year|default_if_none:0 }}" data-fuel-factory-max-warp="{{ detail.fleet_cargo.fuel_factory_max_warp|default_if_none:-1 }}">
+                            <span id="intercept-speed-value" class="warp-value">Warp {{ detail.fleet_cargo.max_safe_warp|default_if_none:5 }}</span>
                         </div>
                         <div class="order-param-hints">
                             <div id="intercept-risk-note" class="order-param-hint is-hidden"></div>
@@ -815,6 +815,38 @@
         return Math.round(value * 10) / 10;
     }
 
+    function transferSliderPositionToActual(sliderValue, sliderMax) {
+        var maxVal = parseInt(sliderMax, 10);
+        if (!isFinite(maxVal) || maxVal <= 0) {
+            return 0;
+        }
+        var posVal = parseInt(sliderValue, 10);
+        if (!isFinite(posVal) || posVal <= 0) {
+            return 0;
+        }
+        posVal = Math.max(0, Math.min(maxVal, posVal));
+        var normalizedVal = posVal / maxVal;
+        var cubedVal = normalizedVal * normalizedVal * normalizedVal;
+        return Math.round(cubedVal * maxVal);
+    }
+
+    function transferActualToSliderPosition(actualValue, sliderMax) {
+        var maxVal = parseInt(sliderMax, 10);
+        if (!isFinite(maxVal) || maxVal <= 0) {
+            return 0;
+        }
+        var targetActual = parseInt(actualValue, 10);
+        if (!isFinite(targetActual) || targetActual <= 0) {
+            return 0;
+        }
+        targetActual = Math.max(0, Math.min(maxVal, targetActual));
+        var ratio = targetActual / maxVal;
+        if (ratio <= 0) {
+            return 0;
+        }
+        return Math.round(Math.cbrt(ratio) * maxVal);
+    }
+
     function buildWormholeFuelWarning(sliderEl) {
         if (!sliderEl) {
             return null;
@@ -851,13 +883,7 @@
         if (requiredFuel <= currentFuel) {
             return null;
         }
-        return (
-            'Insufficient fuel for wormhole jump (' +
-            roundToOneDecimal(currentFuel).toFixed(1) +
-            'mg / ' +
-            roundToOneDecimal(requiredFuel).toFixed(1) +
-            'mg needed).'
-        );
+        return 'Insufficient fuel for wormhole jump.';
     }
 
     function setMoveTargetInputs(targetValue, optionEl) {
@@ -1186,7 +1212,7 @@
             var attr = 'data-transfer-' + resource.replace(/_/g, '-');
             var value = button.getAttribute(attr) || '0';
             if (slider) {
-                slider.value = value;
+                slider.value = transferActualToSliderPosition(value, slider.max);
                 slider.dispatchEvent(new Event('input'));
             }
             if (input) {
@@ -2232,23 +2258,25 @@
                 warpDisplay.classList.add('warp-warning');
                 warpHintState = 'wormhole-fuel';
                 warpHintText = wormholeFuelWarning;
-            } else if (val === 14 && allowWormhole) {
-                warpDisplay.classList.add('warp-danger');
-                warpHintState = 'danger';
-            } else if (val > maxSafeWarp) {
-                if (val >= 10) {
+            } else {
+                if (val === 14 && allowWormhole) {
                     warpDisplay.classList.add('warp-danger');
                     warpHintState = 'danger';
-                } else {
-                    warpDisplay.classList.add('warp-warning');
-                    warpHintState = 'warning';
+                } else if (val > maxSafeWarp) {
+                    if (val >= 10) {
+                        warpDisplay.classList.add('warp-danger');
+                        warpHintState = 'danger';
+                    } else {
+                        warpDisplay.classList.add('warp-warning');
+                        warpHintState = 'warning';
+                    }
+                } else if (cloakedAtSpeed && fuelFactoryAtSpeed) {
+                    warpHintState = 'cloak-fuel';
+                } else if (cloakedAtSpeed) {
+                    warpHintState = 'cloak';
+                } else if (fuelFactoryAtSpeed) {
+                    warpHintState = 'fuel';
                 }
-            } else if (cloakedAtSpeed && fuelFactoryAtSpeed) {
-                warpHintState = 'cloak-fuel';
-            } else if (cloakedAtSpeed) {
-                warpHintState = 'cloak';
-            } else if (fuelFactoryAtSpeed) {
-                warpHintState = 'fuel';
             }
             updateWarpHintState(
                 warpRiskNote,
@@ -2259,9 +2287,12 @@
             );
         }
         warpSlider.addEventListener('input', updateWarpDisplay);
-        warpSlider.addEventListener('input', function() {
+        warpSlider.addEventListener('change', updateWarpDisplay);
+        var onWarpSpeedChanged = function() {
             updateDestinationLink(orderType ? orderType.value : 'MOVE');
-        });
+        };
+        warpSlider.addEventListener('input', onWarpSpeedChanged);
+        warpSlider.addEventListener('change', onWarpSpeedChanged);
         updateWarpDisplay();  // Initialise on page load
     }
 
@@ -2338,9 +2369,12 @@
             );
         }
         interceptSpeedSlider.addEventListener('input', updateInterceptDisplay);
-        interceptSpeedSlider.addEventListener('input', function() {
+        interceptSpeedSlider.addEventListener('change', updateInterceptDisplay);
+        var onInterceptSpeedChanged = function() {
             updateDestinationLink(orderType ? orderType.value : 'INTERCEPT');
-        });
+        };
+        interceptSpeedSlider.addEventListener('input', onInterceptSpeedChanged);
+        interceptSpeedSlider.addEventListener('change', onInterceptSpeedChanged);
         updateInterceptDisplay();
     }
     
@@ -2354,12 +2388,7 @@
             function updateSliderDisplay() {
                 var sliderVal = parseInt(slider.value);
                 var sliderMax = parseInt(slider.max);
-                
-                // Use cubic response for finer control at low values
-                // Normalize to 0-1, cube it, then scale back to 0-max
-                var normalizedVal = sliderVal / sliderMax;
-                var cubedVal = normalizedVal * normalizedVal * normalizedVal;
-                var actualVal = Math.round(cubedVal * sliderMax);
+                var actualVal = transferSliderPositionToActual(sliderVal, sliderMax);
                 
                 var unit = resource === 'colonists' ? 'k' : 'kt';
                 display.textContent = actualVal.toLocaleString() + unit;
