@@ -1338,22 +1338,14 @@ input[type="range"]::-webkit-slider-thumb {
     border-radius: 10px;
 }
 
-.starmap-controls button:hover {
-    background: #ccccff;
+@media (hover: hover) and (pointer: fine) {
+    .starmap-controls button:hover {
+        background: #ccccff;
+    }
 }
 
 .starmap-controls button.active {
     background: #99ccff;
-}
-
-@media (hover: none), (pointer: coarse) {
-    .starmap-controls button:hover {
-        background: #9999cc;
-    }
-
-    .starmap-controls button.active:hover {
-        background: #99ccff;
-    }
 }
 
 /* ============================================

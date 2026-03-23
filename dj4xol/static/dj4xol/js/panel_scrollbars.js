@@ -6,13 +6,6 @@
             document.body.classList.contains('haxxor');
     }
 
-    function shouldUseNativeTouchScrollbars() {
-        if (window.matchMedia) {
-            return window.matchMedia('(hover: none), (pointer: coarse)').matches;
-        }
-        return false;
-    }
-
     function ensureScrollFrame(el) {
         if (!el) return null;
         var parent = el.parentElement;
@@ -257,7 +250,7 @@
     function refreshCustomPanelScrollbars() {
         var scrollEls = document.querySelectorAll('.panel-scrollable-list, .panel-scrollable-text');
         var i;
-        if (!useCustomThemeScrollbars() || shouldUseNativeTouchScrollbars()) {
+        if (!useCustomThemeScrollbars()) {
             for (i = 0; i < scrollEls.length; i += 1) {
                 removeCustomScrollbarOverlay(scrollEls[i]);
             }

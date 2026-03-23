@@ -96,14 +96,16 @@ body.retro {
     font: inherit;
 }
 
-.retro .title-bar button:hover,
-.retro button:hover:not(:disabled),
-.retro .action-link:hover,
-.retro .nav-button:hover:not(:disabled),
-.retro .diplomacy-action-button:hover:not(:disabled) {
-    background: #152a48;
-    border-color: var(--retro-border-bright);
-    color: #f0fff7;
+@media (hover: hover) and (pointer: fine) {
+    .retro .title-bar button:hover,
+    .retro button:hover:not(:disabled),
+    .retro .action-link:hover,
+    .retro .nav-button:hover:not(:disabled),
+    .retro .diplomacy-action-button:hover:not(:disabled) {
+        background: #152a48;
+        border-color: var(--retro-border-bright);
+        color: #f0fff7;
+    }
 }
 
 .retro .title-bar button:active,
@@ -362,13 +364,15 @@ body.retro {
     box-shadow: none;
 }
 
-.retro .starmap-controls button:hover,
 .retro .starmap-controls button:active {
     border: none;
 }
 
-.retro .starmap-controls button:hover {
-    background: #13274c;
+@media (hover: hover) and (pointer: fine) {
+    .retro .starmap-controls button:hover {
+        border: none;
+        background: #13274c;
+    }
 }
 
 .retro .starmap-controls button:active {
@@ -378,16 +382,6 @@ body.retro {
 .retro .starmap-controls button.active {
     background: #1b5f8a;
     border: none;
-}
-
-@media (hover: none), (pointer: coarse) {
-    .retro .starmap-controls button:hover {
-        background: #102038;
-    }
-
-    .retro .starmap-controls button.active:hover {
-        background: #1b5f8a;
-    }
 }
 
 .retro .panel-scrollable-list,

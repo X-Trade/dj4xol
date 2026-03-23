@@ -1452,13 +1452,6 @@ $(document).ready(function() {
         return overlay;
     }
 
-    function shouldUseNativeTouchScrollbars() {
-        if (window.matchMedia) {
-            return window.matchMedia('(hover: none), (pointer: coarse)').matches;
-        }
-        return false;
-    }
-
     function removeCustomScrollbarOverlay(el) {
         if (!el) {
             return;
@@ -1477,13 +1470,6 @@ $(document).ready(function() {
             !document.body.classList.contains('win95') &&
             !document.body.classList.contains('retro') &&
             !document.body.classList.contains('haxxor')) {
-            return;
-        }
-
-        if (shouldUseNativeTouchScrollbars()) {
-            for (i = 0; i < scrollEls.length; i += 1) {
-                removeCustomScrollbarOverlay(scrollEls[i]);
-            }
             return;
         }
 

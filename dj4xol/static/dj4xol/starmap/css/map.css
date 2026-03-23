@@ -740,20 +740,10 @@ body.lcars .maparea a.mapstar-name {
     justify-content: center;
 }
 
-.starmap-controls button:hover {
-    background: rgba(80, 80, 80, 0.9);
-    border-color: #888;
-}
-
-@media (hover: none), (pointer: coarse) {
+@media (hover: hover) and (pointer: fine) {
     .starmap-controls button:hover {
-        background: rgba(40, 40, 40, 0.9);
-        border-color: #666;
-    }
-
-    .starmap-controls button.active:hover {
-        background: rgba(0, 100, 180, 0.9);
-        border-color: #4af;
+        background: rgba(80, 80, 80, 0.9);
+        border-color: #888;
     }
 }
 

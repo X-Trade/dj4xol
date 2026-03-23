@@ -1174,23 +1174,15 @@ input[type="range"]::-webkit-slider-thumb {
     border-radius: 0;
 }
 
-.starmap-controls button:hover {
-    background: #d4d4d4;
+@media (hover: hover) and (pointer: fine) {
+    .starmap-controls button:hover {
+        background: #d4d4d4;
+    }
 }
 
 .starmap-controls button.active {
     box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
                 inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
-}
-
-@media (hover: none), (pointer: coarse) {
-    .starmap-controls button:hover {
-        background: #c0c0c0;
-    }
-
-    .starmap-controls button.active:hover {
-        background: #c0c0c0;
-    }
 }
 
 /* ============================================
