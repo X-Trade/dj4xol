@@ -3477,6 +3477,16 @@ class TestHullDesignViews(TestCase):
         self.assertContains(response, 'Cargo Hold Height')
         self.assertContains(response, 'Speed Advantage')
 
+    def test_hull_design_editor_has_edit_preview_toggle_and_preview_slot_labels(self):
+        response = self.client.get(reverse('dj4xol:hull_design_new'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-hull-editor-tab="edit"', html=False)
+        self.assertContains(response, 'data-hull-editor-tab="preview"', html=False)
+        self.assertContains(response, 'hull-slot-type-label', html=False)
+        self.assertContains(response, 'hull-slot-item-count', html=False)
+        self.assertContains(response, 'hull-slot-max-tech', html=False)
+
     def test_hull_design_editor_shows_real_secret_resource_names_for_staff(self):
         response = self.client.get(reverse('dj4xol:hull_design_new'))
 
@@ -3522,7 +3532,15 @@ class TestHullDesignViews(TestCase):
                 'tech_display_order': '2',
                 'tech_description': 'Admin-created hull tech.',
                 'tech_enabled': 'on',
-                'slots_json': '[]',
+                'slots_json': json.dumps([
+                    {
+                        'x': 0,
+                        'y': 0,
+                        'tech_type': 'PROPULSION',
+                        'item_count': 1,
+                        'max_tech_level': 0,
+                    },
+                ]),
             },
         )
 
@@ -3599,7 +3617,15 @@ class TestHullDesignViews(TestCase):
                 'tech_display_order': '4',
                 'tech_description': 'Updated description.',
                 'tech_enabled': 'on',
-                'slots_json': '[]',
+                'slots_json': json.dumps([
+                    {
+                        'x': 0,
+                        'y': 0,
+                        'tech_type': 'PROPULSION',
+                        'item_count': 1,
+                        'max_tech_level': 0,
+                    },
+                ]),
             },
         )
 
@@ -3617,6 +3643,48 @@ class TestHullDesignViews(TestCase):
         self.assertEqual(params.get('hull_thumbnail_class'), 'fighter')
         self.assertEqual(params.get('offense_level'), 0.4)
         self.assertEqual(params.get('defense_level'), 0.5)
+
+    def test_hull_design_new_requires_at_least_one_propulsion_slot(self):
+        response = self.client.post(
+            reverse('dj4xol:hull_design_new'),
+            {
+                'name': 'No Drive Hull',
+                'thumbnail_class': 'scout',
+                'offense_offset': '2',
+                'defense_offset': '3',
+                'speed_advantage': '0.4',
+                'ironium_cost': '10',
+                'boranium_cost': '20',
+                'germanium_cost': '30',
+                'resource_x_cost': '0',
+                'resource_y_cost': '0',
+                'resource_z_cost': '0',
+                'cargo_capacity': '80',
+                'fuel_capacity': '120',
+                'cargo_hold_grid_width': '0',
+                'cargo_hold_grid_height': '0',
+                'enabled': 'on',
+                'tech_name': 'No Drive Hull Tech',
+                'tech_category': str(self.energy.id),
+                'tech_level': '7',
+                'tech_display_order': '2',
+                'tech_description': 'Invalid hull without propulsion slot.',
+                'tech_enabled': 'on',
+                'slots_json': json.dumps([
+                    {
+                        'x': 0,
+                        'y': 0,
+                        'tech_type': 'SCANNER',
+                        'item_count': 1,
+                        'max_tech_level': 0,
+                    },
+                ]),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'At least one propulsion slot is required.')
+        self.assertFalse(HullDesign.objects.filter(name='No Drive Hull').exists())
 
     def test_debug_actions_drop_debug_prefix(self):
         game = default_game(stars=5, fleets=1)

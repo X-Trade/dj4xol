@@ -19,6 +19,32 @@
     max-height: 75dvh;
 }
 
+.hull-editor-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+.hull-editor-tab {
+    appearance: none;
+    border: 1px solid var(--panel-border);
+    background: rgba(255, 255, 255, 0.03);
+    color: inherit;
+    border-radius: 999px;
+    padding: 3px 10px;
+    font: inherit;
+    cursor: pointer;
+}
+
+.hull-editor-tab.is-active {
+    background: var(--theme-accent);
+    border-color: var(--theme-accent);
+    color: #fff;
+    font-weight: bold;
+}
+
 .hull-editor-page .hull-editor-columns .panel-content {
     flex: 1 1 auto;
     min-height: 0;
@@ -358,9 +384,84 @@
     opacity: 0.8;
 }
 
+.hull-preview-only {
+    display: none;
+}
+
 .hull-slot-count {
     font-size: 0.85em;
     opacity: 0.8;
+}
+
+.hull-slot-type-label,
+.hull-slot-item-count,
+.hull-slot-max-tech {
+    display: none;
+}
+
+.hull-editor-page.hull-editor-preview-mode .hull-editor-canvas {
+    background: #0d1321;
+}
+
+.hull-editor-page.hull-editor-preview-mode .hull-meta-note {
+    display: none;
+}
+
+.hull-editor-page.hull-editor-preview-mode .hull-preview-only {
+    display: block;
+}
+
+.hull-editor-page.hull-editor-preview-mode .hull-editor-actions,
+.hull-editor-page.hull-editor-preview-mode .hull-editor-status,
+.hull-editor-page.hull-editor-preview-mode .hull-slot-remove,
+.hull-editor-page.hull-editor-preview-mode .hull-slot-fields,
+.hull-editor-page.hull-editor-preview-mode .hull-slot::before,
+.hull-editor-page.hull-editor-preview-mode .hull-slot-ghost {
+    display: none;
+}
+
+.hull-editor-page.hull-editor-preview-mode .hull-slot {
+    border: 2px solid rgba(210, 220, 240, 0.82);
+    box-shadow: inset 0 0 0 1px rgba(20, 26, 44, 0.7);
+    background: linear-gradient(180deg, rgba(22, 33, 56, 0.92), rgba(10, 17, 31, 0.95));
+}
+
+.hull-editor-page.hull-editor-preview-mode .hull-slot-type-label {
+    position: absolute;
+    display: block;
+    left: 4px;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    text-align: center;
+    font-size: 8px;
+    line-height: 1.15;
+    letter-spacing: 0.03em;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #d7e5ff;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+
+.hull-editor-page.hull-editor-preview-mode .hull-slot-item-count,
+.hull-editor-page.hull-editor-preview-mode .hull-slot-max-tech {
+    position: absolute;
+    display: block;
+    font-size: 8px;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    color: #aac7ff;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+
+.hull-editor-page.hull-editor-preview-mode .hull-slot-item-count {
+    left: 4px;
+    bottom: 3px;
+}
+
+.hull-editor-page.hull-editor-preview-mode .hull-slot-max-tech {
+    right: 4px;
+    top: 3px;
 }
 
 @media (max-width: 900px) {

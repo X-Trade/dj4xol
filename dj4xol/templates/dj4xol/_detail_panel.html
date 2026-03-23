@@ -408,8 +408,25 @@ function showRenamePopover() {
     }
     hideMarkerPopover();
     popover.style.display = 'block';
-    input.focus();
-    input.select();
+    if (typeof input.focus === 'function') {
+        try {
+            input.focus({ preventScroll: true });
+        } catch (e) {
+            input.focus();
+        }
+    }
+    // iPad Safari can fail to show/edit all-selected text reliably in popovers.
+    // Place caret at end on coarse pointers; keep select-all for desktop editing.
+    try {
+        if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+            var length = (input.value || '').length;
+            input.setSelectionRange(length, length);
+        } else {
+            input.select();
+        }
+    } catch (e) {
+        input.select();
+    }
 }
 
 function hideRenamePopover() {

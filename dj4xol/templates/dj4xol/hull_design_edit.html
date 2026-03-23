@@ -18,6 +18,7 @@
             <span class="tagline">Staff Prototype</span>
             {% include 'dj4xol/_nav_menu.html' with current_page='hull_designs' %}
         </div>
+        {% include 'dj4xol/_form_message_banner.html' with errors=errors %}
         <form method="post" id="hull-editor-form" autocomplete="off">
             {% csrf_token %}
             {% if technology.pk %}
@@ -31,7 +32,22 @@
             <div class="columns two-column hull-editor-columns">
                 <div class="column column-left">
                     <div class="panel no-transition open" data-panel="hull-layout">
-                        <h2><span>Hull Layout</span><span class="panel-toggle"></span></h2>
+                        <h2>
+                            <span>Hull Layout</span>
+                            <span class="panel-header-actions hull-editor-header-actions">
+                                <button
+                                    type="button"
+                                    class="hull-editor-tab is-active"
+                                    data-hull-editor-tab="edit"
+                                >Edit</button>
+                                <button
+                                    type="button"
+                                    class="hull-editor-tab"
+                                    data-hull-editor-tab="preview"
+                                >Preview</button>
+                            </span>
+                            <span class="panel-toggle"></span>
+                        </h2>
                         <div class="panel-content panel-stack">
                             <section class="panel-scroll-frame">
                                 <div class="panel-scrollable-text">
@@ -47,6 +63,9 @@
                                         </div>
                                         <div class="hull-meta-note">
                                             Set cargo hold width and height to 0 to disable it.
+                                        </div>
+                                        <div class="hull-meta-note hull-preview-only">
+                                            Preview mode shows final slot labels only.
                                         </div>
                                     </div>
                                 </div>
@@ -68,13 +87,6 @@
                         <div class="panel-content panel-stack">
                             <section class="panel-scroll-frame">
                                 <div class="panel-scrollable-text">
-                                    {% if errors %}
-                                    <div class="hull-errors">
-                                        {% for err in errors %}
-                                        <div>{{ err }}</div>
-                                        {% endfor %}
-                                    </div>
-                                    {% endif %}
                                     <div class="hull-form-fields">
                                         <div class="hull-form-section-title">General</div>
                                         <div class="hull-name-row">
@@ -144,6 +156,10 @@
                                                 Tech Enabled
                                                 <input type="checkbox" name="tech_enabled" {% if technology.enabled or not technology.pk %}checked{% endif %}>
                                             </label>
+                                            <label>
+                                                Design Enabled
+                                                <input type="checkbox" name="enabled" {% if hull.enabled or not hull.pk %}checked{% endif %}>
+                                            </label>
                                         </div>
                                         <label>
                                             Thumbnail Class
@@ -212,7 +228,7 @@
                                         <div class="hull-form-row">
                                             <label class="hull-cost-input">
                                                 Cargo Capacity
-                                                <input type="number" name="cargo_capacity" min="0" value="{{ hull.cargo_capacity|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
+                                                <input type="number" name="cargo_capacity" min="0" value="{{ hull.cargo_capacity|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                                 <span class="hull-input-suffix">kt</span>
                                             </label>
                                             <label class="hull-cost-input">
@@ -222,17 +238,13 @@
                                             </label>
                                             <label>
                                                 Cargo Hold Width
-                                                <input type="number" min="0" max="24" name="cargo_hold_grid_width" id="cargo-hold-grid-width" value="{{ hull.cargo_hold_grid_width|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
+                                                <input type="number" min="0" max="24" name="cargo_hold_grid_width" id="cargo-hold-grid-width" value="{{ hull.cargo_hold_grid_width|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                             </label>
                                         </div>
                                         <div class="hull-form-row">
                                             <label>
                                                 Cargo Hold Height
-                                                <input type="number" min="0" max="24" name="cargo_hold_grid_height" id="cargo-hold-grid-height" value="{{ hull.cargo_hold_grid_height|default:0 }}" autocomplete="new-password" aria-autocomplete="none" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
-                                            </label>
-                                            <label>
-                                                Design Enabled
-                                                <input type="checkbox" name="enabled" {% if hull.enabled or not hull.pk %}checked{% endif %}>
+                                                <input type="number" min="0" max="24" name="cargo_hold_grid_height" id="cargo-hold-grid-height" value="{{ hull.cargo_hold_grid_height|default:0 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" readonly onfocus="this.removeAttribute('readonly');">
                                             </label>
                                         </div>
                                         <input type="hidden" name="grid_columns" id="grid-columns" value="8">
@@ -298,6 +310,23 @@
             var thumbnailClassSelect = form.querySelector('select[name="thumbnail_class"]');
             var thumbnailPreview = document.getElementById('hull-thumb-preview');
             var thumbnailCorner = document.getElementById('hull-thumb-corner');
+            var hullEditorTabs = document.querySelectorAll('[data-hull-editor-tab]');
+            var activeHullEditorView = 'edit';
+
+            function isPreviewMode() {
+                return activeHullEditorView === 'preview';
+            }
+
+            function setHullEditorView(nextView) {
+                activeHullEditorView = (nextView === 'preview') ? 'preview' : 'edit';
+                Array.prototype.forEach.call(hullEditorTabs, function(tab) {
+                    var isActive = tab.getAttribute('data-hull-editor-tab') === activeHullEditorView;
+                    tab.classList.toggle('is-active', isActive);
+                });
+                document.body.classList.toggle('hull-editor-preview-mode', isPreviewMode());
+                hideGhost();
+                render();
+            }
 
             function clampInt(v, min, max) {
                 v = parseInt(v, 10);
@@ -538,11 +567,34 @@
                     (function(index) {
                         var slot = slots[index];
                         var el = document.createElement('div');
+                        var typeLabel;
+                        var itemCountLabel;
+                        var maxTechLabel;
                         var techClass = String(slot.tech_type || 'OTHER').toLowerCase();
                         el.className = 'hull-slot slot-tech-' + techClass;
                         el.style.left = slotToPixel(slot.x) + 'px';
                         el.style.top = slotToPixel(slot.y) + 'px';
                         el.dataset.tech = toTechLabel(slot.tech_type);
+
+                        typeLabel = document.createElement('span');
+                        typeLabel.className = 'hull-slot-type-label';
+                        typeLabel.textContent = toTechLabel(slot.tech_type);
+                        el.appendChild(typeLabel);
+
+                        itemCountLabel = document.createElement('span');
+                        itemCountLabel.className = 'hull-slot-item-count';
+                        itemCountLabel.textContent = 'x' + String(slot.item_count || 0);
+                        el.appendChild(itemCountLabel);
+
+                        maxTechLabel = document.createElement('span');
+                        maxTechLabel.className = 'hull-slot-max-tech';
+                        maxTechLabel.textContent = 'L' + String(slot.max_tech_level || 0);
+                        el.appendChild(maxTechLabel);
+
+                        if (isPreviewMode()) {
+                            canvas.appendChild(el);
+                            return;
+                        }
 
                         var remove = document.createElement('button');
                         remove.type = 'button';
@@ -610,6 +662,10 @@
             }
 
             function updateGhost(ev) {
+                if (isPreviewMode()) {
+                    hideGhost();
+                    return;
+                }
                 var rect = canvas.getBoundingClientRect();
                 var x = ev.clientX - rect.left;
                 var y = ev.clientY - rect.top;
@@ -635,6 +691,7 @@
             canvas.addEventListener('mousemove', updateGhost);
             canvas.addEventListener('mouseleave', hideGhost);
             canvas.addEventListener('click', function() {
+                if (isPreviewMode()) return;
                 if (!hovered) return;
                 var defaultMaxTechLevel = SLOT_MAX_LEVELS.length
                     ? SLOT_MAX_LEVELS[SLOT_MAX_LEVELS.length - 1]
@@ -740,8 +797,15 @@
                     refreshThumbnailPreview();
                 });
             }
+            Array.prototype.forEach.call(hullEditorTabs, function(tab) {
+                tab.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setHullEditorView(tab.getAttribute('data-hull-editor-tab'));
+                });
+            });
             form.addEventListener('submit', updateSlotsJson);
-            render();
+            setHullEditorView('edit');
             refreshThumbnailPreview();
         })();
         </script>

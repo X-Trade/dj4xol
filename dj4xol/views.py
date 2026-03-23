@@ -2373,6 +2373,8 @@ def hull_design_edit(request, hull_id=None):
         slot_payload = request.POST.get('slots_json', '[]')
         clean_slots, slot_errors = _parse_hull_slot_payload(slot_payload, hull)
         errors.extend(slot_errors)
+        if not any(slot.get('tech_type') == 'PROPULSION' for slot in clean_slots):
+            errors.append('At least one propulsion slot is required.')
 
         if not errors:
             technology.save()

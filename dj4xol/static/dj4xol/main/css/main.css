@@ -52,6 +52,19 @@ body.spectator-page {
     user-select: text;
 }
 
+/* Rename/marker popovers sit outside #detail; restore text selection/editing there. */
+.game-page .columns .rename-popover,
+.game-page .columns .rename-popover *,
+.game-page .columns .marker-popover,
+.game-page .columns .marker-popover *,
+.spectator-page .columns .rename-popover,
+.spectator-page .columns .rename-popover *,
+.spectator-page .columns .marker-popover,
+.spectator-page .columns .marker-popover * {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
 /* While dragging the starmap, temporarily disable selection everywhere. */
 body.map-dragging,
 body.map-dragging * {
