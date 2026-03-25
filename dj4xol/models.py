@@ -1480,6 +1480,8 @@ class Technology(UUIDMixin):
     tech_type = models.CharField(
         max_length=16, choices=TECH_TYPE_CHOICES, default='OTHER'
     )
+    thumbnail_path = models.CharField(max_length=255, blank=True, default='')
+    thumbnail_class = models.CharField(max_length=128, blank=True, default='')
     params_json = models.TextField(default='{}')
     display_order = models.IntegerField(default=0)
     enabled = models.BooleanField(default=True)

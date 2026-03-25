@@ -2763,6 +2763,8 @@ def _format_tech_param_value(key, value):
 
 
 def _should_show_tech_param(key, value):
+    if key in ('thumbnail_path', 'thumbnail_class', 'thumbnail_cycle', 'thumbnail_paths'):
+        return False
     if key == 'advanced_scanner_range':
         try:
             return float(value) > 0

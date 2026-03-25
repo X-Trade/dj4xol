@@ -203,10 +203,10 @@ class ResearchCategoryAdmin(admin.ModelAdmin):
 @admin.register(Technology)
 class TechnologyAdmin(admin.ModelAdmin):
     list_display = (
-        'name', 'category', 'level', 'tech_type', 'enabled', 'display_order'
+        'name', 'category', 'level', 'tech_type', 'thumbnail_class', 'thumbnail_path', 'enabled', 'display_order'
     )
     list_filter = ('category', 'tech_type', 'enabled')
-    search_fields = ('name', 'description')
+    search_fields = ('name', 'description', 'thumbnail_class', 'thumbnail_path')
 
 
 @admin.register(PlayerResearch)

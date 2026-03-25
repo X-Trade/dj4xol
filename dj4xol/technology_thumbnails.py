@@ -1,8 +1,10 @@
 """Technology thumbnail helpers."""
 
 import json
+from functools import lru_cache
+from pathlib import Path, PurePosixPath
+
 from .ship_thumbnail_catalog import ALL_SHIP_THUMBNAILS, SHIP_THUMBNAILS_BY_CLASS
-from .star_thumbnail_catalog import ALL_STAR_THUMBNAILS
 
 
 TECH_TYPE_PLACEHOLDERS = {
@@ -20,6 +22,10 @@ TECH_TYPE_PLACEHOLDERS = {
 }
 
 DEFAULT_TECH_PLACEHOLDER = TECH_TYPE_PLACEHOLDERS['OTHER']
+THUMB_ROOT_PREFIX = "dj4xol/images/thumbs/"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+STATIC_ROOT = PROJECT_ROOT / "dj4xol" / "static"
+THUMBS_ROOT = STATIC_ROOT / "dj4xol" / "images" / "thumbs"
 
 
 def _safe_params(tech):
@@ -30,23 +36,49 @@ def _safe_params(tech):
     return data if isinstance(data, dict) else {}
 
 
-def _dyson_star_thumbnail_paths():
-    return [
-        path for path in ALL_STAR_THUMBNAILS
-        if "/star/dyson/" in str(path or "")
-    ]
+def _normalise_thumb_relative_path(value):
+    text = str(value or '').strip().replace('\\', '/')
+    if not text:
+        return ''
+    if text.startswith(THUMB_ROOT_PREFIX):
+        text = text[len(THUMB_ROOT_PREFIX):]
+    text = text.lstrip('/')
+    if not text:
+        return ''
+    try:
+        rel = PurePosixPath(text)
+    except Exception:
+        return ''
+    if '..' in rel.parts:
+        return ''
+    return rel.as_posix()
 
 
-def _is_dyson_sphere_tech(tech, params):
-    if bool(params.get('dyson_sphere')):
-        return True
+def _resolve_single_thumbnail_path(value):
+    rel = _normalise_thumb_relative_path(value)
+    if not rel:
+        return ''
+    path = f"{THUMB_ROOT_PREFIX}{rel}"
+    absolute_path = STATIC_ROOT / path
+    if absolute_path.exists() and absolute_path.is_file():
+        return path
+    return ''
 
-    cost_overrides = params.get('production_cost_overrides')
-    if isinstance(cost_overrides, dict) and 'BUILD_DYSON_SPHERE' in cost_overrides:
-        return True
 
-    name = str(getattr(tech, 'name', '') or '').strip().lower()
-    return 'dyson sphere' in name
+@lru_cache(maxsize=None)
+def _resolve_thumbnail_cycle_paths(value):
+    rel = _normalise_thumb_relative_path(value)
+    if not rel:
+        return tuple()
+    folder = THUMBS_ROOT / rel
+    if not folder.exists() or not folder.is_dir():
+        return tuple()
+    paths = []
+    for path in sorted(folder.glob('*.png')):
+        if path.name.endswith('__blur.png'):
+            continue
+        paths.append(path.relative_to(STATIC_ROOT).as_posix())
+    return tuple(paths)
 
 
 def _infer_hull_class(tech, params):
@@ -88,11 +120,33 @@ def get_technology_thumbnail_paths(tech):
     tech_type = str(getattr(tech, 'tech_type', '') or 'OTHER').upper()
     params = _safe_params(tech)
 
-    configured_paths = params.get('thumbnail_paths')
-    if isinstance(configured_paths, list):
-        paths = [str(path) for path in configured_paths if path]
-        if paths:
-            return paths
+    configured_class = (
+        str(getattr(tech, 'thumbnail_class', '') or '').strip()
+        or str(params.get('thumbnail_class') or '').strip()
+        or str(params.get('thumbnail_cycle') or '').strip()
+    )
+    if configured_class:
+        cycle_paths = list(_resolve_thumbnail_cycle_paths(configured_class))
+        if (
+            not cycle_paths and tech_type == 'HULL'
+            and '/' not in configured_class
+        ):
+            cycle_paths = list(
+                _resolve_thumbnail_cycle_paths(
+                    'ship/%s' % configured_class.strip().lower()
+                )
+            )
+        if cycle_paths:
+            return cycle_paths
+
+    configured_single = (
+        str(getattr(tech, 'thumbnail_path', '') or '').strip()
+        or str(params.get('thumbnail_path') or '').strip()
+    )
+    if configured_single:
+        resolved_single = _resolve_single_thumbnail_path(configured_single)
+        if resolved_single:
+            return [resolved_single]
 
     if tech_type == 'HULL':
         hull_class = _infer_hull_class(tech, params)
@@ -102,11 +156,6 @@ def get_technology_thumbnail_paths(tech):
         if ALL_SHIP_THUMBNAILS:
             return list(ALL_SHIP_THUMBNAILS)
         return [TECH_TYPE_PLACEHOLDERS['HULL']]
-
-    if tech_type == 'INFRASTRUCTURE' and _is_dyson_sphere_tech(tech, params):
-        dyson_pool = _dyson_star_thumbnail_paths()
-        if dyson_pool:
-            return list(dyson_pool)
 
     return [TECH_TYPE_PLACEHOLDERS.get(tech_type, DEFAULT_TECH_PLACEHOLDER)]
 

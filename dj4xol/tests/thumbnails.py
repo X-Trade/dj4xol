@@ -51,18 +51,73 @@ class TechnologyThumbnailHelperTest(TestCase):
             id=195,
             tech_type='INFRASTRUCTURE',
             name='Dyson Sphere',
-            params_json='{"dyson_sphere": true}',
+            thumbnail_class='star/dyson',
+            thumbnail_path='',
+            params_json='{}',
         )
         paths = get_technology_thumbnail_paths(tech)
         self.assertTrue(paths)
         self.assertTrue(all('/star/dyson/' in path for path in paths))
         self.assertIn(get_technology_thumbnail_path(tech), paths)
 
+    def test_configured_single_thumbnail_path_is_used(self):
+        tech = SimpleNamespace(
+            id=196,
+            tech_type='INFRASTRUCTURE',
+            name='Custom Infrastructure Card',
+            thumbnail_class='',
+            thumbnail_path='star/dyson/ds1_1.png',
+            params_json='{}',
+        )
+        paths = get_technology_thumbnail_paths(tech)
+        self.assertEqual(paths, ['dj4xol/images/thumbs/star/dyson/ds1_1.png'])
+
+    def test_thumbnail_class_overrides_thumbnail_path(self):
+        tech = SimpleNamespace(
+            id=197,
+            tech_type='INFRASTRUCTURE',
+            name='Conflicting Tech',
+            thumbnail_class='star/dyson',
+            thumbnail_path='star/all/1__r01_c01.png',
+            params_json='{}',
+        )
+        paths = get_technology_thumbnail_paths(tech)
+        self.assertTrue(paths)
+        self.assertTrue(all('/star/dyson/' in path for path in paths))
+
+    def test_hull_thumbnail_class_supports_bare_class_alias(self):
+        tech = SimpleNamespace(
+            id=199,
+            tech_type='HULL',
+            name='Alias Hull Tech',
+            thumbnail_class='fighter',
+            thumbnail_path='',
+            params_json='{}',
+        )
+        paths = get_technology_thumbnail_paths(tech)
+        self.assertTrue(paths)
+        self.assertTrue(all('/ship/fighter/' in path for path in paths))
+
+    def test_legacy_params_thumbnail_cycle_still_supported(self):
+        tech = SimpleNamespace(
+            id=198,
+            tech_type='INFRASTRUCTURE',
+            name='Legacy Config Tech',
+            thumbnail_class='',
+            thumbnail_path='',
+            params_json='{"thumbnail_cycle": "star/dyson"}',
+        )
+        paths = get_technology_thumbnail_paths(tech)
+        self.assertTrue(paths)
+        self.assertTrue(all('/star/dyson/' in path for path in paths))
+
     def test_regular_infrastructure_uses_placeholder_thumbnail(self):
         tech = SimpleNamespace(
             id=100,
             tech_type='INFRASTRUCTURE',
             name='Orbital Foundry',
+            thumbnail_class='',
+            thumbnail_path='',
             params_json='{}',
         )
         paths = get_technology_thumbnail_paths(tech)

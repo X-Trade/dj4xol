@@ -1330,6 +1330,7 @@
     name: 'Dyson Sphere'
     description: 'Megastructure engineering enables one Dyson Sphere per colony, vastly accelerating local industry and research.'
     tech_type: 'INFRASTRUCTURE'
+    thumbnail_class: 'star/dyson'
     params_json: '{"dyson_sphere": true, "production_cost_overrides": {"BUILD_DYSON_SPHERE": {"bp": 0, "ironium": 1000, "boranium": 500, "germanium": 600, "resource_x": 200, "resource_y": 0, "resource_z": 100, "colonists": 0}}}'
     display_order: 214
     enabled: True
@@ -1343,6 +1344,7 @@
     name: 'Probe Hull'
     description: 'Minimal autonomous hull for expendable reconnaissance craft.'
     tech_type: 'HULL'
+    thumbnail_class: 'ship/probe'
     params_json: '{"max_cargo_capacity": 10, "max_fuel": 40, "hull_thumbnail_class": "probe", "defense_level": -1.0, "offense_level": -0.5}'
     display_order: 205
     enabled: True
@@ -1356,6 +1358,7 @@
     name: 'Scout Hull'
     description: 'Baseline scout chassis with minimal holds and tanks.'
     tech_type: 'HULL'
+    thumbnail_class: 'ship/scout'
     params_json: '{"max_cargo_capacity": 50, "max_fuel": 50, "hull_thumbnail_class": "scout", "defense_level": -0.4}'
     display_order: 210
     enabled: True
@@ -1369,6 +1372,7 @@
     name: 'Fighter Hull'
     description: 'Compact combat frame with improved endurance and payload.'
     tech_type: 'HULL'
+    thumbnail_class: 'ship/fighter'
     params_json: '{"max_cargo_capacity": 100, "max_fuel": 100, "hull_thumbnail_class": "fighter", "defense_level": 0.0}'
     display_order: 215
     enabled: True
@@ -1382,6 +1386,7 @@
     name: 'Frigate Hull'
     description: 'Standard escort hull with stronger armor and internal bulkheads.'
     tech_type: 'HULL'
+    thumbnail_class: 'ship/frigate'
     params_json: '{"max_cargo_capacity": 200, "max_fuel": 100, "hull_thumbnail_class": "frigate", "defense_level": 0.1, "race_type": "not WAR"}'
     display_order: 220
     enabled: True
@@ -1395,6 +1400,7 @@
     name: 'Freighter Hull'
     description: 'Bulk cargo frame with expanded holds and reinforced fuel tanks.'
     tech_type: 'HULL'
+    thumbnail_class: 'ship/freighter'
     params_json: '{"max_cargo_capacity": 400, "max_fuel": 200, "hull_thumbnail_class": "freighter", "defense_level": 0.2, "race_type": "not WAR"}'
     display_order: 225
     enabled: True
@@ -1408,6 +1414,7 @@
     name: 'Tanker Hull'
     description: 'Long range transport.'
     tech_type: 'HULL'
+    thumbnail_class: 'ship/tanker'
     params_json: '{"max_cargo_capacity": 400, "max_fuel": 800, "hull_thumbnail_class": "tanker", "defense_level": -0.1, "race_type": "not WAR"}'
     display_order: 230
     enabled: True
@@ -1421,6 +1428,7 @@
     name: 'Capital Hull'
     description: 'Standardised ship-of-the-line with compartments for everything. Extra armour included as standard.'
     tech_type: 'HULL'
+    thumbnail_class: 'ship/capital'
     params_json: '{"max_cargo_capacity": 1000, "max_fuel": 1000, "hull_thumbnail_class": "capital", "defense_level": 0.9}'
     display_order: 235
     enabled: True
@@ -1434,6 +1442,7 @@
     name: 'City Hull'
     description: 'Mobile megastructure for empires at scale.'
     tech_type: 'HULL'
+    thumbnail_class: 'ship/city'
     params_json: '{"max_cargo_capacity": 10000, "max_fuel": 10000, "hull_thumbnail_class": "city", "defense_level": 1.2, "race_type": "has has_advanced_hulls"}'
     display_order: 240
     enabled: True

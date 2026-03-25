@@ -1,11 +1,10 @@
 """Sync factory default race/research/technology rows from fixtures."""
 
 import json
-import uuid
 import os
 import uuid
 
-from django.db import connection, transaction
+from django.db import connection, models, transaction
 
 
 _SYNC_DONE_PATHS = set()
@@ -51,18 +50,84 @@ def _normalize_fk_fields(model, fields):
 
 def _upsert_technology(Technology, pk, fields):
     """Update fixture-backed technology rows, reconciling by short_id if needed."""
-    tech_id = uuid.UUID(str(pk))
-    technology = Technology.objects.filter(id=tech_id).first()
-    if technology is None:
-        short_id = fields.get('short_id')
-        if short_id:
-            technology = Technology.objects.filter(short_id=short_id).first()
-    if technology is None:
-        Technology.objects.create(id=tech_id, **fields)
+    table_name = Technology._meta.db_table
+    table_columns = set(_table_column_names(table_name))
+    pk_column = Technology._meta.pk.column
+
+    pk_field = Technology._meta.pk
+    target_id = str(pk)
+    if isinstance(pk_field, models.UUIDField):
+        try:
+            target_id = uuid.UUID(str(pk)).hex
+        except (TypeError, ValueError):
+            target_id = str(pk)
+
+    persisted_fields = {}
+    for field in Technology._meta.concrete_fields:
+        if field.primary_key:
+            continue
+        if field.column not in table_columns:
+            continue
+        if field.name in fields:
+            persisted_fields[field.column] = fields[field.name]
+            continue
+        if field.attname in fields:
+            persisted_fields[field.column] = fields[field.attname]
+
+    quote = connection.ops.quote_name
+    existing_id = None
+    with connection.cursor() as cursor:
+        cursor.execute(
+            'SELECT {pk} FROM {table} WHERE {pk} = %s LIMIT 1'.format(
+                pk=quote(pk_column),
+                table=quote(table_name),
+            ),
+            [target_id],
+        )
+        row = cursor.fetchone()
+        if row:
+            existing_id = row[0]
+        elif 'short_id' in table_columns:
+            short_id = fields.get('short_id')
+            if short_id:
+                cursor.execute(
+                    'SELECT {pk} FROM {table} WHERE {short_id} = %s LIMIT 1'.format(
+                        pk=quote(pk_column),
+                        table=quote(table_name),
+                        short_id=quote('short_id'),
+                    ),
+                    [short_id],
+                )
+                row = cursor.fetchone()
+                if row:
+                    existing_id = row[0]
+
+    if existing_id is not None:
+        update_columns = list(persisted_fields.keys())
+        if not update_columns:
+            return
+        sql = 'UPDATE {table} SET {assignments} WHERE {pk} = %s'.format(
+            table=quote(table_name),
+            assignments=', '.join(
+                '{column} = %s'.format(column=quote(column))
+                for column in update_columns
+            ),
+            pk=quote(pk_column),
+        )
+        params = []
+        for column in update_columns:
+            value = persisted_fields[column]
+            if isinstance(value, uuid.UUID):
+                value = value.hex
+            params.append(value)
+        params.append(existing_id)
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
         return
-    for key, value in fields.items():
-        setattr(technology, key, value)
-    technology.save()
+
+    insert_fields = {pk_column: target_id}
+    insert_fields.update(persisted_fields)
+    _insert_row_with_available_columns(table_name, insert_fields)
 
 
 def _safe_tech_params(technology):
@@ -189,7 +254,7 @@ def _insert_row_with_available_columns(table_name, values):
     for column in columns:
         value = values[column]
         if isinstance(value, uuid.UUID):
-            value = str(value)
+            value = value.hex
         params.append(value)
     with connection.cursor() as cursor:
         cursor.execute(sql, params)
@@ -375,8 +440,19 @@ def sync_factory_defaults(force=False, fixture_path=None):
         fields = _normalize_fk_fields(Technology, fields)
         _upsert_technology(Technology, pk, fields)
 
-    for technology in Technology.objects.filter(tech_type='HULL').order_by('id'):
-        _ensure_hull_design_for_technology(HullDesign, technology)
+    tech_columns = set(_table_column_names(Technology._meta.db_table))
+    if 'tech_type' in tech_columns:
+        readable_tech_fields = []
+        for field in Technology._meta.concrete_fields:
+            if field.column not in tech_columns:
+                continue
+            if field.name in {'id', 'short_id', 'name', 'tech_type', 'params_json', 'enabled'}:
+                readable_tech_fields.append(field.name)
+        tech_qs = Technology.objects.filter(tech_type='HULL').order_by('id')
+        if readable_tech_fields:
+            tech_qs = tech_qs.only(*readable_tech_fields)
+        for technology in tech_qs:
+            _ensure_hull_design_for_technology(HullDesign, technology)
 
     for row in _entries_for('dj4xol.ResearchLevelPrerequisite', fixture_path=fixture_key):
         fields = dict(row.get('fields') or {})
