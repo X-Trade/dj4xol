@@ -12,7 +12,11 @@ from .fleet_thumbnails import (
     get_ship_class_from_path,
     is_valid_fleet_thumbnail,
 )
-from .star_thumbnails import choose_star_thumbnail, is_valid_star_thumbnail
+from .star_thumbnails import (
+    choose_special_star_thumbnail,
+    choose_star_thumbnail,
+    is_valid_star_thumbnail,
+)
 from .anomaly_thumbnails import (
     choose_anomaly_thumbnail,
     choose_random_anomaly_thumbnail,
@@ -937,6 +941,9 @@ class Star(AbstractMapObject):
 
     @property
     def effective_thumbnail_path(self):
+        special_thumbnail = choose_special_star_thumbnail(self)
+        if special_thumbnail:
+            return special_thumbnail
         if self.thumbnail_path and is_valid_star_thumbnail(self.thumbnail_path):
             return self.thumbnail_path
         return choose_star_thumbnail(self.id or self.short_id or self.name)

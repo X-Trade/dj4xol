@@ -29,6 +29,7 @@ from .messages import (
     FleetWarpDamageMessageFactory,
     FleetBussardRecoveryMessageFactory,
     FleetWormholeFuelFailureMessageFactory,
+    FleetWormholeJumpSuccessMessageFactory,
     FleetWarpDestroyedMessageFactory,
     FleetWormholeDestroyedMessageFactory,
     FleetMergedMessageFactory,
@@ -3571,6 +3572,11 @@ class GameTurn():
         destination_y = max(0, min(int(self.game.map_size_y), destination_y))
         fleet.x = destination_x
         fleet.y = destination_y
+        self._create_wormhole_jump_success_message(
+            fleet,
+            destination_x,
+            destination_y,
+        )
         if deviated and (destination_x, destination_y) != (int(target_x), int(target_y)):
             return 'deviated'
         return 'arrived'
@@ -3669,6 +3675,20 @@ class GameTurn():
             fleet,
             getattr(fleet, 'fuel', 0.0),
             required_fuel,
+        )
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+    def _create_wormhole_jump_success_message(self, fleet, destination_x, destination_y):
+        if fleet.player is None:
+            return
+        factory = FleetWormholeJumpSuccessMessageFactory(
+            self.game,
+            fleet.player,
+            fleet,
+            destination_x,
+            destination_y,
         )
         msg = factory.new_message()
         msg.year = self.game.year

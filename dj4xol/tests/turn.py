@@ -5190,6 +5190,9 @@ class TestFleetCargo(TestCase):
         game = default_game()
         player = game.players.first()
         star = player.homeworld
+        star.colonists = 5000
+        star.has_dyson_sphere = False
+        star.save(update_fields=['colonists', 'has_dyson_sphere'])
 
         detail_builder = DetailBuilder(
             game,
@@ -5203,6 +5206,60 @@ class TestFleetCargo(TestCase):
         self.assertTrue(details['is_star'])
         self.assertIn('star_thumbnail', details)
         self.assertTrue(details['star_thumbnail'].startswith('dj4xol/images/thumbs/star/all/'))
+
+    def test_object_details_uses_city_star_thumbnail_over_10bn(self):
+        from ..objectdetails import DetailBuilder
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.colonists = 10000001
+        star.has_dyson_sphere = False
+        star.save(update_fields=['colonists', 'has_dyson_sphere'])
+        star.refresh_from_db()
+        self.assertEqual(star.colonists, 10000001)
+
+        detail_builder = DetailBuilder(
+            game,
+            x=star.x,
+            y=star.y,
+            selected=star.short_id.lower(),
+            player=player,
+        )
+        details = detail_builder.build_detail()
+
+        self.assertIsNotNone(details)
+        self.assertTrue(details['is_star'])
+        self.assertEqual(details['population'], 10000001)
+        self.assertIn('star_thumbnail', details)
+        self.assertTrue(
+            details['star_thumbnail'].startswith('dj4xol/images/thumbs/star/city/'),
+            details['star_thumbnail'],
+        )
+
+    def test_object_details_uses_dyson_star_thumbnail(self):
+        from ..objectdetails import DetailBuilder
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.colonists = 20000
+        star.has_dyson_sphere = True
+        star.save(update_fields=['colonists', 'has_dyson_sphere'])
+
+        detail_builder = DetailBuilder(
+            game,
+            x=star.x,
+            y=star.y,
+            selected=star.short_id.lower(),
+            player=player,
+        )
+        details = detail_builder.build_detail()
+
+        self.assertIsNotNone(details)
+        self.assertTrue(details['is_star'])
+        self.assertIn('star_thumbnail', details)
+        self.assertTrue(details['star_thumbnail'].startswith('dj4xol/images/thumbs/star/dyson/'))
 
     def test_object_details_includes_anomaly_thumbnail(self):
         from ..objectdetails import DetailBuilder
@@ -9587,6 +9644,11 @@ class TestWormholeDriveMovement(TestCase):
         fleet.refresh_from_db()
         self.assertEqual((fleet.x, fleet.y), (40, 40))
         self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
+        self.assertTrue(
+            player.messages.filter(
+                message__icontains='successfully completed a wormhole jump'
+            ).exists()
+        )
 
     def test_wormhole_jump_can_deviate(self):
         game = default_game(stars=2)
@@ -9628,6 +9690,11 @@ class TestWormholeDriveMovement(TestCase):
         fleet.refresh_from_db()
         self.assertEqual((fleet.x, fleet.y), (57, 50))
         self.assertTrue(FleetOrders.objects.filter(id=order.id).exists())
+        self.assertTrue(
+            player.messages.filter(
+                message__icontains='successfully completed a wormhole jump'
+            ).exists()
+        )
 
     def test_wormhole_non_arrival_no_longer_stalls_movement(self):
         game = default_game(stars=2)
@@ -9744,6 +9811,7 @@ class TestWormholeDriveMovement(TestCase):
         self.assertTrue(
             player.messages.filter(message__icontains='wormhole').exists()
         )
+        self.assertTrue(player.messages.filter(priority=True).exists())
 
     def test_wormhole_destruction_can_spawn_nearby_rift(self):
         game = default_game(stars=2)

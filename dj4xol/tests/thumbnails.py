@@ -1,5 +1,6 @@
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -10,6 +11,11 @@ from ..retro_mapfleet_sprites import (
     clear_retro_mapfleet_sprite_cache,
 )
 from ..star_thumbnail_catalog import ALL_STAR_THUMBNAILS
+from ..technology_thumbnails import (
+    TECH_TYPE_PLACEHOLDERS,
+    get_technology_thumbnail_path,
+    get_technology_thumbnail_paths,
+)
 from ..thumbnail_variants import blur_variant_path, get_blur_variant_path
 
 
@@ -37,6 +43,30 @@ class StarThumbnailCatalogTest(TestCase):
         source = ALL_STAR_THUMBNAILS[0]
         blurred = get_blur_variant_path(source)
         self.assertTrue(blurred.endswith("__blur.png"))
+
+
+class TechnologyThumbnailHelperTest(TestCase):
+    def test_dyson_infrastructure_uses_dyson_thumbnail_cycler(self):
+        tech = SimpleNamespace(
+            id=195,
+            tech_type='INFRASTRUCTURE',
+            name='Dyson Sphere',
+            params_json='{"dyson_sphere": true}',
+        )
+        paths = get_technology_thumbnail_paths(tech)
+        self.assertTrue(paths)
+        self.assertTrue(all('/star/dyson/' in path for path in paths))
+        self.assertIn(get_technology_thumbnail_path(tech), paths)
+
+    def test_regular_infrastructure_uses_placeholder_thumbnail(self):
+        tech = SimpleNamespace(
+            id=100,
+            tech_type='INFRASTRUCTURE',
+            name='Orbital Foundry',
+            params_json='{}',
+        )
+        paths = get_technology_thumbnail_paths(tech)
+        self.assertEqual(paths, [TECH_TYPE_PLACEHOLDERS['INFRASTRUCTURE']])
 
 
 class RetroMapFleetSpriteTest(TestCase):

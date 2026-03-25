@@ -1200,6 +1200,30 @@ class FleetWormholeFuelFailureMessageFactory(MessageFactory):
         )
 
 
+class FleetWormholeJumpSuccessMessageFactory(MessageFactory):
+    """Message when a fleet successfully completes a wormhole jump."""
+    category = 'GENERAL'
+
+    def __init__(self, game, player, fleet, destination_x, destination_y, message=None):
+        super().__init__(game, player, message, intensity=0.2)
+        self.fleet = fleet
+        self.destination_x = int(destination_x)
+        self.destination_y = int(destination_y)
+
+    def format_message(self):
+        return (
+            "{fleet} successfully completed a wormhole jump to {location}."
+        ).format(
+            fleet=format_map_object(self.fleet),
+            location=format_location(
+                x=self.destination_x,
+                y=self.destination_y,
+                link=True,
+                game=self.game,
+            ),
+        )
+
+
 class FleetWarpDestroyedMessageFactory(MessageFactory):
     """Messages for fleets destroyed by exceeding safe warp speed."""
     category = 'GENERAL'

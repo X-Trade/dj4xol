@@ -2,6 +2,7 @@
 
 import json
 from .ship_thumbnail_catalog import ALL_SHIP_THUMBNAILS, SHIP_THUMBNAILS_BY_CLASS
+from .star_thumbnail_catalog import ALL_STAR_THUMBNAILS
 
 
 TECH_TYPE_PLACEHOLDERS = {
@@ -27,6 +28,25 @@ def _safe_params(tech):
     except (TypeError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _dyson_star_thumbnail_paths():
+    return [
+        path for path in ALL_STAR_THUMBNAILS
+        if "/star/dyson/" in str(path or "")
+    ]
+
+
+def _is_dyson_sphere_tech(tech, params):
+    if bool(params.get('dyson_sphere')):
+        return True
+
+    cost_overrides = params.get('production_cost_overrides')
+    if isinstance(cost_overrides, dict) and 'BUILD_DYSON_SPHERE' in cost_overrides:
+        return True
+
+    name = str(getattr(tech, 'name', '') or '').strip().lower()
+    return 'dyson sphere' in name
 
 
 def _infer_hull_class(tech, params):
@@ -82,6 +102,11 @@ def get_technology_thumbnail_paths(tech):
         if ALL_SHIP_THUMBNAILS:
             return list(ALL_SHIP_THUMBNAILS)
         return [TECH_TYPE_PLACEHOLDERS['HULL']]
+
+    if tech_type == 'INFRASTRUCTURE' and _is_dyson_sphere_tech(tech, params):
+        dyson_pool = _dyson_star_thumbnail_paths()
+        if dyson_pool:
+            return list(dyson_pool)
 
     return [TECH_TYPE_PLACEHOLDERS.get(tech_type, DEFAULT_TECH_PLACEHOLDER)]
 
