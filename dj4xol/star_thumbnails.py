@@ -12,7 +12,7 @@ STAR_THUMB_CATEGORY_ALL = "all"
 STAR_THUMB_CATEGORY_CITY = "city"
 STAR_THUMB_CATEGORY_DYSON = "dyson"
 # Star.colonists is stored as individuals.
-CITY_THUMB_POPULATION_THRESHOLD = 1_000_000_000
+CITY_THUMB_POPULATION_THRESHOLD = 9_000_000_000
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATIC_ROOT = PROJECT_ROOT / "dj4xol" / "static"
 
@@ -40,6 +40,10 @@ def is_valid_star_thumbnail(path):
         return True
     # Allow newly-added star thumbnails even before catalog regeneration.
     return path.startswith("dj4xol/images/thumbs/star/")
+
+
+def is_city_star_thumbnail(path):
+    return bool(path) and "/star/city/" in str(path)
 
 
 def _seed_to_index(seed, count):

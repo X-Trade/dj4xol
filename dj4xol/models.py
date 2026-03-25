@@ -13,8 +13,10 @@ from .fleet_thumbnails import (
     is_valid_fleet_thumbnail,
 )
 from .star_thumbnails import (
+    CITY_THUMB_POPULATION_THRESHOLD,
     choose_special_star_thumbnail,
     choose_star_thumbnail,
+    is_city_star_thumbnail,
     is_valid_star_thumbnail,
 )
 from .anomaly_thumbnails import (
@@ -935,8 +937,29 @@ class Star(AbstractMapObject):
     thumbnail_path = models.CharField(max_length=255, blank=True, default='')
 
     def save(self, *args, **kwargs):
+        thumbnail_changed = False
         if not self.thumbnail_path or not is_valid_star_thumbnail(self.thumbnail_path):
             self.thumbnail_path = choose_star_thumbnail(self.id or self.short_id or self.name)
+            thumbnail_changed = True
+        try:
+            colonists = int(getattr(self, 'colonists', 0) or 0)
+        except (TypeError, ValueError):
+            colonists = 0
+        if (
+            colonists > CITY_THUMB_POPULATION_THRESHOLD and
+            not is_city_star_thumbnail(self.thumbnail_path)
+        ):
+            self.thumbnail_path = choose_star_thumbnail(
+                self.id or self.short_id or self.name,
+                category='city',
+            )
+            thumbnail_changed = True
+
+        update_fields = kwargs.get('update_fields')
+        if thumbnail_changed and update_fields is not None:
+            fields = set(update_fields)
+            fields.add('thumbnail_path')
+            kwargs['update_fields'] = list(fields)
         super(Star, self).save(*args, **kwargs)
 
     @property

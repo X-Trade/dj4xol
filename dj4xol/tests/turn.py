@@ -23,6 +23,7 @@ from ..colony_rules import (
     calculate_economy_percent,
     calculate_available_buildpoints,
     calculate_available_researchpoints,
+    calculate_staffing_ratio,
     calculate_total_jobs,
     calculate_effective_defenses,
     calculate_productivity_percent,
@@ -2627,6 +2628,71 @@ class TestEconomicCalculations(TestCase):
 
         self.assertEqual(calculate_total_jobs(star), BILLION)
         self.assertEqual(calculate_employment_percent(star), 50)
+
+    def test_employment_pipeline_underemployment_without_dyson(self):
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 4
+        star.factories = 8
+        star.labs = 3
+        star.defenses = 5
+        star.shipyards = 1
+        star.colonists = 100_000
+        star.has_dyson_sphere = False
+        star.save(update_fields=[
+            'mines',
+            'factories',
+            'labs',
+            'defenses',
+            'shipyards',
+            'colonists',
+            'has_dyson_sphere',
+        ])
+
+        jobs = calculate_total_jobs(star)
+        staffing_ratio = calculate_staffing_ratio(star)
+        productivity = calculate_productivity_multiplier(staffing_ratio)
+
+        self.assertEqual(jobs, 30_000)
+        self.assertEqual(calculate_employment_percent(star), 30)
+        self.assertAlmostEqual(staffing_ratio, 0.3, places=6)
+        self.assertEqual(calculate_available_buildpoints(star), int(8 * 10 * productivity))
+        self.assertEqual(calculate_available_researchpoints(star), int(3 * 20 * productivity))
+        self.assertEqual(calculate_effective_defenses(star), 5.0)
+
+    def test_employment_pipeline_overemployment_with_dyson(self):
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 2
+        star.factories = 20
+        star.labs = 10
+        star.defenses = 12
+        star.shipyards = 0
+        star.colonists = 500_000_000
+        star.has_dyson_sphere = True
+        star.save(update_fields=[
+            'mines',
+            'factories',
+            'labs',
+            'defenses',
+            'shipyards',
+            'colonists',
+            'has_dyson_sphere',
+        ])
+
+        jobs = calculate_total_jobs(star)
+        staffing_ratio = calculate_staffing_ratio(star)
+        productivity = calculate_productivity_multiplier(staffing_ratio)
+        expected_defenses = 12.0 * (1.0 / staffing_ratio)
+
+        self.assertEqual(jobs, 1_000_044_000)
+        self.assertEqual(calculate_employment_percent(star), 100)
+        self.assertGreater(staffing_ratio, 1.0)
+        self.assertEqual(calculate_available_buildpoints(star), int(20 * 10 * productivity * 3.0))
+        self.assertEqual(calculate_available_researchpoints(star), int(10 * 20 * productivity * 3.0))
+        self.assertAlmostEqual(calculate_effective_defenses(star), expected_defenses, places=6)
 
     def test_available_buildpoints_no_factories(self):
         """No factories means no buildpoints."""
@@ -5245,17 +5311,17 @@ class TestFleetCargo(TestCase):
         self.assertIn('star_thumbnail', details)
         self.assertTrue(details['star_thumbnail'].startswith('dj4xol/images/thumbs/star/all/'))
 
-    def test_object_details_uses_city_star_thumbnail_over_1bn(self):
+    def test_object_details_uses_city_star_thumbnail_over_9bn(self):
         from ..objectdetails import DetailBuilder
 
         game = default_game()
         player = game.players.first()
         star = player.homeworld
-        star.colonists = 1000000001
+        star.colonists = 9000000001
         star.has_dyson_sphere = False
         star.save(update_fields=['colonists', 'has_dyson_sphere'])
         star.refresh_from_db()
-        self.assertEqual(star.colonists, 1000000001)
+        self.assertEqual(star.colonists, 9000000001)
 
         detail_builder = DetailBuilder(
             game,
@@ -5268,7 +5334,7 @@ class TestFleetCargo(TestCase):
 
         self.assertIsNotNone(details)
         self.assertTrue(details['is_star'])
-        self.assertEqual(details['population'], 1000000001)
+        self.assertEqual(details['population'], 9000000001)
         self.assertIn('star_thumbnail', details)
         self.assertTrue(
             details['star_thumbnail'].startswith('dj4xol/images/thumbs/star/city/'),
@@ -5325,6 +5391,34 @@ class TestFleetCargo(TestCase):
         self.assertTrue(details['is_star'])
         self.assertIn('star_thumbnail', details)
         self.assertTrue(details['star_thumbnail'].startswith('dj4xol/images/thumbs/star/dyson/'))
+
+    def test_dyson_thumbnail_overrides_city_thumbnail(self):
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.colonists = 9_500_000_000
+        star.has_dyson_sphere = True
+        star.save(update_fields=['colonists', 'has_dyson_sphere'])
+
+        self.assertTrue(star.effective_thumbnail_path.startswith('dj4xol/images/thumbs/star/dyson/'))
+
+    def test_city_thumbnail_persists_after_population_drop(self):
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.has_dyson_sphere = False
+        star.colonists = 9_500_000_000
+        star.save(update_fields=['has_dyson_sphere', 'colonists'])
+        star.refresh_from_db()
+        self.assertTrue(star.thumbnail_path.startswith('dj4xol/images/thumbs/star/city/'))
+        self.assertTrue(star.effective_thumbnail_path.startswith('dj4xol/images/thumbs/star/city/'))
+
+        star.colonists = 500_000
+        star.save(update_fields=['colonists'])
+        star.refresh_from_db()
+
+        self.assertTrue(star.thumbnail_path.startswith('dj4xol/images/thumbs/star/city/'))
+        self.assertTrue(star.effective_thumbnail_path.startswith('dj4xol/images/thumbs/star/city/'))
 
     def test_object_details_includes_anomaly_thumbnail(self):
         from ..objectdetails import DetailBuilder

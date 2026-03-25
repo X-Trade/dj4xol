@@ -1,4 +1,11 @@
 import math
+from .employment_rules import (
+    calculate_total_jobs_count,
+    calculate_employment_percent as _employment_percent_from_jobs,
+    calculate_staffing_ratio as _staffing_ratio_from_jobs,
+    calculate_overemployment_effectiveness,
+    calculate_productivity_multiplier as _productivity_multiplier_from_employment,
+)
 
 BILLION = 1_000_000_000
 MILLION = 1_000_000
@@ -45,17 +52,17 @@ def calculate_total_jobs(star):
     """Return total colony jobs, including Dyson Sphere staffing demand."""
     if star is None:
         return 0
-    jobs = (
-        (
-            int(getattr(star, 'mines', 0) or 0) +
-            int(getattr(star, 'factories', 0) or 0) +
-            int(getattr(star, 'labs', 0) or 0) +
-            int(getattr(star, 'defenses', 0) or 0)
-        ) * COLONISTS_PER_JOB
-    ) + (int(getattr(star, 'shipyards', 0) or 0) * COLONISTS_PER_SHIPYARD)
-    if has_active_dyson_sphere(star):
-        jobs += DYSON_SPHERE_JOBS
-    return max(0, int(jobs))
+    return calculate_total_jobs_count(
+        getattr(star, 'mines', 0),
+        getattr(star, 'factories', 0),
+        getattr(star, 'labs', 0),
+        getattr(star, 'defenses', 0),
+        getattr(star, 'shipyards', 0),
+        COLONISTS_PER_JOB,
+        COLONISTS_PER_SHIPYARD,
+        include_special_jobs=has_active_dyson_sphere(star),
+        special_jobs=DYSON_SPHERE_JOBS,
+    )
 
 
 def capacity_modifier(population, soft_cap):
@@ -205,10 +212,8 @@ def calculate_employment_percent(star):
     Active Dyson Spheres add a fixed 1bn jobs.
     Returns 0-100, capped at 100%.
     """
-    if star.colonists == 0:
-        return 0
     jobs = calculate_total_jobs(star)
-    return min(100, jobs / star.colonists * 100)
+    return _employment_percent_from_jobs(getattr(star, 'colonists', 0), jobs)
 
 
 def calculate_effective_defenses(star):
@@ -224,8 +229,8 @@ def calculate_effective_defenses(star):
     jobs = calculate_total_jobs(star)
     if jobs <= 0:
         return 0.0
-    employment_ratio = jobs / star.colonists
-    effectiveness = 1.0 if employment_ratio <= 1.0 else (1.0 / employment_ratio)
+    employment_ratio = _staffing_ratio_from_jobs(star.colonists, jobs)
+    effectiveness = calculate_overemployment_effectiveness(employment_ratio)
     defense_multiplier = 1.0
     player = getattr(star, 'player', None)
     if player and getattr(player, 'race_type', None):
@@ -291,9 +296,7 @@ def calculate_available_researchpoints(star):
 def calculate_staffing_ratio(star):
     """Calculate employment ratio (jobs/colonists)."""
     jobs = calculate_total_jobs(star)
-    if jobs <= 0 or star.colonists <= 0:
-        return 0
-    return jobs / star.colonists
+    return _staffing_ratio_from_jobs(getattr(star, 'colonists', 0), jobs)
 
 
 def calculate_available_construction_colonists(star, colonists_busy=0, employed_jobs=None):
@@ -305,28 +308,7 @@ def calculate_available_construction_colonists(star, colonists_busy=0, employed_
 
 
 def calculate_productivity_multiplier(employment_ratio):
-    """Bell-curve productivity based on employment ratio.
-
-    Targets: 0.25x at 1%, 0.5x at 10%, 1.5x at 50%, 1.0x at 100%.
-    Productivity never drops below 0.2x once any staffing exists.
-    Above 100% employment, productivity declines as 1/employment.
-    """
-    if employment_ratio <= 0:
-        return 0.0
-    if employment_ratio >= 1.0:
-        return 1.0 / employment_ratio
-
-    ratio = max(0.0, min(1.0, employment_ratio))
-    if ratio < 0.01:
-        return 0.2 + (ratio / 0.01) * 0.05
-    if ratio <= 0.1:
-        return 0.25 + ((ratio - 0.01) / 0.09) * 0.25
-
-    # Quadratic fit through (0.1, 0.5), (0.5, 1.5), (1.0, 1.0)
-    a = -3.8888888889
-    b = 4.8333333333
-    c = 0.0555555556
-    return a * ratio * ratio + b * ratio + c
+    return _productivity_multiplier_from_employment(employment_ratio)
 
 
 def calculate_productivity_percent(star):
