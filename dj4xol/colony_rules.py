@@ -17,6 +17,8 @@ KT_PER_MINE = 10  # Each mine extracts this many kt of minerals per turn
 YIELD_DEPLETION_RATE = 0.0001  # 0.01% per kt
 OVERMINING_DEPLETION_MULTIPLIER = 1.0
 HOMEWORLD_MIN_YIELD = 30  # Homeworld yields never drop below this percentage
+DYSON_PRODUCTIVITY_MULTIPLIER = 3.0  # 200% bonus (base + 200%)
+DYSON_HABITABILITY_MULTIPLIER = 1.5  # +50% habitability factor
 ENVIRONMENT_IGNORE_FIELDS = {
     'gravity': 'ignores_gravity',
     'temperature': 'ignores_temperature',
@@ -24,6 +26,18 @@ ENVIRONMENT_IGNORE_FIELDS = {
 }
 DEFAULT_POPULATION_CAP_MULTIPLIER = 1
 RESOURCE_LIMIT_GROWTH_STAGE_ONE_MAX = 2000
+
+
+def has_active_dyson_sphere(star, player=None):
+    """Return True when the star's Dyson Sphere should apply for this context."""
+    if not star or not bool(getattr(star, 'has_dyson_sphere', False)):
+        return False
+    owner_id = getattr(star, 'player_id', None)
+    if not owner_id:
+        return False
+    if player is None:
+        return True
+    return int(owner_id) == int(getattr(player, 'id', 0) or 0)
 
 
 def capacity_modifier(population, soft_cap):
@@ -237,7 +251,12 @@ def calculate_available_buildpoints(star):
             )
         except (TypeError, ValueError):
             manufacturing_multiplier = 1.0
-    return int(star.factories * BUILDPOINTS_PER_FACTORY * productivity * manufacturing_multiplier)
+    total = (
+        float(star.factories) * BUILDPOINTS_PER_FACTORY * productivity * manufacturing_multiplier
+    )
+    if has_active_dyson_sphere(star):
+        total *= DYSON_PRODUCTIVITY_MULTIPLIER
+    return int(total)
 
 
 def calculate_available_researchpoints(star):
@@ -248,7 +267,10 @@ def calculate_available_researchpoints(star):
     if employment_ratio <= 0:
         return 0
     productivity = calculate_productivity_multiplier(employment_ratio)
-    return int(star.labs * RESEARCHPOINTS_PER_LAB * productivity)
+    total = float(star.labs) * RESEARCHPOINTS_PER_LAB * productivity
+    if has_active_dyson_sphere(star):
+        total *= DYSON_PRODUCTIVITY_MULTIPLIER
+    return int(total)
 
 
 def calculate_staffing_ratio(star):
@@ -351,7 +373,10 @@ def calculate_habitability_factor(player, star):
     # Add economy factor before averaging
     factor += calculate_economy_factor(star)
     # Average using the original /3 divisor (economy is a bonus)
-    return factor / 6.0  # changed to nerf growth
+    value = factor / 6.0  # changed to nerf growth
+    if value > 0 and has_active_dyson_sphere(star, player=player):
+        value *= DYSON_HABITABILITY_MULTIPLIER
+    return value
 
 
 def calculate_growth_factor(player, star):

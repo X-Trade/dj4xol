@@ -120,6 +120,7 @@ from .colony_rules import (
     calculate_habitability_factor,
     calculate_growth_factor,
     calculate_effective_defenses,
+    has_active_dyson_sphere,
     limit_population_growth_by_surface_resources,
     population_growth_uses_surface_resources,
     OVERMINING_DEPLETION_MULTIPLIER,
@@ -138,6 +139,7 @@ from .research import (
 )
 from .micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
+    DYSON_SPHERE_ORDER_TYPE,
     REMOVE_ADMINISTRATION_ORDER_TYPE,
     collapse_micromanager_order_totals,
     get_micromanager_managed_order_types,
@@ -2318,6 +2320,7 @@ class GameTurn():
                     'defenses': obj.defenses,
                     'defenses_tooltip': None,
                     'shipyards': obj.shipyards,
+                    'has_dyson_sphere': bool(getattr(obj, 'has_dyson_sphere', False)),
                     'jobs_count': jobs,
                     'jobs_employment': employment,
                 })
@@ -5343,6 +5346,7 @@ class GameTurn():
             'labs': int(star.labs or 0),
             'shipyards': int(star.shipyards or 0),
             'has_administration': bool(getattr(star, 'has_administration', False)),
+            'has_dyson_sphere': bool(getattr(star, 'has_dyson_sphere', False)),
         }
         effective_defenses = max(0.0, float(calculate_effective_defenses(star)))
         luck_multiplier = float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0)
@@ -5374,6 +5378,7 @@ class GameTurn():
         labs_lost = 0
         shipyards_lost = 0
         administration_lost = 0
+        dyson_sphere_lost = 0
         if not smart_bombs_only_target_defenses_and_population(bomb_type):
             mines_lost = min(pre['mines'], damage_k)
             factories_lost = min(pre['factories'], damage_k)
@@ -5381,12 +5386,16 @@ class GameTurn():
             shipyards_lost = min(pre['shipyards'], damage_k)
             if pre['has_administration'] and damage_k > 0:
                 administration_lost = 1
+            if pre['has_dyson_sphere'] and damage_k > 0:
+                dyson_sphere_lost = 1
             star.mines = max(0, pre['mines'] - mines_lost)
             star.factories = max(0, pre['factories'] - factories_lost)
             star.labs = max(0, pre['labs'] - labs_lost)
             star.shipyards = max(0, pre['shipyards'] - shipyards_lost)
             if administration_lost:
                 star.has_administration = False
+            if dyson_sphere_lost:
+                star.has_dyson_sphere = False
 
         star_destroyed = False
         destroyed_star_name = star.name
@@ -5420,7 +5429,7 @@ class GameTurn():
         else:
             star.save(update_fields=[
                 'defenses', 'colonists', 'mines', 'factories', 'labs',
-                'shipyards', 'has_administration',
+                'shipyards', 'has_administration', 'has_dyson_sphere',
             ])
 
         factory = FleetBombardmentReportMessageFactory(
@@ -5436,6 +5445,7 @@ class GameTurn():
             labs_lost=labs_lost,
             shipyards_lost=shipyards_lost,
             administration_lost=administration_lost,
+            dyson_sphere_lost=dyson_sphere_lost,
             integrity_lost=defense_fire.get('integrity_lost', 0),
             ships_lost=defense_fire.get('ships_lost', 0),
             star_destroyed=star_destroyed,
@@ -5449,7 +5459,7 @@ class GameTurn():
             total_losses = (
                 defenses_lost + colonists_lost +
                 mines_lost + factories_lost + labs_lost + shipyards_lost +
-                administration_lost
+                administration_lost + dyson_sphere_lost
             )
             if total_losses > 0 or star_destroyed:
                 defender_factory = FleetBombardmentReportMessageFactory(
@@ -5465,6 +5475,7 @@ class GameTurn():
                     labs_lost=labs_lost,
                     shipyards_lost=shipyards_lost,
                     administration_lost=administration_lost,
+                    dyson_sphere_lost=dyson_sphere_lost,
                     integrity_lost=defense_fire.get('integrity_lost', 0),
                     ships_lost=defense_fire.get('ships_lost', 0),
                     star_destroyed=star_destroyed,
@@ -5666,7 +5677,13 @@ class GameTurn():
             return 'waiting'
         return self._execute_remote_mine_order(fleet, order)
 
-    def _extract_minerals_with_standard_rules(self, star, total_extraction, resource_keys=None):
+    def _extract_minerals_with_standard_rules(
+        self,
+        star,
+        total_extraction,
+        resource_keys=None,
+        total_extraction_for_depletion=None,
+    ):
         """Extract minerals from a star using standard mining/depletion mechanics.
 
         Returns per-resource extracted whole kt:
@@ -5678,6 +5695,11 @@ class GameTurn():
         else:
             resource_keys = [key for key in resource_keys if key in ALL_RESOURCE_KEYS]
         total_extraction = max(0.0, float(total_extraction or 0.0))
+        if total_extraction_for_depletion is None:
+            total_extraction_for_depletion = total_extraction
+        total_extraction_for_depletion = max(
+            0.0, float(total_extraction_for_depletion or 0.0)
+        )
         produced = {key: 0 for key in ALL_RESOURCE_KEYS}
         if total_extraction <= 0:
             return produced
@@ -5701,6 +5723,9 @@ class GameTurn():
                 continue
 
             extraction = total_extraction * yield_val / total_yield
+            depletion_extraction = (
+                total_extraction_for_depletion * yield_val / total_yield
+            )
             whole_kt = int(extraction)
             fractional = extraction - whole_kt
             if fractional > 0 and random.random() < fractional:
@@ -5715,7 +5740,7 @@ class GameTurn():
             sustainable_extraction = max(1.0, float(yield_val))
             overmining_ratio = max(
                 0.0,
-                (float(extraction) - sustainable_extraction) / sustainable_extraction
+                (float(depletion_extraction) - sustainable_extraction) / sustainable_extraction
             )
             depletion_rate = (
                 YIELD_DEPLETION_RATE * (
@@ -6713,9 +6738,16 @@ class GameTurn():
             if staffing_ratio == 0:
                 continue
             productivity = calculate_productivity_multiplier(staffing_ratio)
-            total_extraction = star.mines * KT_PER_MINE * productivity
+            base_extraction = star.mines * KT_PER_MINE * productivity
+            total_extraction = base_extraction
+            if has_active_dyson_sphere(star):
+                total_extraction *= 3.0
 
-            produced = self._extract_minerals_with_standard_rules(star, total_extraction)
+            produced = self._extract_minerals_with_standard_rules(
+                star,
+                total_extraction,
+                total_extraction_for_depletion=base_extraction,
+            )
             for key in ALL_RESOURCE_KEYS:
                 setattr(
                     star,
@@ -6761,7 +6793,7 @@ class GameTurn():
             # Track production counts for aggregate messages
             production_counts = {
                 'mine': 0, 'factory': 0, 'lab': 0, 'defense': 0,
-                'shipyard': 0, 'administration': 0,
+                'shipyard': 0, 'administration': 0, 'dyson_sphere': 0,
             }
 
             for order in list(star.production_orders.order_by('position')):
@@ -6781,6 +6813,28 @@ class GameTurn():
                 ):
                     order.delete()
                     continue
+                if (
+                    order.order_type == DYSON_SPHERE_ORDER_TYPE and
+                    bool(getattr(star, 'has_dyson_sphere', False))
+                ):
+                    order.delete()
+                    continue
+                if (
+                    order.order_type == DYSON_SPHERE_ORDER_TYPE and
+                    (
+                        int(getattr(order, 'quantity', 1) or 1) > 1 or
+                        bool(getattr(order, 'repeat', False))
+                    )
+                ):
+                    changed = []
+                    if int(getattr(order, 'quantity', 1) or 1) > 1:
+                        order.quantity = 1
+                        changed.append('quantity')
+                    if bool(getattr(order, 'repeat', False)):
+                        order.repeat = False
+                        changed.append('repeat')
+                    if changed:
+                        order.save(update_fields=changed)
 
                 cost = cost_map.get(order.order_type, {})
 
@@ -6952,6 +7006,9 @@ class GameTurn():
             production_counts['administration'] += 1
         elif order_type == REMOVE_ADMINISTRATION_ORDER_TYPE:
             self._remove_administration(star)
+        elif order_type == DYSON_SPHERE_ORDER_TYPE:
+            self._build_dyson_sphere(star)
+            production_counts['dyson_sphere'] += 1
         elif str(order_type).startswith('TERRAFORM_'):
             self._apply_terraform_effect(
                 star, order_type, terraform_rate=terraform_rate
@@ -7047,6 +7104,10 @@ class GameTurn():
         """Remove Administration from the given star."""
         star.has_administration = False
 
+    def _build_dyson_sphere(self, star):
+        """Build a Dyson Sphere at the given star."""
+        star.has_dyson_sphere = True
+
     def _apply_negative_production_refunds(self, star, cost):
         """Apply any negative production costs as inventory refunds."""
         for resource in ALL_RESOURCE_KEYS:
@@ -7064,7 +7125,7 @@ class GameTurn():
             key: int(production_counts.get(key) or 0)
             for key in (
                 'mine', 'factory', 'lab', 'defense', 'shipyard',
-                'administration',
+                'administration', 'dyson_sphere',
             )
             if int(production_counts.get(key) or 0) > 0
         }

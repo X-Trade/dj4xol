@@ -1358,6 +1358,7 @@ def add_production_order(request, game_short_id):
     from .micromanager_rules import (
         ADMINISTRATION_ONE_OFF_ORDER_TYPES,
         ADMINISTRATION_ORDER_TYPE,
+        DYSON_SPHERE_ORDER_TYPE,
         REMOVE_ADMINISTRATION_ORDER_TYPE,
     )
     game = Game.objects.get(short_id=game_short_id)
@@ -1392,6 +1393,15 @@ def add_production_order(request, game_short_id):
                 return _redirect_preserving_selection(request, game)
             if star.production_orders.filter(
                 order_type=REMOVE_ADMINISTRATION_ORDER_TYPE
+            ).exists():
+                return _redirect_preserving_selection(request, game)
+            quantity = 1
+            repeat = False
+        elif order_type == DYSON_SPHERE_ORDER_TYPE:
+            if bool(getattr(star, 'has_dyson_sphere', False)):
+                return _redirect_preserving_selection(request, game)
+            if star.production_orders.filter(
+                order_type=DYSON_SPHERE_ORDER_TYPE
             ).exists():
                 return _redirect_preserving_selection(request, game)
             quantity = 1

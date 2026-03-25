@@ -547,7 +547,7 @@ class DetailBuilder():
                 detail['infrastructure_has_any'] = any(
                     int(data.get(field, 0) or 0) > 0
                     for field in ('mines', 'factories', 'labs', 'defenses', 'shipyards')
-                )
+                ) or bool(data.get('has_dyson_sphere'))
                 scanner_display = None
                 if 'basic_scanner_range' in data or 'advanced_scanner_range' in data:
                     scanner_display = self._format_scanner_range(
@@ -564,6 +564,7 @@ class DetailBuilder():
                     'Defenses': data.get('defenses'),
                     'DefensesTooltip': data.get('defenses_tooltip'),
                     'Shipyards': data.get('shipyards'),
+                    'DysonSphere': 'Online' if data.get('has_dyson_sphere') else None,
                     'Jobs': {
                         'count': data.get('jobs_count', 0),
                         'employment': data.get('jobs_employment', 0.0),
@@ -574,7 +575,7 @@ class DetailBuilder():
                 any(
                     int(data.get(field, 0) or 0) > 0
                     for field in ('mines', 'factories', 'labs', 'defenses', 'shipyards')
-                )
+                ) or bool(data.get('has_dyson_sphere'))
             ):
                 detail['player'] = 'Abandoned'
                 detail['owner_known'] = True
@@ -1368,7 +1369,10 @@ class DetailBuilder():
         if not star:
             return False
         infra_fields = ('mines', 'factories', 'labs', 'defenses', 'shipyards')
-        return any(int(getattr(star, field, 0) or 0) > 0 for field in infra_fields)
+        return (
+            any(int(getattr(star, field, 0) or 0) > 0 for field in infra_fields) or
+            bool(getattr(star, 'has_dyson_sphere', False))
+        )
 
     def find_all_at_coordinates(self, x, y):
         x = int(x)
@@ -1667,6 +1671,11 @@ class DetailBuilder():
                 'Administration': (
                     'Level %s' % administration_level
                     if self.selected_obj.has_administration and administration_level > 0
+                    else None
+                ),
+                'DysonSphere': (
+                    'Online'
+                    if bool(getattr(self.selected_obj, 'has_dyson_sphere', False))
                     else None
                 ),
                 'Jobs': {'count': jobs, 'employment': employment},

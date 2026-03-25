@@ -340,6 +340,12 @@
                 <span class="detail-value">{{ detail.infrastructure.Administration }}</span>
             </div>
             {% endif %}
+            {% if detail.infrastructure.DysonSphere %}
+            <div class="detail-row">
+                <span class="env-label">Dyson Sphere</span>
+                <span class="detail-value">{{ detail.infrastructure.DysonSphere }}</span>
+            </div>
+            {% endif %}
             {% if detail.is_owned %}
             <div class="detail-row">
                 <span class="env-label">Jobs</span>

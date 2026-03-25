@@ -524,6 +524,7 @@ class ProductionSummaryMessageFactory(MessageFactory):
         'defense': ('defense', 'defenses'),
         'shipyard': ('shipyard', 'shipyards'),
         'administration': ('Administration', 'Administrations'),
+        'dyson_sphere': ('Dyson Sphere', 'Dyson Spheres'),
     }
 
     def __init__(self, game, player, star, production_counts, message=None):
@@ -544,7 +545,7 @@ class ProductionSummaryMessageFactory(MessageFactory):
     def format_message(self):
         parts = []
         for key in [
-            'mine', 'factory', 'lab', 'defense', 'shipyard', 'administration'
+            'mine', 'factory', 'lab', 'defense', 'shipyard', 'administration', 'dyson_sphere'
         ]:
             count = int(self.production_counts.get(key) or 0)
             if count <= 0:
@@ -768,7 +769,7 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
     def __init__(
         self, game, player, fleet, star_name, bomb_type,
         defenses_lost, colonists_lost, mines_lost, factories_lost, labs_lost,
-        shipyards_lost, administration_lost=0,
+        shipyards_lost, administration_lost=0, dyson_sphere_lost=0,
         integrity_lost=0, ships_lost=0, star_destroyed=False,
         perspective='attacker', attacker_fleet_name=None, star=None, message=None
     ):
@@ -783,6 +784,7 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
         self.labs_lost = int(labs_lost or 0)
         self.shipyards_lost = int(shipyards_lost or 0)
         self.administration_lost = int(administration_lost or 0)
+        self.dyson_sphere_lost = int(dyson_sphere_lost or 0)
         self.integrity_lost = int(integrity_lost or 0)
         self.ships_lost = int(ships_lost or 0)
         self.star_destroyed = bool(star_destroyed)
@@ -802,6 +804,8 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
             infra.append(f"{self.shipyards_lost} shipyards")
         if self.administration_lost > 0:
             infra.append("Administration")
+        if self.dyson_sphere_lost > 0:
+            infra.append("Dyson Sphere")
         infra_text = ", ".join(infra) if infra else "no infrastructure"
 
         star_label = (

@@ -926,6 +926,7 @@ class Star(AbstractMapObject):
     defenses = models.IntegerField(default=0)
     shipyards = models.IntegerField(default=0)
     has_administration = models.BooleanField(default=False)
+    has_dyson_sphere = models.BooleanField(default=False)
     buildpoints_consumed = models.IntegerField(default=0)  # Reset each turn
     thumbnail_path = models.CharField(max_length=255, blank=True, default='')
 
@@ -2056,6 +2057,16 @@ PRODUCTION_COSTS = {
                              'germanium': 450, 'colonists': 0},
     'REMOVE_ADMINISTRATION': {'bp': 40, 'ironium': 0, 'boranium': 0,
                               'germanium': 0, 'colonists': 0},
+    'BUILD_DYSON_SPHERE': {
+        'bp': 0,
+        'ironium': 1000,
+        'boranium': 500,
+        'germanium': 600,
+        'resource_x': 200,
+        'resource_y': 0,
+        'resource_z': 100,
+        'colonists': 0,
+    },
     'BUILD_FLEET': {'bp': 50, 'ironium': 100, 'boranium': 200, 'germanium': 200, 'colonists': 0},
     'TERRAFORM_GRAVITY': {'bp': 50, 'ironium': 375, 'boranium': 75, 'germanium': 50, 'colonists': 0},
     'TERRAFORM_TEMPERATURE': {'bp': 50, 'ironium': 100, 'boranium': 330, 'germanium': 70, 'colonists': 0},
@@ -2079,6 +2090,7 @@ class ProductionOrder(AbstractGameObject):
         ('BUILD_SHIPYARD', 'Build Shipyard'),
         ('BUILD_ADMINISTRATION', 'Build Administration'),
         ('REMOVE_ADMINISTRATION', 'Remove Administration'),
+        ('BUILD_DYSON_SPHERE', 'Build Dyson Sphere'),
     ]
 
     star = models.ForeignKey(Star, related_name='production_orders',

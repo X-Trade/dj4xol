@@ -6,6 +6,7 @@ from ..research import (
     ensure_player_research_rows,
     get_player_administration_profile,
     get_player_available_production_orders,
+    get_player_dyson_sphere_profile,
     get_player_production_costs,
     get_player_terraforming_profile,
 )
@@ -82,6 +83,27 @@ class AdministrationAutomationTest(TestCase):
             name='Terraforming Relay %s' % tech_level,
             tech_type='INFRASTRUCTURE',
             params_json='{"terraforming_rate": %s}' % rate,
+        )
+        self._unlock_category_level(category, tech_level)
+        return category
+
+    def _create_dyson_sphere_tech(self, tech_level=24):
+        category = ResearchCategory.objects.create(
+            code='DYSON%s' % tech_level,
+            name='Dyson %s' % tech_level,
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=category,
+            level=tech_level,
+            name='Dyson Sphere',
+            tech_type='INFRASTRUCTURE',
+            params_json=(
+                '{"dyson_sphere": true, "production_cost_overrides": '
+                '{"BUILD_DYSON_SPHERE": {"bp": 0, "ironium": 1000, '
+                '"boranium": 500, "germanium": 600, "resource_x": 200, '
+                '"resource_y": 0, "resource_z": 100, "colonists": 0}}}'
+            ),
         )
         self._unlock_category_level(category, tech_level)
         return category
@@ -248,6 +270,75 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertFalse(self.star.has_administration)
         self.assertEqual(self.star.ironium_inventory, 360)
+
+    def test_dyson_sphere_order_available_only_when_unlocked_and_needed(self):
+        options = get_player_available_production_orders(self.player, self.star)
+        self.assertNotIn('BUILD_DYSON_SPHERE', [item['value'] for item in options])
+
+        self._create_dyson_sphere_tech()
+        profile = get_player_dyson_sphere_profile(self.player)
+        self.assertTrue(profile.get('unlocked'))
+
+        options = get_player_available_production_orders(self.player, self.star)
+        self.assertIn('BUILD_DYSON_SPHERE', [item['value'] for item in options])
+        dyson = next(
+            item for item in options
+            if item['value'] == 'BUILD_DYSON_SPHERE'
+        )
+        self.assertFalse(dyson['repeat_allowed'])
+        costs = get_player_production_costs(self.player)
+        self.assertEqual(costs['BUILD_DYSON_SPHERE']['ironium'], 1000)
+        self.assertEqual(costs['BUILD_DYSON_SPHERE']['resource_x'], 200)
+        self.assertEqual(costs['BUILD_DYSON_SPHERE']['resource_z'], 100)
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_DYSON_SPHERE',
+            quantity=1,
+        )
+        options = get_player_available_production_orders(self.player, self.star)
+        self.assertNotIn('BUILD_DYSON_SPHERE', [item['value'] for item in options])
+
+    def test_build_dyson_sphere_order_completes_once(self):
+        self._create_dyson_sphere_tech()
+        self.star.colonists = 200_000
+        self.star.factories = 20
+        self.star.ironium_inventory = 5_000
+        self.star.boranium_inventory = 5_000
+        self.star.germanium_inventory = 5_000
+        self.star.resource_x_inventory = 500
+        self.star.resource_z_inventory = 500
+        self.star.save(update_fields=[
+            'colonists',
+            'factories',
+            'ironium_inventory',
+            'boranium_inventory',
+            'germanium_inventory',
+            'resource_x_inventory',
+            'resource_z_inventory',
+        ])
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_DYSON_SPHERE',
+            quantity=3,
+            repeat=True,
+        )
+
+        GameTurn(self.game).production()
+        self.star.refresh_from_db()
+
+        self.assertTrue(self.star.has_dyson_sphere)
+        self.assertEqual(self.star.ironium_inventory, 4000)
+        self.assertEqual(self.star.boranium_inventory, 4500)
+        self.assertEqual(self.star.germanium_inventory, 4400)
+        self.assertEqual(self.star.resource_x_inventory, 300)
+        self.assertEqual(self.star.resource_z_inventory, 400)
+        self.assertFalse(
+            self.star.production_orders.filter(order_type='BUILD_DYSON_SPHERE').exists()
+        )
 
     def test_higher_administration_levels_reduce_build_cost(self):
         self._create_administration_tech(1, 1)

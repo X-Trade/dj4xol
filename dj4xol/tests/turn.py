@@ -22,6 +22,7 @@ from ..colony_rules import (
     calculate_employment_percent,
     calculate_economy_percent,
     calculate_available_buildpoints,
+    calculate_available_researchpoints,
     calculate_effective_defenses,
     calculate_productivity_percent,
     calculate_productivity_multiplier,
@@ -2573,6 +2574,36 @@ class TestEconomicCalculations(TestCase):
             int(baseline * 1.5),
         )
 
+    def test_dyson_sphere_triples_build_and_research_output(self):
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.mines = 0
+        star.defenses = 0
+        star.shipyards = 0
+        star.factories = 10
+        star.labs = 10
+        star.colonists = 20000
+        star.has_dyson_sphere = False
+        star.save(update_fields=[
+            'mines',
+            'defenses',
+            'shipyards',
+            'factories',
+            'labs',
+            'colonists',
+            'has_dyson_sphere',
+        ])
+        baseline_bp = calculate_available_buildpoints(star)
+        baseline_rp = calculate_available_researchpoints(star)
+
+        star.has_dyson_sphere = True
+        star.save(update_fields=['has_dyson_sphere'])
+        star.refresh_from_db()
+
+        self.assertEqual(calculate_available_buildpoints(star), baseline_bp * 3)
+        self.assertEqual(calculate_available_researchpoints(star), baseline_rp * 3)
+
     def test_available_buildpoints_no_factories(self):
         """No factories means no buildpoints."""
         game = default_game()
@@ -2676,6 +2707,23 @@ class TestEconomicCalculations(TestCase):
         # Economy adds to environmental factors before /3 averaging
         # So boosted should be higher than baseline
         self.assertGreater(boosted, baseline)
+
+    def test_dyson_sphere_boosts_positive_habitability_factor(self):
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.has_dyson_sphere = False
+        star.save(update_fields=['has_dyson_sphere'])
+
+        baseline = calculate_habitability_factor(player, star)
+        self.assertGreater(baseline, 0)
+
+        star.has_dyson_sphere = True
+        star.save(update_fields=['has_dyson_sphere'])
+        star.refresh_from_db()
+        boosted = calculate_habitability_factor(player, star)
+
+        self.assertAlmostEqual(boosted, baseline * 1.5, places=6)
 
     def test_build_mine_order(self):
         """BUILD_MINE order should increment mines count."""
@@ -2929,6 +2977,49 @@ class TestEconomicCalculations(TestCase):
                          other_star.boranium_inventory +
                          other_star.germanium_inventory)
         self.assertGreater(total_minerals, 0)
+
+    def test_dyson_sphere_mining_bonus_does_not_inflate_overmining_penalty(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        star = game.stars.exclude(pk=player.homeworld.pk).first()
+        star.player = player
+        star.colonists = 100_000
+        star.mines = 100
+        star.factories = 0
+        star.labs = 0
+        star.defenses = 0
+        star.shipyards = 0
+        star.has_dyson_sphere = True
+        star.ironium_yield = 100
+        star.boranium_yield = 0
+        star.germanium_yield = 0
+        star.resource_x_yield = 0
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
+        star.ironium_inventory = 0
+        star.save(update_fields=[
+            'player',
+            'colonists',
+            'mines',
+            'factories',
+            'labs',
+            'defenses',
+            'shipyards',
+            'has_dyson_sphere',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+            'resource_x_yield',
+            'resource_y_yield',
+            'resource_z_yield',
+            'ironium_inventory',
+        ])
+
+        GameTurn(game).mining()
+        star.refresh_from_db()
+
+        self.assertEqual(star.ironium_inventory, 3000)
+        self.assertEqual(star.ironium_yield, 97)
 
 
 class TestFleetTransferOrderExecution(TestCase):
