@@ -941,6 +941,17 @@ class TestProfileView(TestCase):
         self.assertContains(response, 'class="theme-selector"', html=False)
         self.assertContains(response, 'class="theme-carousel-button theme-carousel-button--prev"', html=False)
 
+    def test_profile_shows_html_email_preference_checkbox(self):
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:profile'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="email_html_enabled"', html=False)
+        self.assertContains(response, 'HTML emails (theme-based styling)', html=False)
+
     def test_profile_can_delete_owned_game(self):
         game = default_game(stars=5)
         user, account = get_default_user()

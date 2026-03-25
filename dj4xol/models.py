@@ -324,6 +324,7 @@ class Account(models.Model):
     email_game_updates = models.BooleanField(default=True)
     email_game_rollups_per_day = models.IntegerField(default=1)
     email_newsletter = models.BooleanField(default=True)
+    email_html_enabled = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
     email_verification_key = models.CharField(max_length=64, blank=True, default='')
     email_unsubscribe_key = models.CharField(max_length=64, blank=True, default='')

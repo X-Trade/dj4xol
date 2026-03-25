@@ -170,6 +170,28 @@ class OnboardingRegistrationTest(TestCase):
         self.assertEqual(account.email_game_rollups_per_day, 1)
         self.assertTrue(bool(account.email_unsubscribe_key))
 
+    def test_profile_updates_html_email_preference(self):
+        user = User.objects.create_user('prefs_html', 'prefs_html@example.com', 'pass1234')
+        Account.objects.create(
+            django_user=user,
+            alias='prefs_html',
+            email='prefs_html@example.com',
+            full_name='Prefs Html',
+            email_game_updates=True,
+            email_game_rollups_per_day=1,
+            email_newsletter=False,
+            email_html_enabled=False,
+        )
+        self.client.force_login(user)
+        response = self.client.post(
+            reverse('dj4xol:update_email_preferences'),
+            {'email_game_updates': 'on', 'email_html_enabled': 'on'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json().get('email_html_enabled'), True)
+        account = Account.objects.get(django_user=user)
+        self.assertTrue(account.email_html_enabled)
+
     def test_register_rejects_reserved_abandoned_name(self):
         ServerSettings.objects.update_or_create(
             key='allow_self_signup',

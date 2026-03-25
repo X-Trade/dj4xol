@@ -1,0 +1,13 @@
+{% extends 'dj4xol/email/_base.html' %}
+
+{% block heading %}{{ game.name }} Was Deleted{% endblock %}
+
+{% block body %}
+<p>Your game <strong>{{ game.name }}</strong> has been deleted by its owner, <strong>{{ owner_account.alias }}</strong>.</p>
+<p>This game is no longer available on the server.</p>
+{% endblock %}
+
+{% block footer %}
+{% if server_url %}<div><strong>Server:</strong> <a href="{{ server_url }}">{{ server_url }}</a></div>{% endif %}
+<div><strong>Unsubscribe:</strong> <a href="{{ unsubscribe_url }}">{{ unsubscribe_url }}</a></div>
+{% endblock %}

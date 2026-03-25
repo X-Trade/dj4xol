@@ -1,0 +1,22 @@
+{% extends 'dj4xol/email/_base.html' %}
+
+{% block heading %}Invitation to Join {{ game.name }}{% endblock %}
+
+{% block body %}
+<p>
+    {% if inviter_name %}
+    <strong>{{ inviter_name }}</strong> has invited you to join a DJ4XOL game.
+    {% else %}
+    You have been invited to join a DJ4XOL game.
+    {% endif %}
+</p>
+<p><strong>Game:</strong> {{ game.name }}</p>
+{% if game.description %}
+<p><strong>Description:</strong> {{ game.description }}</p>
+{% endif %}
+<p><strong>Join:</strong> <a href="{{ join_url }}">{{ join_url }}</a></p>
+{% endblock %}
+
+{% block footer %}
+{% if server_url %}<div><strong>Server:</strong> <a href="{{ server_url }}">{{ server_url }}</a></div>{% endif %}
+{% endblock %}

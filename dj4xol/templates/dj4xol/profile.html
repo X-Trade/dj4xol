@@ -94,6 +94,11 @@
                                 <input type="checkbox" name="email_newsletter" {% if account.email_newsletter %}checked{% endif %}>
                                 Send me newsletters about DJ4XOL and the server
                             </label>
+                            <br>
+                            <label>
+                                <input type="checkbox" name="email_html_enabled" {% if account.email_html_enabled %}checked{% endif %}>
+                                HTML emails (theme-based styling)
+                            </label>
                             <div class="panel-footer">
                                 <button type="submit">Save Preferences</button>
                                 <span id="email-pref-status"></span>
@@ -591,6 +596,7 @@
             if (emailPrefForm) {
                 var gameUpdates = emailPrefForm.querySelector('input[name=\"email_game_updates\"]');
                 var newsletter = emailPrefForm.querySelector('input[name=\"email_newsletter\"]');
+                var htmlEmails = emailPrefForm.querySelector('input[name=\"email_html_enabled\"]');
 
                 function syncRollupState() {
                     if (!emailRollupsSelect) {
@@ -631,6 +637,9 @@
                     }
                     if (newsletter && newsletter.checked) {
                         params.append('email_newsletter', 'on');
+                    }
+                    if (htmlEmails && htmlEmails.checked) {
+                        params.append('email_html_enabled', 'on');
                     }
 
                     fetch('{% url "dj4xol:update_email_preferences" %}', {

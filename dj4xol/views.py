@@ -4264,6 +4264,7 @@ def update_email_preferences(request):
     account = request.user.dj4xol_account
     account.email_game_updates = bool(request.POST.get('email_game_updates'))
     account.email_newsletter = bool(request.POST.get('email_newsletter'))
+    account.email_html_enabled = bool(request.POST.get('email_html_enabled'))
     rollups_raw = request.POST.get('email_game_rollups_per_day')
     if not account.email_game_updates:
         account.email_game_rollups_per_day = 0
@@ -4277,6 +4278,7 @@ def update_email_preferences(request):
         'email_game_updates',
         'email_game_rollups_per_day',
         'email_newsletter',
+        'email_html_enabled',
     ])
 
     return JsonResponse({
@@ -4284,6 +4286,7 @@ def update_email_preferences(request):
         'email_game_updates': account.email_game_updates,
         'email_game_rollups_per_day': account.email_game_rollups_per_day,
         'email_newsletter': account.email_newsletter,
+        'email_html_enabled': account.email_html_enabled,
     })
 
 

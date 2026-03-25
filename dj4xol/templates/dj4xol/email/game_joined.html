@@ -1,0 +1,14 @@
+{% extends 'dj4xol/email/_base.html' %}
+
+{% block heading %}{{ joining_account.alias }} Joined {{ game.name }}{% endblock %}
+
+{% block body %}
+<p>Account <strong>{{ joining_account.alias }}</strong> has joined your game <strong>{{ game.name }}</strong>.</p>
+<p><strong>Join source:</strong> {{ join_source }}</p>
+<p><strong>Game URL:</strong> <a href="{{ game_url }}">{{ game_url }}</a></p>
+{% endblock %}
+
+{% block footer %}
+{% if server_url %}<div><strong>Server:</strong> <a href="{{ server_url }}">{{ server_url }}</a></div>{% endif %}
+<div><strong>Unsubscribe:</strong> <a href="{{ unsubscribe_url }}">{{ unsubscribe_url }}</a></div>
+{% endblock %}

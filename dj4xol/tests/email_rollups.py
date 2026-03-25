@@ -109,6 +109,23 @@ class TestGenericEmailAction(TestCase):
         self.assertIn('Profile URL: https://example.test', message.body)
         self.assertIn('/4x/profile/', message.body)
         self.assertIn('Unsubscribe URL: https://example.test', message.body)
+        self.assertEqual(len(getattr(message, 'alternatives', [])), 0)
+
+    def test_staff_action_sends_generic_test_html_email_when_enabled(self):
+        self.account.email_html_enabled = True
+        self.account.theme = 'win95'
+        self.account.save(update_fields=['email_html_enabled', 'theme'])
+
+        response = self.client.get(reverse('dj4xol:test_generic_email'))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('dj4xol:index'))
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        alternatives = getattr(message, 'alternatives', [])
+        self.assertEqual(len(alternatives), 1)
+        self.assertEqual(alternatives[0][1], 'text/html')
+        self.assertIn('email-theme-win95', alternatives[0][0])
+        self.assertIn('Test Email', alternatives[0][0])
 
     def test_staff_action_blocks_generic_test_email_for_unverified_account(self):
         self.account.email_verified = False
@@ -122,6 +139,18 @@ class TestGenericEmailAction(TestCase):
             'Generic test email not sent: Email not verified.',
         )
         self.assertEqual(len(mail.outbox), 0)
+
+    def test_verification_email_remains_text_only_even_with_html_enabled(self):
+        self.account.email_html_enabled = True
+        self.account.save(update_fields=['email_html_enabled'])
+
+        sent, reason = send_email_verification_for_account(self.account)
+
+        self.assertTrue(sent, reason)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertIn('Verify email:', message.body)
+        self.assertEqual(len(getattr(message, 'alternatives', [])), 0)
 
 
 @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')

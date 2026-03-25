@@ -3,6 +3,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
 from django.core.mail import send_mail
 from django.db import models
 from django.template.loader import render_to_string
@@ -72,6 +73,58 @@ def _join_game_url(game, base_url):
     return path
 
 
+def _normalise_email_theme(theme_code):
+    valid = {choice[0] for choice in Account.THEME_CHOICES}
+    if theme_code in valid:
+        return theme_code
+    return 'classic'
+
+
+def _send_account_email(
+    subject,
+    body_text,
+    from_email,
+    recipient_email,
+    account=None,
+    html_template=None,
+    html_context=None,
+):
+    html_enabled = bool(account and getattr(account, 'email_html_enabled', False))
+    if html_enabled and html_template:
+        context = dict(html_context or {})
+        context.setdefault(
+            'email_theme',
+            _normalise_email_theme(getattr(account, 'theme', 'classic')),
+        )
+        context.setdefault('email_subject', subject)
+        try:
+            html_body = render_to_string(html_template, context)
+        except Exception:
+            logger.exception(
+                'Failed to render HTML email template %s for %s; falling back to text.',
+                html_template,
+                recipient_email,
+            )
+        else:
+            message = EmailMultiAlternatives(
+                subject=subject,
+                body=body_text,
+                from_email=from_email,
+                to=[recipient_email],
+            )
+            message.attach_alternative(html_body, 'text/html')
+            message.send(fail_silently=False)
+            return
+
+    send_mail(
+        subject=subject,
+        message=body_text,
+        from_email=from_email,
+        recipient_list=[recipient_email],
+        fail_silently=False,
+    )
+
+
 def _verified_account_email_allowed(account, stdout=None, label='email'):
     if not account:
         return False, 'No account'
@@ -120,24 +173,27 @@ def send_game_invite_email(game, recipient_email, inviter_name=None, dry_run=Fal
     base_url = _get_server_url()
     from_email = _get_from_email()
     subject = f'DJ4XOL: Invitation to join {game.name}'
-    body = render_to_string('dj4xol/email/game_invite.txt', {
+    email_context = {
         'game': game,
         'inviter_name': inviter_name,
         'join_url': _join_game_url(game, base_url),
         'server_url': base_url,
-    })
+    }
+    body = render_to_string('dj4xol/email/game_invite.txt', email_context)
 
     if dry_run:
         if stdout:
             stdout.write(f'[DRY RUN] Would send invite to {account.email}')
         return False
 
-    send_mail(
+    _send_account_email(
         subject=subject,
-        message=body,
+        body_text=body,
         from_email=from_email,
-        recipient_list=[account.email],
-        fail_silently=False,
+        recipient_email=account.email,
+        account=account,
+        html_template='dj4xol/email/game_invite.html',
+        html_context=email_context,
     )
     return True
 
@@ -173,7 +229,7 @@ def send_game_join_email(game, owner_account, joining_account, via_invitation=Fa
     from_email = _get_from_email()
     join_source = 'invitation' if via_invitation else 'public joinability'
     subject = f'DJ4XOL: {_account_display_name(joining_account)} joined {game.name}'
-    body = render_to_string('dj4xol/email/game_joined.txt', {
+    email_context = {
         'game': game,
         'owner_account': owner_account,
         'joining_account': joining_account,
@@ -181,7 +237,8 @@ def send_game_join_email(game, owner_account, joining_account, via_invitation=Fa
         'game_url': _game_url(game, base_url),
         'server_url': base_url,
         'unsubscribe_url': _unsubscribe_url(owner_account, base_url),
-    })
+    }
+    body = render_to_string('dj4xol/email/game_joined.txt', email_context)
 
     if dry_run:
         if stdout:
@@ -189,12 +246,14 @@ def send_game_join_email(game, owner_account, joining_account, via_invitation=Fa
         return False
 
     try:
-        send_mail(
+        _send_account_email(
             subject=subject,
-            message=body,
+            body_text=body,
             from_email=from_email,
-            recipient_list=[owner_account.email],
-            fail_silently=False,
+            recipient_email=owner_account.email,
+            account=owner_account,
+            html_template='dj4xol/email/game_joined.html',
+            html_context=email_context,
         )
     except Exception:
         logger.exception('Failed to send join email for game %s', getattr(game, 'id', None))
@@ -222,13 +281,14 @@ def send_game_deleted_email(game, owner_account, player_account, dry_run=False, 
     base_url = _get_server_url()
     from_email = _get_from_email()
     subject = f'DJ4XOL: {game.name} was deleted'
-    body = render_to_string('dj4xol/email/game_deleted.txt', {
+    email_context = {
         'game': game,
         'owner_account': owner_account,
         'player_account': player_account,
         'server_url': base_url,
         'unsubscribe_url': _unsubscribe_url(player_account, base_url),
-    })
+    }
+    body = render_to_string('dj4xol/email/game_deleted.txt', email_context)
 
     if dry_run:
         if stdout:
@@ -236,12 +296,14 @@ def send_game_deleted_email(game, owner_account, player_account, dry_run=False, 
         return False
 
     try:
-        send_mail(
+        _send_account_email(
             subject=subject,
-            message=body,
+            body_text=body,
             from_email=from_email,
-            recipient_list=[player_account.email],
-            fail_silently=False,
+            recipient_email=player_account.email,
+            account=player_account,
+            html_template='dj4xol/email/game_deleted.html',
+            html_context=email_context,
         )
     except Exception:
         logger.exception(
@@ -271,6 +333,8 @@ def send_generic_test_email_for_account(account, dry_run=False, stdout=None):
     unsubscribe_url = _unsubscribe_url(account, _get_server_url())
     from_email = _get_from_email()
     subject = 'DJ4XOL: Test email'
+    alias = getattr(account, 'alias', '') or 'unknown'
+    sent_at = timezone.now().isoformat()
     body = (
         'This is a generic DJ4XOL test email.\n\n'
         'It is intended to verify that outbound email delivery works even when '
@@ -282,25 +346,35 @@ def send_generic_test_email_for_account(account, dry_run=False, stdout=None):
         'Unsubscribe URL: {unsubscribe_url}\n'
         'Sent at: {sent_at}\n'
     ).format(
-        alias=getattr(account, 'alias', '') or 'unknown',
+        alias=alias,
         email=account.email,
         server_url=base_url,
         profile_url=profile_url,
         unsubscribe_url=unsubscribe_url,
-        sent_at=timezone.now().isoformat(),
+        sent_at=sent_at,
     )
+    email_context = {
+        'account': account,
+        'alias': alias,
+        'server_url': base_url,
+        'profile_url': profile_url,
+        'unsubscribe_url': unsubscribe_url,
+        'sent_at': sent_at,
+    }
 
     if dry_run:
         if stdout:
             stdout.write(f'[DRY RUN] Would send generic test email to {account.email}')
         return False, 'Dry run'
 
-    send_mail(
+    _send_account_email(
         subject=subject,
-        message=body,
+        body_text=body,
         from_email=from_email,
-        recipient_list=[account.email],
-        fail_silently=False,
+        recipient_email=account.email,
+        account=account,
+        html_template='dj4xol/email/generic_test.html',
+        html_context=email_context,
     )
     if stdout:
         stdout.write(f'Sent generic test email to {account.email}')
@@ -425,12 +499,13 @@ def _send_rollup_email(account, entries, total_messages, players, dry_run, stdou
     base_url = _get_server_url()
     from_email = _get_from_email()
     subject = 'DJ4XOL: Priority message rollup'
-    body = render_to_string('dj4xol/email/message_rollup.txt', {
+    email_context = {
         'account': account,
         'games': entries,
         'profile_url': _profile_url(base_url),
         'unsubscribe_url': _unsubscribe_url(account, base_url),
-    })
+    }
+    body = render_to_string('dj4xol/email/message_rollup.txt', email_context)
 
     if dry_run:
         if stdout:
@@ -440,12 +515,14 @@ def _send_rollup_email(account, entries, total_messages, players, dry_run, stdou
             )
         return False
 
-    send_mail(
+    _send_account_email(
         subject=subject,
-        message=body,
+        body_text=body,
         from_email=from_email,
-        recipient_list=[account.email],
-        fail_silently=False,
+        recipient_email=account.email,
+        account=account,
+        html_template='dj4xol/email/message_rollup.html',
+        html_context=email_context,
     )
 
     message_counts = {entry['player'].id: len(entry['messages']) for entry in entries}

@@ -53,7 +53,8 @@ class ServerAdmin(admin.ModelAdmin):
 class AccountAdmin(admin.ModelAdmin):
     list_display = (
         'pk', 'django_user', 'full_name', 'alias', 'email',
-        'email_game_updates', 'email_game_rollups_per_day', 'email_newsletter'
+        'email_game_updates', 'email_game_rollups_per_day', 'email_newsletter',
+        'email_html_enabled',
     )
 
     def get_readonly_fields(self, request, obj=None):

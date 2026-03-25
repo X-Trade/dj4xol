@@ -1,0 +1,20 @@
+{% extends 'dj4xol/email/_base.html' %}
+
+{% block heading %}Test Email{% endblock %}
+
+{% block body %}
+<p>This is a generic DJ4XOL test email.</p>
+<p>It verifies outbound delivery even when there are no message-rollup updates to send.</p>
+<ul>
+    <li><strong>Account:</strong> {{ alias }}</li>
+    <li><strong>Email:</strong> {{ account.email }}</li>
+    <li><strong>Server URL:</strong> {{ server_url }}</li>
+    <li><strong>Profile URL:</strong> <a href="{{ profile_url }}">{{ profile_url }}</a></li>
+    <li><strong>Unsubscribe URL:</strong> <a href="{{ unsubscribe_url }}">{{ unsubscribe_url }}</a></li>
+    <li><strong>Sent at:</strong> {{ sent_at }}</li>
+</ul>
+{% endblock %}
+
+{% block footer %}
+This is an automated DJ4XOL test email.
+{% endblock %}

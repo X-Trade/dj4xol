@@ -1,0 +1,28 @@
+{% extends 'dj4xol/email/_base.html' %}
+
+{% block heading %}Priority Message Rollup{% endblock %}
+
+{% block body %}
+<p>Hello {{ account.alias }},</p>
+<p>Here are your unread priority updates. Games with new turns are listed first.</p>
+
+{% for entry in games %}
+<div class="email-entry">
+    <h2>
+        {% if entry.has_new_turn %}<span class="pill">NEW TURN</span>{% endif %}
+        {{ entry.game.name }} (Year {{ entry.game.year }})
+    </h2>
+    <p><a href="{{ entry.game_url }}">{{ entry.game_url }}</a></p>
+    <ul>
+        {% for msg in entry.messages %}
+        <li><strong>Year {{ msg.year }}{% if msg.priority %} !{% endif %}</strong> {{ msg.text }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block footer %}
+<div><strong>Manage rollup frequency:</strong> <a href="{{ profile_url }}">{{ profile_url }}</a></div>
+<div><strong>Unsubscribe or adjust preferences:</strong> <a href="{{ unsubscribe_url }}">{{ unsubscribe_url }}</a></div>
+{% endblock %}
