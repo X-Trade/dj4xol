@@ -205,6 +205,10 @@ class DetailBuilder():
                      'environmentals': self.build_environmental_detail(),
                      'resources': self.build_resource_detail(),
                      'infrastructure': self.build_infrastructure_detail(),
+                     'infrastructure_has_any': (
+                         self._star_has_leftover_infrastructure(self.selected_obj)
+                         if isinstance(self.selected_obj, Star) else False
+                     ),
                      'is_star': isinstance(self.selected_obj, Star),
                      'is_fleet': isinstance(self.selected_obj, Fleet),
                      'is_salvage': isinstance(self.selected_obj, Salvage),
@@ -372,6 +376,7 @@ class DetailBuilder():
             'star_marker_type': '',
             'star_marker_color': PlayerStarMarker.COLOR_BLUE,
             'marker_star_short_id': None,
+            'infrastructure_has_any': False,
         }
 
     def _build_spectator_detail(self):
@@ -489,6 +494,7 @@ class DetailBuilder():
             'last_known_report_year': None,
             'is_last_known': False,
             'suppress_locate': False,
+            'infrastructure_has_any': False,
         }
         self._apply_report_thumbnail_paths(detail, report_tier)
 
@@ -538,6 +544,10 @@ class DetailBuilder():
                 'mines', 'factories', 'factories_bp', 'labs', 'labs_rp',
                 'defenses', 'shipyards',
             ]):
+                detail['infrastructure_has_any'] = any(
+                    int(data.get(field, 0) or 0) > 0
+                    for field in ('mines', 'factories', 'labs', 'defenses', 'shipyards')
+                )
                 scanner_display = None
                 if 'basic_scanner_range' in data or 'advanced_scanner_range' in data:
                     scanner_display = self._format_scanner_range(

@@ -2518,6 +2518,46 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'Scanners')
         self.assertContains(response, '6ly/2ly')
 
+    def test_encounter_unowned_star_report_with_zero_infrastructure_shows_none(self):
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='star',
+            target_id=self.star.id,
+            cached_report=json.dumps({
+                'name': self.star.name,
+                'x': self.star.x,
+                'y': self.star.y,
+                'gravity': self.star.gravity,
+                'temperature': self.star.temperature,
+                'radiation': self.star.radiation,
+                'colonists': 0,
+                'ironium_yield': 0,
+                'boranium_yield': 0,
+                'germanium_yield': 0,
+                'ironium_inventory': 0,
+                'boranium_inventory': 0,
+                'germanium_inventory': 0,
+                'mines': 0,
+                'factories': 0,
+                'factories_bp': 0,
+                'labs': 0,
+                'labs_rp': 0,
+                'defenses': 0,
+                'defenses_tooltip': None,
+                'shipyards': 0,
+                'jobs_count': 0,
+                'jobs_employment': 0.0,
+                'report_tier': 'encounter',
+            }),
+        )
+        response = self._get_detail_response(self.star)
+        self.assertContains(response, 'data-section="infrastructure"')
+        self.assertContains(response, '<span class="detail-value">None</span>', html=True)
+        self.assertNotContains(response, 'Abandoned')
+        self.assertNotContains(response, '<span class="env-label">Mines</span>', html=True)
+
     def test_advanced_anomaly_report_shows_danger(self):
         anomaly = Anomaly.objects.create(
             game=self.game,

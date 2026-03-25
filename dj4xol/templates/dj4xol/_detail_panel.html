@@ -276,6 +276,12 @@
     <div class="collapsible-section" data-section="infrastructure">
         <h4 class="collapsible-header"><span class="collapse-toggle">−</span> Infrastructure</h4>
         <div class="collapsible-content">
+            {% if not detail.player and not detail.infrastructure_has_any %}
+            <div class="detail-row">
+                <span class="env-label">Status</span>
+                <span class="detail-value">None</span>
+            </div>
+            {% else %}
             <div class="detail-row">
                 <span class="env-label">Mines</span>
                 <span class="detail-value">{{ detail.infrastructure.Mines }}</span>
@@ -344,6 +350,7 @@
                     </span>
                 </span>
             </div>
+            {% endif %}
             {% endif %}
         </div>
     </div>
