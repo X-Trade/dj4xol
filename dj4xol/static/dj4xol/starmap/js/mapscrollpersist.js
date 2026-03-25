@@ -764,6 +764,24 @@ $(document).ready(function() {
         window.location.search = params.toString();
     }
 
+    function navigateToMapObject(objectId, objectX, objectY, objectType) {
+        if (!objectId) {
+            return;
+        }
+        if (destMode) {
+            submitDestination(objectId, objectX, objectY, objectType || 'star');
+            return;
+        }
+        persistStarmapScrollPosition();
+        var params = new URLSearchParams(window.location.search);
+        params.set('x', objectX);
+        params.set('y', objectY);
+        params.set('sel', objectId);
+        params.delete('locate');
+        params.delete('no_locate');
+        window.location.search = params.toString();
+    }
+
     $maparea.on('click', '[data-primary-object-id]', function(e) {
         if (!shouldPreferPrimaryStarSelection()) {
             return;
@@ -900,6 +918,7 @@ $(document).ready(function() {
     var pinchStartZoom = null;
     var gestureStartZoom = null;
     var touchPinching = false;
+    var touchMoved = false;
     var lastTouchPinchAt = 0;
     var pinchFramePending = false;
     var pinchFrameZoom = null;
@@ -909,45 +928,91 @@ $(document).ready(function() {
         window.matchMedia('(pointer: coarse)').matches;
     var isFinePointer = window.matchMedia &&
         window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-    var mobileDestinationTargeting = isCoarsePointer &&
-        window.matchMedia &&
-        window.matchMedia('(max-width: 900px)').matches;
+    var coarsePointerTargeting = isCoarsePointer;
 
-    function getMobileTouchRadiusPx(objectType) {
+    function getCoarseTouchScaleMultiplier() {
+        var zoomRange = zoomMax - zoomMin;
+        if (zoomRange <= 0) {
+            return 2;
+        }
+        var zoomProgress = (zoomLevel - zoomMin) / zoomRange;
+        zoomProgress = Math.max(0, Math.min(1, zoomProgress));
+        // Scale touch surface from 10x at full zoom-out down to 2x at full zoom-in.
+        return 10 - (8 * zoomProgress);
+    }
+
+    function getObjectSelectionPriority(objectType) {
+        if (objectType === 'star') {
+            return 0;
+        }
         if (objectType === 'fleet') {
-            return 22;
+            return 1;
+        }
+        if (objectType === 'anomaly') {
+            return 2;
         }
         if (objectType === 'salvage') {
-            return 20;
+            return 3;
         }
-        return 22; // stars
+        return 4;
+    }
+
+    function getMapPointerUnscaled(e) {
+        var offset = $maparea.offset();
+        if (!offset) {
+            return null;
+        }
+        var pageX = e.pageX;
+        var pageY = e.pageY;
+        if (
+            (typeof pageX !== 'number' || typeof pageY !== 'number') &&
+            e.originalEvent
+        ) {
+            pageX = e.originalEvent.pageX;
+            pageY = e.originalEvent.pageY;
+        }
+        if (typeof pageX !== 'number' || typeof pageY !== 'number') {
+            return null;
+        }
+        return {
+            x: (pageX - offset.left) / zoomLevel,
+            y: (pageY - offset.top) / zoomLevel
+        };
     }
 
     function findNearestSelectableMapObject(unscaledX, unscaledY) {
-        if (!mobileDestinationTargeting) {
+        if (!coarsePointerTargeting) {
             return null;
         }
 
         var nearest = null;
         var nearestDistSq = Infinity;
+        var nearestPriority = Infinity;
         $maparea.find('[data-map-object="1"]').each(function() {
             var el = this;
             var objectType = el.getAttribute('data-object-type') || 'star';
-            var radiusUnscaled = getMobileTouchRadiusPx(objectType) / zoomLevel;
+            var width = Math.max(1, el.offsetWidth || 5);
+            var height = Math.max(1, el.offsetHeight || 5);
+            var baseRadiusUnscaled = Math.max(width, height) / 2;
+            var radiusUnscaled = baseRadiusUnscaled * getCoarseTouchScaleMultiplier();
             var maxDistSq = radiusUnscaled * radiusUnscaled;
-
             var left = parseFloat(el.style.left) || 0;
             var top = parseFloat(el.style.top) || 0;
-            var width = el.offsetWidth || 5;
-            var height = el.offsetHeight || 5;
             var centerX = left + (width / 2);
             var centerY = top + (height / 2);
 
             var dx = centerX - unscaledX;
             var dy = centerY - unscaledY;
             var distSq = dx * dx + dy * dy;
-            if (distSq <= maxDistSq && distSq < nearestDistSq) {
+            var priority = getObjectSelectionPriority(objectType);
+            var isCloser = distSq < nearestDistSq;
+            var sameDistance = Math.abs(distSq - nearestDistSq) < 0.0001;
+            if (
+                distSq <= maxDistSq &&
+                (isCloser || (sameDistance && priority < nearestPriority))
+            ) {
                 nearestDistSq = distSq;
+                nearestPriority = priority;
                 nearest = {
                     id: el.getAttribute('data-object-id'),
                     type: objectType,
@@ -957,6 +1022,44 @@ $(document).ready(function() {
             }
         });
         return nearest;
+    }
+
+    if (!destMode) {
+        $maparea.on('click', function(e) {
+            if (!coarsePointerTargeting) {
+                return;
+            }
+            if (hasDragged) {
+                return;
+            }
+            if ($(e.target).closest('.mapstar-name').length) {
+                return;
+            }
+            if (e.isDefaultPrevented && e.isDefaultPrevented()) {
+                return;
+            }
+            var point = getMapPointerUnscaled(e);
+            if (!point) {
+                return;
+            }
+            var nearestObject = findNearestSelectableMapObject(point.x, point.y);
+            if (!nearestObject || !nearestObject.id) {
+                return;
+            }
+            var clickedObjectId = $(e.target)
+                .closest('[data-map-object="1"]')
+                .attr('data-object-id');
+            if (clickedObjectId && clickedObjectId === nearestObject.id) {
+                return;
+            }
+            e.preventDefault();
+            navigateToMapObject(
+                nearestObject.id,
+                nearestObject.x,
+                nearestObject.y,
+                nearestObject.type
+            );
+        });
     }
 
     function getTouchDistance(touches) {
@@ -1017,6 +1120,7 @@ $(document).ready(function() {
             if (e.touches.length === 1) {
                 touchDragging = true;
                 lockDragSelection();
+                touchMoved = false;
                 pinchStartDist = null;
                 pinchStartZoom = null;
                 touchStartX = e.touches[0].clientX;
@@ -1037,6 +1141,9 @@ $(document).ready(function() {
                 e.preventDefault();
                 var dx = e.touches[0].clientX - touchStartX;
                 var dy = e.touches[0].clientY - touchStartY;
+                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                    touchMoved = true;
+                }
                 $starmap.scrollLeft(touchScrollLeft - dx);
                 $starmap.scrollTop(touchScrollTop - dy);
             } else if (e.touches.length === 2 && pinchStartDist && pinchStartZoom) {
@@ -1065,6 +1172,11 @@ $(document).ready(function() {
 
         starmapEl.addEventListener('touchend', function(e) {
             touchDragging = false;
+            if (touchMoved) {
+                hasDragged = true;
+                setTimeout(function() { hasDragged = false; }, 0);
+            }
+            touchMoved = false;
             if (!e.touches || e.touches.length === 0) {
                 unlockDragSelection();
             }
@@ -1080,6 +1192,7 @@ $(document).ready(function() {
         starmapEl.addEventListener('touchcancel', function() {
             touchDragging = false;
             touchPinching = false;
+            touchMoved = false;
             unlockDragSelection();
             lastTouchPinchAt = Date.now();
             pinchStartDist = null;
@@ -1212,24 +1325,24 @@ $(document).ready(function() {
         $maparea.on('click', function(e) {
             // Ignore clicks that were part of a drag-scroll
             if (hasDragged) return;
-            // Let star links handle themselves (they call submitDestination via onclick)
-            if ($(e.target).closest('a').length) return;
+            if ($(e.target).closest('.mapstar-name').length) return;
+            if (e.isDefaultPrevented && e.isDefaultPrevented()) return;
 
-            // Calculate map coordinates from click position
-            // Account for zoom level and border offset
-            var offset = $maparea.offset();
-            var clickX = e.pageX - offset.left;
-            var clickY = e.pageY - offset.top;
+            var point = getMapPointerUnscaled(e);
+            if (!point) return;
+            var unscaledX = point.x;
+            var unscaledY = point.y;
 
-            // Divide by zoom to get unscaled pixel position
-            var unscaledX = clickX / zoomLevel;
-            var unscaledY = clickY / zoomLevel;
-
-            // On mobile, prefer nearby stars/fleets/salvage with a fixed
-            // screen-space touch radius so selection remains usable at any zoom.
             var nearestObject = findNearestSelectableMapObject(unscaledX, unscaledY);
             if (nearestObject && nearestObject.id) {
+                e.preventDefault();
                 submitDestination(nearestObject.id, nearestObject.x, nearestObject.y, nearestObject.type);
+                return;
+            }
+
+            // For fine pointer devices, allow direct link clicks to run their own
+            // destination JavaScript handler when no coarse hit-assist is active.
+            if (!coarsePointerTargeting && $(e.target).closest('a').length) {
                 return;
             }
 
