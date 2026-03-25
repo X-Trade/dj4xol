@@ -52,9 +52,8 @@ from dj4xol.colony_rules import (
     calculate_available_buildpoints,
     calculate_available_researchpoints,
     calculate_staffing_ratio,
+    calculate_total_jobs,
     calculate_productivity_multiplier,
-    COLONISTS_PER_JOB,
-    COLONISTS_PER_SHIPYARD,
 )
 
 from itertools import chain
@@ -1616,10 +1615,7 @@ class DetailBuilder():
             is_owned = (
                 self.player is not None and self.selected_obj.player == self.player
             )
-            jobs = ((self.selected_obj.mines + self.selected_obj.factories
-                     + self.selected_obj.labs
-                     + self.selected_obj.defenses) * COLONISTS_PER_JOB
-                    + self.selected_obj.shipyards * COLONISTS_PER_SHIPYARD)
+            jobs = calculate_total_jobs(self.selected_obj)
             employment = calculate_employment_percent(self.selected_obj)
             defenses_tooltip = None
             scanner_display = None

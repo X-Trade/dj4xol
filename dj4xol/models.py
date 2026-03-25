@@ -2067,7 +2067,7 @@ PRODUCTION_COSTS = {
     'REMOVE_ADMINISTRATION': {'bp': 40, 'ironium': 0, 'boranium': 0,
                               'germanium': 0, 'colonists': 0},
     'BUILD_DYSON_SPHERE': {
-        'bp': 0,
+        'bp': 2000,
         'ironium': 1000,
         'boranium': 500,
         'germanium': 600,

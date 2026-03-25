@@ -1331,7 +1331,7 @@
     description: 'Megastructure engineering enables one Dyson Sphere per colony, vastly accelerating local industry and research.'
     tech_type: 'INFRASTRUCTURE'
     thumbnail_class: 'star/dyson'
-    params_json: '{"dyson_sphere": true, "production_cost_overrides": {"BUILD_DYSON_SPHERE": {"bp": 0, "ironium": 1000, "boranium": 500, "germanium": 600, "resource_x": 200, "resource_y": 0, "resource_z": 100, "colonists": 0}}}'
+    params_json: '{"dyson_sphere": true, "production_cost_overrides": {"BUILD_DYSON_SPHERE": {"bp": 2000, "ironium": 1000, "boranium": 500, "germanium": 600, "resource_x": 200, "resource_y": 0, "resource_z": 100, "colonists": 0}}}'
     display_order: 214
     enabled: True
 

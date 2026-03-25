@@ -19,6 +19,7 @@ OVERMINING_DEPLETION_MULTIPLIER = 1.0
 HOMEWORLD_MIN_YIELD = 30  # Homeworld yields never drop below this percentage
 DYSON_PRODUCTIVITY_MULTIPLIER = 3.0  # 200% bonus (base + 200%)
 DYSON_HABITABILITY_MULTIPLIER = 1.5  # +50% habitability factor
+DYSON_SPHERE_JOBS = BILLION  # Active Dyson Sphere provides 1bn jobs
 ENVIRONMENT_IGNORE_FIELDS = {
     'gravity': 'ignores_gravity',
     'temperature': 'ignores_temperature',
@@ -38,6 +39,23 @@ def has_active_dyson_sphere(star, player=None):
     if player is None:
         return True
     return int(owner_id) == int(getattr(player, 'id', 0) or 0)
+
+
+def calculate_total_jobs(star):
+    """Return total colony jobs, including Dyson Sphere staffing demand."""
+    if star is None:
+        return 0
+    jobs = (
+        (
+            int(getattr(star, 'mines', 0) or 0) +
+            int(getattr(star, 'factories', 0) or 0) +
+            int(getattr(star, 'labs', 0) or 0) +
+            int(getattr(star, 'defenses', 0) or 0)
+        ) * COLONISTS_PER_JOB
+    ) + (int(getattr(star, 'shipyards', 0) or 0) * COLONISTS_PER_SHIPYARD)
+    if has_active_dyson_sphere(star):
+        jobs += DYSON_SPHERE_JOBS
+    return max(0, int(jobs))
 
 
 def capacity_modifier(population, soft_cap):
@@ -184,13 +202,12 @@ def calculate_employment_percent(star):
 
     Each mine, factory, and defense employs COLONISTS_PER_JOB colonists.
     Each shipyard employs COLONISTS_PER_SHIPYARD colonists (10x more).
+    Active Dyson Spheres add a fixed 1bn jobs.
     Returns 0-100, capped at 100%.
     """
     if star.colonists == 0:
         return 0
-    jobs = ((star.mines + star.factories + star.labs + star.defenses) *
-            COLONISTS_PER_JOB
-            + star.shipyards * COLONISTS_PER_SHIPYARD)
+    jobs = calculate_total_jobs(star)
     return min(100, jobs / star.colonists * 100)
 
 
@@ -204,9 +221,7 @@ def calculate_effective_defenses(star):
         return 0.0
     if star.colonists <= 0:
         return 0.0
-    jobs = ((star.mines + star.factories + star.labs + star.defenses) *
-            COLONISTS_PER_JOB
-            + star.shipyards * COLONISTS_PER_SHIPYARD)
+    jobs = calculate_total_jobs(star)
     if jobs <= 0:
         return 0.0
     employment_ratio = jobs / star.colonists
@@ -275,9 +290,7 @@ def calculate_available_researchpoints(star):
 
 def calculate_staffing_ratio(star):
     """Calculate employment ratio (jobs/colonists)."""
-    jobs = ((star.mines + star.factories + star.labs + star.defenses) *
-            COLONISTS_PER_JOB
-            + star.shipyards * COLONISTS_PER_SHIPYARD)
+    jobs = calculate_total_jobs(star)
     if jobs <= 0 or star.colonists <= 0:
         return 0
     return jobs / star.colonists
@@ -286,9 +299,7 @@ def calculate_staffing_ratio(star):
 def calculate_available_construction_colonists(star, colonists_busy=0, employed_jobs=None):
     """Return unemployed colonists available for mine/factory construction this turn."""
     if employed_jobs is None:
-        employed_jobs = ((star.mines + star.factories + star.labs + star.defenses) *
-                         COLONISTS_PER_JOB
-                         + star.shipyards * COLONISTS_PER_SHIPYARD)
+        employed_jobs = calculate_total_jobs(star)
     available = int(star.colonists or 0) - int(employed_jobs or 0) - int(colonists_busy or 0)
     return max(0, available)
 

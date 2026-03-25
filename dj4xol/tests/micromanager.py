@@ -100,7 +100,7 @@ class AdministrationAutomationTest(TestCase):
             tech_type='INFRASTRUCTURE',
             params_json=(
                 '{"dyson_sphere": true, "production_cost_overrides": '
-                '{"BUILD_DYSON_SPHERE": {"bp": 0, "ironium": 1000, '
+                '{"BUILD_DYSON_SPHERE": {"bp": 2000, "ironium": 1000, '
                 '"boranium": 500, "germanium": 600, "resource_x": 200, '
                 '"resource_y": 0, "resource_z": 100, "colonists": 0}}}'
             ),
@@ -287,6 +287,7 @@ class AdministrationAutomationTest(TestCase):
         )
         self.assertFalse(dyson['repeat_allowed'])
         costs = get_player_production_costs(self.player)
+        self.assertEqual(costs['BUILD_DYSON_SPHERE']['bp'], 2000)
         self.assertEqual(costs['BUILD_DYSON_SPHERE']['ironium'], 1000)
         self.assertEqual(costs['BUILD_DYSON_SPHERE']['resource_x'], 200)
         self.assertEqual(costs['BUILD_DYSON_SPHERE']['resource_z'], 100)
@@ -302,16 +303,24 @@ class AdministrationAutomationTest(TestCase):
 
     def test_build_dyson_sphere_order_completes_once(self):
         self._create_dyson_sphere_tech()
-        self.star.colonists = 200_000
-        self.star.factories = 20
+        self.star.mines = 0
+        self.star.factories = 200
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.colonists = 500_000
         self.star.ironium_inventory = 5_000
         self.star.boranium_inventory = 5_000
         self.star.germanium_inventory = 5_000
         self.star.resource_x_inventory = 500
         self.star.resource_z_inventory = 500
         self.star.save(update_fields=[
-            'colonists',
+            'mines',
             'factories',
+            'labs',
+            'defenses',
+            'shipyards',
+            'colonists',
             'ironium_inventory',
             'boranium_inventory',
             'germanium_inventory',

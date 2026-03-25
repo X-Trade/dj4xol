@@ -107,11 +107,10 @@ from .colony_rules import (
     effective_capacity,
     habitability_proportion,
     calculate_employment_percent,
-    COLONISTS_PER_JOB,
-    COLONISTS_PER_SHIPYARD,
     calculate_available_buildpoints,
     calculate_available_construction_colonists,
     calculate_available_researchpoints,
+    calculate_total_jobs,
     calculate_staffing_ratio,
     calculate_productivity_multiplier,
     calculate_consumed_buildpoints,
@@ -2306,8 +2305,7 @@ class GameTurn():
                     scanner_basic, scanner_advanced = get_player_colony_scanner_ranges(
                         obj.player
                     )
-                jobs = ((obj.mines + obj.factories + obj.labs + obj.defenses) * COLONISTS_PER_JOB
-                        + obj.shipyards * COLONISTS_PER_SHIPYARD)
+                jobs = calculate_total_jobs(obj)
                 employment = calculate_employment_percent(obj)
                 base.update({
                     # Infrastructure snapshot (matches visible Detail panel values).
@@ -6798,10 +6796,7 @@ class GameTurn():
             had_production_orders = star.production_orders.exists()
             star.buildpoints_consumed = 0
             colonists_busy = 0  # Track colonists busy with construction this turn
-            construction_employment_base = (
-                (star.mines + star.factories + star.labs + star.defenses) * COLONISTS_PER_JOB
-                + star.shipyards * COLONISTS_PER_SHIPYARD
-            )
+            construction_employment_base = calculate_total_jobs(star)
             available_bp = calculate_available_buildpoints(star)
             blocked = False
             fleets_built_this_turn = 0  # Track fleets built for shipyard availability

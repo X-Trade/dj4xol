@@ -11,8 +11,8 @@ DEFAULT_STAR_THUMBNAIL = "dj4xol/images/thumbs/star/all/1__r01_c01.png"
 STAR_THUMB_CATEGORY_ALL = "all"
 STAR_THUMB_CATEGORY_CITY = "city"
 STAR_THUMB_CATEGORY_DYSON = "dyson"
-# Star.colonists is stored in thousands; 10bn = 10,000,000k.
-CITY_THUMB_POPULATION_THRESHOLD_K = 10_000_000
+# Star.colonists is stored as individuals.
+CITY_THUMB_POPULATION_THRESHOLD = 1_000_000_000
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATIC_ROOT = PROJECT_ROOT / "dj4xol" / "static"
 
@@ -96,7 +96,7 @@ def choose_special_star_thumbnail(star):
         colonists = int(getattr(star, "colonists", 0) or 0)
     except (TypeError, ValueError):
         colonists = 0
-    if colonists > CITY_THUMB_POPULATION_THRESHOLD_K:
+    if colonists > CITY_THUMB_POPULATION_THRESHOLD:
         return choose_star_thumbnail(seed, category=STAR_THUMB_CATEGORY_CITY)
     return None
 

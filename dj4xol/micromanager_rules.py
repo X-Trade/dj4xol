@@ -10,6 +10,7 @@ from .colony_rules import (
     calculate_growth_factor,
     calculate_productivity_multiplier,
     calculate_staffing_ratio,
+    calculate_total_jobs,
     limit_population_growth_by_surface_resources,
     population_growth_uses_surface_resources,
 )
@@ -72,13 +73,7 @@ def empty_queue_requirements():
 
 
 def _job_capacity(star):
-    return int(
-        (
-            (int(star.mines or 0) + int(star.factories or 0) +
-             int(star.labs or 0) + int(star.defenses or 0)) *
-            COLONISTS_PER_JOB
-        ) + (int(star.shipyards or 0) * COLONISTS_PER_SHIPYARD)
-    )
+    return int(calculate_total_jobs(star))
 
 
 def _projected_population(player, star):

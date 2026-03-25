@@ -9,8 +9,7 @@ from colony_rules import (
     calculate_available_researchpoints,
     calculate_economy_percent,
     calculate_economy_factor,
-    COLONISTS_PER_JOB,
-    COLONISTS_PER_SHIPYARD,
+    calculate_total_jobs,
 )
 
 CENTER_STEP = 0.05
@@ -251,11 +250,7 @@ def init():
         bp = calculate_available_buildpoints(star)
         rp = calculate_available_researchpoints(star)
         hab = calculate_habitability_factor(player, star)
-        jobs = (
-            (star.mines + star.factories + star.labs + star.defenses) *
-            COLONISTS_PER_JOB
-            + star.shipyards * COLONISTS_PER_SHIPYARD
-        )
+        jobs = calculate_total_jobs(star)
 
         table = html.TABLE(Class='help-results-table')
 
