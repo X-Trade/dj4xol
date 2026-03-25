@@ -3165,6 +3165,28 @@ class TestFleetOrderViews(TestCase):
         )
         self.assertContains(response, 'id="intercept-speed-slider"', html=False)
 
+    def test_move_default_warp_ignores_zero_cloak_limit(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.max_safe_warp = 8
+        fleet.max_cloaked_warp = 0
+        fleet.has_wormhole_drive = True
+        fleet.save(update_fields=['max_safe_warp', 'max_cloaked_warp', 'has_wormhole_drive'])
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="warpfactor" id="warpfactor-input" value="8"', html=False)
+        self.assertContains(response, 'id="warp-slider"', html=False)
+        self.assertContains(response, '>Warp 8</span>', html=False)
+
     def test_wormhole_fleet_keeps_zero_cloak_and_fuel_factory_thresholds_in_order_slider_data(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
@@ -3197,17 +3219,22 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, 'data-fuel-factory-max-warp="0"', html=False)
         self.assertContains(
             response,
-            'id="warp-cloak-note" class="order-param-hint">Cloaked at this speed.</div>',
+            'id="warp-cloak-note" class="order-param-hint is-hidden">Cloaked at this speed.</div>',
             html=False,
         )
         self.assertContains(
             response,
-            'id="warp-fuel-factory-note" class="order-param-hint">Producing fuel at this speed.</div>',
+            'id="warp-fuel-factory-note" class="order-param-hint is-hidden">Producing fuel at this speed.</div>',
             html=False,
         )
         self.assertContains(
             response,
             "warpSlider.addEventListener('change', updateWarpDisplay);",
+            html=False,
+        )
+        self.assertContains(
+            response,
+            "warpDisplay.classList.add('warp-wormhole');",
             html=False,
         )
         self.assertContains(

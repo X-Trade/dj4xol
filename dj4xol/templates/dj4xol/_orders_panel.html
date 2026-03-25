@@ -2251,7 +2251,7 @@
                 warpDisplay.textContent = 'Warp ' + val;
             }
             warpInput.value = val;
-            warpDisplay.classList.remove('warp-warning', 'warp-danger');
+            warpDisplay.classList.remove('warp-warning', 'warp-danger', 'warp-wormhole');
             var warpHintState = null;
             var warpHintText = null;
             if (wormholeFuelWarning) {
@@ -2260,7 +2260,7 @@
                 warpHintText = wormholeFuelWarning;
             } else {
                 if (val === 14 && allowWormhole) {
-                    warpDisplay.classList.add('warp-danger');
+                    warpDisplay.classList.add('warp-wormhole');
                     warpHintState = 'danger';
                 } else if (val > maxSafeWarp) {
                     if (val >= 10) {

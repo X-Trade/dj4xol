@@ -87,6 +87,10 @@ body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .order-param-hint {
     font-size: 0.8em;
 }
 
+.warp-value.warp-wormhole {
+    color: rgba(186, 112, 255, 0.95);
+}
+
 /* ============================================
    Title Bar
    ============================================ */

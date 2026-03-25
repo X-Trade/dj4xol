@@ -1540,7 +1540,7 @@ def add_fleet_order(request, game_short_id):
                 cloaked_warp = int(getattr(fleet, 'max_cloaked_warp', -1) or 0)
             except (TypeError, ValueError):
                 cloaked_warp = -1
-            if cloaked_warp >= 0:
+            if cloaked_warp > 0:
                 default_warpfactor = min(int(fleet.max_safe_warp or 0), cloaked_warp)
         warpfactor = int(request.POST.get('warpfactor', default_warpfactor))
         warpfactor = max(0, min(14, warpfactor))

@@ -2162,7 +2162,7 @@ class DetailBuilder():
             max_cloaked_warp = int(getattr(fleet, 'max_cloaked_warp', -1) or 0)
         except (TypeError, ValueError):
             max_cloaked_warp = -1
-        if max_cloaked_warp >= 0:
+        if max_cloaked_warp > 0:
             return min(max_safe_warp, max_cloaked_warp)
         return max_safe_warp
 
