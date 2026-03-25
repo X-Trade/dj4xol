@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from .colony_rules import (
     COLONISTS_PER_JOB,
     COLONISTS_PER_SHIPYARD,
+    DYSON_SPHERE_JOBS,
     KT_PER_MINE,
     calculate_available_buildpoints,
     calculate_growth_factor,
@@ -62,6 +63,8 @@ LEVEL_TWO_FILLER_ORDER_TYPES = (
 )
 LEVEL_TWO_DEFENSE_FLOOR = 12
 LEVEL_TWO_LAB_FLOOR = 8
+SHIPYARD_COMPLETION_MAX_YEARS = 5
+DYSON_COMPLETION_MAX_YEARS = 9
 
 
 def empty_queue_requirements():
@@ -158,6 +161,31 @@ def _job_capacity_after(star, order_type):
     elif order_type == 'BUILD_SHIPYARD':
         extra = COLONISTS_PER_SHIPYARD
     return _job_capacity(star) + extra
+
+
+def _jobs_added_by_order(order_type):
+    if order_type in (
+        'BUILD_MINE',
+        'BUILD_FACTORY',
+        'BUILD_LAB',
+        'BUILD_DEFENSE',
+    ):
+        return COLONISTS_PER_JOB
+    if order_type == 'BUILD_SHIPYARD':
+        return COLONISTS_PER_SHIPYARD
+    if order_type == DYSON_SPHERE_ORDER_TYPE:
+        return DYSON_SPHERE_JOBS
+    return 0
+
+
+def _can_add_order_without_exceeding_max_jobs(player, star, order_type):
+    """Return True when this order keeps projected jobs <= 75% target cap."""
+    extra_jobs = int(_jobs_added_by_order(order_type) or 0)
+    if extra_jobs <= 0:
+        return True
+    thresholds = _projected_job_thresholds(player, star)
+    next_jobs = int(_job_capacity(star) or 0) + extra_jobs
+    return next_jobs <= int(thresholds.get('max_jobs', 0) or 0)
 
 
 def _can_add_jobs_without_breaking_limit(player, star, order_type):
@@ -404,6 +432,42 @@ def _spend_budget(cost_map, budget, order_type):
         )
 
 
+def _one_year_income(star):
+    """Return estimated one-year BP/mineral income for planning horizons."""
+    income = {'bp': max(0, int(calculate_available_buildpoints(star) or 0))}
+    mining_output = projected_mining_output(star)
+    for key in ALL_RESOURCE_KEYS:
+        income[key] = max(0, int(mining_output.get(key, 0) or 0))
+    return income
+
+
+def _can_complete_within_years(cost_map, budget, income, order_type, years):
+    """Return True when an order can complete within a multi-year horizon."""
+    if not cost_map:
+        return False
+    max_years = max(1, int(years or 1))
+    cost = cost_map.get(order_type, {})
+    horizon_extra_years = max(0, max_years - 1)
+
+    bp_need = max(0, int(cost.get('bp', 0) or 0))
+    bp_available = (
+        max(0, int(budget.get('bp', 0) or 0)) +
+        (max(0, int(income.get('bp', 0) or 0)) * horizon_extra_years)
+    )
+    if bp_need > bp_available:
+        return False
+
+    for key in ALL_RESOURCE_KEYS:
+        need = max(0, int(cost.get(key, 0) or 0))
+        available = (
+            max(0, int(budget.get(key, 0) or 0)) +
+            (max(0, int(income.get(key, 0) or 0)) * horizon_extra_years)
+        )
+        if need > available:
+            return False
+    return True
+
+
 def _has_resource_surplus_for_order(player, star, cost_map, order_type, reserve_factor=2):
     """Return True when the colony can cover queue demand with headroom."""
     if not cost_map:
@@ -460,6 +524,7 @@ def get_micromanager_candidate_orders(
     fleets_in_orbit=0,
     terraform_available=False,
     terraform_used=False,
+    dyson_available=False,
     cost_map=None,
 ):
     """Return candidate automatic production orders in priority order."""
@@ -475,6 +540,8 @@ def get_micromanager_candidate_orders(
         candidates.append(order_type)
     current_mines = int(getattr(star, 'mines', 0) or 0)
     current_factories = int(getattr(star, 'factories', 0) or 0)
+    current_shipyards = int(getattr(star, 'shipyards', 0) or 0)
+    shipyard_target = max(1, int(fleets_in_orbit or 0))
     max_mines = safe_mine_count(star)
     if int(tier or 0) == TIER_BASIC:
         mine_room = max_mines > 0
@@ -488,6 +555,16 @@ def get_micromanager_candidate_orders(
         queue_pressure = _queue_throughput_pressure(star)
         support_balance_candidates = _ordered_support_balance_candidates(star)
     level_one_support_candidates = []
+    if (
+        needs_jobs and
+        int(tier or 0) >= TIER_TERRAFORM and
+        dyson_available and
+        _can_add_order_without_exceeding_max_jobs(
+            player, star, DYSON_SPHERE_ORDER_TYPE
+        ) and
+        not bool(getattr(star, 'has_dyson_sphere', False))
+    ):
+        append_candidate(DYSON_SPHERE_ORDER_TYPE)
     if (
         int(tier or 0) == TIER_BASIC and
         current_jobs >= thresholds['min_jobs']
@@ -524,13 +601,11 @@ def get_micromanager_candidate_orders(
         if int(tier or 0) >= TIER_SUPPORT:
             if queue_pressure.get('factories'):
                 append_candidate('BUILD_FACTORY')
-            if (
-                int(getattr(star, 'shipyards', 0) or 0) <
-                int(fleets_in_orbit or 0) and
-                _can_add_jobs_without_breaking_limit(
-                    player, star, 'BUILD_SHIPYARD'
-                )
-            ):
+            if _can_add_jobs_without_breaking_limit(
+                player, star, 'BUILD_SHIPYARD'
+            ) and _can_add_order_without_exceeding_max_jobs(
+                player, star, 'BUILD_SHIPYARD'
+            ) and current_shipyards < shipyard_target:
                 append_candidate('BUILD_SHIPYARD')
             if support_balance_candidates:
                 for order_type in support_balance_candidates:
@@ -555,13 +630,11 @@ def get_micromanager_candidate_orders(
                 append_candidate('BUILD_MINE')
         else:
             if int(tier or 0) >= TIER_SUPPORT:
-                if (
-                    int(getattr(star, 'shipyards', 0) or 0) <
-                    int(fleets_in_orbit or 0) and
-                    _can_add_jobs_without_breaking_limit(
-                        player, star, 'BUILD_SHIPYARD'
-                    )
-                ):
+                if _can_add_jobs_without_breaking_limit(
+                    player, star, 'BUILD_SHIPYARD'
+                ) and _can_add_order_without_exceeding_max_jobs(
+                    player, star, 'BUILD_SHIPYARD'
+                ) and current_shipyards < shipyard_target:
                     append_candidate('BUILD_SHIPYARD')
                 if (
                     int(getattr(star, 'defenses', 0) or 0) <
@@ -593,7 +666,10 @@ def get_micromanager_candidate_orders(
         if int(tier or 0) >= TIER_SUPPORT:
             if (
                 int(getattr(star, 'shipyards', 0) or 0) < int(fleets_in_orbit or 0) and
-                _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD')
+                _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD') and
+                _can_add_order_without_exceeding_max_jobs(
+                    player, star, 'BUILD_SHIPYARD'
+                )
             ):
                 append_candidate('BUILD_SHIPYARD')
             if support_balance_candidates:
@@ -630,6 +706,7 @@ def get_micromanager_candidate_orders(
 def _project_star_state(star, queue_requirements=None):
     queue_requirements = queue_requirements or empty_queue_requirements()
     return SimpleNamespace(
+        player_id=getattr(star, 'player_id', None),
         colonists=int(getattr(star, 'colonists', 0) or 0),
         base_capacity=int(getattr(star, 'base_capacity', 0) or 0),
         mines=int(getattr(star, 'mines', 0) or 0),
@@ -637,6 +714,7 @@ def _project_star_state(star, queue_requirements=None):
         labs=int(getattr(star, 'labs', 0) or 0),
         defenses=int(getattr(star, 'defenses', 0) or 0),
         shipyards=int(getattr(star, 'shipyards', 0) or 0),
+        has_dyson_sphere=bool(getattr(star, 'has_dyson_sphere', False)),
         buildpoints_consumed=int(
             getattr(star, 'buildpoints_consumed', 0) or 0
         ),
@@ -699,6 +777,8 @@ def apply_projected_order(
         star_state.shipyards += 1
     elif order_type == ADMINISTRATION_ORDER_TYPE:
         star_state.has_administration = True
+    elif order_type == DYSON_SPHERE_ORDER_TYPE:
+        star_state.has_dyson_sphere = True
     elif order_type == 'TERRAFORM_GRAVITY':
         distance = float(getattr(player, 'gravity_center', 0.0) or 0.0) - star_state.gravity
         star_state.gravity += distance * effective_terraform_rate
@@ -723,6 +803,7 @@ def plan_micromanager_orders(
     fleets_in_orbit=0,
     terraform_available=False,
     terraform_rate=0.0,
+    dyson_available=False,
     preplanned_orders=None,
     cost_map=None,
     queue_requirements=None,
@@ -764,13 +845,44 @@ def plan_micromanager_orders(
             fleets_in_orbit=fleets_in_orbit,
             terraform_available=terraform_available,
             terraform_used=terraform_used,
+            dyson_available=dyson_available,
             cost_map=cost_map,
         )
         if not candidates:
             break
         selected = None
+        one_year_income = _one_year_income(projected)
         for candidate in candidates:
+            if candidate in ('BUILD_SHIPYARD', DYSON_SPHERE_ORDER_TYPE):
+                if not _can_add_order_without_exceeding_max_jobs(
+                    player, projected, candidate
+                ):
+                    continue
             if not _can_afford_from_budget(cost_map, planning_budget, candidate):
+                if (
+                    candidate == 'BUILD_SHIPYARD' and
+                    _can_complete_within_years(
+                        cost_map,
+                        planning_budget,
+                        one_year_income,
+                        candidate,
+                        SHIPYARD_COMPLETION_MAX_YEARS,
+                    )
+                ):
+                    selected = candidate
+                    break
+                if (
+                    candidate == DYSON_SPHERE_ORDER_TYPE and
+                    _can_complete_within_years(
+                        cost_map,
+                        planning_budget,
+                        one_year_income,
+                        candidate,
+                        DYSON_COMPLETION_MAX_YEARS,
+                    )
+                ):
+                    selected = candidate
+                    break
                 continue
             selected = candidate
             break

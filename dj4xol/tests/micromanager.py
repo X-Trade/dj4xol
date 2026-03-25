@@ -961,7 +961,7 @@ class AdministrationAutomationTest(TestCase):
             len(orders),
             len(set(order.order_type for order in orders)),
         )
-        self.assertEqual(orders[0].order_type, 'BUILD_LAB')
+        self.assertEqual(orders[0].order_type, 'BUILD_SHIPYARD')
         self.assertGreater(
             sum(
                 order.quantity for order in orders
@@ -1090,6 +1090,180 @@ class AdministrationAutomationTest(TestCase):
         GameTurn(self.game)._refresh_administration_production_queue(self.star)
 
         self.assertFalse(self.star.production_orders.exists())
+
+    def test_level_two_can_queue_shipyard_when_under_five_year_horizon(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 10
+        self.star.factories = 5
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 250
+        self.star.boranium_inventory = 50
+        self.star.germanium_inventory = 100
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertGreaterEqual(len(planned), 1)
+        self.assertEqual(planned[0], 'BUILD_SHIPYARD')
+
+    def test_level_three_queues_dyson_when_under_nine_year_horizon(self):
+        self._create_administration_tech(3, 3)
+        self._create_dyson_sphere_tech()
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.has_dyson_sphere = False
+        self.star.colonists = 2_000_000_000
+        self.star.mines = 60
+        self.star.factories = 300
+        self.star.labs = 20
+        self.star.defenses = 20
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 1_000
+        self.star.boranium_inventory = 500
+        self.star.germanium_inventory = 600
+        self.star.resource_x_inventory = 200
+        self.star.resource_z_inventory = 100
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.resource_x_yield = 0
+        self.star.resource_y_yield = 0
+        self.star.resource_z_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            3,
+            fleets_in_orbit=0,
+            dyson_available=True,
+            cost_map=get_player_production_costs(self.player),
+            limit=1,
+        )
+
+        self.assertGreaterEqual(len(planned), 1)
+        self.assertEqual(planned[0], 'BUILD_DYSON_SPHERE')
+
+    def test_level_three_skips_dyson_when_over_nine_year_horizon(self):
+        self._create_administration_tech(3, 3)
+        self._create_dyson_sphere_tech()
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.has_dyson_sphere = False
+        self.star.colonists = 2_000_000_000
+        self.star.mines = 10
+        self.star.factories = 10
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 1_000
+        self.star.boranium_inventory = 500
+        self.star.germanium_inventory = 600
+        self.star.resource_x_inventory = 200
+        self.star.resource_z_inventory = 100
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.resource_x_yield = 0
+        self.star.resource_y_yield = 0
+        self.star.resource_z_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            3,
+            fleets_in_orbit=0,
+            dyson_available=True,
+            cost_map=get_player_production_costs(self.player),
+            limit=1,
+        )
+
+        self.assertNotIn('BUILD_DYSON_SPHERE', planned)
+
+    def test_level_three_skips_dyson_when_it_would_exceed_max_jobs(self):
+        self._create_administration_tech(3, 3)
+        self._create_dyson_sphere_tech()
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.has_dyson_sphere = False
+        self.star.colonists = 600_000
+        self.star.mines = 60
+        self.star.factories = 40
+        self.star.labs = 20
+        self.star.defenses = 20
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 1_000
+        self.star.boranium_inventory = 500
+        self.star.germanium_inventory = 600
+        self.star.resource_x_inventory = 200
+        self.star.resource_z_inventory = 100
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.resource_x_yield = 0
+        self.star.resource_y_yield = 0
+        self.star.resource_z_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            3,
+            fleets_in_orbit=0,
+            dyson_available=True,
+            cost_map=get_player_production_costs(self.player),
+            limit=1,
+        )
+
+        self.assertNotIn('BUILD_DYSON_SPHERE', planned)
+
+    def test_level_two_skips_shipyard_when_it_would_exceed_max_jobs(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 12_000
+        self.star.mines = 2
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 5_000
+        self.star.boranium_inventory = 5_000
+        self.star.germanium_inventory = 5_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertNotIn('BUILD_SHIPYARD', candidates)
 
     def test_detail_builder_marks_micromanager_orders_and_disables_admin_repeat(self):
         self._create_administration_tech(1, 1)

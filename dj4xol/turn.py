@@ -134,6 +134,7 @@ from .research import (
     apply_research_bonus_rp,
     ensure_player_research_rows,
     get_global_research_max_level,
+    get_player_dyson_sphere_profile,
     get_player_production_costs,
     get_player_terraforming_profile,
 )
@@ -7344,6 +7345,7 @@ class GameTurn():
                 existing_types.append(order.order_type)
         terraform_profile = get_player_terraforming_profile(star.player)
         terraform_rate = float(terraform_profile.get('rate', 0.0) or 0.0)
+        dyson_profile = get_player_dyson_sphere_profile(star.player)
         queue_orders = list(star.production_orders.exclude(
             id__in=[order.id for order in editable]
         ))
@@ -7358,6 +7360,7 @@ class GameTurn():
             fleets_in_orbit=star.player.fleets.filter(x=star.x, y=star.y).count(),
             terraform_available=(terraform_rate > 0),
             terraform_rate=terraform_rate,
+            dyson_available=bool(dyson_profile.get('unlocked')),
             preplanned_orders=existing_types + player_projected_types,
             cost_map=cost_map,
             queue_requirements=remaining_queue_requirements(
