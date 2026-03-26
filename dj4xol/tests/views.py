@@ -576,6 +576,7 @@ class TestServerSettingsView(TestCase):
         self.assertContains(response, 'AIs Check In Every X Turns')
         self.assertContains(response, 'Enable AI Module: Micromanager')
         self.assertContains(response, 'Enable AI Module: Idle')
+        self.assertContains(response, 'Enable AI Module: OpenAI-Compatible')
         self.assertContains(response, 'Profanity Filter')
         self.assertContains(response, 'Public Server URL')
         self.assertContains(response, 'Used for links in emails')
@@ -606,8 +607,10 @@ class TestServerSettingsView(TestCase):
                 'ai_check_in_turns': '2',
                 'ai_module_micromanager_enabled': 'on',
                 'ai_module_idle_enabled': 'on',
+                'ai_module_openai_enabled': 'on',
                 'ai_module_micromanager_config': '{"aggression": 0.5}',
                 'ai_module_idle_config': '{"passive": true}',
+                'ai_module_openai_config': '{"model": "gpt-5-mini", "max_iterations": 4}',
                 'enable_debug_actions': '',
                 'enable_play_api': 'on',
                 'enable_profanity_filter': '',
@@ -645,8 +648,13 @@ class TestServerSettingsView(TestCase):
         self.assertEqual(ServerSettings.get('ai_check_in_turns'), '2')
         self.assertEqual(ServerSettings.get('ai_module_micromanager_enabled'), 'True')
         self.assertEqual(ServerSettings.get('ai_module_idle_enabled'), 'True')
+        self.assertEqual(ServerSettings.get('ai_module_openai_enabled'), 'True')
         self.assertEqual(ServerSettings.get('ai_module_micromanager_config'), '{"aggression": 0.5}')
         self.assertEqual(ServerSettings.get('ai_module_idle_config'), '{"passive": true}')
+        self.assertEqual(
+            ServerSettings.get('ai_module_openai_config'),
+            '{"model": "gpt-5-mini", "max_iterations": 4}',
+        )
         self.assertEqual(ServerSettings.get('enable_profanity_filter'), 'False')
         self.assertEqual(ServerSettings.get('profanity_filter_whitelist'), 'scunthorpe')
         self.assertEqual(ServerSettings.get('profanity_filter_blacklist'), 'void')
@@ -675,8 +683,10 @@ class TestServerSettingsView(TestCase):
                 'ai_check_in_turns': '1',
                 'ai_module_micromanager_enabled': 'on',
                 'ai_module_idle_enabled': 'on',
+                'ai_module_openai_enabled': '',
                 'ai_module_micromanager_config': '',
                 'ai_module_idle_config': '',
+                'ai_module_openai_config': '',
                 'enable_debug_actions': '',
                 'enable_play_api': 'on',
                 'enable_profanity_filter': 'on',

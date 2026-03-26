@@ -148,7 +148,11 @@ from .micromanager_rules import (
     remaining_queue_requirements,
     plan_micromanager_orders,
 )
-from .ai_players import get_ai_check_in_turns, player_ai_administration_tier
+from .ai_players import (
+    apply_ai_module_turn,
+    get_ai_check_in_turns,
+    player_ai_administration_tier,
+)
 from .fleet_thumbnails import choose_fleet_thumbnail
 from .chance_rules import (
     apply_roll_bend,
@@ -2513,16 +2517,18 @@ class GameTurn():
         current_year = int(self.game.year or 0)
         for player in self.game.players.filter(defeated=False, is_ai=True):
             update_fields = []
+            last_checkin = getattr(player, 'ai_last_checkin_year', None)
+            refresh_due = (
+                last_checkin is None or
+                (current_year - int(last_checkin or 0)) >= interval
+            )
+            if refresh_due:
+                apply_ai_module_turn(player, self.game)
+                player.ai_last_checkin_year = current_year
+                update_fields.append('ai_last_checkin_year')
             if auto_turn_in and not bool(getattr(player, 'turned_in', False)):
                 player.turned_in = True
                 update_fields.append('turned_in')
-            last_checkin = getattr(player, 'ai_last_checkin_year', None)
-            if (
-                last_checkin is None or
-                (current_year - int(last_checkin or 0)) >= interval
-            ):
-                player.ai_last_checkin_year = current_year
-                update_fields.append('ai_last_checkin_year')
             if update_fields:
                 player.save(update_fields=update_fields)
 

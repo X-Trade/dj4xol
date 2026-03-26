@@ -103,6 +103,11 @@
     value: 'True'
 - model: dj4xol.ServerSettings
   fields:
+    key: 'ai_module_openai_enabled'
+    description: 'Enable AI module: openai'
+    value: 'False'
+- model: dj4xol.ServerSettings
+  fields:
     key: 'ai_module_micromanager_config'
     description: 'AI module config: micromanager'
     long_value: ''
@@ -110,6 +115,11 @@
   fields:
     key: 'ai_module_idle_config'
     description: 'AI module config: idle'
+    long_value: ''
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'ai_module_openai_config'
+    description: 'AI module config: openai'
     long_value: ''
 - model: dj4xol.ServerSettings
   fields:

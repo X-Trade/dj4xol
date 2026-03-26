@@ -618,8 +618,10 @@ class ServerSettingsForm(forms.Form):
             'ai_check_in_turns',
             'ai_module_micromanager_enabled',
             'ai_module_idle_enabled',
+            'ai_module_openai_enabled',
             'ai_module_micromanager_config',
             'ai_module_idle_config',
+            'ai_module_openai_config',
         ]),
         ('Profanity Filter', [
             'enable_profanity_filter',
@@ -719,6 +721,12 @@ class ServerSettingsForm(forms.Form):
         initial=True,
         help_text='Tier-3 Administration automation on all AI colonies.',
     )
+    ai_module_openai_enabled = forms.BooleanField(
+        label='Enable AI Module: OpenAI-Compatible',
+        required=False,
+        initial=False,
+        help_text='Uses an OpenAI API-compatible model to drive Play CLI commands for AI turns.',
+    )
     ai_module_micromanager_config = forms.CharField(
         label='Micromanager Module Settings',
         required=False,
@@ -730,6 +738,15 @@ class ServerSettingsForm(forms.Form):
         required=False,
         widget=forms.Textarea(attrs={'rows': 2}),
         help_text='Optional per-module settings (free-form; JSON recommended).',
+    )
+    ai_module_openai_config = forms.CharField(
+        label='OpenAI-Compatible Module Settings',
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 4}),
+        help_text=(
+            'JSON settings for API-compatible chat completion '
+            '(for example: api_base_url, api_key, model, max_iterations).'
+        ),
     )
     enable_debug_actions = forms.BooleanField(
         label="Enable Debug Actions",
@@ -805,6 +822,11 @@ class ServerSettingsForm(forms.Form):
             'boolean': True,
             'default': True,
         },
+        'ai_module_openai_enabled': {
+            'description': 'Enable AI module: openai',
+            'boolean': True,
+            'default': False,
+        },
         'ai_module_micromanager_config': {
             'description': 'AI module config: micromanager',
             'use_long_value': True,
@@ -812,6 +834,11 @@ class ServerSettingsForm(forms.Form):
         },
         'ai_module_idle_config': {
             'description': 'AI module config: idle',
+            'use_long_value': True,
+            'default': '',
+        },
+        'ai_module_openai_config': {
+            'description': 'AI module config: openai',
             'use_long_value': True,
             'default': '',
         },
