@@ -1633,6 +1633,40 @@ class TestAnomalyInteractions(TestCase):
         self.assertIn('collapsed into', msg.message)
         self.assertNotIn('sel=%s' % a.short_id, msg.message)
 
+    def test_wormhole_collapse_replaces_thumbnail_with_black_hole_thumb(self):
+        game = default_game(stars=3, fleets=0)
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        home = game.players.first().homeworld
+        a = Anomaly.objects.create(
+            game=game,
+            x=home.x + 4,
+            y=home.y + 4,
+            name='Wormhole A',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=10,
+        )
+        b = Anomaly.objects.create(
+            game=game,
+            x=home.x + 8,
+            y=home.y + 8,
+            name='Wormhole B',
+            anomaly_type=Anomaly.TYPE_WORMHOLE,
+            stability=100,
+            wormhole_pair=a,
+        )
+        a.wormhole_pair = b
+        a.save(update_fields=['wormhole_pair'])
+        self.assertIn('/anomaly/wormhole/', b.thumbnail_path)
+
+        with patch('dj4xol.turn.random.random', side_effect=[0.0, 0.0, 1.0, 1.0, 1.0, 1.0]), \
+             patch('dj4xol.turn.random.randint', return_value=25):
+            GameTurn(game).decay_anomalies()
+
+        b.refresh_from_db()
+        self.assertEqual(b.anomaly_type, Anomaly.TYPE_BLACK_HOLE)
+        self.assertIn('/anomaly/blackhole/', b.thumbnail_path)
+
     def test_low_stability_increases_anomaly_rewards(self):
         game = default_game()
         game.anomalies_enabled = True

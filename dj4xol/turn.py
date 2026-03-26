@@ -671,7 +671,16 @@ class GameTurn():
         pair.stability = random.randint(1, 49)
         pair.heading = random.random() * 360.0
         pair.name = 'Black Hole %s' % (Anomaly.objects.filter(game=self.game).count() + 1)
-        pair.save(update_fields=['wormhole_pair', 'anomaly_type', 'stability', 'heading', 'name'])
+        # Force thumbnail re-selection so converted wormholes get black-hole art.
+        pair.thumbnail_path = ''
+        pair.save(update_fields=[
+            'wormhole_pair',
+            'anomaly_type',
+            'stability',
+            'heading',
+            'name',
+            'thumbnail_path',
+        ])
 
     def _retarget_or_remove_orders_for_destroyed_anomaly(
         self, anomaly_name, anomaly_short_id, x, y, anomaly_type
