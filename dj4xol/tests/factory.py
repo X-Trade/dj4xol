@@ -118,6 +118,10 @@ class testGameFactory(TestCase):
         self.assertIsNone(ai_one.account_id)
         self.assertIsNone(ai_two.account_id)
         self.assertEqual(game.players.filter(is_ai=True).count(), 2)
+        self.assertNotEqual(ai_one.name, self.races[0].name)
+        self.assertNotEqual(ai_two.name, self.races[1].name)
+        self.assertTrue(ai_one.plural_name.endswith('s'))
+        self.assertTrue(ai_two.plural_name.endswith('s'))
 
     def test_join_player_sets_homeworld_population(self):
         self.races[0].starting_colonists = 5
@@ -355,6 +359,32 @@ class testGameFactory(TestCase):
         self.assertIsNotNone(ai_player)
         self.assertNotEqual(ai_player.homeworld.name, 'AI Prime')
         self.assertIn(ai_player.homeworld.name, original_names)
+
+    def test_ai_name_generation_drops_terminal_a_for_ans_style(self):
+        singular, plural = GameFactory._build_ai_demonym('Alpha', 'ans')
+        self.assertEqual(singular, 'Alphan')
+        self.assertEqual(plural, 'Alphans')
+
+    def test_ai_name_generation_drops_terminal_i_for_oids_style(self):
+        singular, plural = GameFactory._build_ai_demonym('Centuri', 'oids')
+        self.assertEqual(singular, 'Centuroid')
+        self.assertEqual(plural, 'Centuroids')
+
+    def test_ai_name_generation_handles_alphanumeric_homeworld_fragments(self):
+        singular, plural = GameFactory._build_unique_ai_identity(
+            'X-131',
+            existing_names=set(),
+        )
+        self.assertEqual(singular, 'Xan')
+        self.assertEqual(plural, 'Xans')
+
+    def test_ai_name_generation_uses_last_homeworld_word(self):
+        singular, plural = GameFactory._build_unique_ai_identity(
+            'Delta Centuri',
+            existing_names=set(),
+        )
+        self.assertEqual(singular, 'Centuroid')
+        self.assertEqual(plural, 'Centuroids')
 
     def test_systems_adds_companion_stars(self):
         """Systems option should add companion stars at same coordinates."""

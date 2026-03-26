@@ -17,6 +17,7 @@ from .colony_rules import (
 )
 import random
 import math
+import re
 
 TURN_INTERVALS = {
     'HOURLY': timedelta(hours=1),
@@ -43,6 +44,7 @@ class GameFactory():
         'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X',
         'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI',
     ]
+    _AI_NAME_MAX_LEN = 16
 
     def new(self):
         """Create a new game instance."""
@@ -1017,6 +1019,102 @@ class GameFactory():
             player.save(update_fields=['homeworld'])
         return star
 
+    @staticmethod
+    def _ai_name_fragment_candidates(homeworld_name):
+        text = str(homeworld_name or '').strip()
+        if not text:
+            return []
+        candidates = []
+        for token in re.split(r'\s+', text):
+            fragment = ''.join(ch for ch in token if ch.isalpha())
+            if fragment:
+                candidates.append(fragment)
+        return candidates
+
+    @classmethod
+    def _pick_ai_name_fragment(cls, homeworld_name):
+        candidates = cls._ai_name_fragment_candidates(homeworld_name)
+        if not candidates:
+            return ''
+        # Prefer the last lexical token to produce a compact demonym stem.
+        return candidates[-1]
+
+    @classmethod
+    def _build_ai_demonym(cls, stem, style):
+        raw = ''.join(ch for ch in str(stem or '') if ch.isalpha())
+        if not raw:
+            return '', ''
+        lower = raw.lower()
+        if style == 'ans':
+            if lower.endswith('a') and len(raw) > 1:
+                raw = raw[:-1]
+            singular = raw + 'an'
+        elif style == 'ians':
+            if lower.endswith('y') and len(raw) > 1:
+                raw = raw[:-1] + 'i'
+            singular = raw + 'an'
+        else:  # oids
+            if lower.endswith('i') and len(raw) > 1:
+                raw = raw[:-1]
+            singular = raw + 'oid'
+        singular = singular[:1].upper() + singular[1:]
+        plural = singular + 's'
+        return singular, plural
+
+    @classmethod
+    def _ai_style_order_for_fragment(cls, fragment):
+        lower = str(fragment or '').lower()
+        if lower.endswith('i'):
+            return ['oids', 'ians', 'ans']
+        if lower.endswith('a'):
+            return ['ans', 'oids', 'ians']
+        return ['ans', 'ians', 'oids']
+
+    @classmethod
+    def _clip_ai_name(cls, value):
+        text = str(value or '')
+        if len(text) <= cls._AI_NAME_MAX_LEN:
+            return text
+        return text[:cls._AI_NAME_MAX_LEN]
+
+    @classmethod
+    def _build_unique_ai_identity(cls, homeworld_name, existing_names):
+        fragment = cls._pick_ai_name_fragment(homeworld_name)
+        if not fragment:
+            fragment = 'AI'
+        style_order = cls._ai_style_order_for_fragment(fragment)
+        for style in style_order:
+            singular, plural = cls._build_ai_demonym(fragment, style)
+            singular = cls._clip_ai_name(singular)
+            plural = cls._clip_ai_name(plural)
+            if singular and singular.lower() not in existing_names:
+                return singular, plural
+
+        base_singular, base_plural = cls._build_ai_demonym(fragment, style_order[0])
+        base_singular = cls._clip_ai_name(base_singular) or 'AI'
+        base_plural = cls._clip_ai_name(base_plural) or 'AIs'
+        for idx in range(2, 100):
+            suffix = str(idx)
+            singular = cls._clip_ai_name(base_singular[:cls._AI_NAME_MAX_LEN - len(suffix)] + suffix)
+            plural = cls._clip_ai_name((singular + 's'))
+            if singular.lower() not in existing_names:
+                return singular, plural
+        return base_singular, base_plural
+
+    def _assign_ai_player_identity(self, player):
+        if not player or not bool(getattr(player, 'is_ai', False)):
+            return
+        homeworld = getattr(player, 'homeworld', None)
+        homeworld_name = getattr(homeworld, 'name', '') if homeworld is not None else ''
+        existing_names = {
+            str(name or '').lower()
+            for name in self.game.players.exclude(pk=player.pk).values_list('name', flat=True)
+        }
+        singular, plural = self._build_unique_ai_identity(homeworld_name, existing_names)
+        player.name = singular or player.name
+        player.plural_name = plural or (player.name + 's')
+        player.save(update_fields=['name', 'plural_name'])
+
     def _find_homeworld_star(self, available_stars):
         """Find a suitable star for a homeworld, respecting minimum distance from others."""
         if self.game.pk:
@@ -1185,6 +1283,8 @@ class GameFactory():
             factories=factory_allocations[0],
             is_homeworld=True,
         )
+        if bool(is_ai):
+            self._assign_ai_player_identity(player)
         remaining = max(0, starting_colony_count - 1)
         if remaining:
             available_secondary = list(self.game.stars.filter(player=None))
