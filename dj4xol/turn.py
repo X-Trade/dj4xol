@@ -300,10 +300,19 @@ WORMHOLE_EXIT_MAX_DISTANCE = 8.0
 WORMHOLE_WANDER_MAX_LY_PER_YEAR = 12.0
 WORMHOLE_INSTANT_DESTRUCTION_MAX_CHANCE = 0.35
 MICROMANAGER_FLEET_TIER = 4
+MICROMANAGER_ADVANCED_FLEET_TIER = 5
 MICROMANAGER_FLEET_DISPATCHES_PER_COLONY = 1
 MICROMANAGER_DEFENSE_FLEET_RATIO = 0.50
 MICROMANAGER_DEFENSE_SHIP_RATIO = 0.50
 MICROMANAGER_ASTEROID_SEARCH_RADIUS = 18.0
+MICROMANAGER_MAX_ORBIT_FLEETS = 5
+MICROMANAGER_FLEET_BUILD_MAX_YEARS = 3
+MICROMANAGER_COLONISE_DISPATCHES_PER_COLONY = 1
+MICROMANAGER_COLONISE_SEARCH_RADIUS = 20.0
+MICROMANAGER_COLONISE_MIN_PAYLOAD = 5
+MICROMANAGER_COLONISE_RESERVE_COLONISTS = 50
+MICROMANAGER_PATROL_IDLE_RATIO = 0.25
+MICROMANAGER_PATROL_RADIUS = 15
 
 
 # Chance calculation functions (separated for testability)
@@ -7580,6 +7589,94 @@ class GameTurn():
             return 0
         return sum(max(0, int(transfers.get(key, 0) or 0)) for key in ALL_RESOURCE_KEYS)
 
+    def _one_year_planning_budget(self, star, cost_map):
+        """Return one-year budget after queued demand for horizon planning."""
+        queue_orders = list(star.production_orders.all())
+        queue_requirements = remaining_queue_requirements(queue_orders, cost_map)
+        mining_output = projected_mining_output(star)
+        budget = {
+            'bp': max(
+                0,
+                int(calculate_available_buildpoints(star) or 0) -
+                int(queue_requirements.get('bp', 0) or 0),
+            ),
+        }
+        for key in ALL_RESOURCE_KEYS:
+            available = (
+                int(getattr(star, '%s_inventory' % key, 0) or 0) +
+                int(mining_output.get(key, 0) or 0) -
+                int(queue_requirements.get(key, 0) or 0)
+            )
+            budget[key] = max(0, int(available))
+        return budget
+
+    @staticmethod
+    def _one_year_income(star):
+        income = {'bp': max(0, int(calculate_available_buildpoints(star) or 0))}
+        mining_output = projected_mining_output(star)
+        for key in ALL_RESOURCE_KEYS:
+            income[key] = max(0, int(mining_output.get(key, 0) or 0))
+        return income
+
+    @staticmethod
+    def _order_can_complete_within_years(cost_map, order_type, budget, income, years):
+        """Return True when an order can complete within the given horizon."""
+        if not cost_map:
+            return False
+        cost = cost_map.get(order_type, {})
+        if not isinstance(cost, dict):
+            return False
+        years = max(1, int(years or 1))
+        horizon_extra_years = max(0, years - 1)
+        available_bp = (
+            max(0, int(budget.get('bp', 0) or 0)) +
+            max(0, int(income.get('bp', 0) or 0)) * horizon_extra_years
+        )
+        if max(0, int(cost.get('bp', 0) or 0)) > available_bp:
+            return False
+        for key in ALL_RESOURCE_KEYS:
+            available = (
+                max(0, int(budget.get(key, 0) or 0)) +
+                max(0, int(income.get(key, 0) or 0)) * horizon_extra_years
+            )
+            if max(0, int(cost.get(key, 0) or 0)) > available:
+                return False
+        return True
+
+    def _queue_auto_build_fleet_order_for_colony(self, star, orbit_fleets, cost_map):
+        """Tier-5: queue one auto build-fleet order when below orbit target."""
+        from .models import ProductionOrder
+
+        orbit_count = len(list(orbit_fleets or []))
+        if orbit_count >= MICROMANAGER_MAX_ORBIT_FLEETS:
+            return
+        if int(getattr(star, 'shipyards', 0) or 0) <= 0:
+            return
+        if star.production_orders.filter(order_type='BUILD_FLEET').exists():
+            return
+        budget = self._one_year_planning_budget(star, cost_map)
+        income = self._one_year_income(star)
+        if not self._order_can_complete_within_years(
+            cost_map,
+            'BUILD_FLEET',
+            budget,
+            income,
+            MICROMANAGER_FLEET_BUILD_MAX_YEARS,
+        ):
+            return
+        tail_base = star.production_orders.aggregate(
+            max_pos=models.Max('position')
+        )['max_pos'] or 0
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=star,
+            order_type='BUILD_FLEET',
+            position=int(tail_base) + 1,
+            quantity=1,
+            repeat=False,
+            added_by_micromanager=True,
+        )
+
     def _best_colony_source_for_deficits(self, star, deficits, fleet, cost_map):
         """Pick best same-owner colony source for this colony's deficits."""
         player = getattr(star, 'player', None)
@@ -7751,6 +7848,7 @@ class GameTurn():
         transfers,
         target_star=None,
         target_salvage=None,
+        transfer_colonists=0,
     ):
         from .models import FleetOrders
 
@@ -7767,7 +7865,7 @@ class GameTurn():
             'transfer_resource_x': int(transfers.get('resource_x', 0) or 0),
             'transfer_resource_y': int(transfers.get('resource_y', 0) or 0),
             'transfer_resource_z': int(transfers.get('resource_z', 0) or 0),
-            'transfer_colonists': 0,
+            'transfer_colonists': max(0, int(transfer_colonists or 0)),
             'added_by_micromanager': True,
         }
         if target_star is not None:
@@ -7879,6 +7977,231 @@ class GameTurn():
         )
         return True
 
+    def _create_auto_colonise_order(self, fleet, position, target_star):
+        from .models import FleetOrders
+
+        try:
+            warp = int(getattr(fleet, 'max_safe_warp', 5) or 5)
+        except (TypeError, ValueError):
+            warp = 5
+        warp = max(1, min(13, warp))
+        FleetOrders.objects.create(
+            game=self.game,
+            fleet=fleet,
+            position=int(position),
+            order_type='COLONISE',
+            repeat=False,
+            warpfactor=warp,
+            original_warpfactor=warp,
+            overmax_risk_checked=False,
+            target_star=target_star,
+            target_kind='OBJECT',
+            target_short_id=target_star.short_id,
+            x=int(target_star.x),
+            y=int(target_star.y),
+            added_by_micromanager=True,
+        )
+
+    def _queue_auto_colonise_route(
+        self,
+        fleet,
+        source_star,
+        target_star,
+        colonists_kt,
+    ):
+        """Queue load -> move -> colonise for one fleet."""
+        transfer_amount = max(0, int(colonists_kt or 0))
+        if transfer_amount <= 0:
+            return False
+        start_position = (
+            fleet.orders.aggregate(max_pos=models.Max('position'))['max_pos'] or 0
+        )
+        position = int(start_position) + 1
+        self._create_auto_transfer_order(
+            fleet,
+            position,
+            'LOAD',
+            {},
+            target_star=source_star,
+            transfer_colonists=transfer_amount,
+        )
+        position += 1
+        if int(fleet.x) != int(target_star.x) or int(fleet.y) != int(target_star.y):
+            self._create_auto_move_order(
+                fleet,
+                position,
+                target_star=target_star,
+            )
+            position += 1
+        self._create_auto_colonise_order(
+            fleet,
+            position,
+            target_star,
+        )
+        return True
+
+    def _idle_orbit_fleets(self, orbit_fleets):
+        idle = []
+        for fleet in list(orbit_fleets or []):
+            if fleet.id in self._micromanager_auto_fleet_ids_for_year:
+                continue
+            if fleet.orders.exists():
+                continue
+            idle.append(fleet)
+        return idle
+
+    def _spare_colonists_for_auto_colonise(self, star):
+        """Return spare colony colonists in kt while preserving local workforce."""
+        current_colonists = max(0, int(getattr(star, 'colonists', 0) or 0))
+        reserve_colonists = max(
+            int(getattr(star, 'base_capacity', 0) or 0),
+            int(calculate_total_jobs(star) or 0) * 2,
+            int(MICROMANAGER_COLONISE_RESERVE_COLONISTS or 0) * 1000,
+        )
+        return max(0, int((current_colonists - reserve_colonists) / 1000))
+
+    def _best_colonise_target_for_colony(self, star):
+        from .models import Star
+
+        player = getattr(star, 'player', None)
+        if player is None:
+            return None
+        min_x = int(star.x) - int(ceil(MICROMANAGER_COLONISE_SEARCH_RADIUS))
+        max_x = int(star.x) + int(ceil(MICROMANAGER_COLONISE_SEARCH_RADIUS))
+        min_y = int(star.y) - int(ceil(MICROMANAGER_COLONISE_SEARCH_RADIUS))
+        max_y = int(star.y) + int(ceil(MICROMANAGER_COLONISE_SEARCH_RADIUS))
+        best = None
+        best_distance = None
+        best_hab = None
+        for target in Star.objects.filter(
+            game=self.game,
+            player__isnull=True,
+            x__gte=min_x,
+            x__lte=max_x,
+            y__gte=min_y,
+            y__lte=max_y,
+        ).exclude(id=star.id):
+            distance = self._distance_between_points(
+                star.x, star.y, target.x, target.y
+            )
+            if distance > MICROMANAGER_COLONISE_SEARCH_RADIUS:
+                continue
+            hab = float(calculate_habitability_factor(player, target) or 0.0)
+            if hab <= 0.0:
+                continue
+            if (
+                best is None or
+                hab > best_hab or
+                (hab == best_hab and (best_distance is None or distance < best_distance))
+            ):
+                best = target
+                best_hab = hab
+                best_distance = distance
+        return best
+
+    def _dispatch_auto_colonise_route(self, star, orbit_fleets):
+        """Tier-5: dispatch one idle fleet to colonise a nearby viable star."""
+        idle_fleets = self._idle_orbit_fleets(orbit_fleets)
+        dispatchable = self._dispatchable_idle_fleets_for_colony(
+            orbit_fleets, idle_fleets
+        )
+        if not dispatchable:
+            return
+        target_star = self._best_colonise_target_for_colony(star)
+        if target_star is None:
+            return
+        spare_colonists = self._spare_colonists_for_auto_colonise(star)
+        if spare_colonists <= 0:
+            return
+
+        dispatches = 0
+        for fleet in dispatchable:
+            if dispatches >= MICROMANAGER_COLONISE_DISPATCHES_PER_COLONY:
+                break
+            cargo_remaining = int(getattr(fleet, 'cargo_remaining', 0) or 0)
+            if cargo_remaining <= 0:
+                continue
+            transfer_colonists = min(
+                spare_colonists,
+                cargo_remaining,
+            )
+            transfer_colonists = max(
+                0,
+                int(transfer_colonists or 0),
+            )
+            if transfer_colonists < MICROMANAGER_COLONISE_MIN_PAYLOAD:
+                continue
+            created = self._queue_auto_colonise_route(
+                fleet,
+                source_star=star,
+                target_star=target_star,
+                colonists_kt=transfer_colonists,
+            )
+            if not created:
+                continue
+            self._micromanager_auto_fleet_ids_for_year.add(fleet.id)
+            dispatches += 1
+            spare_colonists = max(0, spare_colonists - transfer_colonists)
+            if spare_colonists < MICROMANAGER_COLONISE_MIN_PAYLOAD:
+                break
+
+    def _count_colony_patrol_fleets(self, orbit_fleets):
+        count = 0
+        for fleet in list(orbit_fleets or []):
+            if fleet.orders.filter(order_type='PATROL').exists():
+                count += 1
+        return count
+
+    def _assign_auto_patrol_orders(self, star, orbit_fleets):
+        """Tier-5: assign repeat patrol orders to idle orbit fleets."""
+        idle_fleets = self._idle_orbit_fleets(orbit_fleets)
+        if not idle_fleets:
+            return
+        patrol_fleets_now = self._count_colony_patrol_fleets(orbit_fleets)
+        patrol_target = int(
+            ceil(float(len(orbit_fleets or [])) * MICROMANAGER_PATROL_IDLE_RATIO)
+        )
+        if patrol_target <= 0 and len(orbit_fleets or []) > 0:
+            patrol_target = 1
+        patrol_target = max(1, patrol_target)
+        needed = max(0, patrol_target - patrol_fleets_now)
+        if needed <= 0:
+            return
+
+        ranked_idle = sorted(
+            idle_fleets,
+            key=lambda fleet: (
+                self._fleet_defense_score(fleet)[0],
+                self._fleet_defense_score(fleet)[1],
+                int(fleet.id or 0),
+            ),
+            reverse=True,
+        )
+        from .models import FleetOrders
+        for fleet in ranked_idle:
+            if needed <= 0:
+                break
+            try:
+                intercept_speed = int(getattr(fleet, 'max_safe_warp', 5) or 5)
+            except (TypeError, ValueError):
+                intercept_speed = 5
+            intercept_speed = max(1, min(13, intercept_speed))
+            FleetOrders.objects.create(
+                game=self.game,
+                fleet=fleet,
+                order_type='PATROL',
+                repeat=True,
+                patrol_radius=MICROMANAGER_PATROL_RADIUS,
+                intercept_speed=intercept_speed,
+                x=int(star.x),
+                y=int(star.y),
+                target_kind='SPACE',
+                target_short_id=None,
+                added_by_micromanager=True,
+            )
+            self._micromanager_auto_fleet_ids_for_year.add(fleet.id)
+            needed -= 1
+
     def _refresh_administration_fleet_dispatch_queue(self, star):
         """Tier-4 Administration: auto-dispatch idle fleets for logistics."""
         from .models import Fleet
@@ -7896,6 +8219,7 @@ class GameTurn():
         if tier < MICROMANAGER_FLEET_TIER:
             return
 
+        cost_map = get_player_production_costs(player)
         if not hasattr(self, '_micromanager_auto_fleet_ids_for_year'):
             self._micromanager_auto_fleet_ids_for_year = set()
 
@@ -7905,85 +8229,84 @@ class GameTurn():
             x=star.x,
             y=star.y,
         ).order_by('id'))
-        if len(orbit_fleets) <= 1:
-            return
+        if int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER:
+            self._queue_auto_build_fleet_order_for_colony(
+                star,
+                orbit_fleets,
+                cost_map,
+            )
 
-        idle_fleets = []
-        for fleet in orbit_fleets:
-            if fleet.id in self._micromanager_auto_fleet_ids_for_year:
-                continue
-            if fleet.orders.exists():
-                continue
-            idle_fleets.append(fleet)
+        idle_fleets = self._idle_orbit_fleets(orbit_fleets)
         dispatchable_fleets = self._dispatchable_idle_fleets_for_colony(
             orbit_fleets, idle_fleets
         )
-        if not dispatchable_fleets:
-            return
+        if dispatchable_fleets:
+            deficits = self._resource_deficits_for_star(star, cost_map)
+            dispatches = 0
+            for fleet in dispatchable_fleets:
+                if dispatches >= MICROMANAGER_FLEET_DISPATCHES_PER_COLONY:
+                    break
+                if int(getattr(fleet, 'cargo_remaining', 0) or 0) <= 0:
+                    continue
 
-        cost_map = get_player_production_costs(player)
-        deficits = self._resource_deficits_for_star(star, cost_map)
-        dispatches = 0
-        for fleet in dispatchable_fleets:
-            if dispatches >= MICROMANAGER_FLEET_DISPATCHES_PER_COLONY:
-                break
-            if int(getattr(fleet, 'cargo_remaining', 0) or 0) <= 0:
-                continue
-
-            created = False
-            delivered = {key: 0 for key in ALL_RESOURCE_KEYS}
-            if self._total_transfer_amount(deficits) > 0:
-                source_star, transfers = self._best_colony_source_for_deficits(
-                    star, deficits, fleet, cost_map
-                )
-                if source_star and self._total_transfer_amount(transfers) > 0:
-                    created = self._queue_auto_collect_route(
-                        fleet,
-                        home_star=star,
-                        transfers=transfers,
-                        pickup_star=source_star,
+                created = False
+                delivered = {key: 0 for key in ALL_RESOURCE_KEYS}
+                if self._total_transfer_amount(deficits) > 0:
+                    source_star, transfers = self._best_colony_source_for_deficits(
+                        star, deficits, fleet, cost_map
                     )
-                    if created:
-                        delivered = transfers
-                else:
-                    source_salvage, transfers = self._best_asteroid_source_for_deficits(
-                        star, deficits, fleet
-                    )
-                    if source_salvage and self._total_transfer_amount(transfers) > 0:
+                    if source_star and self._total_transfer_amount(transfers) > 0:
                         created = self._queue_auto_collect_route(
                             fleet,
                             home_star=star,
                             transfers=transfers,
-                            pickup_salvage=source_salvage,
+                            pickup_star=source_star,
                         )
                         if created:
                             delivered = transfers
-            else:
-                excess = self._resource_surplus_for_star(
-                    star, cost_map, reserve_factor=2
-                )
-                target_star, transfers = self._best_colony_destination_for_excess(
-                    star, excess, fleet, cost_map
-                )
-                if target_star and self._total_transfer_amount(transfers) > 0:
-                    created = self._queue_auto_delivery_route(
-                        fleet,
-                        source_star=star,
-                        dest_star=target_star,
-                        transfers=transfers,
+                    else:
+                        source_salvage, transfers = self._best_asteroid_source_for_deficits(
+                            star, deficits, fleet
+                        )
+                        if source_salvage and self._total_transfer_amount(transfers) > 0:
+                            created = self._queue_auto_collect_route(
+                                fleet,
+                                home_star=star,
+                                transfers=transfers,
+                                pickup_salvage=source_salvage,
+                            )
+                            if created:
+                                delivered = transfers
+                else:
+                    excess = self._resource_surplus_for_star(
+                        star, cost_map, reserve_factor=2
+                    )
+                    target_star, transfers = self._best_colony_destination_for_excess(
+                        star, excess, fleet, cost_map
+                    )
+                    if target_star and self._total_transfer_amount(transfers) > 0:
+                        created = self._queue_auto_delivery_route(
+                            fleet,
+                            source_star=star,
+                            dest_star=target_star,
+                            transfers=transfers,
+                        )
+
+                if not created:
+                    continue
+
+                self._micromanager_auto_fleet_ids_for_year.add(fleet.id)
+                dispatches += 1
+                for key in ALL_RESOURCE_KEYS:
+                    deficits[key] = max(
+                        0,
+                        int(deficits.get(key, 0) or 0) -
+                        int(delivered.get(key, 0) or 0),
                     )
 
-            if not created:
-                continue
-
-            self._micromanager_auto_fleet_ids_for_year.add(fleet.id)
-            dispatches += 1
-            for key in ALL_RESOURCE_KEYS:
-                deficits[key] = max(
-                    0,
-                    int(deficits.get(key, 0) or 0) -
-                    int(delivered.get(key, 0) or 0),
-                )
+        if int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER:
+            self._dispatch_auto_colonise_route(star, orbit_fleets)
+            self._assign_auto_patrol_orders(star, orbit_fleets)
 
     def _fleet_service_requirements(self, fleet):
         """Return per-fleet service demand in shipyard-units (repair/refuel)."""

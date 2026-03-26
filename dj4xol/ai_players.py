@@ -14,8 +14,8 @@ AI_MODULE_ORDER = (
 AI_MODULE_SPECS = {
     AI_MODULE_MICROMANAGER: {
         'label': 'Micromanager',
-        'description': 'Uses max-tier Administration behavior across all colonies.',
-        'administration_tier': 4,
+        'description': 'Uses max-tier Administration behavior across all colonies, including tier-5 fleet automation.',
+        'administration_tier': 5,
         'default_enabled': True,
     },
     AI_MODULE_IDLE: {
