@@ -5,6 +5,7 @@ import hashlib
 import random
 
 from django.db import transaction
+from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
@@ -1617,3 +1618,91 @@ def pair_contracts(player, other_player):
             'request_suggested_star',
         ).order_by('-created_at')
     )
+
+
+def player_contract_queryset(player):
+    if not player:
+        return DiplomaticContract.objects.none()
+    return DiplomaticContract.objects.filter(
+        game=player.game,
+    ).filter(
+        Q(sender=player) | Q(recipient=player),
+    ).select_related(
+        'sender',
+        'sender__account',
+        'recipient',
+        'recipient__account',
+        'request_technology',
+        'offer_technology',
+        'offer_fleet',
+        'offer_star',
+        'request_star',
+        'request_suggested_star',
+    )
+
+
+def list_player_contracts(player, status='sent', direction='both', oldest_first=False):
+    qs = player_contract_queryset(player)
+    mode = str(status or '').strip().lower()
+    if mode == 'sent':
+        qs = qs.filter(status=DiplomaticContract.STATUS_SENT)
+    elif mode == 'active':
+        qs = qs.filter(
+            status__in=[
+                DiplomaticContract.STATUS_SENT,
+                DiplomaticContract.STATUS_ACCEPTED,
+            ]
+        )
+    elif mode in ('all', ''):
+        pass
+    else:
+        qs = qs.filter(status=str(status or '').strip().upper())
+
+    side = str(direction or '').strip().lower()
+    if side == 'incoming':
+        qs = qs.filter(recipient=player)
+    elif side == 'outgoing':
+        qs = qs.filter(sender=player)
+
+    if oldest_first:
+        qs = qs.order_by('sent_year', 'created_at', 'id')
+    else:
+        qs = qs.order_by('-sent_year', '-created_at', '-id')
+    return list(qs)
+
+
+def get_player_contract_by_short_id(player, short_id):
+    token = str(short_id or '').strip().lower()
+    if not token:
+        return None
+    return player_contract_queryset(player).filter(short_id=token).first()
+
+
+def contract_action_permissions(contract, acting_player):
+    if contract is None or acting_player is None:
+        return {
+            'can_accept': False,
+            'can_decline': False,
+            'can_revoke': False,
+            'can_extend': False,
+        }
+    unanswered = contract.status == DiplomaticContract.STATUS_SENT
+    return {
+        'can_accept': bool(unanswered and contract.recipient_id == acting_player.id),
+        'can_decline': bool(unanswered and contract.recipient_id == acting_player.id),
+        'can_revoke': bool(unanswered and contract.sender_id == acting_player.id),
+        'can_extend': bool(unanswered and contract.sender_id == acting_player.id),
+    }
+
+
+def perform_contract_action(contract, acting_player, action, extra_years=None):
+    op = str(action or '').strip().lower()
+    if op == 'accept':
+        return accept_contract(contract, acting_player)
+    if op == 'decline':
+        return decline_contract(contract, acting_player)
+    if op == 'revoke':
+        return revoke_contract(contract, acting_player)
+    if op == 'extend':
+        return extend_contract(contract, acting_player, extra_years)
+    return False, 'Unknown contract action: %s' % action

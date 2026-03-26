@@ -151,7 +151,18 @@ def _is_allowed_browser_command(raw_command):
     if command == "/research":
         return len(parts) in (1, 2, 3)
     if command == "/diplomacy":
-        return len(parts) in (1, 2, 3)
+        if len(parts) == 1:
+            return True
+        sub = parts[1].lower()
+        if sub == "requests":
+            return len(parts) == 2 or (
+                len(parts) == 3 and parts[2].lower() in ("all", "incoming", "outgoing")
+            )
+        if sub in ("request", "accept", "decline", "revoke"):
+            return len(parts) == 3
+        if sub == "extend":
+            return len(parts) == 4
+        return len(parts) in (2, 3)
     if command == "/rename":
         return len(parts) >= 3
     if command == "/notes":
@@ -195,6 +206,15 @@ def _is_mutating_browser_command(parts):
     if command == "/research":
         return len(parts) == 3
     if command == "/diplomacy":
+        if len(parts) < 2:
+            return False
+        sub = parts[1].lower()
+        if sub in ("accept", "decline", "revoke"):
+            return len(parts) == 3
+        if sub == "extend":
+            return len(parts) == 4
+        if sub in ("requests", "request"):
+            return False
         return len(parts) == 3
     return False
 

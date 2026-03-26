@@ -1849,6 +1849,140 @@ class PlayCommandTest(TestCase):
         self.assertEqual(row.pending_stance, 'ALLIED')
         self.assertIn('our_stance: Allied', output)
 
+    def test_diplomacy_requests_lists_unanswered_by_default(self):
+        incoming = DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.player2,
+            recipient=self.player1,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=self.game.year,
+            expires_year=self.game.year + 5,
+        )
+        handled = DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.player1,
+            recipient=self.player2,
+            status=DiplomaticContract.STATUS_DECLINED,
+            sent_year=self.game.year - 1,
+            handled_year=self.game.year,
+            expires_year=self.game.year + 3,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/diplomacy requests', '/exit'],
+        )
+        self.assertIn('%s:' % incoming.short_id, output)
+        self.assertNotIn('%s:' % handled.short_id, output)
+        self.assertIn('status: Received', output)
+        self.assertIn('can_accept: true', output)
+
+    def test_diplomacy_requests_all_includes_handled(self):
+        sent_contract = DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.player2,
+            recipient=self.player1,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=self.game.year,
+            expires_year=self.game.year + 5,
+        )
+        handled_contract = DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.player1,
+            recipient=self.player2,
+            status=DiplomaticContract.STATUS_DECLINED,
+            sent_year=self.game.year - 2,
+            handled_year=self.game.year - 1,
+            expires_year=self.game.year + 2,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/diplomacy requests all', '/exit'],
+        )
+        self.assertIn('%s:' % sent_contract.short_id, output)
+        self.assertIn('%s:' % handled_contract.short_id, output)
+        self.assertIn('status_raw: DECLINED', output)
+
+    def test_diplomacy_request_detail_outputs_clause_and_actions(self):
+        contract = DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.player2,
+            recipient=self.player1,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=self.game.year,
+            expires_year=self.game.year + 5,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/diplomacy request %s' % contract.short_id, '/exit'],
+        )
+        self.assertIn('%s:' % contract.short_id, output)
+        self.assertIn('request_clause_type: NOTHING', output)
+        self.assertIn('offer_clause_type: NOTHING', output)
+        self.assertIn('can_accept: true', output)
+        self.assertIn('can_revoke: false', output)
+
+    def test_diplomacy_accept_command_updates_contract_status(self):
+        contract = DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.player2,
+            recipient=self.player1,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=self.game.year,
+            expires_year=self.game.year + 4,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/diplomacy accept %s' % contract.short_id, '/exit'],
+        )
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+        self.assertIn('Request accepted and fulfilled.', output)
+        self.assertIn('status_raw: FULFILLED', output)
+
+    def test_diplomacy_extend_and_revoke_outgoing_request(self):
+        contract = DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.player1,
+            recipient=self.player2,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=self.game.year,
+            expires_year=self.game.year + 2,
+        )
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/diplomacy extend %s 7' % contract.short_id,
+                '/diplomacy revoke %s' % contract.short_id,
+                '/exit',
+            ],
+        )
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_REVOKED)
+        self.assertEqual(contract.expires_year, self.game.year + 9)
+        self.assertIn('Request extended.', output)
+        self.assertIn('Request revoked.', output)
+        self.assertIn('status_raw: REVOKED', output)
+
     def test_one_shot_command_runs_and_exits_without_prompt(self):
         output = self._run_play(
             self.game.short_id,

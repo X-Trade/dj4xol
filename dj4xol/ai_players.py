@@ -960,23 +960,14 @@ def _decide_passive_ai_contract_response(player, contract, module_code):
 
 
 def _apply_passive_ai_diplomacy_turn(player, game, module_code):
-    from .diplomatic_contracts import accept_contract, decline_contract
+    from .diplomatic_contracts import list_player_contracts, perform_contract_action
     from .models import DiplomaticContract
 
-    contracts = list(
-        DiplomaticContract.objects.filter(
-            game=game,
-            recipient=player,
-            status=DiplomaticContract.STATUS_SENT,
-        ).select_related(
-            'sender',
-            'recipient',
-            'request_technology',
-            'offer_technology',
-            'offer_fleet',
-            'request_star',
-            'offer_star',
-        ).order_by('sent_year', 'created_at', 'id')
+    contracts = list_player_contracts(
+        player,
+        status='sent',
+        direction='incoming',
+        oldest_first=True,
     )
     accepted = 0
     declined = 0
@@ -988,14 +979,14 @@ def _apply_passive_ai_diplomacy_turn(player, game, module_code):
             module_code,
         )
         if should_accept:
-            ok, _msg = accept_contract(contract, player)
+            ok, _msg = perform_contract_action(contract, player, 'accept')
             if ok:
                 accepted += 1
                 continue
             contract.refresh_from_db()
             if contract.status != DiplomaticContract.STATUS_SENT:
                 continue
-        ok, _msg = decline_contract(contract, player)
+        ok, _msg = perform_contract_action(contract, player, 'decline')
         if not ok:
             continue
         declined += 1

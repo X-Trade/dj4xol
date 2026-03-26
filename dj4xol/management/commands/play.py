@@ -14,6 +14,7 @@ from django.utils import timezone
 from dj4xol.models import (
     Account,
     Anomaly,
+    DiplomaticContract,
     Fleet,
     FleetOrders,
     Game,
@@ -58,7 +59,15 @@ from dj4xol.diplomacy import (
     stance_towards,
     update_player_stances,
 )
-from dj4xol.diplomatic_contracts import build_player_message_feed
+from dj4xol.diplomatic_contracts import (
+    build_player_message_feed,
+    contract_action_permissions,
+    format_contract_clause,
+    format_contract_summary,
+    get_player_contract_by_short_id,
+    list_player_contracts,
+    perform_contract_action,
+)
 from dj4xol.turn import GameTurn
 
 try:  # Enables terminal history/editing for input() on supported platforms.
@@ -549,9 +558,14 @@ class Command(BaseCommand):
                 "lines": [
                     "/diplomacy",
                     'Usage: /diplomacy [default|player_short_id|"Exact Player Name"] [1|2|3|4|5|hostile|cold|neutral|warm|allied]',
+                    "/diplomacy requests [all|incoming|outgoing]",
+                    "/diplomacy request <contract_short_id>",
+                    "/diplomacy accept|decline|revoke <contract_short_id>",
+                    "/diplomacy extend <contract_short_id> <years>",
                     "Without arguments: show default stance and encountered races.",
                     "With a target: show diplomacy detail for that race.",
                     "With a target and stance: queue a stance change for next turn.",
+                    "requests: lists diplomatic requests (default: unanswered).",
                 ],
             },
             "detail": {
@@ -1747,6 +1761,11 @@ class Command(BaseCommand):
             self._print_yaml(self._diplomacy_overview_summary(player))
             return
 
+        action = (parts[1] or "").strip().lower()
+        if action in ("requests", "request", "accept", "decline", "revoke", "extend"):
+            self._handle_diplomacy_request_action(parts, player)
+            return
+
         try:
             target = self._resolve_diplomacy_target_token(player, parts[1])
         except CommandError as exc:
@@ -1774,6 +1793,185 @@ class Command(BaseCommand):
             'Usage: /diplomacy [default|player_short_id|"Exact Player Name"] '
             '[1|2|3|4|5|hostile|cold|neutral|warm|allied]'
         )
+
+    def _handle_diplomacy_request_action(self, parts, player):
+        subcommand = (parts[1] or "").strip().lower()
+        if subcommand == "requests":
+            self._handle_diplomacy_requests_list(parts, player)
+            return
+        if subcommand == "request":
+            self._handle_diplomacy_request_detail(parts, player)
+            return
+        if subcommand in ("accept", "decline", "revoke"):
+            self._handle_diplomacy_request_mutation(parts, player, subcommand)
+            return
+        if subcommand == "extend":
+            self._handle_diplomacy_request_mutation(parts, player, subcommand)
+            return
+        self.stdout.write("Usage: /diplomacy requests [all|incoming|outgoing]")
+
+    def _handle_diplomacy_requests_list(self, parts, player):
+        status_mode = "sent"
+        direction = "both"
+        if len(parts) == 3:
+            token = (parts[2] or "").strip().lower()
+            if token == "all":
+                status_mode = "all"
+            elif token in ("incoming", "outgoing"):
+                direction = token
+            else:
+                self.stdout.write("Usage: /diplomacy requests [all|incoming|outgoing]")
+                return
+        elif len(parts) > 3:
+            self.stdout.write("Usage: /diplomacy requests [all|incoming|outgoing]")
+            return
+
+        contracts = list_player_contracts(
+            player,
+            status=status_mode,
+            direction=direction,
+            oldest_first=False,
+        )
+        payload = {
+            "filters": {
+                "status": status_mode,
+                "direction": direction,
+            },
+            "count": len(contracts),
+            "requests": {},
+        }
+        for contract in contracts:
+            payload["requests"][contract.short_id] = self._diplomacy_request_summary(
+                player,
+                contract,
+                include_detail=False,
+            )
+        self._print_yaml(payload)
+
+    def _handle_diplomacy_request_detail(self, parts, player):
+        if len(parts) != 3:
+            self.stdout.write("Usage: /diplomacy request <contract_short_id>")
+            return
+        contract = self._resolve_player_contract_token(player, parts[2])
+        if contract is None:
+            self.stdout.write("Unknown diplomatic request: %s" % parts[2])
+            return
+        self._print_yaml({
+            contract.short_id: self._diplomacy_request_summary(
+                player,
+                contract,
+                include_detail=True,
+            )
+        })
+
+    def _handle_diplomacy_request_mutation(self, parts, player, action):
+        if action == "extend":
+            if len(parts) != 4:
+                self.stdout.write("Usage: /diplomacy extend <contract_short_id> <years>")
+                return
+            contract_token = parts[2]
+            extra_years = parts[3]
+        else:
+            if len(parts) != 3:
+                self.stdout.write(
+                    "Usage: /diplomacy %s <contract_short_id>" % action
+                )
+                return
+            contract_token = parts[2]
+            extra_years = None
+
+        contract = self._resolve_player_contract_token(player, contract_token)
+        if contract is None:
+            self.stdout.write("Unknown diplomatic request: %s" % contract_token)
+            return
+
+        ok, result = perform_contract_action(
+            contract,
+            player,
+            action,
+            extra_years=extra_years,
+        )
+        self.stdout.write(result)
+        if not ok:
+            return
+        contract.refresh_from_db()
+        self._print_yaml({
+            contract.short_id: self._diplomacy_request_summary(
+                player,
+                contract,
+                include_detail=True,
+            )
+        })
+
+    def _resolve_player_contract_token(self, player, token):
+        short_id = str(token or "").strip().lower()
+        if not short_id:
+            return None
+        return get_player_contract_by_short_id(player, short_id)
+
+    def _diplomacy_request_summary(self, viewer, contract, include_detail=False):
+        incoming = bool(contract.recipient_id == viewer.id)
+        permissions = contract_action_permissions(contract, viewer)
+        status_display = self._diplomacy_request_status_display(contract, viewer)
+        counterparty = contract.sender if incoming else contract.recipient
+        payload = {
+            "status": status_display,
+            "status_raw": contract.status,
+            "is_incoming": incoming,
+            "is_outgoing": bool(not incoming),
+            "counterparty_short_id": getattr(counterparty, "short_id", None),
+            "counterparty_name": getattr(counterparty, "name", "Unknown"),
+            "counterparty_display_name": self._player_display_name(counterparty),
+            "summary": format_contract_summary(
+                contract,
+                viewer=viewer,
+                include_links=False,
+                include_sender_account=False,
+            ),
+            "temperature": str(contract.temperature or "").lower(),
+            "offer_condition_type": str(contract.offer_condition_type or "").lower(),
+            "sent_year": int(contract.sent_year or 0),
+            "expires_year": int(contract.expires_year or 0),
+            "accepted_year": (
+                int(contract.accepted_year or 0)
+                if contract.accepted_year is not None else None
+            ),
+            "handled_year": (
+                int(contract.handled_year or 0)
+                if contract.handled_year is not None else None
+            ),
+            "fulfilled_year": (
+                int(contract.fulfilled_year or 0)
+                if contract.fulfilled_year is not None else None
+            ),
+            "actions": permissions,
+        }
+        if include_detail:
+            payload.update({
+                "request_clause_type": contract.request_clause_type,
+                "request_clause": format_contract_clause(
+                    contract,
+                    "request",
+                    viewer=viewer,
+                    include_links=False,
+                ),
+                "offer_clause_type": contract.offer_clause_type,
+                "offer_clause": format_contract_clause(
+                    contract,
+                    "offer",
+                    viewer=viewer,
+                    include_links=False,
+                ),
+            })
+        return payload
+
+    def _diplomacy_request_status_display(self, contract, viewer):
+        if (
+            contract.status == DiplomaticContract.STATUS_SENT and
+            contract.recipient_id == viewer.id
+        ):
+            return "Received"
+        return contract.get_status_display()
 
     def _research_overview_summary(self, player):
         rows = ensure_player_research_rows(player)

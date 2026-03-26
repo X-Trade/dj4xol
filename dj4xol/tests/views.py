@@ -2826,6 +2826,29 @@ class TestPlayCliWebApi(TestCase):
         self.player.refresh_from_db()
         self.assertEqual(self.player.pending_default_diplomatic_stance, 'HOSTILE')
 
+    def test_command_endpoint_allows_diplomacy_request_accept(self):
+        contract = DiplomaticContract.objects.create(
+            game=self.game,
+            sender=self.player,
+            recipient=self.player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=self.game.year,
+            expires_year=self.game.year + 5,
+        )
+        response = self.client.post(
+            reverse('dj4xol:play_cli_command', args=[self.game.short_id]),
+            data=json.dumps({'command': '/diplomacy accept %s' % contract.short_id}),
+            content_type='application/json',
+            HTTP_ORIGIN=self.origin,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['mutated'])
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+        self.assertIn('Request accepted and fulfilled.', '\n'.join(payload['lines']))
+
     def test_execute_browser_command_supports_clear(self):
         payload = execute_browser_command(self.game, self.player, '/clear')
         self.assertTrue(payload['ok'])
