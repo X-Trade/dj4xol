@@ -11,6 +11,7 @@ from django.contrib.auth.password_validation import password_validators_help_tex
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.db import models
+from django.utils.html import format_html
 from urllib.parse import urlparse, urlunparse
 from .models import (
     ServerRace,
@@ -34,6 +35,52 @@ from .ai_players import (
     get_ai_max_per_game,
     get_remaining_server_ai_capacity,
 )
+
+
+AI_MODULE_CONFIG_EXAMPLES = {
+    'micromanager': {
+        'version': 1,
+        'settings': {},
+    },
+    'idle': {
+        'version': 1,
+        'settings': {},
+    },
+    'openai': {
+        'api_base_url': 'https://api.openai.com/v1',
+        'chat_completions_url': 'https://api.openai.com/v1/chat/completions',
+        'api_key': 'replace-with-api-key',
+        'model': 'gpt-5-mini',
+        'max_iterations': 6,
+        'history_chars': 18000,
+        'step_output_chars': 2600,
+        'snapshot_commands': [
+            '/status',
+            '/colonies',
+            '/fleets own',
+            '/research',
+            '/messages priority=1 limit=20',
+        ],
+        'snapshot_chars': 12000,
+        'snapshot_command_chars': 3000,
+        'max_output_tokens': 250,
+        'temperature': 0.2,
+        'timeout_seconds': 25.0,
+        'system_prompt': '',
+    },
+}
+
+
+def _pretty_json_example(example):
+    return json.dumps(example, indent=2)
+
+
+def _module_settings_help_text(summary, example):
+    return format_html(
+        '{}<div class="help-text-json-example"><div>Default JSON example:</div><pre>{}</pre></div>',
+        summary,
+        _pretty_json_example(example),
+    )
 
 
 def _race_queryset_for_account(account):
@@ -996,22 +1043,45 @@ class ServerSettingsForm(forms.Form):
     ai_module_micromanager_config = forms.CharField(
         label='Micromanager Module Settings',
         required=False,
-        widget=forms.Textarea(attrs={'rows': 2}),
-        help_text='Optional per-module settings (free-form; JSON recommended).',
+        initial=_pretty_json_example(AI_MODULE_CONFIG_EXAMPLES['micromanager']),
+        widget=forms.Textarea(attrs={
+            'rows': 6,
+            'spellcheck': 'false',
+            'placeholder': _pretty_json_example(AI_MODULE_CONFIG_EXAMPLES['micromanager']),
+        }),
+        help_text=_module_settings_help_text(
+            'JSON object for micromanager module settings. '
+            'Current gameplay behavior does not consume module-specific keys yet.',
+            AI_MODULE_CONFIG_EXAMPLES['micromanager'],
+        ),
     )
     ai_module_idle_config = forms.CharField(
         label='Idle Module Settings',
         required=False,
-        widget=forms.Textarea(attrs={'rows': 2}),
-        help_text='Optional per-module settings (free-form; JSON recommended).',
+        initial=_pretty_json_example(AI_MODULE_CONFIG_EXAMPLES['idle']),
+        widget=forms.Textarea(attrs={
+            'rows': 6,
+            'spellcheck': 'false',
+            'placeholder': _pretty_json_example(AI_MODULE_CONFIG_EXAMPLES['idle']),
+        }),
+        help_text=_module_settings_help_text(
+            'JSON object for idle module settings. '
+            'Current gameplay behavior does not consume module-specific keys yet.',
+            AI_MODULE_CONFIG_EXAMPLES['idle'],
+        ),
     )
     ai_module_openai_config = forms.CharField(
         label='OpenAI-Compatible Module Settings',
         required=False,
-        widget=forms.Textarea(attrs={'rows': 4}),
-        help_text=(
-            'JSON settings for API-compatible chat completion '
-            '(for example: api_base_url, api_key, model, max_iterations).'
+        initial=_pretty_json_example(AI_MODULE_CONFIG_EXAMPLES['openai']),
+        widget=forms.Textarea(attrs={
+            'rows': 16,
+            'spellcheck': 'false',
+            'placeholder': _pretty_json_example(AI_MODULE_CONFIG_EXAMPLES['openai']),
+        }),
+        help_text=_module_settings_help_text(
+            'JSON settings for API-compatible chat completion and Play CLI loop behavior.',
+            AI_MODULE_CONFIG_EXAMPLES['openai'],
         ),
     )
     enable_debug_actions = forms.BooleanField(
@@ -1121,6 +1191,14 @@ class ServerSettingsForm(forms.Form):
         for key, meta in cls.SETTINGS_META.items():
             setting = ServerSettings.objects.filter(key=key).first()
             if setting is None:
+                if key in (
+                    'ai_module_micromanager_config',
+                    'ai_module_idle_config',
+                    'ai_module_openai_config',
+                ):
+                    field = cls.base_fields.get(key)
+                    initial[key] = str(getattr(field, 'initial', '') or '')
+                    continue
                 if meta.get('boolean'):
                     initial[key] = bool(meta.get('default', False))
                     continue

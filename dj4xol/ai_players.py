@@ -1059,12 +1059,14 @@ def _gift_offer_acceptance_chance(player, contract):
         return min(0.95, 0.82 + min(0.10, trust * 0.04))
     if clause == DiplomaticContract.CLAUSE_TECHNOLOGY:
         delta = _offered_technology_level_delta(contract, player)
-        base = 0.70 + min(0.18, float(delta) * 0.06)
+        # Technology gifts should be conservative at baseline, but ramp strongly
+        # when they materially leapfrog the recipient's current tech level.
+        base = 0.18 + min(0.56, float(delta) * 0.14)
         return min(0.95, base + min(0.08, trust * 0.03))
     if clause == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
         base = 0.22
         if _is_offered_colony_habitable_for_recipient(contract):
-            base = 0.62
+            base = 0.74
         return min(0.95, base + min(0.06, trust * 0.02))
     if clause in (
         DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
@@ -1112,13 +1114,27 @@ def _maybe_downgrade_stance_after_rejection(contract):
 
 def _maybe_upgrade_stance_after_accepted_gift(contract):
     from .diplomacy import ensure_contact_stance_entry, normalise_stance
+    from .models import DiplomaticContract
 
     if contract is None or not _is_pure_gift_request(contract):
+        return False
+    if str(getattr(contract, 'status', '') or '') not in (
+        DiplomaticContract.STATUS_ACCEPTED,
+        DiplomaticContract.STATUS_FULFILLED,
+    ):
         return False
     sender = getattr(contract, 'sender', None)
     recipient = getattr(contract, 'recipient', None)
     game = getattr(contract, 'game', None)
     if sender is None or recipient is None or game is None:
+        return False
+    latest = DiplomaticContract.objects.filter(
+        game=game,
+        sender=sender,
+        recipient=recipient,
+    ).exclude(status=DiplomaticContract.STATUS_DRAFT).order_by('-sent_year', '-id').first()
+    # Only evaluate stance upgrades on completion of the most recent request.
+    if latest is None or int(getattr(latest, 'id', 0) or 0) != int(getattr(contract, 'id', 0) or 0):
         return False
     scores = _directed_interaction_scores(
         sender,
@@ -1255,6 +1271,7 @@ def _apply_passive_ai_diplomacy_turn(player, game, module_code):
         if should_accept:
             ok, _msg = perform_contract_action(contract, player, 'accept')
             if ok:
+                contract.refresh_from_db()
                 accepted += 1
                 sender_id = int(getattr(contract, 'sender_id', 0) or 0)
                 if (

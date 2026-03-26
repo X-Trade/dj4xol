@@ -1086,6 +1086,8 @@ def _apply_clause_immediately(contract, prefix, year):
         fleet.player = grant_target
         fleet.travel_warp = 0
         fleet.save(update_fields=['player', 'travel_warp'])
+        if _is_micromanager_ai_player(grant_target):
+            _queue_fleet_to_nearest_owned_colony(fleet, grant_target)
         sender_msg = FleetTransferredMessageFactory(
             contract.game,
             grant_source,
@@ -1106,6 +1108,79 @@ def _apply_clause_immediately(contract, prefix, year):
     if clause_type == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
         return _transfer_specific_colony_clause(contract, prefix, handle_homeworld_loss=True)
     return False
+
+
+def _queue_fleet_to_nearest_owned_colony(fleet, player):
+    from .models import FleetOrders
+
+    if fleet is None or player is None:
+        return False
+    if int(getattr(fleet, 'game_id', 0) or 0) != int(getattr(player, 'game_id', 0) or 0):
+        return False
+    if int(getattr(fleet, 'player_id', 0) or 0) != int(getattr(player, 'id', 0) or 0):
+        return False
+
+    best_star = None
+    best_key = None
+    origin_x = int(getattr(fleet, 'x', 0) or 0)
+    origin_y = int(getattr(fleet, 'y', 0) or 0)
+    for star in player.stars.all():
+        dx = int(getattr(star, 'x', 0) or 0) - origin_x
+        dy = int(getattr(star, 'y', 0) or 0) - origin_y
+        distance_sq = (dx * dx) + (dy * dy)
+        # Prefer nearest colony, break ties by higher population then stable id.
+        key = (
+            distance_sq,
+            -int(getattr(star, 'colonists', 0) or 0),
+            int(getattr(star, 'id', 0) or 0),
+        )
+        if best_key is None or key < best_key:
+            best_key = key
+            best_star = star
+
+    if best_star is None:
+        return False
+    if (
+        int(getattr(best_star, 'x', 0) or 0) == origin_x and
+        int(getattr(best_star, 'y', 0) or 0) == origin_y
+    ):
+        return False
+
+    try:
+        safe_warp = int(getattr(fleet, 'max_safe_warp', 5) or 5)
+    except (TypeError, ValueError):
+        safe_warp = 5
+    try:
+        cloaked_warp = int(getattr(fleet, 'max_cloaked_warp', 0) or 0)
+    except (TypeError, ValueError):
+        cloaked_warp = 0
+    move_warp = cloaked_warp if cloaked_warp != 0 else safe_warp
+    move_warp = max(1, min(13, move_warp))
+
+    FleetOrders.objects.create(
+        game=fleet.game,
+        fleet=fleet,
+        order_type='MOVE',
+        repeat=False,
+        warpfactor=move_warp,
+        original_warpfactor=move_warp,
+        overmax_risk_checked=False,
+        target_star=best_star,
+        target_kind='OBJECT',
+        target_short_id=best_star.short_id,
+        x=int(best_star.x),
+        y=int(best_star.y),
+    )
+    return True
+
+
+def _is_micromanager_ai_player(player):
+    if player is None:
+        return False
+    if not bool(getattr(player, 'is_ai', False)):
+        return False
+    module = str(getattr(player, 'ai_module', '') or '').strip().lower()
+    return module == 'micromanager'
 
 
 def _resource_progress_complete(contract):

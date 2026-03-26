@@ -421,7 +421,7 @@ class TestAIPlayerModules(TestCase):
             offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
             offer_technology=high_offer,
         )
-        with patch('dj4xol.ai_players.random.random', return_value=0.60):
+        with patch('dj4xol.ai_players.random.random', return_value=0.50):
             apply_ai_module_turn(ai_player, game)
         high_contract.refresh_from_db()
         self.assertEqual(high_contract.status, DiplomaticContract.STATUS_FULFILLED)
@@ -601,6 +601,77 @@ class TestAIPlayerModules(TestCase):
             apply_ai_module_turn(ai_player, game)
         second_raise.refresh_from_db()
         self.assertEqual(second_raise.status, DiplomaticContract.STATUS_FULFILLED)
+
+    def test_micromanager_ai_stance_upgrade_waits_for_most_recent_request_completion(self):
+        game = default_game(stars=8)
+        sender = game.players.first()
+        ai_player = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module=AI_MODULE_MICROMANAGER,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=ai_player,
+            target_player=sender,
+            stance='NEUTRAL',
+            pending_stance='NEUTRAL',
+        )
+
+        # Seed enough recent gift-success history that a qualifying completion
+        # would normally trigger a stance increase.
+        for year in (game.year, game.year - 10):
+            DiplomaticContract.objects.create(
+                game=game,
+                sender=sender,
+                recipient=ai_player,
+                status=DiplomaticContract.STATUS_FULFILLED,
+                sent_year=year,
+                expires_year=year + 10,
+                accepted_year=year,
+                handled_year=year,
+                fulfilled_year=year,
+                request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+                offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
+            )
+
+        older_gift = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 20,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
+            offer_fleet=sender.fleets.first(),
+        )
+        newer_gift = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year + 1,
+            expires_year=game.year + 21,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
+            offer_fleet=sender.fleets.first(),
+        )
+
+        # Older request accepts, newer (most recent) request declines.
+        with patch('dj4xol.ai_players.random.random', side_effect=[0.10, 0.99]):
+            apply_ai_module_turn(ai_player, game)
+
+        older_gift.refresh_from_db()
+        newer_gift.refresh_from_db()
+        self.assertEqual(older_gift.status, DiplomaticContract.STATUS_FULFILLED)
+        self.assertEqual(newer_gift.status, DiplomaticContract.STATUS_DECLINED)
+        stance_row = PlayerDiplomaticStance.objects.get(
+            player=ai_player,
+            target_player=sender,
+        )
+        self.assertEqual(stance_row.pending_stance, 'NEUTRAL')
 
     def test_server_cap_count_excludes_idle_and_micromanager(self):
         game = default_game(stars=8)

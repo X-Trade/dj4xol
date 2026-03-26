@@ -578,6 +578,15 @@ class TestServerSettingsView(TestCase):
         self.assertContains(response, 'Enable AI Module: Micromanager')
         self.assertContains(response, 'Enable AI Module: Idle')
         self.assertContains(response, 'Enable AI Module: OpenAI-Compatible')
+        self.assertContains(response, 'Default JSON example:')
+        self.assertContains(
+            response,
+            'Current gameplay behavior does not consume module-specific keys yet.',
+        )
+        self.assertContains(
+            response,
+            'JSON settings for API-compatible chat completion and Play CLI loop behavior.',
+        )
         self.assertContains(response, 'Profanity Filter')
         self.assertContains(response, 'Public Server URL')
         self.assertContains(response, 'Used for links in emails')
@@ -6928,6 +6937,180 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(offered_fleet.player_id, other_player.id)
         self.assertEqual(offered_fleet.travel_warp, 0)
         self.assertAlmostEqual(float(offered_fleet.heading), 271.5, places=1)
+
+    def test_diplomacy_specific_fleet_transfer_auto_routes_to_nearest_colony(self):
+        game = default_game(stars=9, fleets=0)
+        sender = game.players.first()
+        race = get_default_race()
+        recipient = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        self.assertIsNotNone(recipient)
+        self.assertIsNotNone(recipient.homeworld)
+
+        secondary_colony = (
+            game.stars
+            .filter(player__isnull=True)
+            .exclude(id__in=[sender.homeworld_id, recipient.homeworld_id])
+            .order_by('id')
+            .first()
+        )
+        self.assertIsNotNone(secondary_colony)
+        secondary_colony.player = recipient
+        secondary_colony.colonists = 1000
+        secondary_colony.save(update_fields=['player', 'colonists'])
+
+        offered_fleet = Fleet.objects.create(
+            game=game,
+            player=sender,
+            name='Gift Runner',
+            x=secondary_colony.x,
+            y=secondary_colony.y + 1,
+            ship_count=2,
+            integrity=100,
+            heading=180.0,
+            travel_warp=5,
+            max_safe_warp=8,
+            max_cloaked_warp=4,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=recipient,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='SPECIFIC_FLEET',
+            offer_fleet=offered_fleet,
+        )
+
+        ok, _message = accept_contract(contract, recipient)
+        self.assertTrue(ok)
+        contract.refresh_from_db()
+        offered_fleet.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+        self.assertEqual(offered_fleet.player_id, recipient.id)
+
+        move_order = offered_fleet.orders.filter(order_type='MOVE').first()
+        self.assertIsNotNone(move_order)
+        self.assertEqual(move_order.target_star_id, secondary_colony.id)
+        self.assertEqual(move_order.target_short_id, secondary_colony.short_id)
+        self.assertEqual(move_order.target_kind, 'OBJECT')
+        self.assertEqual(move_order.x, secondary_colony.x)
+        self.assertEqual(move_order.y, secondary_colony.y)
+        self.assertEqual(move_order.warpfactor, 4)
+
+    def test_diplomacy_specific_fleet_transfer_does_not_auto_route_non_ai_recipient(self):
+        game = default_game(stars=7, fleets=0)
+        sender = game.players.first()
+        race_type = get_default_race_type()
+        recipient_user = User.objects.create_user('diplo_gift_no_route', 'diplo_gift_no_route@test.com', 'pass')
+        recipient_account = Account.objects.create(django_user=recipient_user, alias='DGN')
+        recipient = Player.objects.create(
+            game=game,
+            account=recipient_account,
+            name='No Route Race',
+            plural_name='No Route Races',
+            race_type=race_type,
+            is_ai=False,
+            ai_module='',
+        )
+        recipient.homeworld = game.stars.exclude(id=sender.homeworld_id).order_by('id').first()
+        recipient.save(update_fields=['homeworld'])
+
+        offered_fleet = Fleet.objects.create(
+            game=game,
+            player=sender,
+            name='Gift Drifter',
+            x=recipient.homeworld.x + 2,
+            y=recipient.homeworld.y + 2,
+            ship_count=1,
+            integrity=100,
+            heading=90.0,
+            travel_warp=4,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=recipient,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='SPECIFIC_FLEET',
+            offer_fleet=offered_fleet,
+        )
+
+        ok, _message = accept_contract(contract, recipient)
+        self.assertTrue(ok)
+        offered_fleet.refresh_from_db()
+        self.assertEqual(offered_fleet.player_id, recipient.id)
+        self.assertFalse(offered_fleet.orders.filter(order_type='MOVE').exists())
+
+    def test_diplomacy_specific_fleet_transfer_auto_route_uses_max_safe_when_cloak_zero(self):
+        game = default_game(stars=9, fleets=0)
+        sender = game.players.first()
+        recipient = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        self.assertIsNotNone(recipient)
+        secondary_colony = (
+            game.stars
+            .filter(player__isnull=True)
+            .exclude(id__in=[sender.homeworld_id, recipient.homeworld_id])
+            .order_by('id')
+            .first()
+        )
+        self.assertIsNotNone(secondary_colony)
+        secondary_colony.player = recipient
+        secondary_colony.colonists = 1000
+        secondary_colony.save(update_fields=['player', 'colonists'])
+
+        offered_fleet = Fleet.objects.create(
+            game=game,
+            player=sender,
+            name='Gift Runner Safe Warp',
+            x=secondary_colony.x + 1,
+            y=secondary_colony.y + 1,
+            ship_count=1,
+            integrity=100,
+            heading=0.0,
+            travel_warp=3,
+            max_safe_warp=7,
+            max_cloaked_warp=0,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=recipient,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='SPECIFIC_FLEET',
+            offer_fleet=offered_fleet,
+        )
+
+        ok, _message = accept_contract(contract, recipient)
+        self.assertTrue(ok)
+        move_order = offered_fleet.orders.filter(order_type='MOVE').first()
+        self.assertIsNotNone(move_order)
+        self.assertEqual(move_order.warpfactor, 7)
 
     def test_diplomacy_colony_transfer_evacuates_population_into_owner_orbiting_fleets(self):
         game = default_game(stars=6, fleets=1)
