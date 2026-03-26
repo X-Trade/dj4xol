@@ -39,6 +39,7 @@ from ..research import (
     get_player_tech_effects,
     get_player_unlocked_technologies,
 )
+from ..ai_players import AI_SLOT_RANDOM_RACE, AI_SLOT_RANDOM_STANCE
 from ..diplomacy import (
     combat_chance_modifier_percent,
     combat_chance_percent,
@@ -1869,6 +1870,31 @@ class TestGameCreationView(TestCase):
         self.assertContains(response, 'name="improved_star_names"', html=False)
         self.assertContains(response, 'syncImprovedStarNames')
 
+    def test_create_game_renders_ai_slot_editor_fields_when_capacity_exists(self):
+        self._set_server_setting('ai_max_per_game', 3, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 3, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
+
+        response = self.client.get(reverse('dj4xol:create_game'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="ai_player_count"', html=False)
+        self.assertContains(response, 'name="ai_player_config_json"', html=False)
+        self.assertContains(response, 'dj4xol/js/ai_slot_editor.js')
+
+    def test_new_game_form_sets_default_one_ai_slot_json_for_non_js_users(self):
+        self._set_server_setting('ai_max_per_game', 3, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 3, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
+
+        form = NewGameForm(self.account)
+        default_json = form.fields['ai_player_config_json'].initial
+        payload = json.loads(default_json)
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0].get('module'), 'micromanager')
+        self.assertIn('race_id', payload[0])
+        self.assertIn('starting_tech_level', payload[0])
+        self.assertEqual(payload[0].get('default_diplomatic_stance'), 'NEUTRAL')
+
     def test_new_game_form_rejects_improved_star_names_without_systems(self):
         race = get_default_race()
         form = NewGameForm(self.account, data={
@@ -1935,10 +1961,14 @@ class TestGameCreationView(TestCase):
             'no_scanners': '',
             'max_starting_tech_level': 5,
             'invitations': '',
-            'ai_module_count_micromanager': 2,
+            'ai_player_count': 2,
+            'ai_player_config_json': json.dumps([
+                {'module': 'micromanager', 'race_id': str(race.id), 'starting_tech_level': 3, 'default_diplomatic_stance': 'NEUTRAL'},
+                {'module': 'micromanager', 'race_id': str(race.id), 'starting_tech_level': 3, 'default_diplomatic_stance': 'NEUTRAL'},
+            ]),
         })
         self.assertFalse(form.is_valid())
-        self.assertIn('ai_module_count_micromanager', form.errors)
+        self.assertIn('ai_player_count', form.errors)
 
     def test_new_game_form_allows_ai_when_max_players_is_human_only(self):
         race = get_default_race()
@@ -1971,9 +2001,97 @@ class TestGameCreationView(TestCase):
             'max_starting_tech_level': 5,
             'max_players': 1,
             'invitations': '',
-            'ai_module_count_idle': 3,
+            'ai_player_count': 3,
+            'ai_player_config_json': json.dumps([
+                {'module': 'idle', 'race_id': str(race.id), 'starting_tech_level': 3, 'default_diplomatic_stance': 'NEUTRAL'},
+                {'module': 'idle', 'race_id': str(race.id), 'starting_tech_level': 3, 'default_diplomatic_stance': 'NEUTRAL'},
+                {'module': 'idle', 'race_id': str(race.id), 'starting_tech_level': 3, 'default_diplomatic_stance': 'NEUTRAL'},
+            ]),
         })
         self.assertTrue(form.is_valid(), msg=form.errors.as_json())
+
+    def test_new_game_form_supports_legacy_ai_module_counts_payload(self):
+        race = get_default_race()
+        race.public = True
+        race.save(update_fields=['public'])
+        self._set_server_setting('ai_max_per_game', 3, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 3, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
+
+        form = NewGameForm(self.account, data={
+            'name': 'Legacy AI Payload',
+            'description': '',
+            'race': race.id,
+            'starting_year': 2400,
+            'map_size_x': 128,
+            'map_size_y': 128,
+            'num_stars': 50,
+            'systems': '',
+            'improved_star_names': '',
+            'public': '',
+            'joinable': '',
+            'turn_scheme': 'QUORUM',
+            'years_per_turn': 1,
+            'research_cost_multiplier': 1.0,
+            'warp_speed_multiplier': 1.0,
+            'random_events': '',
+            'anomalies_enabled': 'on',
+            'anomaly_spawn_rate': 'NORMAL',
+            'no_scanners': '',
+            'max_starting_tech_level': 5,
+            'invitations': '',
+            'ai_module_count_idle': 2,
+        })
+        self.assertTrue(form.is_valid(), msg=form.errors.as_json())
+        slots = form.parse_ai_player_slots()
+        self.assertEqual(len(slots), 2)
+        self.assertEqual({slot.get('module_code') for slot in slots}, {'idle'})
+
+    def test_new_game_form_accepts_random_race_and_stance_tokens(self):
+        race = get_default_race()
+        race.public = True
+        race.save(update_fields=['public'])
+        self._set_server_setting('ai_max_per_game', 2, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 2, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
+
+        form = NewGameForm(self.account, data={
+            'name': 'Random AI Payload',
+            'description': '',
+            'race': race.id,
+            'starting_year': 2400,
+            'map_size_x': 128,
+            'map_size_y': 128,
+            'num_stars': 50,
+            'systems': '',
+            'improved_star_names': '',
+            'public': '',
+            'joinable': '',
+            'turn_scheme': 'QUORUM',
+            'years_per_turn': 1,
+            'research_cost_multiplier': 1.0,
+            'warp_speed_multiplier': 1.0,
+            'random_events': '',
+            'anomalies_enabled': 'on',
+            'anomaly_spawn_rate': 'NORMAL',
+            'no_scanners': '',
+            'max_starting_tech_level': 5,
+            'invitations': '',
+            'ai_player_count': 1,
+            'ai_player_config_json': json.dumps([
+                {
+                    'module': 'idle',
+                    'race_id': AI_SLOT_RANDOM_RACE,
+                    'starting_tech_level': 3,
+                    'default_diplomatic_stance': AI_SLOT_RANDOM_STANCE,
+                },
+            ]),
+        })
+        self.assertTrue(form.is_valid(), msg=form.errors.as_json())
+        slots = form.parse_ai_player_slots()
+        self.assertEqual(len(slots), 1)
+        self.assertTrue(slots[0].get('race_random'))
+        self.assertEqual(slots[0].get('default_diplomatic_stance'), AI_SLOT_RANDOM_STANCE)
 
     def test_create_game_can_add_ai_players_by_module(self):
         race = get_default_race()
@@ -2012,8 +2130,12 @@ class TestGameCreationView(TestCase):
                 'no_scanners': '',
                 'max_starting_tech_level': 5,
                 'invitations': '',
-                'ai_module_count_micromanager': 1,
-                'ai_module_count_idle': 2,
+                'ai_player_count': 3,
+                'ai_player_config_json': json.dumps([
+                    {'module': 'micromanager', 'race_id': str(race.id), 'starting_tech_level': 3, 'default_diplomatic_stance': 'NEUTRAL'},
+                    {'module': 'idle', 'race_id': str(race.id), 'starting_tech_level': 3, 'default_diplomatic_stance': 'WARM'},
+                    {'module': 'idle', 'race_id': str(race.id), 'starting_tech_level': 2, 'default_diplomatic_stance': 'COLD'},
+                ]),
             },
             follow=False,
         )
@@ -2029,7 +2151,71 @@ class TestGameCreationView(TestCase):
             sorted(p.ai_module for p in ai_players),
             ['idle', 'idle', 'micromanager'],
         )
+        self.assertEqual(
+            sorted(p.default_diplomatic_stance for p in ai_players),
+            ['COLD', 'NEUTRAL', 'WARM'],
+        )
+        self.assertEqual(
+            sorted(int(p.starting_tech_level or 0) for p in ai_players),
+            [2, 3, 3],
+        )
         self.assertTrue(all(p.account_id is None for p in ai_players))
+
+    def test_create_game_random_ai_stance_never_resolves_to_allied(self):
+        race = get_default_race()
+        race.public = True
+        race.save(update_fields=['public'])
+        self._set_server_setting('ai_max_per_game', 2, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 2, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
+
+        with patch('dj4xol.views.resolve_ai_slot_stance', return_value='HOSTILE'), \
+             patch('dj4xol.views.build_random_ai_race_template', return_value=race):
+            response = self.client.post(
+                reverse('dj4xol:create_game'),
+                {
+                    'name': 'AI Random Stance Test',
+                    'description': '',
+                    'race': race.id,
+                    'starting_year': 2400,
+                    'map_size_x': 128,
+                    'map_size_y': 128,
+                    'num_stars': 60,
+                    'clusters': '',
+                    'spiral_arms': '',
+                    'systems': '',
+                    'improved_star_names': '',
+                    'public': '',
+                    'joinable': 'on',
+                    'join_open_years': '',
+                    'max_players': '',
+                    'turn_scheme': 'QUORUM',
+                    'years_per_turn': 1,
+                    'research_cost_multiplier': 1.0,
+                    'warp_speed_multiplier': 1.0,
+                    'random_events': '',
+                    'anomalies_enabled': 'on',
+                    'anomaly_spawn_rate': 'NORMAL',
+                    'no_scanners': '',
+                    'max_starting_tech_level': 5,
+                    'invitations': '',
+                    'ai_player_count': 1,
+                    'ai_player_config_json': json.dumps([
+                        {
+                            'module': 'idle',
+                            'race_id': AI_SLOT_RANDOM_RACE,
+                            'starting_tech_level': 3,
+                            'default_diplomatic_stance': AI_SLOT_RANDOM_STANCE,
+                        },
+                    ]),
+                },
+                follow=False,
+            )
+        self.assertEqual(response.status_code, 302)
+        game = Game.objects.get(name='AI Random Stance Test')
+        ai_player = game.players.filter(is_ai=True).first()
+        self.assertIsNotNone(ai_player)
+        self.assertNotEqual(ai_player.default_diplomatic_stance, 'ALLIED')
 
 
 class TestRenameObjectView(TestCase):

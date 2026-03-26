@@ -48,6 +48,7 @@ from .research import (
     get_starting_tech_balance_costs, build_production_cost_entries,
     get_player_available_production_orders, get_player_unlocked_technologies,
 )
+from .ai_players import build_random_ai_race_template, resolve_ai_slot_stance
 from .diplomacy import (
     STANCE_ALLIED,
     STANCE_CHOICES,
@@ -1990,23 +1991,38 @@ def create_game(request):
             )
             game = factory.save()
             factory.join_player(account, d['race'])
-            ai_allocations = list(form.parse_ai_module_allocations())
+            ai_slots = list(form.parse_ai_player_slots())
             ai_created = 0
-            for module_code in ai_allocations:
+            for slot in ai_slots:
+                race_for_slot = slot.get('race') or d['race']
+                stance_for_slot = resolve_ai_slot_stance(
+                    slot.get('default_diplomatic_stance')
+                )
+                starting_tech_override = slot.get('starting_tech_level')
+                if bool(slot.get('race_random')):
+                    race_for_slot = build_random_ai_race_template(
+                        max_starting_tech_level=int(
+                            d.get('max_starting_tech_level') or 5
+                        ),
+                    )
+                    # Random race generation chooses its own balanced starting tech profile.
+                    starting_tech_override = None
                 ai_player = factory.join_player(
                     None,
-                    d['race'],
+                    race_for_slot,
                     invited=True,
                     is_ai=True,
-                    ai_module=module_code,
+                    ai_module=slot.get('module_code'),
+                    starting_tech_level_override=starting_tech_override,
+                    default_diplomatic_stance=stance_for_slot,
                 )
                 if ai_player is not None:
                     ai_created += 1
-            if ai_created < len(ai_allocations):
+            if ai_created < len(ai_slots):
                 messages.warning(
                     request,
                     'Only %s of %s AI players could be added to this game.'
-                    % (ai_created, len(ai_allocations)),
+                    % (ai_created, len(ai_slots)),
                 )
             _create_invitations(game, form.parse_invitations(), inviter=account)
             return redirect('dj4xol:game', game_short_id=game.short_id)
@@ -2015,6 +2031,7 @@ def create_game(request):
     return render(request, 'dj4xol/create_game.html', {
         'form': form,
         'selected_theme': selected_theme,
+        'ai_slot_editor_payload_json': json.dumps(form.ai_slot_editor_payload()),
     })
 
 

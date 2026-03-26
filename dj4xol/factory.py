@@ -1064,8 +1064,8 @@ class GameFactory():
         )
         return player
 
-    def _resolve_starting_tech_level(self, race):
-        requested_level = max(0, int(getattr(race, 'starting_tech_level', 0) or 0))
+    def _resolve_starting_tech_level(self, requested_level):
+        requested_level = max(0, int(requested_level or 0))
         max_allowed = max(0, int(getattr(self.game, 'max_starting_tech_level', 0) or 0))
         effective_level = min(requested_level, max_allowed)
 
@@ -1084,7 +1084,16 @@ class GameFactory():
             row.stored_rp = 0.0
             row.save(update_fields=['current_level', 'stored_rp'])
 
-    def join_player(self, account, race, invited=False, is_ai=False, ai_module=''):
+    def join_player(
+        self,
+        account,
+        race,
+        invited=False,
+        is_ai=False,
+        ai_module='',
+        starting_tech_level_override=None,
+        default_diplomatic_stance=None,
+    ):
         """Add a player to an existing game with homeworld assignment.
         Returns the created Player instance or None if joining failed.
         Game owner and invited players can join non-joinable games."""
@@ -1129,7 +1138,14 @@ class GameFactory():
         player.starting_labs = race.starting_labs
         player.starting_shipyards = race.starting_shipyards
         player.starting_fleets = race.starting_fleets
-        effective_starting_tech_level, refunded_points = self._resolve_starting_tech_level(race)
+        requested_starting_tech_level = (
+            starting_tech_level_override
+            if starting_tech_level_override is not None
+            else getattr(race, 'starting_tech_level', 0)
+        )
+        effective_starting_tech_level, refunded_points = self._resolve_starting_tech_level(
+            requested_starting_tech_level
+        )
         player.starting_tech_level = effective_starting_tech_level
         player.convert_unused_buildpoints_to_research = (
             race.convert_unused_buildpoints_to_research
@@ -1138,6 +1154,10 @@ class GameFactory():
         player.fixed_homeworld = bool(getattr(race, 'fixed_homeworld', False))
         player.spend_leftover_points_on_research = race.spend_leftover_points_on_research
         player.leftover_points = float(race.leftover_points or 0.0) + float(refunded_points)
+        stance_value = str(default_diplomatic_stance or '').strip().upper()
+        valid_stances = {choice[0] for choice in Player.STANCE_CHOICES}
+        if stance_value in valid_stances:
+            player.default_diplomatic_stance = stance_value
         player.copy_habitability_from(race)
         player.save()
         starting_colony_count = max(

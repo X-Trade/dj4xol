@@ -1,3 +1,4 @@
+import json
 from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import (
@@ -16,6 +17,7 @@ from .models import (
     ServerRaceType,
     Game,
     Account,
+    Player,
     CustomHelpPage,
     CustomHelpPageBlock,
     ServerSettings,
@@ -24,6 +26,8 @@ from .models import (
 from .name_rules import validate_non_reserved_identity_name, validate_safe_public_text
 from .research import get_global_research_max_level, get_starting_tech_balance_cost
 from .ai_players import (
+    AI_SLOT_RANDOM_RACE,
+    AI_SLOT_RANDOM_STANCE,
     get_create_game_ai_capacity,
     get_enabled_ai_modules,
     get_ai_max_per_game,
@@ -435,28 +439,11 @@ class NewGameForm(forms.Form):
         super().__init__(*args, **kwargs)
         self._ai_modules = list(get_enabled_ai_modules())
         self._ai_capacity = int(get_create_game_ai_capacity() or 0)
-        self._ai_module_field_names = []
-        if self._ai_capacity > 0:
-            for module in self._ai_modules:
-                code = str(module.get('code') or '').strip().lower()
-                if not code:
-                    continue
-                field_name = self._ai_module_field_name(code)
-                label = 'AI Players (%s)' % module.get('label', code.title())
-                help_bits = [
-                    module.get('description', ''),
-                    'Per-game cap: %s.' % int(get_ai_max_per_game() or 0),
-                    'Remaining server cap: %s.' % int(get_create_game_ai_capacity() or 0),
-                ]
-                self.fields[field_name] = forms.IntegerField(
-                    label=label,
-                    min_value=0,
-                    max_value=self._ai_capacity,
-                    required=False,
-                    initial=0,
-                    help_text=' '.join(bit for bit in help_bits if bit).strip(),
-                )
-                self._ai_module_field_names.append(field_name)
+        self._ai_module_field_names = [
+            self._ai_module_field_name(str(module.get('code') or '').strip().lower())
+            for module in self._ai_modules
+            if str(module.get('code') or '').strip().lower()
+        ]
 
         ordered = [
             'name',
@@ -475,7 +462,31 @@ class NewGameForm(forms.Form):
             'join_open_years',
             'max_players',
         ]
-        ordered.extend(self._ai_module_field_names)
+        if self._ai_capacity > 0 and self._ai_modules:
+            self.fields['ai_player_count'] = forms.IntegerField(
+                label='AI Players',
+                min_value=0,
+                max_value=self._ai_capacity,
+                required=False,
+                initial=0,
+                help_text=(
+                    'Total AI players for this game. Per-game cap: %s. '
+                    'Remaining server cap: %s.'
+                ) % (
+                    int(get_ai_max_per_game() or 0),
+                    int(get_create_game_ai_capacity() or 0),
+                ),
+            )
+            self.fields['ai_player_config_json'] = forms.CharField(
+                label='AI Slot Configuration (JSON)',
+                required=False,
+                widget=forms.Textarea(attrs={'rows': 6}),
+                help_text=(
+                    'JSON list of AI slot entries. In JavaScript-enabled browsers this '
+                    'is replaced with a slot editor table.'
+                ),
+            )
+            ordered.extend(['ai_player_count', 'ai_player_config_json'])
         ordered.extend([
             'turn_scheme',
             'years_per_turn',
@@ -494,6 +505,26 @@ class NewGameForm(forms.Form):
         )
         self.fields['race'].queryset = _race_queryset_for_account(account)
         self.fields['race'].account = account
+        if 'ai_player_config_json' in self.fields and not self.is_bound:
+            sample_module = ''
+            for module in list(self._ai_modules or []):
+                code = str(module.get('code') or '').strip().lower()
+                if code:
+                    sample_module = code
+                    break
+            sample_race = self.fields['race'].queryset.first()
+            sample_entry = {
+                'module': sample_module,
+                'race_id': str(sample_race.id) if sample_race is not None else '',
+                'starting_tech_level': int(
+                    getattr(sample_race, 'starting_tech_level', 0) or 0
+                ) if sample_race is not None else 0,
+                'default_diplomatic_stance': 'NEUTRAL',
+            }
+            self.fields['ai_player_config_json'].initial = json.dumps(
+                [sample_entry],
+                indent=2,
+            )
 
     def clean_max_starting_tech_level(self):
         max_level = get_global_research_max_level()
@@ -526,32 +557,7 @@ class NewGameForm(forms.Form):
         max_per_game = int(get_ai_max_per_game() or 0)
         remaining_server = int(get_create_game_ai_capacity() or 0)
         ai_cap = max(0, min(max_per_game, remaining_server))
-        ai_total = 0
-        for field_name in list(self._ai_module_field_names):
-            try:
-                count = int(cleaned.get(field_name) or 0)
-            except (TypeError, ValueError):
-                count = 0
-            if count < 0:
-                count = 0
-            cleaned[field_name] = count
-            ai_total += count
-
-        if ai_total > ai_cap:
-            self.add_error(
-                None,
-                (
-                    'Requested %s AI player%s but only %s slot%s are available '
-                    '(max per game %s; remaining server capacity %s).'
-                ) % (
-                    ai_total,
-                    '' if ai_total == 1 else 's',
-                    ai_cap,
-                    '' if ai_cap == 1 else 's',
-                    max_per_game,
-                    remaining_server,
-                ),
-            )
+        self._clean_ai_slot_config(cleaned, ai_cap, max_per_game, remaining_server)
         if cleaned.get('clusters') and cleaned.get('spiral_arms'):
             self.add_error('clusters', 'Clusters cannot be combined with spiral arm galaxy generation.')
             self.add_error('spiral_arms', 'Spiral arm galaxy generation cannot be combined with clusters.')
@@ -574,22 +580,264 @@ class NewGameForm(forms.Form):
     def _ai_module_field_name(code):
         return 'ai_module_count_%s' % str(code or '').strip().lower()
 
-    def parse_ai_module_allocations(self):
-        """Return expanded AI module allocations for this game request."""
+    def _legacy_ai_module_allocations_from_data(self):
+        """Return legacy module allocations posted by old clients."""
         allocations = []
         for module in list(self._ai_modules or []):
             code = str(module.get('code') or '').strip().lower()
             if not code:
                 continue
             field_name = self._ai_module_field_name(code)
+            raw = self.data.get(field_name)
             try:
-                count = int(self.cleaned_data.get(field_name) or 0)
+                count = int(raw or 0)
             except (TypeError, ValueError):
                 count = 0
             if count <= 0:
                 continue
             allocations.extend([code] * count)
         return allocations
+
+    def _clean_ai_slot_config(self, cleaned, ai_cap, max_per_game, remaining_server):
+        if 'ai_player_count' not in self.fields:
+            cleaned['ai_player_slots'] = []
+            return 0
+
+        try:
+            ai_count = int(cleaned.get('ai_player_count') or 0)
+        except (TypeError, ValueError):
+            ai_count = 0
+        ai_count = max(0, ai_count)
+        legacy_allocations = self._legacy_ai_module_allocations_from_data()
+        if ai_count <= 0 and legacy_allocations:
+            ai_count = len(legacy_allocations)
+        cleaned['ai_player_count'] = ai_count
+
+        if ai_count > ai_cap:
+            self.add_error(
+                'ai_player_count',
+                (
+                    'Requested %s AI player%s but only %s slot%s are available '
+                    '(max per game %s; remaining server capacity %s).'
+                ) % (
+                    ai_count,
+                    '' if ai_count == 1 else 's',
+                    ai_cap,
+                    '' if ai_cap == 1 else 's',
+                    max_per_game,
+                    remaining_server,
+                ),
+            )
+
+        if ai_count <= 0:
+            cleaned['ai_player_slots'] = []
+            return 0
+
+        module_codes = [
+            str(module.get('code') or '').strip().lower()
+            for module in list(self._ai_modules or [])
+            if str(module.get('code') or '').strip().lower()
+        ]
+        if ai_count > 0 and not module_codes:
+            self.add_error(
+                'ai_player_count',
+                'No AI modules are enabled by server settings.',
+            )
+            cleaned['ai_player_slots'] = []
+            return ai_count
+
+        race_queryset = list(self.fields['race'].queryset)
+        race_by_id = {str(race.id): race for race in race_queryset}
+        race_by_short_id = {str(race.short_id): race for race in race_queryset}
+        selected_race = cleaned.get('race')
+        if selected_race is None and race_queryset:
+            selected_race = race_queryset[0]
+        default_module = module_codes[0] if module_codes else ''
+        valid_stances = {str(code) for code, _label in Player.STANCE_CHOICES}
+
+        try:
+            max_tech_level = int(get_global_research_max_level() or 0)
+        except (TypeError, ValueError):
+            max_tech_level = 0
+        max_tech_level = max(0, max_tech_level)
+
+        raw_config = str(cleaned.get('ai_player_config_json') or '').strip()
+        parsed_config = []
+        if raw_config:
+            try:
+                parsed = json.loads(raw_config)
+            except Exception:
+                parsed = None
+            if not isinstance(parsed, list):
+                self.add_error(
+                    'ai_player_config_json',
+                    'AI slot configuration must be a JSON list.',
+                )
+            else:
+                parsed_config = list(parsed)
+                if ai_count > 0 and len(parsed_config) != ai_count:
+                    self.add_error(
+                        'ai_player_config_json',
+                        'AI slot configuration must contain exactly %s entr%s.'
+                        % (ai_count, 'y' if ai_count == 1 else 'ies'),
+                    )
+        elif legacy_allocations:
+            parsed_config = [{'module': code} for code in legacy_allocations]
+
+        slots = []
+        for idx in range(ai_count):
+            slot_data = parsed_config[idx] if idx < len(parsed_config) and isinstance(parsed_config[idx], dict) else {}
+            module_code = str(
+                slot_data.get('module')
+                or slot_data.get('ai_module')
+                or slot_data.get('module_code')
+                or ''
+            ).strip().lower()
+            if not module_code:
+                module_code = (
+                    legacy_allocations[idx]
+                    if idx < len(legacy_allocations) else default_module
+                )
+            if module_code not in module_codes:
+                self.add_error(
+                    'ai_player_config_json',
+                    'AI slot %s has an invalid module.' % (idx + 1),
+                )
+                module_code = default_module
+
+            race_ref = slot_data.get('race_id', slot_data.get('race', slot_data.get('race_short_id')))
+            race_random = False
+            if str(race_ref or '').strip().upper() in {
+                AI_SLOT_RANDOM_RACE,
+                'RANDOM',
+            }:
+                race_random = True
+                race_ref = AI_SLOT_RANDOM_RACE
+            race_obj = None
+            if race_ref is not None and not race_random:
+                key = str(race_ref).strip()
+                race_obj = race_by_id.get(key) or race_by_short_id.get(key)
+            if race_obj is None and not race_random:
+                race_obj = selected_race
+            if race_obj is None and not race_random:
+                self.add_error(
+                    'ai_player_config_json',
+                    'AI slot %s must select a valid race.' % (idx + 1),
+                )
+                continue
+
+            raw_tech = slot_data.get(
+                'starting_tech_level',
+                getattr(race_obj, 'starting_tech_level', 3) if race_obj is not None else 3,
+            )
+            try:
+                starting_tech_level = int(raw_tech)
+            except (TypeError, ValueError):
+                self.add_error(
+                    'ai_player_config_json',
+                    'AI slot %s has an invalid starting tech level.' % (idx + 1),
+                )
+                starting_tech_level = int(getattr(race_obj, 'starting_tech_level', 0) or 0)
+            if starting_tech_level < 0 or starting_tech_level > max_tech_level:
+                self.add_error(
+                    'ai_player_config_json',
+                    'AI slot %s starting tech level must be between 0 and %s.'
+                    % (idx + 1, max_tech_level),
+                )
+                starting_tech_level = max(0, min(max_tech_level, starting_tech_level))
+
+            stance = str(
+                slot_data.get(
+                    'default_diplomatic_stance',
+                    slot_data.get('default_stance', 'NEUTRAL'),
+                ) or 'NEUTRAL'
+            ).strip().upper()
+            if stance == AI_SLOT_RANDOM_STANCE:
+                pass
+            elif stance not in valid_stances:
+                self.add_error(
+                    'ai_player_config_json',
+                    'AI slot %s has an invalid default stance.' % (idx + 1),
+                )
+                stance = 'NEUTRAL'
+
+            slots.append({
+                'module_code': module_code,
+                'race': race_obj,
+                'race_random': bool(race_random),
+                'starting_tech_level': int(starting_tech_level),
+                'default_diplomatic_stance': stance,
+            })
+
+        cleaned['ai_player_slots'] = slots
+        return ai_count
+
+    def parse_ai_player_slots(self):
+        """Return validated AI slot configuration entries."""
+        return list(self.cleaned_data.get('ai_player_slots') or [])
+
+    def ai_slot_editor_payload(self):
+        """Return JSON-safe payload for browser AI slot editor enhancement."""
+        if 'ai_player_count' not in self.fields:
+            return {}
+
+        race_field = self.fields['race']
+        races = []
+        for race in list(race_field.queryset):
+            races.append({
+                'id': str(race.id),
+                'short_id': str(race.short_id),
+                'label': race_field.label_from_instance(race),
+                'starting_tech_level': int(getattr(race, 'starting_tech_level', 0) or 0),
+            })
+        races.insert(0, {
+            'id': AI_SLOT_RANDOM_RACE,
+            'short_id': AI_SLOT_RANDOM_RACE,
+            'label': 'Random (generated fair race)',
+            'starting_tech_level': 3,
+        })
+
+        modules = []
+        for module in list(self._ai_modules or []):
+            code = str(module.get('code') or '').strip().lower()
+            if not code:
+                continue
+            modules.append({
+                'code': code,
+                'label': str(module.get('label') or code.title()),
+            })
+
+        raw_selected_race = None
+        if self.is_bound:
+            raw_selected_race = self.data.get('race')
+        if raw_selected_race is None and self.initial:
+            raw_selected_race = self.initial.get('race')
+        selected_race_id = str(raw_selected_race).strip() if raw_selected_race is not None else None
+        if not selected_race_id:
+            selected_race_id = None
+        if selected_race_id is None and races:
+            non_random = [
+                row for row in races
+                if str(row.get('id')) != AI_SLOT_RANDOM_RACE
+            ]
+            selected_race_id = str(
+                (non_random[0] if non_random else races[0]).get('id')
+            )
+
+        return {
+            'capacity': int(self._ai_capacity),
+            'max_starting_tech_level': int(get_global_research_max_level() or 0),
+            'modules': modules,
+            'races': races,
+            'stances': [
+                {'code': str(code), 'label': str(label)}
+                for code, label in Player.STANCE_CHOICES
+            ] + [{
+                'code': AI_SLOT_RANDOM_STANCE,
+                'label': 'Random (Hostile to Warm)',
+            }],
+            'selected_race_id': selected_race_id,
+        }
 
 
 class ServerSettingsForm(forms.Form):

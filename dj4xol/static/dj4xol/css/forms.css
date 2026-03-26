@@ -320,6 +320,40 @@
     font-style: italic;
 }
 
+.ai-slot-editor-host {
+    margin-top: 6px;
+}
+
+.ai-slot-editor-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.ai-slot-editor-table th,
+.ai-slot-editor-table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--panel-border, #999);
+    text-align: left;
+    vertical-align: middle;
+}
+
+.ai-slot-editor-table th {
+    font-size: 0.9em;
+    opacity: 0.9;
+}
+
+.ai-slot-editor-table td:first-child {
+    width: 46px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.ai-slot-editor-table select,
+.ai-slot-editor-table input[type="number"] {
+    width: 100%;
+    min-width: 0;
+}
+
 .create-race .hint.starting-tech-warning.form-errors,
 .onboarding .hint.starting-tech-warning.form-errors {
     color: #cc3333;

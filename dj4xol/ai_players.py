@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 import json
 import logging
 import os
+import random
 import urllib.error
 import urllib.request
 
@@ -12,6 +13,9 @@ from .models import ServerSettings, server_setting_enabled, server_setting_int
 AI_MODULE_MICROMANAGER = 'micromanager'
 AI_MODULE_IDLE = 'idle'
 AI_MODULE_OPENAI = 'openai'
+AI_SLOT_RANDOM_RACE = '__RANDOM__'
+AI_SLOT_RANDOM_STANCE = 'RANDOM'
+AI_RANDOM_STANCE_POOL = ('HOSTILE', 'COLD', 'NEUTRAL', 'WARM')
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +158,283 @@ def get_ai_module_config(code):
         normalize_ai_module_code(code),
     )
     return {}
+
+
+def resolve_ai_slot_stance(raw_value):
+    from .models import Player
+
+    valid = {str(code or '').upper() for code, _label in Player.STANCE_CHOICES}
+    stance = str(raw_value or '').strip().upper()
+    if stance == AI_SLOT_RANDOM_STANCE:
+        return random.choice(AI_RANDOM_STANCE_POOL)
+    if stance in valid:
+        return stance
+    return 'NEUTRAL'
+
+
+def _random_center_width_pair():
+    width_steps = int(round((1.30 - 0.30) / 0.05))
+    width = round(0.30 + (random.randint(0, width_steps) * 0.05), 2)
+    half = width / 2.0
+    min_center = half
+    max_center = 2.0 - half
+    center_steps = int(round((max_center - min_center) / 0.05))
+    center = round(min_center + (random.randint(0, center_steps) * 0.05), 2)
+    return center, width
+
+
+def _apply_race_type_habitability_overrides(payload, race_type):
+    mapping = (
+        ('gravity', 'ignores_gravity'),
+        ('temperature', 'ignores_temperature'),
+        ('radiation', 'ignores_radiation'),
+    )
+    ignored_envs = set()
+    for env, attr in mapping:
+        if bool(getattr(race_type, attr, False)):
+            payload['%s_center' % env] = 1.0
+            payload['%s_width' % env] = 1.0
+            ignored_envs.add(env)
+    return ignored_envs
+
+
+def _build_random_race_candidate(race_type, max_starting_tech_level):
+    centers = {}
+    widths = {}
+    for env in ('gravity', 'temperature', 'radiation'):
+        center, width = _random_center_width_pair()
+        centers[env] = center
+        widths[env] = width
+    floor = 0
+    ceiling = max(0, int(max_starting_tech_level or 0))
+    if ceiling <= 2:
+        tech_level = random.randint(floor, ceiling) if ceiling > floor else floor
+    else:
+        tech_level = random.randint(2, min(ceiling, 8))
+    candidate = {
+        'race_type': race_type,
+        'gravity_center': centers['gravity'],
+        'temperature_center': centers['temperature'],
+        'radiation_center': centers['radiation'],
+        'gravity_width': widths['gravity'],
+        'temperature_width': widths['temperature'],
+        'radiation_width': widths['radiation'],
+        'starting_colonists': random.randint(20, 34),
+        'starting_mines': random.randint(4, 10),
+        'starting_factories': random.randint(2, 8),
+        'starting_labs': random.randint(1, 4),
+        'starting_shipyards': random.randint(1, 3),
+        'starting_fleets': random.randint(2, 5),
+        'starting_tech_level': tech_level,
+        'convert_unused_buildpoints_to_research': False,
+        'singular_research': False,
+        'fixed_homeworld': False,
+        'spend_leftover_points_on_research': False,
+        'leftover_points': 0.0,
+    }
+    ignored = _apply_race_type_habitability_overrides(candidate, race_type)
+    return candidate, ignored
+
+
+def _build_race_rules(candidate):
+    from .habitability_rules import RaceCreationRules
+    from .research import get_starting_tech_balance_cost
+
+    race_type = candidate['race_type']
+    return RaceCreationRules(
+        centers={
+            'gravity': float(candidate['gravity_center']),
+            'temperature': float(candidate['temperature_center']),
+            'radiation': float(candidate['radiation_center']),
+        },
+        widths={
+            'gravity': float(candidate['gravity_width']),
+            'temperature': float(candidate['temperature_width']),
+            'radiation': float(candidate['radiation_width']),
+        },
+        starting_colonists=int(candidate['starting_colonists']),
+        starting_mines=int(candidate['starting_mines']),
+        starting_factories=int(candidate['starting_factories']),
+        starting_labs=int(candidate['starting_labs']),
+        starting_shipyards=int(candidate['starting_shipyards']),
+        starting_fleets=int(candidate['starting_fleets']),
+        starting_tech_level=int(candidate['starting_tech_level']),
+        starting_tech_level_cost=get_starting_tech_balance_cost(
+            int(candidate['starting_tech_level'])
+        ),
+        race_type_points_balance=float(
+            getattr(race_type, 'race_creation_points_balance', 0.0) or 0.0
+        ),
+        convert_unused_buildpoints_to_research=bool(
+            candidate.get('convert_unused_buildpoints_to_research')
+        ),
+        singular_research=bool(candidate.get('singular_research')),
+        fixed_homeworld=bool(candidate.get('fixed_homeworld')),
+    )
+
+
+def _reduce_candidate_to_budget(candidate, ignored_envs):
+    budget = 120.0
+    defaults = {
+        'starting_colonists': 20,
+        'starting_mines': 4,
+        'starting_factories': 2,
+        'starting_labs': 1,
+        'starting_shipyards': 1,
+        'starting_fleets': 2,
+    }
+
+    for _step in range(400):
+        rules = _build_race_rules(candidate)
+        if not rules.validate() and rules.total_cost() <= budget:
+            return candidate, rules
+        changed = False
+
+        # First trim broad habitability widths down toward 0.6 where possible.
+        for env in ('gravity', 'temperature', 'radiation'):
+            if env in ignored_envs:
+                continue
+            width_key = '%s_width' % env
+            width = float(candidate.get(width_key, 1.0) or 1.0)
+            if width > 0.6:
+                candidate[width_key] = round(max(0.6, width - 0.05), 2)
+                changed = True
+                break
+        if changed:
+            continue
+
+        # Then pull expensive starting profile fields back to defaults.
+        for field in (
+            'starting_colonists',
+            'starting_shipyards',
+            'starting_fleets',
+            'starting_factories',
+            'starting_mines',
+            'starting_labs',
+        ):
+            current = int(candidate.get(field, 0) or 0)
+            floor = int(defaults.get(field, 0))
+            if current > floor:
+                candidate[field] = current - 1
+                changed = True
+                break
+        if changed:
+            continue
+
+        # If still too expensive, continue narrowing non-overridden ranges.
+        for env in ('gravity', 'temperature', 'radiation'):
+            if env in ignored_envs:
+                continue
+            width_key = '%s_width' % env
+            width = float(candidate.get(width_key, 1.0) or 1.0)
+            if width > 0.1:
+                candidate[width_key] = round(max(0.1, width - 0.05), 2)
+                changed = True
+                break
+        if changed:
+            continue
+
+        if int(candidate.get('starting_tech_level', 0) or 0) > 0:
+            candidate['starting_tech_level'] = int(candidate['starting_tech_level']) - 1
+            changed = True
+        if not changed:
+            break
+
+    return candidate, _build_race_rules(candidate)
+
+
+def build_random_ai_race_template(max_starting_tech_level=None):
+    """Return an unsaved ServerRace-like object with balanced randomized values."""
+    from .models import ServerRace, ServerRaceType
+    from .research import get_global_research_max_level
+
+    max_level = (
+        get_global_research_max_level()
+        if max_starting_tech_level is None
+        else max(0, int(max_starting_tech_level or 0))
+    )
+    race_types = list(ServerRaceType.objects.filter(enabled=True))
+    if not race_types:
+        race_types = list(ServerRaceType.objects.all())
+    if not race_types:
+        raise ValueError('No race types available for random AI race generation.')
+
+    best_candidate = None
+    best_rules = None
+    for _attempt in range(64):
+        race_type = random.choice(race_types)
+        candidate, ignored_envs = _build_random_race_candidate(race_type, max_level)
+        candidate, rules = _reduce_candidate_to_budget(candidate, ignored_envs)
+        errors = rules.validate()
+        if errors:
+            continue
+        total = float(rules.total_cost())
+        if best_rules is None or total > float(best_rules.total_cost()):
+            best_candidate = dict(candidate)
+            best_rules = rules
+        if total >= 112.0:
+            break
+
+    if best_candidate is None:
+        race_type = random.choice(race_types)
+        best_candidate = {
+            'race_type': race_type,
+            'gravity_center': 1.0,
+            'gravity_width': 1.0,
+            'temperature_center': 1.0,
+            'temperature_width': 1.0,
+            'radiation_center': 1.0,
+            'radiation_width': 1.0,
+            'starting_colonists': 20,
+            'starting_mines': 4,
+            'starting_factories': 2,
+            'starting_labs': 1,
+            'starting_shipyards': 1,
+            'starting_fleets': 2,
+            'starting_tech_level': max(0, min(max_level, 3)),
+            'convert_unused_buildpoints_to_research': False,
+            'singular_research': False,
+            'fixed_homeworld': False,
+            'spend_leftover_points_on_research': False,
+            'leftover_points': 0.0,
+        }
+        _apply_race_type_habitability_overrides(best_candidate, race_type)
+
+    token = '%04X' % random.randint(0, 0xFFFF)
+    name = ('AI%s' % token)[:16]
+    plural = ('%ss' % name)[:16]
+    race = ServerRace(
+        name=name,
+        plural_name=plural,
+        homeworld_name='',
+        fixed_homeworld=bool(best_candidate.get('fixed_homeworld')),
+        starting_colonists=int(best_candidate.get('starting_colonists', 20)),
+        starting_mines=int(best_candidate.get('starting_mines', 4)),
+        starting_factories=int(best_candidate.get('starting_factories', 2)),
+        starting_labs=int(best_candidate.get('starting_labs', 1)),
+        starting_shipyards=int(best_candidate.get('starting_shipyards', 1)),
+        starting_fleets=int(best_candidate.get('starting_fleets', 2)),
+        starting_tech_level=int(best_candidate.get('starting_tech_level', 3)),
+        convert_unused_buildpoints_to_research=bool(
+            best_candidate.get('convert_unused_buildpoints_to_research')
+        ),
+        singular_research=bool(best_candidate.get('singular_research')),
+        spend_leftover_points_on_research=bool(
+            best_candidate.get('spend_leftover_points_on_research')
+        ),
+        leftover_points=float(best_candidate.get('leftover_points', 0.0)),
+        public=False,
+        owner=None,
+        description='',
+        race_type=best_candidate['race_type'],
+    )
+    race.gravity_center = float(best_candidate['gravity_center'])
+    race.gravity_width = float(best_candidate['gravity_width'])
+    race.temperature_center = float(best_candidate['temperature_center'])
+    race.temperature_width = float(best_candidate['temperature_width'])
+    race.radiation_center = float(best_candidate['radiation_center'])
+    race.radiation_width = float(best_candidate['radiation_width'])
+    return race
 
 
 def _bounded_int(value, default, minimum=None, maximum=None):

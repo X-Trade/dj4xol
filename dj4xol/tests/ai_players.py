@@ -3,12 +3,16 @@ from unittest.mock import patch
 
 from ..ai_players import (
     AI_MODULE_OPENAI,
+    AI_SLOT_RANDOM_STANCE,
+    build_random_ai_race_template,
     ai_module_choices,
     apply_ai_module_turn,
     is_ai_module_enabled,
+    resolve_ai_slot_stance,
 )
 from ..factory import GameFactory
 from ..models import ServerSettings
+from ..habitability_rules import RaceCreationRules
 from ._util import default_game, get_default_race
 
 
@@ -64,3 +68,47 @@ class TestAIPlayerModules(TestCase):
         self.assertTrue(result.get('ok'))
         self.assertEqual(result.get('iterations_used'), 2)
         self.assertEqual(result.get('commands_executed'), 1)
+
+    def test_random_ai_stance_never_returns_allied(self):
+        for _idx in range(40):
+            stance = resolve_ai_slot_stance(AI_SLOT_RANDOM_STANCE)
+            self.assertIn(stance, {'HOSTILE', 'COLD', 'NEUTRAL', 'WARM'})
+            self.assertNotEqual(stance, 'ALLIED')
+
+    def test_random_ai_race_respects_budget_and_race_overrides(self):
+        race = build_random_ai_race_template(max_starting_tech_level=5)
+        race_type = race.race_type
+        self.assertIsNotNone(race_type)
+        rules = RaceCreationRules(
+            centers={
+                'gravity': race.gravity_center,
+                'temperature': race.temperature_center,
+                'radiation': race.radiation_center,
+            },
+            widths={
+                'gravity': race.gravity_width,
+                'temperature': race.temperature_width,
+                'radiation': race.radiation_width,
+            },
+            starting_colonists=race.starting_colonists,
+            starting_mines=race.starting_mines,
+            starting_factories=race.starting_factories,
+            starting_labs=race.starting_labs,
+            starting_shipyards=race.starting_shipyards,
+            starting_fleets=race.starting_fleets,
+            starting_tech_level=race.starting_tech_level,
+            race_type_points_balance=float(
+                getattr(race_type, 'race_creation_points_balance', 0.0) or 0.0
+            ),
+        )
+        self.assertLessEqual(rules.total_cost(), rules.budget)
+        self.assertFalse(rules.validate())
+        if bool(getattr(race_type, 'ignores_gravity', False)):
+            self.assertEqual(float(race.gravity_center), 1.0)
+            self.assertEqual(float(race.gravity_width), 1.0)
+        if bool(getattr(race_type, 'ignores_temperature', False)):
+            self.assertEqual(float(race.temperature_center), 1.0)
+            self.assertEqual(float(race.temperature_width), 1.0)
+        if bool(getattr(race_type, 'ignores_radiation', False)):
+            self.assertEqual(float(race.radiation_center), 1.0)
+            self.assertEqual(float(race.radiation_width), 1.0)

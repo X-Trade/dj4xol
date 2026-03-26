@@ -10,6 +10,7 @@
         {% include 'dj4xol/_theme_stylesheet.html' with active_theme=selected_theme %}
         <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
         <script defer type="text/javascript" src="{% static 'dj4xol/js/number_stepper.js' %}"></script>
+        <script defer type="text/javascript" src="{% static 'dj4xol/js/ai_slot_editor.js' %}"></script>
     </head>
     <body class="{% if selected_theme %}{{ selected_theme }}{% else %}classic{% endif %} create-game single-panel-page">
         <div class="title-bar">
@@ -35,6 +36,11 @@
                                         <input type="hidden" name="{{ field.name }}" id="{{ field.id_for_label }}" value="{{ field.value|default_if_none:'' }}">
                                         <input type="hidden" id="invite-lookup-url" value="{% url 'dj4xol:account_lookup' %}">
                                         <div id="invite-widget-host"></div>
+                                        {% elif field.name == 'ai_player_config_json' %}
+                                        <div class="ai-slot-editor-json-wrap">
+                                            {{ field }}
+                                        </div>
+                                        <div id="ai-slot-editor-host" class="ai-slot-editor-host"></div>
                                         {% else %}
                                         {{ field }}
                                         {% endif %}
@@ -47,6 +53,7 @@
                                 </tr>
                                 {% endfor %}
                             </table>
+                            <script id="ai-slot-editor-payload" type="application/json">{{ ai_slot_editor_payload_json|default:'{}'|safe }}</script>
                             <div class="form-nav">
                                 <button type="button" class="nav-button" onclick="window.location.href='{% url 'dj4xol:index' %}'">Back to Games</button>
                                 <button type="submit" class="nav-button primary">Create Game</button>
