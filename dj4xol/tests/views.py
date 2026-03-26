@@ -3247,6 +3247,35 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'Abandoned')
         self.assertNotContains(response, 'Unowned')
 
+    def test_unowned_star_with_only_dyson_sphere_shows_abandoned_owner(self):
+        self.star.player = None
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.has_dyson_sphere = True
+        self.star.save(update_fields=[
+            'player',
+            'mines',
+            'factories',
+            'labs',
+            'defenses',
+            'shipyards',
+            'has_dyson_sphere',
+        ])
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Surveyor',
+            x=self.star.x,
+            y=self.star.y,
+        )
+
+        response = self._get_detail_response(self.star)
+        self.assertContains(response, 'Abandoned')
+        self.assertNotContains(response, 'Unowned')
+
     def test_unowned_star_report_with_leftover_infrastructure_shows_abandoned_owner(self):
         Report.objects.create(
             game=self.game,

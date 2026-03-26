@@ -57,6 +57,43 @@ class testGameFactory(TestCase):
             self.assertTrue(0 <= star.x <= 200)
             self.assertTrue(0 <= star.y <= 200)
 
+    def test_seed_abandoned_dyson_colonies_adds_mines_and_secret_inventories(self):
+        gf = GameFactory()
+        gf.set_map_size(120, 120)
+        gf.create_stars(3)
+        seeded = gf.stars[0]
+
+        with patch(
+            'dj4xol.factory.random.random',
+            side_effect=[0.0, 1.0, 1.0],
+        ):
+            with patch(
+                'dj4xol.factory.random.randint',
+                side_effect=[7, 2],
+            ):
+                with patch(
+                    'dj4xol.factory.random.sample',
+                    return_value=['resource_x', 'resource_z'],
+                ):
+                    with patch(
+                        'dj4xol.factory.mineral_rules.random_surface_germanium_init',
+                        side_effect=[321, 654],
+                    ):
+                        gf._seed_abandoned_dyson_colonies()
+
+        self.assertTrue(seeded.has_dyson_sphere)
+        self.assertTrue(seeded.thumbnail_path.startswith('dj4xol/images/thumbs/star/city/'))
+        self.assertTrue(seeded.effective_thumbnail_path.startswith('dj4xol/images/thumbs/star/dyson/'))
+        self.assertEqual(seeded.mines, 7)
+        self.assertEqual(seeded.resource_x_inventory, 321)
+        self.assertEqual(seeded.resource_z_inventory, 654)
+        self.assertEqual(seeded.resource_y_inventory, 0)
+        self.assertEqual(seeded.resource_x_yield, 0)
+        self.assertEqual(seeded.resource_y_yield, 0)
+        self.assertEqual(seeded.resource_z_yield, 0)
+        self.assertFalse(gf.stars[1].has_dyson_sphere)
+        self.assertFalse(gf.stars[2].has_dyson_sphere)
+
     def test_stars_do_not_stack_without_systems(self):
         modes = [
             {'clusters': False, 'spiral_arms': False},

@@ -11,6 +11,7 @@ from .research import get_player_tech_effects
 from .fleet_thumbnails import choose_fleet_thumbnail
 from .turn import combine_speed_advantages
 from .ai_players import AI_MODULE_IDLE, normalize_ai_module_code
+from .star_thumbnails import choose_star_thumbnail, STAR_THUMB_CATEGORY_CITY
 from .colony_rules import (
     environment_matches_player_preference,
     habitability_value_for_environment,
@@ -27,6 +28,9 @@ TURN_INTERVALS = {
 
 SECRET_RESOURCE_HOMEWORLD_BUFFER = 25
 STARTING_COLONY_RADIUS = 30.0
+ABANDONED_DYSON_STAR_CHANCE = 0.002
+ABANDONED_DYSON_MINES_MIN = 3
+ABANDONED_DYSON_MINES_MAX = 12
 
 class GameFactory():
     """A factory class to draft and initialise game instances.
@@ -87,6 +91,7 @@ class GameFactory():
         interval = TURN_INTERVALS.get(self.game.turn_scheme)
         if interval:
             self.game.next_generation = timezone.now() + interval
+        self._seed_abandoned_dyson_colonies()
         self._place_secret_resources()
         self.game.save()
         used_short_ids = self._collect_existing_short_ids()
@@ -773,6 +778,42 @@ class GameFactory():
             int(getattr(star, f'{key}_inventory', 0) or 0) > 0
             for key in mineral_rules.SECRET_RESOURCE_KEYS
         )
+
+    def _seed_abandoned_dyson_colonies(self):
+        """Rare worldgen pass: abandoned Dyson sites with secret inventories."""
+        if not self.stars:
+            return
+        for star in self.stars:
+            if random.random() >= ABANDONED_DYSON_STAR_CHANCE:
+                continue
+            if getattr(star, 'player', None) is not None:
+                continue
+            star.has_dyson_sphere = True
+            star.thumbnail_path = choose_star_thumbnail(
+                '%s:%s:%s:abandoned-city' % (
+                    getattr(star, 'name', ''),
+                    int(getattr(star, 'x', 0) or 0),
+                    int(getattr(star, 'y', 0) or 0),
+                ),
+                category=STAR_THUMB_CATEGORY_CITY,
+            )
+            star.mines = max(
+                int(getattr(star, 'mines', 0) or 0),
+                random.randint(ABANDONED_DYSON_MINES_MIN, ABANDONED_DYSON_MINES_MAX),
+            )
+            secret_slots = random.randint(1, 2)
+            secret_keys = random.sample(
+                list(mineral_rules.SECRET_RESOURCE_KEYS),
+                secret_slots,
+            )
+            for key in secret_keys:
+                inventory_field = f'{key}_inventory'
+                current = int(getattr(star, inventory_field, 0) or 0)
+                setattr(
+                    star,
+                    inventory_field,
+                    max(current, int(mineral_rules.random_surface_germanium_init() or 0)),
+                )
 
     def _is_large_map(self):
         return (
