@@ -507,6 +507,11 @@ class GameTurn():
         self.game = game
         self._scanner_sources_by_player_id = {}
         self._player_colony_scanner_ranges_by_player_id = {}
+        self._player_terraform_profile_by_id = {}
+        self._player_administration_profile_by_id = {}
+        self._player_dyson_profile_by_id = {}
+        self._player_production_costs_by_id = {}
+        self._player_tech_effects_by_id = {}
         self._first_contact_sent = set()
         self._first_contact_any_sent = set()
         self._stance_map_by_player_id = {}
@@ -536,6 +541,11 @@ class GameTurn():
         """Process a single year of game time."""
         self._scanner_sources_by_player_id = {}
         self._player_colony_scanner_ranges_by_player_id = {}
+        self._player_terraform_profile_by_id = {}
+        self._player_administration_profile_by_id = {}
+        self._player_dyson_profile_by_id = {}
+        self._player_production_costs_by_id = {}
+        self._player_tech_effects_by_id = {}
         self._stance_map_by_player_id = {}
         self._player_colony_count_cache = {}
         refresh_contract_integrity(self.game)
@@ -2642,6 +2652,71 @@ class GameTurn():
         self._player_colony_scanner_ranges_by_player_id[player_id] = ranges
         return ranges
 
+    def _get_player_terraforming_profile_cached(self, player):
+        if not player:
+            return {'rate': 0.0, 'costs': {}, 'tech': None}
+        player_id = getattr(player, 'id', None)
+        if player_id is None:
+            return get_player_terraforming_profile(player)
+        cached = self._player_terraform_profile_by_id.get(player_id)
+        if cached is not None:
+            return cached
+        profile = get_player_terraforming_profile(player)
+        self._player_terraform_profile_by_id[player_id] = profile
+        return profile
+
+    def _get_player_administration_profile_cached(self, player):
+        if not player:
+            return {'level': 0, 'tech': None}
+        player_id = getattr(player, 'id', None)
+        if player_id is None:
+            return get_player_administration_profile(player)
+        cached = self._player_administration_profile_by_id.get(player_id)
+        if cached is not None:
+            return cached
+        profile = get_player_administration_profile(player)
+        self._player_administration_profile_by_id[player_id] = profile
+        return profile
+
+    def _get_player_dyson_sphere_profile_cached(self, player):
+        if not player:
+            return {'unlocked': False, 'tech': None, 'costs': {}}
+        player_id = getattr(player, 'id', None)
+        if player_id is None:
+            return get_player_dyson_sphere_profile(player)
+        cached = self._player_dyson_profile_by_id.get(player_id)
+        if cached is not None:
+            return cached
+        profile = get_player_dyson_sphere_profile(player)
+        self._player_dyson_profile_by_id[player_id] = profile
+        return profile
+
+    def _get_player_production_costs_cached(self, player):
+        if not player:
+            return {}
+        player_id = getattr(player, 'id', None)
+        if player_id is None:
+            return get_player_production_costs(player)
+        cached = self._player_production_costs_by_id.get(player_id)
+        if cached is not None:
+            return cached
+        cost_map = get_player_production_costs(player)
+        self._player_production_costs_by_id[player_id] = cost_map
+        return cost_map
+
+    def _get_player_tech_effects_cached(self, player):
+        if not player:
+            return {}
+        player_id = getattr(player, 'id', None)
+        if player_id is None:
+            return get_player_tech_effects(player)
+        cached = self._player_tech_effects_by_id.get(player_id)
+        if cached is not None:
+            return cached
+        effects = get_player_tech_effects(player)
+        self._player_tech_effects_by_id[player_id] = effects
+        return effects
+
     def _update_ai_checkin_state(self, auto_turn_in=False):
         """Refresh AI check-in bookkeeping and optional quorum auto-ready state."""
         interval = max(1, int(get_ai_check_in_turns() or 1))
@@ -2799,40 +2874,115 @@ class GameTurn():
 
     def first_contact_checks(self):
         """Send first-contact messages for unresolved encounters before combat."""
-        from .models import Fleet, Star
+        from .models import Fleet, Player, PlayerDiplomaticStance, Report, Star
 
-        fleets = list(Fleet.objects.filter(game=self.game))
+        fleets = list(Fleet.objects.filter(game=self.game).select_related('player'))
+        stars = list(Star.objects.filter(game=self.game).select_related('player'))
+
+        stars_by_location = self._group_objects_by_location(stars)
+        fleets_by_location = self._group_objects_by_location(fleets)
+
+        players = list(Player.objects.filter(game=self.game))
+        player_ids = {player.id for player in players if getattr(player, 'id', None) is not None}
+
+        known_contact_pairs = set()
+        for player_id, target_player_id in PlayerDiplomaticStance.objects.filter(
+            player_id__in=player_ids,
+            target_player_id__in=player_ids,
+        ).values_list('player_id', 'target_player_id'):
+            known_contact_pairs.add((player_id, target_player_id))
+
+        star_owner_by_id = {
+            star.id: star.player_id
+            for star in stars
+            if getattr(star, 'player_id', None) is not None
+        }
+        fleet_owner_by_id = {
+            fleet.id: fleet.player_id
+            for fleet in fleets
+            if getattr(fleet, 'player_id', None) is not None
+        }
+
+        reports = Report.objects.filter(
+            player_id__in=player_ids,
+            target_type__in=['star', 'fleet'],
+        ).only('player_id', 'target_type', 'target_id', 'cached_report')
+        for report in reports:
+            if not self._report_reveals_owner(report):
+                continue
+            if report.target_type == 'star':
+                owner_id = star_owner_by_id.get(report.target_id)
+            else:
+                owner_id = fleet_owner_by_id.get(report.target_id)
+            if owner_id is None or owner_id == report.player_id:
+                continue
+            known_contact_pairs.add((report.player_id, owner_id))
+
+        has_any_contact_by_player_id = {}
+        for player_id in player_ids:
+            has_any_contact_by_player_id[player_id] = False
+        for player_id, other_id in known_contact_pairs:
+            if player_id != other_id:
+                has_any_contact_by_player_id[player_id] = True
 
         for fleet in fleets:
             if fleet.player is None or bool(getattr(fleet.player, 'defeated', False)):
                 continue
             player = fleet.player
-            x, y = fleet.x, fleet.y
+            key = (int(fleet.x), int(fleet.y))
 
-            # Star contact
-            for star in Star.objects.filter(game=self.game, x=x, y=y).exclude(player=player).exclude(player__isnull=True):
+            for star in stars_by_location.get(key, []):
+                if star.player is None or star.player_id == player.id:
+                    continue
                 self._send_first_contact_message(
                     player,
                     'star',
                     star,
                     source_fleet=fleet,
+                    known_contact_pairs=known_contact_pairs,
+                    has_any_contact_by_player_id=has_any_contact_by_player_id,
                 )
 
-            # Fleet contact
-            for other in Fleet.objects.filter(game=self.game, x=x, y=y).exclude(player=player).exclude(player__isnull=True):
+            for other in fleets_by_location.get(key, []):
+                if other.player is None or other.player_id == player.id:
+                    continue
                 self._send_first_contact_message(
                     player,
                     'fleet',
                     other,
                     source_fleet=fleet,
+                    known_contact_pairs=known_contact_pairs,
+                    has_any_contact_by_player_id=has_any_contact_by_player_id,
                 )
 
-    def _player_has_other_contacts(self, player):
+    def _player_has_other_contacts(
+        self,
+        player,
+        has_any_contact_by_player_id=None,
+        known_contact_pairs=None,
+    ):
         """Return True if player has resolved any other player's ownership before."""
+        if not player:
+            return False
+        player_id = getattr(player, 'id', None)
+        if player_id is None:
+            return False
+        if has_any_contact_by_player_id is not None:
+            return bool(has_any_contact_by_player_id.get(player_id, False))
+        if known_contact_pairs is not None:
+            for source_id, target_id in known_contact_pairs:
+                if source_id == player_id and source_id != target_id:
+                    return True
+            return False
+
         from .models import Player
 
         for other_player in Player.objects.filter(game=self.game).exclude(id=player.id):
-            if self._player_has_contact_with_race(player, other_player):
+            if self._player_has_contact_with_race(
+                player,
+                other_player,
+                known_contact_pairs=known_contact_pairs,
+            ):
                 return True
         return False
 
@@ -2851,12 +3001,18 @@ class GameTurn():
         player,
         other_player,
         exclude_target=None,
+        known_contact_pairs=None,
     ):
         """Return True if player has already resolved ownership for other_player."""
         from .models import Fleet, PlayerDiplomaticStance, Report, Star
 
         if not player or not other_player or player.id == other_player.id:
             return False
+        if (
+            known_contact_pairs is not None and
+            (exclude_target is None or exclude_target == (None, None))
+        ):
+            return (player.id, other_player.id) in known_contact_pairs
 
         if PlayerDiplomaticStance.objects.filter(
             player=player,
@@ -2897,6 +3053,8 @@ class GameTurn():
         obj,
         source_fleet=None,
         exclude_target=None,
+        known_contact_pairs=None,
+        has_any_contact_by_player_id=None,
     ):
         """Send a first-contact message once when another player's identity resolves."""
         from .messages import FirstContactFleetMessageFactory, FirstContactStarMessageFactory
@@ -2916,13 +3074,18 @@ class GameTurn():
             player,
             other_player,
             exclude_target=exclude_target,
+            known_contact_pairs=known_contact_pairs,
         ):
             self._first_contact_sent.add(pair_key)
             return False
 
         first_any = (
             player.id not in self._first_contact_any_sent and
-            not self._player_has_other_contacts(player)
+            not self._player_has_other_contacts(
+                player,
+                has_any_contact_by_player_id=has_any_contact_by_player_id,
+                known_contact_pairs=known_contact_pairs,
+            )
         )
         if target_type == 'star':
             factory = FirstContactStarMessageFactory(
@@ -2938,6 +3101,10 @@ class GameTurn():
         msg.year = self.game.year
         msg.save()
         ensure_contact_stance_entry(player, other_player)
+        if known_contact_pairs is not None:
+            known_contact_pairs.add(pair_key)
+        if has_any_contact_by_player_id is not None:
+            has_any_contact_by_player_id[player.id] = True
         self._first_contact_sent.add(pair_key)
         if first_any:
             self._first_contact_any_sent.add(player.id)
@@ -6986,8 +7153,8 @@ class GameTurn():
             admin_active_for_automation = bool(
                 getattr(star, 'has_administration', False) or ai_tier > 0
             )
-            cost_map = get_player_production_costs(star.player)
-            terraform_profile = get_player_terraforming_profile(star.player)
+            cost_map = self._get_player_production_costs_cached(star.player)
+            terraform_profile = self._get_player_terraforming_profile_cached(star.player)
             terraform_rate = float(terraform_profile.get('rate', 0.0) or 0.0)
 
             # Track production counts for aggregate messages
@@ -7224,7 +7391,7 @@ class GameTurn():
         fleet_count = player.fleets.count() + 1
         fleet_name = f"{player.name} Fleet {fleet_count}"
 
-        tech_effects = get_player_tech_effects(player)
+        tech_effects = self._get_player_tech_effects_cached(player)
         thumbnail_path = choose_fleet_thumbnail(
             f"{self.game.id}:{star.id}:{fleet_name}:{self.game.year}",
             tech_effects.get('hull_thumbnail_class'),
@@ -7358,7 +7525,7 @@ class GameTurn():
         """
         rate = terraform_rate
         if rate is None:
-            profile = get_player_terraforming_profile(star.player)
+            profile = self._get_player_terraforming_profile_cached(star.player)
             rate = float(profile.get('rate', 0.0) or 0.0)
         multiplier = 1.0
         race_type = getattr(star.player, 'race_type', None)
@@ -7394,7 +7561,7 @@ class GameTurn():
             return
         rate = terraform_rate
         if rate is None:
-            profile = get_player_terraforming_profile(star.player)
+            profile = self._get_player_terraforming_profile_cached(star.player)
             rate = float(profile.get('rate', 0.0) or 0.0)
         if rate <= 0:
             return
@@ -7486,7 +7653,7 @@ class GameTurn():
         """Refresh zero-progress Micromanager queue items for one colony."""
         from .models import ProductionOrder
 
-        profile = get_player_administration_profile(star.player)
+        profile = self._get_player_administration_profile_cached(star.player)
         tier = int(profile.get('level', 0) or 0)
         ai_tier = int(player_ai_administration_tier(star.player) or 0)
         if ai_tier > tier:
@@ -7531,16 +7698,16 @@ class GameTurn():
             )
             for _ in range(remaining):
                 existing_types.append(order.order_type)
-        terraform_profile = get_player_terraforming_profile(star.player)
+        terraform_profile = self._get_player_terraforming_profile_cached(star.player)
         terraform_rate = float(terraform_profile.get('rate', 0.0) or 0.0)
-        dyson_profile = get_player_dyson_sphere_profile(star.player)
+        dyson_profile = self._get_player_dyson_sphere_profile_cached(star.player)
         queue_orders = list(star.production_orders.exclude(
             id__in=[order.id for order in editable]
         ))
         player_projected_types = self._projected_player_economy_order_types(
             queue_orders
         )
-        cost_map = get_player_production_costs(star.player)
+        cost_map = self._get_player_production_costs_cached(star.player)
         planned = plan_micromanager_orders(
             star.player,
             star,
@@ -8376,7 +8543,7 @@ class GameTurn():
         player = getattr(star, 'player', None)
         if not player:
             return
-        profile = get_player_administration_profile(player)
+        profile = self._get_player_administration_profile_cached(player)
         tier = int(profile.get('level', 0) or 0)
         ai_tier = int(player_ai_administration_tier(player) or 0)
         if ai_tier > tier:
@@ -8394,7 +8561,7 @@ class GameTurn():
             self._player_owned_colony_count(player) < MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD
         )
 
-        cost_map = get_player_production_costs(player)
+        cost_map = self._get_player_production_costs_cached(player)
         if not hasattr(self, '_micromanager_auto_fleet_ids_for_year'):
             self._micromanager_auto_fleet_ids_for_year = set()
 
