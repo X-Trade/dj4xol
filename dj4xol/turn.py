@@ -1,5 +1,6 @@
 from datetime import timedelta
 from math import atan2, atanh, ceil, cos, degrees, log2, pi, sin, sqrt, tanh
+import time
 from numpy import array as nparray, linalg
 from django.db import models
 from django.utils import timezone
@@ -526,11 +527,16 @@ class GameTurn():
             raise Exception("cannot generate turn for game with no players")
         self._update_ai_checkin_state(auto_turn_in=False)
 
+        started_at = time.perf_counter()
         self.game.is_generating = True
         self.game.save(update_fields=['is_generating'])
 
         for _ in range(self.game.years_per_turn):
             self._process_year()
+        self.game.last_turn_execution_seconds = max(
+            0.0,
+            float(time.perf_counter() - started_at),
+        )
         self.game.last_generated = timezone.now()
         self.game.next_generation = self._calculate_next_generation()
         self._reset_turn_ins()

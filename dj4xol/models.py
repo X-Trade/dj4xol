@@ -438,6 +438,7 @@ class Game(UUIDMixin):
     no_scanners = models.BooleanField(default=False)
     max_starting_tech_level = models.IntegerField(default=5)
     last_generated = models.DateTimeField(null=True, blank=True)
+    last_turn_execution_seconds = models.FloatField(null=True, blank=True)
     next_generation = models.DateTimeField(null=True, blank=True)
     is_generating = models.BooleanField(default=False)
 

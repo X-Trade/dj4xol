@@ -113,8 +113,10 @@ class PlayerAdmin(admin.ModelAdmin):
 
 @admin.register(Game)
 class GameAdmin(admin.ModelAdmin):
-    list_display = ('pk', 'name', 'owner', 'year', 'game_actions')
-    readonly_fields = ('pk', 'year', 'game_actions')
+    list_display = (
+        'pk', 'name', 'owner', 'year', 'last_turn_execution_seconds', 'game_actions'
+    )
+    readonly_fields = ('pk', 'year', 'last_turn_execution_seconds', 'game_actions')
     list_select_related = ('owner',)
 
     def get_urls(self):

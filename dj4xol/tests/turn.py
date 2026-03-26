@@ -76,6 +76,13 @@ class TestGameTurn(TestCase):
         GameTurn(game).generate_turn()
         self.assertEqual(game.year, 1001)
 
+    def test_records_last_turn_execution_seconds(self):
+        game = default_game()
+        with patch('dj4xol.turn.time.perf_counter', side_effect=[100.0, 101.25]):
+            GameTurn(game).generate_turn()
+        game.refresh_from_db()
+        self.assertAlmostEqual(game.last_turn_execution_seconds, 1.25)
+
     def test_multiple_turns(self):
         game = default_game()
         game.year = 1000
