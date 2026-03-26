@@ -339,7 +339,7 @@ class NewGameForm(forms.Form):
         label="Max Players",
         min_value=1,
         required=False,
-        help_text="Maximum number of players (blank = unlimited)"
+        help_text="Maximum number of human players (AI players do not count; blank = unlimited)"
     )
     turn_scheme = forms.ChoiceField(
         label="Turn Generation",

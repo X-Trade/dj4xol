@@ -1821,6 +1821,11 @@ class TestGameCreationView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'dj4xol/js/number_stepper.js')
 
+    def test_create_game_max_players_help_mentions_ai_exclusion(self):
+        response = self.client.get(reverse('dj4xol:create_game'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Maximum number of human players (AI players do not count; blank = unlimited)')
+
     def test_create_game_includes_improved_star_names_option_and_sync_script(self):
         response = self.client.get(reverse('dj4xol:create_game'))
         self.assertEqual(response.status_code, 200)
