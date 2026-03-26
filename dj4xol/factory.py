@@ -10,6 +10,7 @@ from . import mineral_rules
 from .research import get_player_tech_effects
 from .fleet_thumbnails import choose_fleet_thumbnail
 from .turn import combine_speed_advantages
+from .ai_players import AI_MODULE_IDLE, normalize_ai_module_code
 from .colony_rules import (
     environment_matches_player_preference,
     habitability_value_for_environment,
@@ -1083,11 +1084,14 @@ class GameFactory():
             row.stored_rp = 0.0
             row.save(update_fields=['current_level', 'stored_rp'])
 
-    def join_player(self, account, race, invited=False):
+    def join_player(self, account, race, invited=False, is_ai=False, ai_module=''):
         """Add a player to an existing game with homeworld assignment.
         Returns the created Player instance or None if joining failed.
         Game owner and invited players can join non-joinable games."""
-        is_owner = (account == self.game.owner)
+        if account is None and not bool(is_ai):
+            return None
+
+        is_owner = (account is not None and account == self.game.owner)
         can_bypass = is_owner or invited
 
         if not can_bypass:
@@ -1096,12 +1100,16 @@ class GameFactory():
             if self.game.max_players and self.game.players.count() >= self.game.max_players:
                 return None
 
-        if self.game.players.filter(account=account).exists():
+        if account is not None and self.game.players.filter(account=account).exists():
             return None
 
         available_stars = list(self.game.stars.filter(player=None))
         if not available_stars:
             return None
+
+        ai_module_code = ''
+        if bool(is_ai):
+            ai_module_code = normalize_ai_module_code(ai_module) or AI_MODULE_IDLE
 
         player = Player(
             game=self.game,
@@ -1110,6 +1118,9 @@ class GameFactory():
             plural_name=race.plural_name,
             homeworld_name=race.homeworld_name,
             race_type=race.race_type,
+            is_ai=bool(is_ai),
+            ai_module=ai_module_code,
+            ai_last_checkin_year=(int(self.game.year or 0) if bool(is_ai) else None),
         )
         player.starting_colonists = race.starting_colonists
         player.starting_mines = race.starting_mines

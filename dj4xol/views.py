@@ -1989,6 +1989,24 @@ def create_game(request):
             )
             game = factory.save()
             factory.join_player(account, d['race'])
+            ai_allocations = list(form.parse_ai_module_allocations())
+            ai_created = 0
+            for module_code in ai_allocations:
+                ai_player = factory.join_player(
+                    None,
+                    d['race'],
+                    invited=True,
+                    is_ai=True,
+                    ai_module=module_code,
+                )
+                if ai_player is not None:
+                    ai_created += 1
+            if ai_created < len(ai_allocations):
+                messages.warning(
+                    request,
+                    'Only %s of %s AI players could be added to this game.'
+                    % (ai_created, len(ai_allocations)),
+                )
             _create_invitations(game, form.parse_invitations(), inviter=account)
             return redirect('dj4xol:game', game_short_id=game.short_id)
     else:

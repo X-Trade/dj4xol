@@ -1338,7 +1338,12 @@ class DetailBuilder():
         """Return player display string as 'race name (username)' or None."""
         player = self.selected_obj.player
         if player:
-            username = player.account.alias if player.account else 'Unknown'
+            if player.account:
+                username = player.account.alias
+            elif bool(getattr(player, 'is_ai', False)):
+                username = 'AI'
+            else:
+                username = 'Unknown'
             return '%s (%s)' % (player.name, username)
         if (
             isinstance(self.selected_obj, Star) and
@@ -1360,7 +1365,12 @@ class DetailBuilder():
         player = self.game.players.select_related('account').filter(name=player_name).order_by('id').first()
         if not player:
             return player_name
-        alias = player.account.alias if player.account else 'Unknown'
+        if player.account:
+            alias = player.account.alias
+        elif bool(getattr(player, 'is_ai', False)):
+            alias = 'AI'
+        else:
+            alias = 'Unknown'
         return '%s (%s)' % (player.name, alias)
 
     @staticmethod

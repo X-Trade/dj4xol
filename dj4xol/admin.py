@@ -107,7 +107,7 @@ class GameInvitationAdmin(admin.ModelAdmin):
 
 @admin.register(Player)
 class PlayerAdmin(admin.ModelAdmin):
-    list_display = ('pk', 'short_id', 'game', 'account', 'name')
+    list_display = ('pk', 'short_id', 'game', 'account', 'name', 'is_ai', 'ai_module')
     readonly_fields = ('pk',)
     list_select_related = ('game', 'account')
 

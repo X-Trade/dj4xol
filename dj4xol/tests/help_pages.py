@@ -135,7 +135,7 @@ class HelpPagesTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Colony Management Basics')
         self.assertContains(response, 'mines')
-        self.assertContains(response, 'Colony Administration')
+        self.assertContains(response, 'Colony AI Administration')
 
     def test_help_anomalies_renders(self):
         response = self.client.get(reverse('dj4xol:help_anomalies'))

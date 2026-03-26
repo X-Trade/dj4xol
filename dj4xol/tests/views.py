@@ -571,6 +571,11 @@ class TestServerSettingsView(TestCase):
         self.assertContains(response, 'General (web)')
         self.assertContains(response, 'Email')
         self.assertContains(response, 'AI Integration')
+        self.assertContains(response, 'Max AIs per Game')
+        self.assertContains(response, 'Max AIs per Server')
+        self.assertContains(response, 'AIs Check In Every X Turns')
+        self.assertContains(response, 'Enable AI Module: Micromanager')
+        self.assertContains(response, 'Enable AI Module: Idle')
         self.assertContains(response, 'Profanity Filter')
         self.assertContains(response, 'Public Server URL')
         self.assertContains(response, 'Used for links in emails')
@@ -596,6 +601,13 @@ class TestServerSettingsView(TestCase):
                 'enable_spectator_mode': 'on',
                 'max_diplomatic_requests_per_race_per_turn': '3',
                 'enable_gpt': '',
+                'ai_max_per_game': '3',
+                'ai_max_per_server': '12',
+                'ai_check_in_turns': '2',
+                'ai_module_micromanager_enabled': 'on',
+                'ai_module_idle_enabled': 'on',
+                'ai_module_micromanager_config': '{"aggression": 0.5}',
+                'ai_module_idle_config': '{"passive": true}',
                 'enable_debug_actions': '',
                 'enable_play_api': 'on',
                 'enable_profanity_filter': '',
@@ -628,6 +640,13 @@ class TestServerSettingsView(TestCase):
         self.assertEqual(ServerSettings.get('enable_spectator_mode'), 'True')
         self.assertEqual(ServerSettings.get('max_diplomatic_requests_per_race_per_turn'), '3')
         self.assertEqual(ServerSettings.get('enable_gpt'), 'False')
+        self.assertEqual(ServerSettings.get('ai_max_per_game'), '3')
+        self.assertEqual(ServerSettings.get('ai_max_per_server'), '12')
+        self.assertEqual(ServerSettings.get('ai_check_in_turns'), '2')
+        self.assertEqual(ServerSettings.get('ai_module_micromanager_enabled'), 'True')
+        self.assertEqual(ServerSettings.get('ai_module_idle_enabled'), 'True')
+        self.assertEqual(ServerSettings.get('ai_module_micromanager_config'), '{"aggression": 0.5}')
+        self.assertEqual(ServerSettings.get('ai_module_idle_config'), '{"passive": true}')
         self.assertEqual(ServerSettings.get('enable_profanity_filter'), 'False')
         self.assertEqual(ServerSettings.get('profanity_filter_whitelist'), 'scunthorpe')
         self.assertEqual(ServerSettings.get('profanity_filter_blacklist'), 'void')
@@ -651,6 +670,13 @@ class TestServerSettingsView(TestCase):
                 'enable_spectator_mode': '',
                 'max_diplomatic_requests_per_race_per_turn': '2',
                 'enable_gpt': '',
+                'ai_max_per_game': '0',
+                'ai_max_per_server': '0',
+                'ai_check_in_turns': '1',
+                'ai_module_micromanager_enabled': 'on',
+                'ai_module_idle_enabled': 'on',
+                'ai_module_micromanager_config': '',
+                'ai_module_idle_config': '',
                 'enable_debug_actions': '',
                 'enable_play_api': 'on',
                 'enable_profanity_filter': 'on',
@@ -1727,6 +1753,16 @@ class TestGameCreationView(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
 
+    @staticmethod
+    def _set_server_setting(key, value, description=''):
+        ServerSettings.objects.update_or_create(
+            key=key,
+            defaults={
+                'value': str(value),
+                'description': description or key.replace('_', ' '),
+            },
+        )
+
     def test_create_game_includes_number_stepper_script(self):
         response = self.client.get(reverse('dj4xol:create_game'))
         self.assertEqual(response.status_code, 200)
@@ -1765,6 +1801,105 @@ class TestGameCreationView(TestCase):
         })
         self.assertFalse(form.is_valid())
         self.assertIn('improved_star_names', form.errors)
+
+    def test_new_game_form_rejects_ai_counts_above_capacity(self):
+        race = get_default_race()
+        race.public = True
+        race.save(update_fields=['public'])
+        self._set_server_setting('ai_max_per_game', 3, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 2, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_micromanager_enabled', 'True', 'Enable AI module: micromanager')
+        self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
+
+        # Consume one active AI slot on another game.
+        other_game = default_game(stars=6)
+        other_game.joinable = True
+        other_game.save(update_fields=['joinable'])
+        gf = GameFactory(other_game)
+        gf.join_player(None, race, invited=True, is_ai=True, ai_module='idle')
+
+        form = NewGameForm(self.account, data={
+            'name': 'AI Limit Test',
+            'description': '',
+            'race': race.id,
+            'starting_year': 2400,
+            'map_size_x': 128,
+            'map_size_y': 128,
+            'num_stars': 50,
+            'systems': 'on',
+            'improved_star_names': '',
+            'public': '',
+            'joinable': '',
+            'turn_scheme': 'QUORUM',
+            'years_per_turn': 1,
+            'research_cost_multiplier': 1.0,
+            'warp_speed_multiplier': 1.0,
+            'random_events': '',
+            'anomalies_enabled': 'on',
+            'anomaly_spawn_rate': 'NORMAL',
+            'no_scanners': '',
+            'max_starting_tech_level': 5,
+            'invitations': '',
+            'ai_module_count_micromanager': 2,
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('ai_module_count_micromanager', form.errors)
+
+    def test_create_game_can_add_ai_players_by_module(self):
+        race = get_default_race()
+        race.public = True
+        race.save(update_fields=['public'])
+        self._set_server_setting('ai_max_per_game', 4, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 6, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_micromanager_enabled', 'True', 'Enable AI module: micromanager')
+        self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
+
+        response = self.client.post(
+            reverse('dj4xol:create_game'),
+            {
+                'name': 'AI Enabled Match',
+                'description': '',
+                'race': race.id,
+                'starting_year': 2400,
+                'map_size_x': 128,
+                'map_size_y': 128,
+                'num_stars': 60,
+                'clusters': '',
+                'spiral_arms': '',
+                'systems': '',
+                'improved_star_names': '',
+                'public': '',
+                'joinable': 'on',
+                'join_open_years': '',
+                'max_players': '',
+                'turn_scheme': 'QUORUM',
+                'years_per_turn': 1,
+                'research_cost_multiplier': 1.0,
+                'warp_speed_multiplier': 1.0,
+                'random_events': '',
+                'anomalies_enabled': 'on',
+                'anomaly_spawn_rate': 'NORMAL',
+                'no_scanners': '',
+                'max_starting_tech_level': 5,
+                'invitations': '',
+                'ai_module_count_micromanager': 1,
+                'ai_module_count_idle': 2,
+            },
+            follow=False,
+        )
+        self.assertEqual(response.status_code, 302)
+        game = Game.objects.get(name='AI Enabled Match')
+        players = list(game.players.order_by('id'))
+        self.assertEqual(len(players), 4)
+        human_players = [p for p in players if not p.is_ai]
+        ai_players = [p for p in players if p.is_ai]
+        self.assertEqual(len(human_players), 1)
+        self.assertEqual(len(ai_players), 3)
+        self.assertEqual(
+            sorted(p.ai_module for p in ai_players),
+            ['idle', 'idle', 'micromanager'],
+        )
+        self.assertTrue(all(p.account_id is None for p in ai_players))
 
 
 class TestRenameObjectView(TestCase):

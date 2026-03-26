@@ -13012,6 +13012,30 @@ class TestHomeworldLossAndDerelicts(TestCase):
         player2.save(update_fields=['turned_in'])
         self.assertTrue(GameTurn(game).check_quorum())
 
+    def test_quorum_auto_turns_in_ai_players(self):
+        game = default_game(stars=8)
+        player = game.players.first()
+        player.turned_in = True
+        player.save(update_fields=['turned_in'])
+        race = get_default_race()
+        ai_player = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='idle',
+        )
+        self.assertIsNotNone(ai_player)
+        ai_player.turned_in = False
+        ai_player.ai_last_checkin_year = None
+        ai_player.save(update_fields=['turned_in', 'ai_last_checkin_year'])
+
+        turn = GameTurn(game)
+        self.assertTrue(turn.check_quorum())
+        ai_player.refresh_from_db()
+        self.assertTrue(ai_player.turned_in)
+        self.assertEqual(ai_player.ai_last_checkin_year, game.year)
+
     def test_derelict_fleet_claimed_on_encounter(self):
         game, player, _ = self._make_two_player_game()
         x, y = self._find_empty_location(game)

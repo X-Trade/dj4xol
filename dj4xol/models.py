@@ -869,7 +869,12 @@ class Fleet(AbstractMapObject):
     @property
     def owner_display_name(self):
         if self.player_id:
-            alias = self.player.account.alias if getattr(self.player, 'account', None) else 'Unknown'
+            if getattr(self.player, 'account', None):
+                alias = self.player.account.alias
+            elif bool(getattr(self.player, 'is_ai', False)):
+                alias = 'AI'
+            else:
+                alias = 'Unknown'
             return '%s (%s)' % (self.player.name, alias)
         return "Abandoned"
 
@@ -1089,6 +1094,9 @@ class Player(AbstractGameObject, HabitabilityMixin):
         choices=STANCE_CHOICES,
         default='NEUTRAL',
     )
+    is_ai = models.BooleanField(default=False)
+    ai_module = models.CharField(max_length=32, blank=True, default='')
+    ai_last_checkin_year = models.IntegerField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
         update_fields = kwargs.get('update_fields')

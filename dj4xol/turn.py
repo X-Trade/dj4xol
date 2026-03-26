@@ -148,6 +148,7 @@ from .micromanager_rules import (
     remaining_queue_requirements,
     plan_micromanager_orders,
 )
+from .ai_players import get_ai_check_in_turns, player_ai_administration_tier
 from .fleet_thumbnails import choose_fleet_thumbnail
 from .chance_rules import (
     apply_roll_bend,
@@ -499,6 +500,7 @@ class GameTurn():
             raise Exception("Turn generation already in progress")
         if not self.game.players.exists():
             raise Exception("cannot generate turn for game with no players")
+        self._update_ai_checkin_state(auto_turn_in=False)
 
         self.game.is_generating = True
         self.game.save(update_fields=['is_generating'])
@@ -2496,10 +2498,30 @@ class GameTurn():
             self._scanner_sources_by_player_id[player.id] = sources
         return position_in_scanner_range(x, y, sources, range_key='advanced')
 
+    def _update_ai_checkin_state(self, auto_turn_in=False):
+        """Refresh AI check-in bookkeeping and optional quorum auto-ready state."""
+        interval = max(1, int(get_ai_check_in_turns() or 1))
+        current_year = int(self.game.year or 0)
+        for player in self.game.players.filter(defeated=False, is_ai=True):
+            update_fields = []
+            if auto_turn_in and not bool(getattr(player, 'turned_in', False)):
+                player.turned_in = True
+                update_fields.append('turned_in')
+            last_checkin = getattr(player, 'ai_last_checkin_year', None)
+            if (
+                last_checkin is None or
+                (current_year - int(last_checkin or 0)) >= interval
+            ):
+                player.ai_last_checkin_year = current_year
+                update_fields.append('ai_last_checkin_year')
+            if update_fields:
+                player.save(update_fields=update_fields)
+
     def check_quorum(self):
         """Check if all players have turned in. Returns True if quorum met."""
         if self.game.turn_scheme != 'QUORUM':
             return False
+        self._update_ai_checkin_state(auto_turn_in=True)
         total = self.game.players.filter(defeated=False).count()
         turned_in = self.game.players.filter(turned_in=True, defeated=False).count()
         return total > 0 and turned_in == total
@@ -7304,11 +7326,15 @@ class GameTurn():
 
         profile = get_player_administration_profile(star.player)
         tier = int(profile.get('level', 0) or 0)
+        ai_tier = int(player_ai_administration_tier(star.player) or 0)
+        if ai_tier > tier:
+            tier = ai_tier
+        admin_active = bool(getattr(star, 'has_administration', False) or ai_tier > 0)
         micromanager_orders = list(star.production_orders.filter(
             added_by_micromanager=True
         ).order_by('position', 'id'))
 
-        if tier <= 0 or not bool(getattr(star, 'has_administration', False)):
+        if tier <= 0 or not admin_active:
             for order in micromanager_orders:
                 if self._order_has_progress(order):
                     continue
@@ -7858,10 +7884,15 @@ class GameTurn():
         from .models import Fleet
 
         player = getattr(star, 'player', None)
-        if not player or not bool(getattr(star, 'has_administration', False)):
+        if not player:
             return
         profile = get_player_administration_profile(player)
         tier = int(profile.get('level', 0) or 0)
+        ai_tier = int(player_ai_administration_tier(player) or 0)
+        if ai_tier > tier:
+            tier = ai_tier
+        if not bool(getattr(star, 'has_administration', False)) and ai_tier <= 0:
+            return
         if tier < MICROMANAGER_FLEET_TIER:
             return
 

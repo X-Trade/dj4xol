@@ -99,6 +99,26 @@ class testGameFactory(TestCase):
         self.assertEqual(game.fleets.count(), 10)
         self.assertEqual(game.owner, self.accounts[0])
 
+    def test_join_player_allows_multiple_ai_players_without_account(self):
+        gf = GameFactory()
+        gf.set_map_size(150, 150)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(8)
+        game = gf.save()
+
+        ai_one = gf.join_player(None, self.races[0], invited=True, is_ai=True, ai_module='micromanager')
+        ai_two = gf.join_player(None, self.races[1], invited=True, is_ai=True, ai_module='idle')
+
+        self.assertIsNotNone(ai_one)
+        self.assertIsNotNone(ai_two)
+        self.assertTrue(ai_one.is_ai)
+        self.assertTrue(ai_two.is_ai)
+        self.assertEqual(ai_one.ai_module, 'micromanager')
+        self.assertEqual(ai_two.ai_module, 'idle')
+        self.assertIsNone(ai_one.account_id)
+        self.assertIsNone(ai_two.account_id)
+        self.assertEqual(game.players.filter(is_ai=True).count(), 2)
+
     def test_join_player_sets_homeworld_population(self):
         self.races[0].starting_colonists = 5
         self.races[0].save()

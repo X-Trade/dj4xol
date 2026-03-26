@@ -23,6 +23,11 @@ from .models import (
 )
 from .name_rules import validate_non_reserved_identity_name, validate_safe_public_text
 from .research import get_global_research_max_level, get_starting_tech_balance_cost
+from .ai_players import (
+    get_create_game_ai_capacity,
+    get_enabled_ai_modules,
+    get_ai_max_per_game,
+)
 
 
 def _race_queryset_for_account(account):
@@ -428,7 +433,32 @@ class NewGameForm(forms.Form):
 
     def __init__(self, account, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.order_fields([
+        self._ai_modules = list(get_enabled_ai_modules())
+        self._ai_capacity = int(get_create_game_ai_capacity() or 0)
+        self._ai_module_field_names = []
+        if self._ai_capacity > 0:
+            for module in self._ai_modules:
+                code = str(module.get('code') or '').strip().lower()
+                if not code:
+                    continue
+                field_name = self._ai_module_field_name(code)
+                label = 'AI Players (%s)' % module.get('label', code.title())
+                help_bits = [
+                    module.get('description', ''),
+                    'Per-game cap: %s.' % int(get_ai_max_per_game() or 0),
+                    'Remaining server cap: %s.' % int(get_create_game_ai_capacity() or 0),
+                ]
+                self.fields[field_name] = forms.IntegerField(
+                    label=label,
+                    min_value=0,
+                    max_value=self._ai_capacity,
+                    required=False,
+                    initial=0,
+                    help_text=' '.join(bit for bit in help_bits if bit).strip(),
+                )
+                self._ai_module_field_names.append(field_name)
+
+        ordered = [
             'name',
             'description',
             'race',
@@ -444,6 +474,9 @@ class NewGameForm(forms.Form):
             'joinable',
             'join_open_years',
             'max_players',
+        ]
+        ordered.extend(self._ai_module_field_names)
+        ordered.extend([
             'turn_scheme',
             'years_per_turn',
             'research_cost_multiplier',
@@ -455,6 +488,7 @@ class NewGameForm(forms.Form):
             'max_starting_tech_level',
             'invitations',
         ])
+        self.order_fields(ordered)
         self.fields['max_starting_tech_level'].widget.attrs['max'] = str(
             get_global_research_max_level()
         )
@@ -489,6 +523,47 @@ class NewGameForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
+        max_per_game = int(get_ai_max_per_game() or 0)
+        remaining_server = int(get_create_game_ai_capacity() or 0)
+        ai_cap = max(0, min(max_per_game, remaining_server))
+        ai_total = 0
+        for field_name in list(self._ai_module_field_names):
+            try:
+                count = int(cleaned.get(field_name) or 0)
+            except (TypeError, ValueError):
+                count = 0
+            if count < 0:
+                count = 0
+            cleaned[field_name] = count
+            ai_total += count
+
+        if ai_total > ai_cap:
+            self.add_error(
+                None,
+                (
+                    'Requested %s AI player%s but only %s slot%s are available '
+                    '(max per game %s; remaining server capacity %s).'
+                ) % (
+                    ai_total,
+                    '' if ai_total == 1 else 's',
+                    ai_cap,
+                    '' if ai_cap == 1 else 's',
+                    max_per_game,
+                    remaining_server,
+                ),
+            )
+        max_players = cleaned.get('max_players')
+        if max_players not in (None, ''):
+            try:
+                max_players_int = int(max_players)
+            except (TypeError, ValueError):
+                max_players_int = None
+            if max_players_int is not None and ai_total + 1 > max_players_int:
+                self.add_error(
+                    'max_players',
+                    'Max Players must allow at least one human plus selected AI players.',
+                )
+
         if cleaned.get('clusters') and cleaned.get('spiral_arms'):
             self.add_error('clusters', 'Clusters cannot be combined with spiral arm galaxy generation.')
             self.add_error('spiral_arms', 'Spiral arm galaxy generation cannot be combined with clusters.')
@@ -506,6 +581,27 @@ class NewGameForm(forms.Form):
                 continue
             result.append(('email' if '@' in item else 'username', item))
         return result
+
+    @staticmethod
+    def _ai_module_field_name(code):
+        return 'ai_module_count_%s' % str(code or '').strip().lower()
+
+    def parse_ai_module_allocations(self):
+        """Return expanded AI module allocations for this game request."""
+        allocations = []
+        for module in list(self._ai_modules or []):
+            code = str(module.get('code') or '').strip().lower()
+            if not code:
+                continue
+            field_name = self._ai_module_field_name(code)
+            try:
+                count = int(self.cleaned_data.get(field_name) or 0)
+            except (TypeError, ValueError):
+                count = 0
+            if count <= 0:
+                continue
+            allocations.extend([code] * count)
+        return allocations
 
 
 class ServerSettingsForm(forms.Form):
@@ -529,6 +625,13 @@ class ServerSettingsForm(forms.Form):
         ]),
         ('AI Integration', [
             'enable_gpt',
+            'ai_max_per_game',
+            'ai_max_per_server',
+            'ai_check_in_turns',
+            'ai_module_micromanager_enabled',
+            'ai_module_idle_enabled',
+            'ai_module_micromanager_config',
+            'ai_module_idle_config',
         ]),
         ('Profanity Filter', [
             'enable_profanity_filter',
@@ -595,6 +698,51 @@ class ServerSettingsForm(forms.Form):
         label="Enable GPT",
         required=False,
     )
+    ai_max_per_game = forms.IntegerField(
+        label='Max AIs per Game',
+        required=False,
+        min_value=0,
+        initial=0,
+        help_text='Maximum AI players that can be configured in a single game.',
+    )
+    ai_max_per_server = forms.IntegerField(
+        label='Max AIs per Server',
+        required=False,
+        min_value=0,
+        initial=0,
+        help_text='Maximum active AI players allowed across all non-ended games.',
+    )
+    ai_check_in_turns = forms.IntegerField(
+        label='AIs Check In Every X Turns',
+        required=False,
+        min_value=1,
+        initial=1,
+        help_text='AI players auto-ready each turn; this value controls decision refresh cadence tracking.',
+    )
+    ai_module_micromanager_enabled = forms.BooleanField(
+        label='Enable AI Module: Micromanager',
+        required=False,
+        initial=True,
+        help_text='Max-tier Administration automation on all AI colonies.',
+    )
+    ai_module_idle_enabled = forms.BooleanField(
+        label='Enable AI Module: Idle',
+        required=False,
+        initial=True,
+        help_text='Tier-3 Administration automation on all AI colonies.',
+    )
+    ai_module_micromanager_config = forms.CharField(
+        label='Micromanager Module Settings',
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 2}),
+        help_text='Optional per-module settings (free-form; JSON recommended).',
+    )
+    ai_module_idle_config = forms.CharField(
+        label='Idle Module Settings',
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 2}),
+        help_text='Optional per-module settings (free-form; JSON recommended).',
+    )
     enable_debug_actions = forms.BooleanField(
         label="Enable Debug Actions",
         required=False,
@@ -647,6 +795,38 @@ class ServerSettingsForm(forms.Form):
             'default': 2,
         },
         'enable_gpt': {'description': 'Enable GPT API usage', 'boolean': True},
+        'ai_max_per_game': {
+            'description': 'Maximum AI players per game',
+            'default': 0,
+        },
+        'ai_max_per_server': {
+            'description': 'Maximum active AI players per server',
+            'default': 0,
+        },
+        'ai_check_in_turns': {
+            'description': 'AI check-in cadence in turns',
+            'default': 1,
+        },
+        'ai_module_micromanager_enabled': {
+            'description': 'Enable AI module: micromanager',
+            'boolean': True,
+            'default': True,
+        },
+        'ai_module_idle_enabled': {
+            'description': 'Enable AI module: idle',
+            'boolean': True,
+            'default': True,
+        },
+        'ai_module_micromanager_config': {
+            'description': 'AI module config: micromanager',
+            'use_long_value': True,
+            'default': '',
+        },
+        'ai_module_idle_config': {
+            'description': 'AI module config: idle',
+            'use_long_value': True,
+            'default': '',
+        },
         'enable_debug_actions': {'description': 'Enable debug actions in game panels', 'boolean': True},
         'enable_play_api': {'description': 'Enable web Play CLI API', 'boolean': True},
         'enable_profanity_filter': {'description': 'Enable profanity filter', 'boolean': True, 'default': True},
@@ -659,9 +839,13 @@ class ServerSettingsForm(forms.Form):
         initial = {}
         for key, meta in cls.SETTINGS_META.items():
             setting = ServerSettings.objects.filter(key=key).first()
-            if setting is None and meta.get('boolean'):
-                initial[key] = bool(meta.get('default', False))
-                continue
+            if setting is None:
+                if meta.get('boolean'):
+                    initial[key] = bool(meta.get('default', False))
+                    continue
+                if 'default' in meta:
+                    initial[key] = meta.get('default')
+                    continue
             value = setting.long_value or setting.value if setting else ''
             if meta.get('boolean'):
                 initial[key] = str(value).strip().lower() in ('1', 'true', 'yes', 'on')
@@ -683,6 +867,12 @@ class ServerSettingsForm(forms.Form):
     def save(self, user=None):
         for key, meta in self.SETTINGS_META.items():
             raw_value = self.cleaned_data.get(key)
+            if (
+                raw_value in (None, '') and
+                not meta.get('boolean') and
+                'default' in meta
+            ):
+                raw_value = meta.get('default')
             if meta.get('boolean'):
                 stored = 'True' if raw_value else 'False'
             else:
