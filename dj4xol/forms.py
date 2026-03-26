@@ -483,7 +483,10 @@ class NewGameForm(forms.Form):
                 widget=forms.Textarea(attrs={'rows': 6}),
                 help_text=(
                     'JSON list of AI slot entries. In JavaScript-enabled browsers this '
-                    'is replaced with a slot editor table.'
+                    'is replaced with a slot editor table. Use '
+                    '"race_id": "__RANDOM__" for a generated fair random race and '
+                    '"default_diplomatic_stance": "RANDOM" to randomize stance '
+                    '(Hostile to Warm).'
                 ),
             )
             ordered.extend(['ai_player_count', 'ai_player_config_json'])

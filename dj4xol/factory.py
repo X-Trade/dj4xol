@@ -999,9 +999,18 @@ class GameFactory():
                     star.ironium_inventory += base_alloc[0]
                     star.boranium_inventory += base_alloc[1]
                     star.germanium_inventory += base_alloc[2]
-            # Override star name if player has a homeworld name set
-            if player.homeworld_name:
-                star.name = player.homeworld_name
+            desired_homeworld_name = str(getattr(player, 'homeworld_name', '') or '').strip()
+            # Human players can override homeworld names only when not colliding with
+            # another joined player's homeworld name. AI players always keep generated names.
+            if (
+                desired_homeworld_name and
+                not bool(getattr(player, 'is_ai', False)) and
+                not self.game.players.exclude(pk=player.pk).filter(
+                    homeworld__isnull=False,
+                    homeworld__name__iexact=desired_homeworld_name,
+                ).exists()
+            ):
+                star.name = desired_homeworld_name
         star.save()
         if is_homeworld:
             player.homeworld = star

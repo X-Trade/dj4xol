@@ -312,6 +312,50 @@ class testGameFactory(TestCase):
         # Name should be one of the original generated names
         self.assertIn(player.homeworld.name, original_names)
 
+    def test_homeworld_name_duplicate_uses_generated_name_for_later_player(self):
+        shared_name = 'Shared Home'
+        self.races[0].homeworld_name = shared_name
+        self.races[1].homeworld_name = shared_name
+        self.races[0].save(update_fields=['homeworld_name'])
+        self.races[1].save(update_fields=['homeworld_name'])
+
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.game.joinable = True
+        gf.create_stars(8)
+        gf.save()
+        original_names = [s.name for s in gf.stars]
+
+        first = gf.join_player(self.accounts[0], self.races[0])
+        second = gf.join_player(self.accounts[1], self.races[1])
+
+        self.assertEqual(first.homeworld.name, shared_name)
+        self.assertNotEqual(second.homeworld.name, shared_name)
+        self.assertIn(second.homeworld.name, original_names)
+
+    def test_ai_homeworld_name_override_is_not_applied(self):
+        self.races[0].homeworld_name = 'AI Prime'
+        self.races[0].save(update_fields=['homeworld_name'])
+
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(8)
+        gf.save()
+        original_names = [s.name for s in gf.stars]
+
+        ai_player = gf.join_player(
+            None,
+            self.races[0],
+            invited=True,
+            is_ai=True,
+            ai_module='idle',
+        )
+        self.assertIsNotNone(ai_player)
+        self.assertNotEqual(ai_player.homeworld.name, 'AI Prime')
+        self.assertIn(ai_player.homeworld.name, original_names)
+
     def test_systems_adds_companion_stars(self):
         """Systems option should add companion stars at same coordinates."""
         gf = GameFactory()
