@@ -1790,6 +1790,80 @@ class AdministrationAutomationTest(TestCase):
         self.assertIsNotNone(order)
         self.assertEqual(order.quantity, 1)
 
+    def test_ai_micromanager_level_five_not_downgraded_by_admin_level_one_unlock(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self._create_administration_tech(1, 1)
+        self.star.has_administration = False
+        self.star.colonists = 12_000
+        self.star.mines = 0
+        self.star.factories = 2
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 1_000
+        self.star.boranium_inventory = 1_000
+        self.star.germanium_inventory = 1_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        self.player.fleets.all().delete()
+        self.star.production_orders.all().delete()
+
+        turn = GameTurn(self.game)
+        turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        order = self.star.production_orders.filter(
+            order_type='BUILD_FLEET',
+            added_by_micromanager=True,
+        ).first()
+        self.assertIsNotNone(order)
+        self.assertEqual(order.quantity, 1)
+
+    def test_ai_micromanager_locked_terraform_order_is_not_executed(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.gravity = 0.25
+        self.star.temperature = self.player.temperature_center
+        self.star.radiation = self.player.radiation_center
+        self.star.colonists = 200_000
+        self.star.factories = 0
+        self.star.mines = 0
+        self.star.shipyards = 0
+        self.star.production_orders.all().delete()
+        self.star.save(update_fields=[
+            'has_administration',
+            'gravity',
+            'temperature',
+            'radiation',
+            'colonists',
+            'factories',
+            'mines',
+            'shipyards',
+        ])
+        initial_gravity = float(self.star.gravity)
+
+        order = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='TERRAFORM_GRAVITY',
+            quantity=1,
+            position=1,
+            added_by_micromanager=True,
+        )
+
+        GameTurn(self.game).production()
+
+        self.star.refresh_from_db()
+        self.assertAlmostEqual(float(self.star.gravity), initial_gravity)
+        self.assertFalse(
+            ProductionOrder.objects.filter(id=order.id).exists()
+        )
+
     def test_ai_micromanager_level_five_populates_production_queue_without_built_administration(self):
         self.player.is_ai = True
         self.player.ai_module = 'micromanager'

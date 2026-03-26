@@ -2723,6 +2723,79 @@ class GameTurn():
         self._player_tech_effects_by_id[player_id] = effects
         return effects
 
+    def _effective_administration_tier(
+        self,
+        player,
+        administration_profile=None,
+    ):
+        """Return effective automation tier (player-level AI tier is a floor)."""
+        if not player:
+            return 0, 0
+        if administration_profile is None:
+            administration_profile = self._get_player_administration_profile_cached(
+                player
+            )
+        research_tier = int(administration_profile.get('level', 0) or 0)
+        ai_tier = int(player_ai_administration_tier(player) or 0)
+        return max(research_tier, ai_tier), ai_tier
+
+    def _unlocked_production_order_types_for_star(
+        self,
+        player,
+        star,
+        terraform_profile=None,
+        administration_profile=None,
+        dyson_profile=None,
+    ):
+        """Return currently unlocked production order types for this colony."""
+        unlocked = {
+            'BUILD_MINE',
+            'BUILD_FACTORY',
+            'BUILD_LAB',
+            'BUILD_DEFENSE',
+            'BUILD_SHIPYARD',
+        }
+        if not player or not star:
+            return unlocked
+
+        race_type = getattr(player, 'race_type', None)
+        if bool(getattr(race_type, 'is_mechanical', False)):
+            unlocked.update({'BUILD_COLONISTS_1K', 'BUILD_COLONISTS_1M'})
+
+        if int(getattr(star, 'shipyards', 0) or 0) > 0:
+            unlocked.add('BUILD_FLEET')
+
+        if terraform_profile is None:
+            terraform_profile = self._get_player_terraforming_profile_cached(player)
+        if float(terraform_profile.get('rate', 0.0) or 0.0) > 0.0:
+            unlocked.update({
+                'TERRAFORM_GRAVITY',
+                'TERRAFORM_TEMPERATURE',
+                'TERRAFORM_RADIATION',
+            })
+
+        if administration_profile is None:
+            administration_profile = self._get_player_administration_profile_cached(
+                player
+            )
+        if (
+            int(administration_profile.get('level', 0) or 0) > 0 and
+            not bool(getattr(star, 'has_administration', False))
+        ):
+            unlocked.add(ADMINISTRATION_ORDER_TYPE)
+        if bool(getattr(star, 'has_administration', False)):
+            unlocked.add(REMOVE_ADMINISTRATION_ORDER_TYPE)
+
+        if dyson_profile is None:
+            dyson_profile = self._get_player_dyson_sphere_profile_cached(player)
+        if (
+            bool(dyson_profile.get('unlocked')) and
+            not bool(getattr(star, 'has_dyson_sphere', False))
+        ):
+            unlocked.add(DYSON_SPHERE_ORDER_TYPE)
+
+        return unlocked
+
     def _update_ai_checkin_state(self, auto_turn_in=False):
         """Refresh AI check-in bookkeeping and optional quorum auto-ready state."""
         interval = max(1, int(get_ai_check_in_turns() or 1))
@@ -7155,7 +7228,14 @@ class GameTurn():
             blocked = False
             fleets_built_this_turn = 0  # Track fleets built for shipyard availability
             shipyard_blocked_message_sent = False  # Only send once per star
-            ai_tier = int(player_ai_administration_tier(star.player) or 0)
+            administration_profile = self._get_player_administration_profile_cached(
+                star.player
+            )
+            dyson_profile = self._get_player_dyson_sphere_profile_cached(star.player)
+            _tier, ai_tier = self._effective_administration_tier(
+                star.player,
+                administration_profile=administration_profile,
+            )
             admin_active_for_automation = bool(
                 getattr(star, 'has_administration', False) or ai_tier > 0
             )
@@ -7179,6 +7259,20 @@ class GameTurn():
                 ):
                     order.delete()
                     continue
+                if order.added_by_micromanager:
+                    unlocked_order_types = self._unlocked_production_order_types_for_star(
+                        star.player,
+                        star,
+                        terraform_profile=terraform_profile,
+                        administration_profile=administration_profile,
+                        dyson_profile=dyson_profile,
+                    )
+                    if order.order_type not in unlocked_order_types:
+                        if self._order_has_progress(order):
+                            blocked = True
+                            break
+                        order.delete()
+                        continue
 
                 if (
                     order.order_type == REMOVE_ADMINISTRATION_ORDER_TYPE and
@@ -7660,11 +7754,18 @@ class GameTurn():
         from .models import ProductionOrder
 
         profile = self._get_player_administration_profile_cached(star.player)
-        tier = int(profile.get('level', 0) or 0)
-        ai_tier = int(player_ai_administration_tier(star.player) or 0)
-        if ai_tier > tier:
-            tier = ai_tier
+        dyson_profile = self._get_player_dyson_sphere_profile_cached(star.player)
+        tier, ai_tier = self._effective_administration_tier(
+            star.player,
+            administration_profile=profile,
+        )
         admin_active = bool(getattr(star, 'has_administration', False) or ai_tier > 0)
+        unlocked_order_types = self._unlocked_production_order_types_for_star(
+            star.player,
+            star,
+            administration_profile=profile,
+            dyson_profile=dyson_profile,
+        )
         micromanager_orders = list(star.production_orders.filter(
             added_by_micromanager=True
         ).order_by('position', 'id'))
@@ -7688,6 +7789,12 @@ class GameTurn():
         preserved = []
         editable = []
         for order in micromanager_orders:
+            if order.order_type not in unlocked_order_types:
+                if self._order_has_progress(order):
+                    preserved.append(order)
+                    continue
+                order.delete()
+                continue
             if self._order_has_progress(order):
                 preserved.append(order)
                 continue
@@ -7697,6 +7804,8 @@ class GameTurn():
 
         existing_types = []
         for order in preserved:
+            if order.order_type not in unlocked_order_types:
+                continue
             remaining = max(
                 0,
                 int(getattr(order, 'quantity', 0) or 0) -
@@ -7706,7 +7815,6 @@ class GameTurn():
                 existing_types.append(order.order_type)
         terraform_profile = self._get_player_terraforming_profile_cached(star.player)
         terraform_rate = float(terraform_profile.get('rate', 0.0) or 0.0)
-        dyson_profile = self._get_player_dyson_sphere_profile_cached(star.player)
         queue_orders = list(star.production_orders.exclude(
             id__in=[order.id for order in editable]
         ))
@@ -7729,6 +7837,10 @@ class GameTurn():
             ),
             administration_active=admin_active,
         )
+        planned = [
+            order_type for order_type in planned
+            if order_type in unlocked_order_types
+        ]
         planned_runs = collapse_micromanager_order_totals(planned)
         if preserved and planned_runs:
             preserved_by_type = {}
@@ -8550,10 +8662,10 @@ class GameTurn():
         if not player:
             return
         profile = self._get_player_administration_profile_cached(player)
-        tier = int(profile.get('level', 0) or 0)
-        ai_tier = int(player_ai_administration_tier(player) or 0)
-        if ai_tier > tier:
-            tier = ai_tier
+        tier, ai_tier = self._effective_administration_tier(
+            player,
+            administration_profile=profile,
+        )
         if not bool(getattr(star, 'has_administration', False)) and ai_tier <= 0:
             return
         if tier < MICROMANAGER_FLEET_TIER:
