@@ -785,6 +785,133 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertIn('BUILD_FACTORY', planned)
 
+    def test_tier_three_mechanical_does_not_queue_colonist_growth_orders(self):
+        self._create_administration_tech(3, 3)
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 30
+        self.star.factories = 30
+        self.star.labs = 15
+        self.star.defenses = 15
+        self.star.shipyards = 0
+        self.player.race_type.is_mechanical = True
+        self.player.race_type.save(update_fields=['is_mechanical'])
+        self.star.ironium_inventory = 500_000
+        self.star.boranium_inventory = 500_000
+        self.star.germanium_inventory = 500_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            3,
+            fleets_in_orbit=0,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertNotIn('BUILD_COLONISTS_1K', planned)
+        self.assertNotIn('BUILD_COLONISTS_1M', planned)
+
+    def test_tier_four_mechanical_can_queue_colonist_growth_from_45_percent(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 20
+        self.star.factories = 20
+        self.star.labs = 5
+        self.star.defenses = 5
+        self.star.shipyards = 0
+        self.player.race_type.is_mechanical = True
+        self.player.race_type.save(update_fields=['is_mechanical'])
+        self.star.ironium_inventory = 500
+        self.star.boranium_inventory = 500
+        self.star.germanium_inventory = 500
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            4,
+            fleets_in_orbit=0,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertIn('BUILD_COLONISTS_1K', planned)
+
+    def test_tier_four_mechanical_1k_growth_ignores_planning_resource_caps(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 20
+        self.star.factories = 20
+        self.star.labs = 5
+        self.star.defenses = 5
+        self.star.shipyards = 0
+        self.player.race_type.is_mechanical = True
+        self.player.race_type.save(update_fields=['is_mechanical'])
+        self.star.ironium_inventory = 500
+        self.star.boranium_inventory = 500
+        self.star.germanium_inventory = 500
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            4,
+            fleets_in_orbit=0,
+            cost_map=get_player_production_costs(self.player),
+            queue_requirements={
+                'bp': 0,
+                'ironium': 10_000,
+                'boranium': 0,
+                'germanium': 0,
+                'resource_x': 0,
+                'resource_y': 0,
+                'resource_z': 0,
+            },
+        )
+
+        self.assertIn('BUILD_COLONISTS_1K', planned)
+
+    def test_tier_four_mechanical_prioritises_colonists_at_90_percent_employment(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 30
+        self.star.factories = 30
+        self.star.labs = 15
+        self.star.defenses = 15
+        self.star.shipyards = 0
+        self.player.race_type.is_mechanical = True
+        self.player.race_type.save(update_fields=['is_mechanical'])
+        self.star.ironium_inventory = 300_000
+        self.star.boranium_inventory = 120_000
+        self.star.germanium_inventory = 120_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            4,
+            fleets_in_orbit=0,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertTrue(planned)
+        self.assertEqual(planned[0], 'BUILD_COLONISTS_1M')
+
     def test_micromanager_can_spend_surplus_after_growth_reserve(self):
         self._create_administration_tech(2, 2)
         self.star.has_administration = True

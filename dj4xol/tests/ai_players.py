@@ -323,6 +323,285 @@ class TestAIPlayerModules(TestCase):
         contract.refresh_from_db()
         self.assertEqual(contract.status, DiplomaticContract.STATUS_DECLINED)
 
+    def test_micromanager_ai_highly_accepts_pure_fleet_gift(self):
+        game = default_game(stars=8)
+        sender = game.players.first()
+        ai_player = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module=AI_MODULE_MICROMANAGER,
+        )
+        offered_fleet = sender.fleets.first()
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 20,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
+            offer_fleet=offered_fleet,
+        )
+
+        with patch('dj4xol.ai_players.random.random', return_value=0.50):
+            apply_ai_module_turn(ai_player, game)
+
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+
+    def test_micromanager_ai_tech_gift_higher_level_more_likely(self):
+        game = default_game(stars=8)
+        sender = game.players.first()
+        ai_player = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module=AI_MODULE_MICROMANAGER,
+        )
+        category, _created = ResearchCategory.objects.get_or_create(
+            code='AI_GIFT',
+            defaults={'name': 'AI Gift', 'enabled': True, 'display_order': 510},
+        )
+        baseline = Technology.objects.create(
+            category=category,
+            level=2,
+            name='Gift Baseline',
+            tech_type='ELECTRONICS',
+            enabled=True,
+            params_json='{}',
+        )
+        low_offer = Technology.objects.create(
+            category=category,
+            level=3,
+            name='Gift Low',
+            tech_type='ELECTRONICS',
+            enabled=True,
+            params_json='{}',
+        )
+        high_offer = Technology.objects.create(
+            category=category,
+            level=6,
+            name='Gift High',
+            tech_type='ELECTRONICS',
+            enabled=True,
+            params_json='{}',
+        )
+        PlayerTechnologyGrant.objects.create(player=ai_player, technology=baseline)
+        PlayerTechnologyGrant.objects.create(player=sender, technology=low_offer)
+        PlayerTechnologyGrant.objects.create(player=sender, technology=high_offer)
+
+        low_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 20,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=low_offer,
+        )
+        with patch('dj4xol.ai_players.random.random', return_value=0.82):
+            apply_ai_module_turn(ai_player, game)
+        low_contract.refresh_from_db()
+        self.assertEqual(low_contract.status, DiplomaticContract.STATUS_DECLINED)
+
+        high_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 20,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=high_offer,
+        )
+        with patch('dj4xol.ai_players.random.random', return_value=0.60):
+            apply_ai_module_turn(ai_player, game)
+        high_contract.refresh_from_db()
+        self.assertEqual(high_contract.status, DiplomaticContract.STATUS_FULFILLED)
+
+    def test_micromanager_ai_habitable_colony_gift_uses_high_acceptance(self):
+        game = default_game(stars=10)
+        sender = game.players.first()
+        ai_player = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module=AI_MODULE_MICROMANAGER,
+        )
+        gift_colony = game.stars.filter(player__isnull=True).exclude(
+            id=sender.homeworld_id
+        ).first()
+        self.assertIsNotNone(gift_colony)
+        gift_colony.player = sender
+        gift_colony.colonists = 25000
+        gift_colony.gravity = ai_player.gravity_center
+        gift_colony.temperature = ai_player.temperature_center
+        gift_colony.radiation = ai_player.radiation_center
+        gift_colony.save(update_fields=[
+            'player', 'colonists', 'gravity', 'temperature', 'radiation',
+        ])
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 20,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_COLONY,
+            offer_star=gift_colony,
+        )
+
+        with patch('dj4xol.ai_players.random.random', return_value=0.61):
+            apply_ai_module_turn(ai_player, game)
+
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+
+    def test_micromanager_ai_multiple_accepted_gifts_raise_stance(self):
+        game = default_game(stars=10)
+        sender = game.players.first()
+        ai_player = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module=AI_MODULE_MICROMANAGER,
+        )
+
+        for _idx in range(2):
+            offered_fleet = sender.fleets.first()
+            contract = DiplomaticContract.objects.create(
+                game=game,
+                sender=sender,
+                recipient=ai_player,
+                status=DiplomaticContract.STATUS_SENT,
+                sent_year=game.year,
+                expires_year=game.year + 20,
+                request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+                offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
+                offer_fleet=offered_fleet,
+            )
+            with patch('dj4xol.ai_players.random.random', return_value=0.10):
+                apply_ai_module_turn(ai_player, game)
+            contract.refresh_from_db()
+            self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+
+        stance_row = PlayerDiplomaticStance.objects.get(
+            player=ai_player,
+            target_player=sender,
+        )
+        self.assertEqual(stance_row.pending_stance, 'WARM')
+
+    def test_micromanager_ai_stance_for_stance_lower_is_more_likely(self):
+        game = default_game(stars=8)
+        sender = game.players.first()
+        ai_player = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module=AI_MODULE_MICROMANAGER,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=ai_player,
+            target_player=sender,
+            stance='WARM',
+            pending_stance='WARM',
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 20,
+            request_clause_type=DiplomaticContract.CLAUSE_STANCE,
+            request_stance='COLD',
+            offer_clause_type=DiplomaticContract.CLAUSE_STANCE,
+            offer_stance='NEUTRAL',
+        )
+
+        with patch('dj4xol.ai_players.random.random', return_value=0.50):
+            apply_ai_module_turn(ai_player, game)
+
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+
+    def test_micromanager_ai_stance_raise_by_one_uses_success_history_weighting(self):
+        game = default_game(stars=8)
+        sender = game.players.first()
+        ai_player = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module=AI_MODULE_MICROMANAGER,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=ai_player,
+            target_player=sender,
+            stance='NEUTRAL',
+            pending_stance='NEUTRAL',
+        )
+
+        first_raise = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 20,
+            request_clause_type=DiplomaticContract.CLAUSE_STANCE,
+            request_stance='WARM',
+            offer_clause_type=DiplomaticContract.CLAUSE_STANCE,
+            offer_stance='NEUTRAL',
+        )
+        with patch('dj4xol.ai_players.random.random', return_value=0.24):
+            apply_ai_module_turn(ai_player, game)
+        first_raise.refresh_from_db()
+        self.assertEqual(first_raise.status, DiplomaticContract.STATUS_DECLINED)
+
+        for year in (game.year, game.year - 10):
+            DiplomaticContract.objects.create(
+                game=game,
+                sender=sender,
+                recipient=ai_player,
+                status=DiplomaticContract.STATUS_FULFILLED,
+                sent_year=year,
+                expires_year=year + 10,
+                accepted_year=year,
+                handled_year=year,
+                fulfilled_year=year,
+                request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+                offer_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            )
+
+        second_raise = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 20,
+            request_clause_type=DiplomaticContract.CLAUSE_STANCE,
+            request_stance='WARM',
+            offer_clause_type=DiplomaticContract.CLAUSE_STANCE,
+            offer_stance='NEUTRAL',
+        )
+        with patch('dj4xol.ai_players.random.random', return_value=0.24):
+            apply_ai_module_turn(ai_player, game)
+        second_raise.refresh_from_db()
+        self.assertEqual(second_raise.status, DiplomaticContract.STATUS_FULFILLED)
+
     def test_server_cap_count_excludes_idle_and_micromanager(self):
         game = default_game(stars=8)
         race = get_default_race()

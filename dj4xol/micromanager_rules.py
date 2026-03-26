@@ -25,6 +25,10 @@ JOB_MAX_RATIO = 0.75
 TIER_BASIC = 1
 TIER_SUPPORT = 2
 TIER_TERRAFORM = 3
+TIER_MECHANICAL_GROWTH = 4
+
+MECHANICAL_GROWTH_EMPLOYMENT_MIN = 45.0
+MECHANICAL_GROWTH_EMPLOYMENT_TOP = 90.0
 
 ADMINISTRATION_ORDER_TYPE = 'BUILD_ADMINISTRATION'
 REMOVE_ADMINISTRATION_ORDER_TYPE = 'REMOVE_ADMINISTRATION'
@@ -414,6 +418,11 @@ def _can_afford_from_budget(cost_map, budget, order_type):
     return True
 
 
+def _ignores_planning_budget_caps(order_type):
+    """Return True when this order should bypass one-year budget gating."""
+    return str(order_type or '').strip().upper() == 'BUILD_COLONISTS_1K'
+
+
 def _spend_budget(cost_map, budget, order_type):
     """Reduce the one-year budget by the positive costs of one order."""
     if not cost_map:
@@ -517,6 +526,22 @@ def _ordered_support_balance_candidates(star):
     ]
 
 
+def _mechanical_growth_candidate_orders(player, star, tier):
+    if int(tier or 0) < TIER_MECHANICAL_GROWTH:
+        return 'none', []
+    race_type = getattr(player, 'race_type', None)
+    if race_type is None or not bool(getattr(race_type, 'is_mechanical', False)):
+        return 'none', []
+    if int(getattr(star, 'planned_colonist_growth_orders', 0) or 0) > 0:
+        return 'none', []
+    employment_pct = float(calculate_staffing_ratio(star) * 100.0)
+    if employment_pct >= MECHANICAL_GROWTH_EMPLOYMENT_TOP:
+        return 'top', ['BUILD_COLONISTS_1M', 'BUILD_COLONISTS_1K']
+    if employment_pct >= MECHANICAL_GROWTH_EMPLOYMENT_MIN:
+        return 'normal', ['BUILD_COLONISTS_1K', 'BUILD_COLONISTS_1M']
+    return 'none', []
+
+
 def get_micromanager_candidate_orders(
     player,
     star,
@@ -558,6 +583,14 @@ def get_micromanager_candidate_orders(
         queue_pressure = _queue_throughput_pressure(star)
         support_balance_candidates = _ordered_support_balance_candidates(star)
     level_one_support_candidates = []
+    growth_priority, growth_candidates = _mechanical_growth_candidate_orders(
+        player,
+        star,
+        tier,
+    )
+    if growth_priority == 'top':
+        for order_type in growth_candidates:
+            append_candidate(order_type)
     if (
         needs_jobs and
         int(tier or 0) >= TIER_TERRAFORM and
@@ -600,6 +633,9 @@ def get_micromanager_candidate_orders(
             append_candidate('BUILD_FACTORY')
         if queue_pressure.get('mines') and mine_room:
             append_candidate('BUILD_MINE')
+        if growth_priority == 'normal':
+            for order_type in growth_candidates:
+                append_candidate(order_type)
 
         if int(tier or 0) >= TIER_SUPPORT:
             if queue_pressure.get('factories'):
@@ -662,6 +698,9 @@ def get_micromanager_candidate_orders(
             for order_type in level_one_support_candidates:
                 append_candidate(order_type)
     else:
+        if growth_priority == 'normal':
+            for order_type in growth_candidates:
+                append_candidate(order_type)
         if queue_pressure.get('mines') and mine_room:
             append_candidate('BUILD_MINE')
         if queue_pressure.get('factories'):
@@ -718,6 +757,7 @@ def _project_star_state(star, queue_requirements=None):
         defenses=int(getattr(star, 'defenses', 0) or 0),
         shipyards=int(getattr(star, 'shipyards', 0) or 0),
         has_dyson_sphere=bool(getattr(star, 'has_dyson_sphere', False)),
+        planned_colonist_growth_orders=0,
         buildpoints_consumed=int(
             getattr(star, 'buildpoints_consumed', 0) or 0
         ),
@@ -782,6 +822,16 @@ def apply_projected_order(
         star_state.has_administration = True
     elif order_type == DYSON_SPHERE_ORDER_TYPE:
         star_state.has_dyson_sphere = True
+    elif order_type == 'BUILD_COLONISTS_1K':
+        star_state.colonists += 1000
+        star_state.planned_colonist_growth_orders = int(
+            getattr(star_state, 'planned_colonist_growth_orders', 0) or 0
+        ) + 1
+    elif order_type == 'BUILD_COLONISTS_1M':
+        star_state.colonists += 1000000
+        star_state.planned_colonist_growth_orders = int(
+            getattr(star_state, 'planned_colonist_growth_orders', 0) or 0
+        ) + 1
     elif order_type == 'TERRAFORM_GRAVITY':
         distance = float(getattr(player, 'gravity_center', 0.0) or 0.0) - star_state.gravity
         star_state.gravity += distance * effective_terraform_rate
@@ -867,7 +917,10 @@ def plan_micromanager_orders(
                     player, projected, candidate
                 ):
                     continue
-            if not _can_afford_from_budget(cost_map, planning_budget, candidate):
+            if (
+                not _ignores_planning_budget_caps(candidate) and
+                not _can_afford_from_budget(cost_map, planning_budget, candidate)
+            ):
                 if (
                     candidate == 'BUILD_SHIPYARD' and
                     _can_complete_within_years(
