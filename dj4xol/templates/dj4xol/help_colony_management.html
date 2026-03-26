@@ -48,6 +48,34 @@
                             Keep at least one shipyard on an important colony. Shipyards are required to build fleets, repair damaged ones,
                             and refuel fleets in orbit.
                         </p>
+                        <h4>Colony Administration</h4>
+                        <p>
+                            <strong>Administration</strong> automates production planning for a colony. If a colony has no Administration built,
+                            no automation runs there.
+                        </p>
+                        <p>
+                            Administration has four tiers. Higher tiers keep lower-tier behavior and add more:
+                        </p>
+                        <ul>
+                            <li><strong>Tier 1 (Basic):</strong> Manages mines, factories, and defenses. It can also add up to one lab and one shipyard when the colony is already in a surplus position.</li>
+                            <li><strong>Tier 2 (Support):</strong> Also manages labs and shipyards, can take over your unstarted repeating infrastructure orders, and aims for a support mix where factories stay roughly double labs and defenses.</li>
+                            <li><strong>Tier 3 (Terraform):</strong> Adds terraforming order planning. If Dyson Sphere tech is unlocked, it can also start planning toward one.</li>
+                            <li><strong>Tier 4 (Logistics):</strong> Keeps Tier 3 production behavior and also dispatches idle fleets for resource logistics between colonies and asteroid fields.</li>
+                        </ul>
+                        <h4>Planning Horizon By Tier</h4>
+                        <p>
+                            Tier 2 can queue shipyards using a longer plan (up to about 5 years ahead). Tier 3+ can plan even longer for Dyson Sphere work (up to about 9 years ahead).
+                        </p>
+                        <h4>Jobs Guardrails</h4>
+                        <p>
+                            Administration plans around jobs-to-population targets: roughly 25% minimum, 50% comfort target, and 75% upper bound.
+                            The 75% cap is strict for adding shipyards and Dyson Spheres. Mines and factories can be treated more flexibly during bootstrap and catch-up phases.
+                        </p>
+                        <h4>Tier 4 Logistics Limits</h4>
+                        <p>
+                            Automatic logistics keeps a local defense reserve before dispatching fleets, pulls missing resources from your colonies first,
+                            then asteroid fields, and can optionally redistribute excess. It is limited to one automatic dispatch per colony per year.
+                        </p>
                         <h4>Staffing Still Matters</h4>
                         <p>
                             Infrastructure also needs colonists to work it. If you move too much population away, output and growth can both suffer.
