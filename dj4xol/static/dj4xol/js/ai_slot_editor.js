@@ -51,9 +51,9 @@
         var selectedRaceId = String(payload.selected_race_id || races[0].id || "");
         var defaultModule = String(modules[0].code || "");
         var defaultStance = String((stances[0] && stances[0].code) || "NEUTRAL");
-        var jsonRow = jsonField.closest("tr");
-        if (jsonRow) {
-            jsonRow.style.display = "none";
+        var jsonWrap = jsonField.closest(".ai-slot-editor-json-wrap");
+        if (jsonWrap) {
+            jsonWrap.style.display = "none";
         } else {
             jsonField.style.display = "none";
         }
@@ -181,9 +181,11 @@
         function renderEditor() {
             host.innerHTML = "";
             if (!slots.length) {
+                host.style.display = "none";
                 syncJsonField();
                 return;
             }
+            host.style.display = "";
 
             var table = document.createElement("table");
             table.className = "ai-slot-editor-table";

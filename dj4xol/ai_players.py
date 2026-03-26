@@ -49,6 +49,8 @@ AI_MODULE_SPECS = {
     },
 }
 
+_STANCE_ORDER = ('HOSTILE', 'COLD', 'NEUTRAL', 'WARM', 'ALLIED')
+
 
 def normalize_ai_module_code(code):
     return str(code or '').strip().lower()
@@ -712,6 +714,289 @@ def _build_openai_state_snapshot(game, player, config):
     return '\n\n'.join(blocks).strip()
 
 
+def _contract_bundle_value_kt(contract):
+    if contract is None:
+        return 0
+    total = 0
+    for key in ('ironium', 'boranium', 'germanium', 'resource_x', 'resource_y', 'resource_z', 'colonists'):
+        total += max(0, int(getattr(contract, 'request_%s' % key, 0) or 0))
+    return int(total)
+
+
+def _fleet_build_value_kt():
+    from .models import PRODUCTION_COSTS
+
+    base = PRODUCTION_COSTS.get('BUILD_FLEET', {}) or {}
+    total = 0
+    for key in ('bp', 'ironium', 'boranium', 'germanium', 'resource_x', 'resource_y', 'resource_z', 'colonists'):
+        total += max(0, int(base.get(key, 0) or 0))
+    return int(total)
+
+
+def _fleet_material_value_kt(fleet):
+    if fleet is None:
+        return 0
+    ship_count = max(0, int(getattr(fleet, 'ship_count', 0) or 0))
+    build_value = _fleet_build_value_kt() * ship_count
+    cargo_value = 0
+    for key in ('ironium', 'boranium', 'germanium', 'resource_x', 'resource_y', 'resource_z', 'colonists'):
+        cargo_value += max(0, int(getattr(fleet, '%s_inventory' % key, 0) or 0))
+    return int(build_value + cargo_value)
+
+
+def _star_material_value_kt(star):
+    if star is None:
+        return 0
+    total = 0
+    for key in ('ironium', 'boranium', 'germanium', 'resource_x', 'resource_y', 'resource_z'):
+        total += max(0, int(getattr(star, '%s_inventory' % key, 0) or 0))
+        total += max(0, int(getattr(star, '%s_yield' % key, 0) or 0)) * 50
+    return int(total)
+
+
+def _contract_offer_value_kt(contract):
+    from .models import DiplomaticContract
+
+    if contract is None:
+        return 0
+    clause = str(getattr(contract, 'offer_clause_type', '') or '')
+    if clause in (
+        DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
+        DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET,
+    ):
+        return _contract_bundle_value_kt(contract)
+    if clause == DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT:
+        return _fleet_build_value_kt() * max(0, int(getattr(contract, 'request_ship_count', 0) or 0))
+    if clause == DiplomaticContract.CLAUSE_SPECIFIC_FLEET:
+        return _fleet_material_value_kt(getattr(contract, 'offer_fleet', None))
+    if clause == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
+        return _star_material_value_kt(getattr(contract, 'offer_star', None))
+    return 0
+
+
+def _contract_request_cost_kt(contract):
+    from .models import DiplomaticContract
+
+    if contract is None:
+        return 0
+    clause = str(getattr(contract, 'request_clause_type', '') or '')
+    if clause in (
+        DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
+        DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET,
+    ):
+        return _contract_bundle_value_kt(contract)
+    if clause == DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT:
+        return _fleet_build_value_kt() * max(0, int(getattr(contract, 'request_ship_count', 0) or 0))
+    if clause == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
+        return _star_material_value_kt(getattr(contract, 'request_star', None))
+    return 0
+
+
+def _player_has_technology(player, technology):
+    from .models import PlayerTechnologyGrant
+    from .research import get_player_unlocked_technologies
+
+    if not player or technology is None:
+        return False
+    if PlayerTechnologyGrant.objects.filter(player=player, technology=technology).exists():
+        return True
+    unlocked_ids = {
+        int(getattr(item, 'id', 0) or 0)
+        for item in get_player_unlocked_technologies(player)
+    }
+    return int(getattr(technology, 'id', 0) or 0) in unlocked_ids
+
+
+def _repeat_request_count(contract):
+    from .models import DiplomaticContract
+
+    if contract is None:
+        return 0
+    return int(DiplomaticContract.objects.filter(
+        game=contract.game,
+        sender=contract.sender,
+        recipient=contract.recipient,
+        request_clause_type=contract.request_clause_type,
+    ).exclude(id=contract.id).exclude(status=DiplomaticContract.STATUS_DRAFT).count())
+
+
+def _repeat_chance_factor(repeat_count):
+    count = max(0, int(repeat_count or 0))
+    return 0.72 ** min(8, count)
+
+
+def _ai_roll_acceptance(base_chance, repeat_count):
+    chance = max(0.0, min(0.95, float(base_chance) * _repeat_chance_factor(repeat_count)))
+    return random.random() < chance
+
+
+def _should_reject_unimplemented_delivery_clause(contract):
+    from .models import DiplomaticContract
+
+    clause = str(getattr(contract, 'request_clause_type', '') or '')
+    return clause in (
+        DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
+        DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET,
+        DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT,
+        DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
+    )
+
+
+def _technology_trade_has_new_offer(contract):
+    from .models import DiplomaticContract
+
+    if contract is None:
+        return False
+    if str(getattr(contract, 'request_clause_type', '') or '') != DiplomaticContract.CLAUSE_TECHNOLOGY:
+        return False
+    request_tech = getattr(contract, 'request_technology', None)
+    offer_tech = getattr(contract, 'offer_technology', None)
+    recipient = getattr(contract, 'recipient', None)
+    sender = getattr(contract, 'sender', None)
+    if request_tech is None or offer_tech is None:
+        return False
+    if not _player_has_technology(recipient, request_tech):
+        return False
+    if not _player_has_technology(sender, offer_tech):
+        return False
+    if _player_has_technology(recipient, offer_tech):
+        return False
+    return True
+
+
+def _next_lower_stance(current):
+    value = str(current or '').strip().upper()
+    if value not in _STANCE_ORDER:
+        value = 'NEUTRAL'
+    idx = _STANCE_ORDER.index(value)
+    if idx <= 0:
+        return _STANCE_ORDER[0]
+    return _STANCE_ORDER[idx - 1]
+
+
+def _maybe_downgrade_stance_after_rejection(contract):
+    from .diplomacy import ensure_contact_stance_entry, normalise_stance
+    from .models import DiplomaticContract
+
+    if contract is None:
+        return False
+    declines = int(DiplomaticContract.objects.filter(
+        game=contract.game,
+        sender=contract.sender,
+        recipient=contract.recipient,
+        status=DiplomaticContract.STATUS_DECLINED,
+    ).count())
+    if declines < 2:
+        return False
+    row = ensure_contact_stance_entry(contract.recipient, contract.sender)
+    if row is None:
+        return False
+    current = normalise_stance(getattr(row, 'pending_stance', '') or getattr(row, 'stance', 'NEUTRAL'))
+    lowered = _next_lower_stance(current)
+    if lowered == current:
+        return False
+    row.pending_stance = lowered
+    row.save(update_fields=['pending_stance'])
+    return True
+
+
+def _decide_passive_ai_contract_response(player, contract, module_code):
+    from .models import DiplomaticContract
+
+    if _should_reject_unimplemented_delivery_clause(contract):
+        return False, 'delivery-not-implemented'
+
+    if (
+        str(getattr(contract, 'request_clause_type', '') or '') == DiplomaticContract.CLAUSE_SPECIFIC_COLONY and
+        int(getattr(contract, 'request_star_id', 0) or 0) == int(getattr(player, 'homeworld_id', 0) or 0)
+    ):
+        return False, 'homeworld-protected'
+
+    offer_value = _contract_offer_value_kt(contract)
+    request_value = _contract_request_cost_kt(contract)
+    repeat_count = _repeat_request_count(contract)
+
+    request_clause = str(getattr(contract, 'request_clause_type', '') or '')
+    if request_clause == DiplomaticContract.CLAUSE_TECHNOLOGY:
+        if not _technology_trade_has_new_offer(contract):
+            return False, 'technology-trade-invalid'
+        base = 0.10 if module_code == AI_MODULE_IDLE else 0.20
+        if offer_value > request_value:
+            base += 0.05
+        return _ai_roll_acceptance(base, repeat_count), 'technology-trade-roll'
+
+    if request_clause == DiplomaticContract.CLAUSE_STANCE:
+        base = 0.04 if module_code == AI_MODULE_IDLE else 0.10
+        if offer_value > request_value:
+            base += 0.04
+        return _ai_roll_acceptance(base, repeat_count), 'stance-roll'
+
+    if module_code == AI_MODULE_IDLE:
+        if offer_value <= 0:
+            return False, 'idle-requires-material-offer'
+        if request_value > 0 and offer_value <= request_value:
+            return False, 'idle-unfavorable'
+        return True, 'idle-material-accept'
+
+    if request_value > 0:
+        if offer_value <= request_value:
+            return False, 'unfavorable-trade'
+        return True, 'favorable-trade'
+    if offer_value > 0:
+        return True, 'free-material-offer'
+    return False, 'default-reject'
+
+
+def _apply_passive_ai_diplomacy_turn(player, game, module_code):
+    from .diplomatic_contracts import accept_contract, decline_contract
+    from .models import DiplomaticContract
+
+    contracts = list(
+        DiplomaticContract.objects.filter(
+            game=game,
+            recipient=player,
+            status=DiplomaticContract.STATUS_SENT,
+        ).select_related(
+            'sender',
+            'recipient',
+            'request_technology',
+            'offer_technology',
+            'offer_fleet',
+            'request_star',
+            'offer_star',
+        ).order_by('sent_year', 'created_at', 'id')
+    )
+    accepted = 0
+    declined = 0
+    downgraded_senders = set()
+    for contract in contracts:
+        should_accept, _reason = _decide_passive_ai_contract_response(
+            player,
+            contract,
+            module_code,
+        )
+        if should_accept:
+            ok, _msg = accept_contract(contract, player)
+            if ok:
+                accepted += 1
+                continue
+            contract.refresh_from_db()
+            if contract.status != DiplomaticContract.STATUS_SENT:
+                continue
+        ok, _msg = decline_contract(contract, player)
+        if not ok:
+            continue
+        declined += 1
+        sender_id = int(getattr(contract, 'sender_id', 0) or 0)
+        if sender_id and sender_id not in downgraded_senders:
+            if _maybe_downgrade_stance_after_rejection(contract):
+                downgraded_senders.add(sender_id)
+    return {
+        'accepted': int(accepted),
+        'declined': int(declined),
+    }
+
+
 def _apply_openai_module_turn(player, game):
     config = get_ai_module_config(AI_MODULE_OPENAI)
     max_iterations = _bounded_int(config.get('max_iterations'), 6, 1, 40)
@@ -816,8 +1101,14 @@ def apply_ai_module_turn(player, game):
             )
             return {'ok': False, 'skipped': True, 'reason': 'module-error'}
 
-    # Other modules currently rely on passive administration-tier behavior.
-    return {'ok': True, 'skipped': True, 'reason': 'passive-module'}
+    # Passive modules still perform diplomacy response checks during AI check-ins.
+    diplomacy = _apply_passive_ai_diplomacy_turn(player, game, module_code)
+    return {
+        'ok': True,
+        'skipped': True,
+        'reason': 'passive-module',
+        'diplomacy': diplomacy,
+    }
 
 
 def count_active_ai_players():
