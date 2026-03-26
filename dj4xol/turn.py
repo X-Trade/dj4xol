@@ -506,6 +506,7 @@ class GameTurn():
     def __init__(self, game):
         self.game = game
         self._scanner_sources_by_player_id = {}
+        self._player_colony_scanner_ranges_by_player_id = {}
         self._first_contact_sent = set()
         self._first_contact_any_sent = set()
         self._stance_map_by_player_id = {}
@@ -534,6 +535,7 @@ class GameTurn():
     def _process_year(self):
         """Process a single year of game time."""
         self._scanner_sources_by_player_id = {}
+        self._player_colony_scanner_ranges_by_player_id = {}
         self._stance_map_by_player_id = {}
         self._player_colony_count_cache = {}
         refresh_contract_integrity(self.game)
@@ -1750,9 +1752,65 @@ class GameTurn():
 
     def generate_reports(self):
         """Generate exploration reports for all fleets at their current locations."""
-        from .models import Fleet
-        for fleet in Fleet.objects.filter(game=self.game, player__isnull=False, player__defeated=False):
-            self._generate_reports_for_fleet(fleet)
+        from .models import Anomaly, Fleet, Salvage, Star
+
+        fleets = list(Fleet.objects.filter(
+            game=self.game,
+            player__isnull=False,
+            player__defeated=False,
+        ).select_related('player', 'player__race_type'))
+        if not fleets:
+            return
+
+        location_cache = {
+            'stars': self._group_objects_by_location(
+                Star.objects.filter(game=self.game).select_related('player')
+            ),
+            'fleets': self._group_objects_by_location(
+                Fleet.objects.filter(game=self.game).select_related('player', 'player__race_type')
+            ),
+            'salvage': self._group_objects_by_location(
+                Salvage.objects.filter(game=self.game)
+            ),
+            'anomaly': self._group_objects_by_location(
+                Anomaly.objects.filter(game=self.game)
+            ),
+        }
+        report_cache = self._build_report_lookup_cache(
+            [fleet.player_id for fleet in fleets if getattr(fleet, 'player_id', None)]
+        )
+        for fleet in fleets:
+            self._generate_reports_for_fleet(
+                fleet,
+                location_cache=location_cache,
+                report_cache=report_cache,
+            )
+
+    @staticmethod
+    def _group_objects_by_location(objects):
+        grouped = {}
+        for obj in objects:
+            key = (int(getattr(obj, 'x', 0) or 0), int(getattr(obj, 'y', 0) or 0))
+            grouped.setdefault(key, []).append(obj)
+        return grouped
+
+    def _build_report_lookup_cache(self, player_ids):
+        from .models import Report
+
+        player_ids = sorted({
+            pid for pid in (player_ids or [])
+            if pid is not None
+        })
+        if not player_ids:
+            return {}
+        cache = {}
+        for report in Report.objects.filter(
+            game=self.game,
+            player_id__in=player_ids,
+            target_type__in=['star', 'fleet', 'salvage', 'anomaly'],
+        ):
+            cache[(report.player_id, report.target_type, report.target_id)] = report
+        return cache
 
     def generate_shared_intel_reports(self):
         """Push allied intel reports to players that are granted sharing."""
@@ -1951,7 +2009,7 @@ class GameTurn():
                 player, habitable_stars_found
             )
 
-    def _generate_reports_for_fleet(self, fleet):
+    def _generate_reports_for_fleet(self, fleet, location_cache=None, report_cache=None):
         """Generate reports for all objects at fleet's location."""
         from .models import Star, Salvage, Fleet, Anomaly
 
@@ -1961,15 +2019,34 @@ class GameTurn():
         report_tier = self._report_tier_for_visit(fleet)
         include_cargo = self._player_has_advanced_scanner_at(player, x, y)
 
+        if location_cache is None:
+            stars_at_location = list(Star.objects.filter(game=self.game, x=x, y=y))
+            fleets_at_location = list(Fleet.objects.filter(game=self.game, x=x, y=y))
+            salvage_at_location = list(Salvage.objects.filter(game=self.game, x=x, y=y))
+            anomalies_at_location = list(Anomaly.objects.filter(game=self.game, x=x, y=y))
+        else:
+            key = (int(x), int(y))
+            stars_at_location = location_cache.get('stars', {}).get(key, [])
+            fleets_at_location = location_cache.get('fleets', {}).get(key, [])
+            salvage_at_location = location_cache.get('salvage', {}).get(key, [])
+            anomalies_at_location = location_cache.get('anomaly', {}).get(key, [])
+
         # Report on all stars at this location
-        for star in Star.objects.filter(game=self.game, x=x, y=y):
+        for star in stars_at_location:
             self._discover_secret_resources_from_star(player, star, fleet=fleet)
-            self._create_or_update_report(player, 'star', star, year, report_tier=report_tier)
+            self._create_or_update_report(
+                player,
+                'star',
+                star,
+                year,
+                report_tier=report_tier,
+                report_cache=report_cache,
+            )
 
         # Report on other players' fleets at this location
-        for other_fleet in Fleet.objects.filter(
-            game=self.game, x=x, y=y
-        ).exclude(player=player):
+        for other_fleet in fleets_at_location:
+            if getattr(other_fleet, 'player_id', None) == getattr(player, 'id', None):
+                continue
             self._create_or_update_report(
                 player,
                 'fleet',
@@ -1977,14 +2054,29 @@ class GameTurn():
                 year,
                 report_tier=report_tier,
                 include_cargo=include_cargo,
+                report_cache=report_cache,
             )
 
         # Report on all salvage at this location
-        for salvage in Salvage.objects.filter(game=self.game, x=x, y=y):
-            self._create_or_update_report(player, 'salvage', salvage, year, report_tier=report_tier)
+        for salvage in salvage_at_location:
+            self._create_or_update_report(
+                player,
+                'salvage',
+                salvage,
+                year,
+                report_tier=report_tier,
+                report_cache=report_cache,
+            )
 
-        for anomaly in Anomaly.objects.filter(game=self.game, x=x, y=y):
-            self._create_or_update_report(player, 'anomaly', anomaly, year, report_tier=report_tier)
+        for anomaly in anomalies_at_location:
+            self._create_or_update_report(
+                player,
+                'anomaly',
+                anomaly,
+                year,
+                report_tier=report_tier,
+                report_cache=report_cache,
+            )
 
     def _create_or_update_report(
         self,
@@ -1995,16 +2087,25 @@ class GameTurn():
         report_tier='advanced',
         include_cargo=False,
         conceal_secret_resources=False,
+        report_cache=None,
     ):
         """Create or update a report for an object."""
         from .models import Report, Fleet
         from .messages import HabitableWorldMessageFactory
 
-        report = Report.objects.filter(
-            player=player,
-            target_type=target_type,
-            target_id=obj.id,
-        ).first()
+        player_id = getattr(player, 'id', None)
+        report_key = (player_id, target_type, obj.id)
+        report = None
+        if report_cache is not None and player_id is not None:
+            report = report_cache.get(report_key)
+        if report is None:
+            report = Report.objects.filter(
+                player=player,
+                target_type=target_type,
+                target_id=obj.id,
+            ).first()
+            if report_cache is not None and report is not None and player_id is not None:
+                report_cache[report_key] = report
         existing_owner_known = False
 
         if report:
@@ -2070,6 +2171,8 @@ class GameTurn():
             )
             report.set_report_data(report_data)
             report.save()
+            if report_cache is not None and player_id is not None:
+                report_cache[report_key] = report
             created = True
 
         if target_type == 'star':
@@ -2333,8 +2436,8 @@ class GameTurn():
                 scanner_basic = 0
                 scanner_advanced = 0
                 if obj.player:
-                    scanner_basic, scanner_advanced = get_player_colony_scanner_ranges(
-                        obj.player
+                    scanner_basic, scanner_advanced = (
+                        self._get_player_colony_scanner_ranges_cached(obj.player)
                     )
                 jobs = calculate_total_jobs(obj)
                 employment = calculate_employment_percent(obj)
@@ -2526,6 +2629,19 @@ class GameTurn():
             self._scanner_sources_by_player_id[player.id] = sources
         return position_in_scanner_range(x, y, sources, range_key='advanced')
 
+    def _get_player_colony_scanner_ranges_cached(self, player):
+        if not player:
+            return 0, 0
+        player_id = getattr(player, 'id', None)
+        if player_id is None:
+            return 0, 0
+        cached = self._player_colony_scanner_ranges_by_player_id.get(player_id)
+        if cached is not None:
+            return cached
+        ranges = get_player_colony_scanner_ranges(player)
+        self._player_colony_scanner_ranges_by_player_id[player_id] = ranges
+        return ranges
+
     def _update_ai_checkin_state(self, auto_turn_in=False):
         """Refresh AI check-in bookkeeping and optional quorum auto-ready state."""
         interval = max(1, int(get_ai_check_in_turns() or 1))
@@ -2572,16 +2688,21 @@ class GameTurn():
         """Move fleets according to their orders."""
         self._locked_fleet_ids_for_year = set()
         self._ambush_fleet_ids_for_year = set()
+        fleet_rows = list(
+            self.game.fleets.order_by('id').values_list('id', 'x', 'y')
+        )
         self._fleet_start_positions_for_year = {
-            fleet.id: (fleet.x, fleet.y) for fleet in self.game.fleets.all()
+            fleet_id: (x, y) for fleet_id, x, y in fleet_rows
         }
         # Get fleet IDs first, then fetch fresh for each processing
         # This ensures we see changes made by other fleet's transfers
-        fleet_ids = list(self.game.fleets.order_by('id').values_list('id', flat=True))
+        fleet_ids = [fleet_id for fleet_id, _x, _y in fleet_rows]
+        fleet_query = self.game.fleets.select_related('player', 'player__race_type')
         random.shuffle(fleet_ids)
         for fleet_id in fleet_ids:
             try:
-                fleet = self.game.fleets.get(id=fleet_id)
+                # Re-read each fleet at execution time to preserve interaction freshness.
+                fleet = fleet_query.get(id=fleet_id)
             except self.game.fleets.model.DoesNotExist:
                 continue  # Fleet was deleted (e.g., by colonise order)
             if fleet.player is None or bool(getattr(fleet.player, 'defeated', False)):
