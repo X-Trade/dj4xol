@@ -11,4 +11,43 @@
         {% endfor %}
     {% endif %}
 </div>
+<script type="text/javascript">
+(function() {
+    function dismissBanner(activeBanner) {
+        if (!activeBanner || !activeBanner.parentNode) {
+            return;
+        }
+        if (activeBanner.dataset.isDismissing === '1') {
+            return;
+        }
+        activeBanner.dataset.isDismissing = '1';
+        activeBanner.classList.add('is-dismissing');
+        window.setTimeout(function() {
+            if (activeBanner.parentNode) {
+                activeBanner.parentNode.removeChild(activeBanner);
+            }
+        }, 250);
+    }
+
+    var banners = document.querySelectorAll('.form-message-banner');
+    for (var i = 0; i < banners.length; i++) {
+        var banner = banners[i];
+        if (!banner || banner.dataset.autoDismissBound === '1') {
+            continue;
+        }
+        banner.dataset.autoDismissBound = '1';
+        banner.addEventListener('click', function(event) {
+            if (event.target && event.target.closest && event.target.closest('a, button, input, select, textarea, label')) {
+                return;
+            }
+            dismissBanner(this);
+        });
+        (function(activeBanner) {
+            window.setTimeout(function() {
+                dismissBanner(activeBanner);
+            }, 30000);
+        })(banner);
+    }
+})();
+</script>
 {% endif %}

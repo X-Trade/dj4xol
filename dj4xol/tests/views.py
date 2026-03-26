@@ -622,6 +622,7 @@ class TestServerSettingsView(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Server settings updated.')
         self.assertContains(response, 'form-message-banner')
+        self.assertContains(response, "banner.dataset.autoDismissBound = '1';")
         self.assertNotContains(response, 'data-panel="alerts"')
 
         self.assertEqual(ServerSettings.get('server_name'), 'DJ4XOL Production')

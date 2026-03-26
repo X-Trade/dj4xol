@@ -728,6 +728,13 @@ body:not(.lcars):not(.win95):not(.retro):not(.haxxor) .number-stepper-input {
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
     max-height: 40vh;
     overflow-y: auto;
+    opacity: 1;
+    transition: opacity 0.25s ease;
+    cursor: pointer;
+}
+
+.form-message-banner.is-dismissing {
+    opacity: 0;
 }
 
 .form-message-banner.form-message-banner-error {
