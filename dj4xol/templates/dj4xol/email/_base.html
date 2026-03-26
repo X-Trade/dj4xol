@@ -16,6 +16,29 @@
         }
         .email-panel {
             border: 2px solid;
+            border-radius: 12px;
+            overflow: hidden;
+            background: transparent;
+        }
+        .email-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 34px;
+            padding: 0 0 0 14px;
+            border-bottom: 1px solid;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 700;
+        }
+        .email-panel-header-title {
+            white-space: nowrap;
+        }
+        .email-panel-header-accent {
+            width: 58px;
+            height: 100%;
+            flex: 0 0 58px;
         }
         .email-content {
             padding: 14px;
@@ -74,53 +97,175 @@
         }
 
         body.email-theme-classic {
-            background: #e6e6e6;
-            color: #222;
-            font-family: Arial, Helvetica, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
         body.email-theme-classic .email-panel {
-            background: #f8f8f8;
-            border-color: #666;
+            border: 0;
+            border-radius: 0;
+            overflow: visible;
+            background: transparent;
+        }
+        body.email-theme-classic .email-panel-header {
+            background: #e0e0e0;
+            color: #333;
+            border: 1px solid #808080;
+            border-bottom: 0;
+            border-radius: 0 12px 0 0;
+            min-height: 38px;
+            padding-left: 10px;
+            font-size: 1em;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        body.email-theme-classic .email-panel-header-accent {
+            display: none;
+        }
+        body.email-theme-classic .email-content {
+            background: #fff;
+            border: 1px solid #808080;
+            border-top: 0;
+            color: #333;
+        }
+        body.email-theme-classic .email-kicker {
+            color: #555;
+        }
+        body.email-theme-classic .email-footer {
+            background: #fff;
+            border: 1px solid #808080;
+            border-top: 0;
+            color: #444;
         }
         body.email-theme-classic .email-footer,
         body.email-theme-classic .email-entry {
-            border-color: #bbb;
+            border-color: #808080;
         }
         body.email-theme-classic a {
             color: #1f5f9f;
         }
 
         body.email-theme-lcars {
-            background: #050913;
-            color: #f1f2ff;
-            font-family: "Trebuchet MS", Verdana, Arial, sans-serif;
+            background: #000;
+            color: #ff9966;
+            font-family: "Helvetica Neue", "Arial", sans-serif;
+            letter-spacing: 0.4px;
         }
         body.email-theme-lcars .email-panel {
-            background: #111526;
-            border-color: #df8556;
-            box-shadow: inset 0 0 0 1px #9c9acf;
+            background: #000;
+            border: 0;
+            border-radius: 0;
+            overflow: visible;
+            box-shadow: none;
+        }
+        body.email-theme-lcars .email-panel-header {
+            background: linear-gradient(
+                to right,
+                #cc6633 0%,
+                #cc6633 calc(100% - 62px),
+                #000 calc(100% - 62px),
+                #000 calc(100% - 58px),
+                #9999cc calc(100% - 58px),
+                #9999cc 100%
+            );
+            color: #000;
+            border: 0;
+            border-radius: 24px 24px 0 0;
+            min-height: 42px;
+            padding-left: 18px;
+            letter-spacing: 0.12em;
+        }
+        body.email-theme-lcars .email-panel-header-accent {
+            background: transparent;
+            width: 58px;
+            flex-basis: 58px;
+        }
+        body.email-theme-lcars .email-content {
+            background: #000;
+            border: 3px solid #cc6633;
+            border-top: 0;
+            border-radius: 0 0 0 24px;
+            color: #ff9966;
+            padding: 14px 14px 12px 14px;
+        }
+        body.email-theme-lcars .email-kicker {
+            color: #99ccff;
+            opacity: 1;
+            margin-bottom: 8px;
+        }
+        body.email-theme-lcars h1 {
+            color: #ff9966;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
         body.email-theme-lcars .email-footer,
         body.email-theme-lcars .email-entry {
-            border-color: #5f628f;
+            border-color: #cc6633;
         }
         body.email-theme-lcars a {
-            color: #ffd18f;
+            color: #99ccff;
         }
         body.email-theme-lcars .pill {
-            color: #ffd18f;
-            border-color: #df8556;
+            color: #000;
+            border: 0;
+            border-radius: 12px;
+            background: #9999cc;
+            font-weight: 700;
+        }
+        body.email-theme-lcars .email-footer {
+            background: #000;
+            border: 3px solid #cc6633;
+            border-top: 0;
+            border-radius: 0 0 24px 0;
+            color: #99ccff;
+            padding-top: 10px;
         }
 
         body.email-theme-win95 {
             background: #008080;
             color: #101010;
-            font-family: Tahoma, Verdana, Arial, sans-serif;
+            font-family: Tahoma, "MS Sans Serif", Arial, sans-serif;
+            font-size: 11px;
         }
         body.email-theme-win95 .email-panel {
+            border: 0;
+            border-radius: 0;
+            overflow: visible;
+            box-shadow: none;
+        }
+        body.email-theme-win95 .email-panel-header {
+            background: linear-gradient(to right, #000081, #1084d0);
+            color: #fff;
+            border: 0;
+            border-radius: 0;
+            min-height: 22px;
+            padding: 2px 4px;
+            font-size: 11px;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        body.email-theme-win95 .email-panel-header-accent {
+            display: none;
+        }
+        body.email-theme-win95 .email-content {
             background: #c0c0c0;
-            border-color: #111;
-            box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #7f7f7f;
+            color: #000;
+            box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+            border: 0;
+            padding: 8px;
+        }
+        body.email-theme-win95 .email-kicker {
+            color: #000080;
+            opacity: 1;
+        }
+        body.email-theme-win95 .email-footer {
+            background: #c0c0c0;
+            color: #000;
+            box-shadow: inset -1px -1px 0 #ffffff, inset 1px 1px 0 #000000,
+                inset -2px -2px 0 #dfdfdf, inset 2px 2px 0 #808080;
+            border: 0;
+            padding: 8px;
         }
         body.email-theme-win95 .email-footer,
         body.email-theme-win95 .email-entry {
@@ -133,56 +278,129 @@
             color: #000;
             border-color: #222;
             background: #d8d8d8;
+            border-radius: 0;
         }
 
         body.email-theme-haxxor {
-            background: #05080b;
-            color: #b6f7cb;
+            background: linear-gradient(to bottom, #07101d 0%, #04070d 100%);
+            color: #d8e0e8;
             font-family: "Courier New", Courier, monospace;
         }
         body.email-theme-haxxor .email-panel {
-            background: #0a1216;
-            border-color: #2de0a7;
-            box-shadow: inset 0 0 0 1px #205b4f;
+            border: 0;
+            border-radius: 0;
+            overflow: visible;
+            box-shadow: none;
+        }
+        body.email-theme-haxxor .email-panel-header {
+            background: linear-gradient(to right, #102038 0%, #102038 70%, #0c1728 100%);
+            color: #72ffb1;
+            border: 2px solid #31567a;
+            border-bottom: 0;
+            border-radius: 0;
+            text-transform: uppercase;
+        }
+        body.email-theme-haxxor .email-panel-header-accent {
+            display: none;
+        }
+        body.email-theme-haxxor .email-content {
+            background:
+                linear-gradient(rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02)),
+                repeating-linear-gradient(to bottom, rgba(111, 255, 186, 0.025) 0 1px, transparent 1px 4px),
+                #08101d;
+            border: 2px solid #31567a;
+            border-top: 0;
+            color: #d8e0e8;
+            box-shadow: inset 0 0 0 1px rgba(111, 255, 186, 0.05);
+        }
+        body.email-theme-haxxor .email-kicker {
+            color: #72ffb1;
+            opacity: 1;
+        }
+        body.email-theme-haxxor .email-footer {
+            background: #0b1626;
+            border: 2px solid #31567a;
+            border-top: 0;
+            color: #d8e0e8;
         }
         body.email-theme-haxxor .email-footer,
         body.email-theme-haxxor .email-entry {
-            border-color: #205b4f;
+            border-color: rgba(123, 195, 255, 0.25);
         }
         body.email-theme-haxxor a {
             color: #7ee6ff;
         }
         body.email-theme-haxxor .pill {
-            color: #b6f7cb;
-            border-color: #2de0a7;
+            color: #d8e0e8;
+            border-color: #67e4a6;
+            border-radius: 0;
         }
 
         body.email-theme-retro {
-            background: #081122;
-            color: #d8e5ff;
+            background: linear-gradient(to bottom, #07101d 0%, #04070d 100%);
+            color: #d8e0e8;
             font-family: "Courier New", Courier, monospace;
+            font-size: 16px;
         }
         body.email-theme-retro .email-panel {
-            background: #0f203a;
-            border-color: #4a77a8;
-            box-shadow: inset 0 0 0 1px #2d4f78;
+            border: 0;
+            border-radius: 0;
+            overflow: visible;
+            box-shadow: none;
+        }
+        body.email-theme-retro .email-panel-header {
+            background: linear-gradient(to right, #102038 0%, #102038 70%, #0c1728 100%);
+            color: #72ffb1;
+            border: 8px solid #31567a;
+            border-bottom: 0;
+            border-radius: 0;
+            text-transform: uppercase;
+        }
+        body.email-theme-retro .email-panel-header-accent {
+            display: none;
+        }
+        body.email-theme-retro .email-content {
+            background:
+                linear-gradient(rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.02)),
+                repeating-linear-gradient(to bottom, rgba(111, 255, 186, 0.025) 0 1px, transparent 1px 4px),
+                #08101d;
+            border: 8px solid #31567a;
+            border-top: 0;
+            border-radius: 0;
+            color: #d8e0e8;
+            box-shadow: inset 0 0 0 1px rgba(111, 255, 186, 0.05);
+        }
+        body.email-theme-retro .email-kicker {
+            color: #72ffb1;
+            opacity: 1;
+        }
+        body.email-theme-retro .email-footer {
+            background: #0b1626;
+            border: 8px solid #31567a;
+            border-top: 0;
+            color: #d8e0e8;
         }
         body.email-theme-retro .email-footer,
         body.email-theme-retro .email-entry {
-            border-color: #2d4f78;
+            border-color: rgba(123, 195, 255, 0.3);
         }
         body.email-theme-retro a {
             color: #83dcff;
         }
         body.email-theme-retro .pill {
-            color: #8ef9d1;
-            border-color: #8ef9d1;
+            color: #d8e0e8;
+            border-color: #67e4a6;
+            border-radius: 0;
         }
     </style>
 </head>
 <body class="email-theme-{{ email_theme|default:'classic' }}">
     <div class="email-wrap">
         <div class="email-panel">
+            <div class="email-panel-header">
+                <span class="email-panel-header-title">DJ4XOL</span>
+                <span class="email-panel-header-accent"></span>
+            </div>
             <div class="email-content">
                 <div class="email-kicker">DJ4XOL</div>
                 <h1>{% block heading %}{{ email_subject }}{% endblock %}</h1>
