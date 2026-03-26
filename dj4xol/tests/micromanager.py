@@ -1737,6 +1737,122 @@ class AdministrationAutomationTest(TestCase):
         )
         self.assertGreaterEqual(int(load_order.transfer_colonists or 0), 5)
 
+    def test_ai_micromanager_level_five_prioritises_early_colonise_before_logistics(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 220_000
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save(update_fields=[
+            'has_administration',
+            'colonists',
+            'mines',
+            'factories',
+            'labs',
+            'defenses',
+            'shipyards',
+            'ironium_inventory',
+            'boranium_inventory',
+            'germanium_inventory',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+        ])
+        self.star.production_orders.all().delete()
+        self.player.fleets.all().delete()
+
+        donor = self.game.stars.exclude(id=self.star.id).first()
+        donor.player = self.player
+        donor.colonists = 150_000
+        donor.ironium_inventory = 800
+        donor.boranium_inventory = 800
+        donor.germanium_inventory = 800
+        donor.save(update_fields=[
+            'player',
+            'colonists',
+            'ironium_inventory',
+            'boranium_inventory',
+            'germanium_inventory',
+        ])
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            quantity=1,
+            position=1,
+        )
+
+        target = self.game.stars.exclude(id__in=[self.star.id, donor.id]).first()
+        target.player = None
+        target.x = int(self.star.x) + 1
+        target.y = int(self.star.y)
+        target.gravity = self.player.gravity_center
+        target.temperature = self.player.temperature_center
+        target.radiation = self.player.radiation_center
+        target.colonists = 0
+        target.save(update_fields=[
+            'player', 'x', 'y', 'gravity', 'temperature', 'radiation', 'colonists',
+        ])
+
+        strong = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Home Patrol',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            offense_level=6,
+            defense_level=6,
+            cargo_capacity=120,
+        )
+        weak = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Colony Scout',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+            cargo_capacity=120,
+        )
+
+        turn = GameTurn(self.game)
+        turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertTrue(strong.orders.filter(
+            order_type='PATROL',
+            repeat=True,
+            added_by_micromanager=True,
+        ).exists())
+        self.assertTrue(weak.orders.filter(
+            order_type='COLONISE',
+            added_by_micromanager=True,
+        ).exists())
+
+        transfer_orders = FleetOrders.objects.filter(
+            fleet__in=[strong, weak],
+            order_type='TRANSFER',
+        )
+        self.assertFalse(transfer_orders.filter(transfer_ironium__gt=0).exists())
+        self.assertFalse(transfer_orders.filter(transfer_boranium__gt=0).exists())
+        self.assertFalse(transfer_orders.filter(transfer_germanium__gt=0).exists())
+        self.assertFalse(transfer_orders.filter(transfer_resource_x__gt=0).exists())
+        self.assertFalse(transfer_orders.filter(transfer_resource_y__gt=0).exists())
+        self.assertFalse(transfer_orders.filter(transfer_resource_z__gt=0).exists())
+
     def test_ai_micromanager_level_five_assigns_patrol_orders_from_idle_fleets(self):
         self.player.is_ai = True
         self.player.ai_module = 'micromanager'

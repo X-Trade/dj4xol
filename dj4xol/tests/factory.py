@@ -290,6 +290,29 @@ class testGameFactory(TestCase):
         self.assertAlmostEqual(player.homeworld.temperature, 1.2)
         self.assertAlmostEqual(player.homeworld.radiation, 0.5)
 
+    def test_ai_homeworld_environmentals_match_player_centers(self):
+        """AI homeworld should also inherit exact race habitable centers."""
+        self.races[0].gravity_center = 0.77
+        self.races[0].temperature_center = 1.13
+        self.races[0].radiation_center = 0.44
+        self.races[0].save()
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(8)
+        gf.save()
+        ai_player = gf.join_player(
+            None,
+            self.races[0],
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        self.assertIsNotNone(ai_player)
+        self.assertAlmostEqual(ai_player.homeworld.gravity, 0.77)
+        self.assertAlmostEqual(ai_player.homeworld.temperature, 1.13)
+        self.assertAlmostEqual(ai_player.homeworld.radiation, 0.44)
+
     def test_homeworld_name_override(self):
         """Homeworld name should be overridden if race has homeworld_name set."""
         self.races[0].homeworld_name = 'Terra Prime'

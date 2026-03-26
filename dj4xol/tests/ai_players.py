@@ -9,6 +9,8 @@ from ..ai_players import (
     build_random_ai_race_template,
     ai_module_choices,
     apply_ai_module_turn,
+    count_active_ai_players,
+    get_remaining_server_ai_capacity,
     is_ai_module_enabled,
     resolve_ai_slot_stance,
 )
@@ -320,3 +322,20 @@ class TestAIPlayerModules(TestCase):
 
         contract.refresh_from_db()
         self.assertEqual(contract.status, DiplomaticContract.STATUS_DECLINED)
+
+    def test_server_cap_count_excludes_idle_and_micromanager(self):
+        game = default_game(stars=8)
+        race = get_default_race()
+        factory = GameFactory(game)
+        factory.join_player(None, race, invited=True, is_ai=True, ai_module=AI_MODULE_IDLE)
+        factory.join_player(None, race, invited=True, is_ai=True, ai_module=AI_MODULE_MICROMANAGER)
+        factory.join_player(None, race, invited=True, is_ai=True, ai_module=AI_MODULE_OPENAI)
+        self._set_server_setting(
+            'ai_max_per_server',
+            '2',
+            'Maximum active AI players per server',
+        )
+
+        self.assertEqual(count_active_ai_players(server_capped_only=False), 3)
+        self.assertEqual(count_active_ai_players(server_capped_only=True), 1)
+        self.assertEqual(get_remaining_server_ai_capacity(), 1)

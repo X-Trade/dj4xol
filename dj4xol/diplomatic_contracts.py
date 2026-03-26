@@ -11,6 +11,7 @@ from django.utils.html import escape
 
 from .map_object_rules import format_map_link
 from .models import DiplomaticContract, GameMessage, PlayerDiplomaticStance, PlayerTechnologyGrant, Report
+from .player_labels import player_bracket_label
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
 
 
@@ -97,8 +98,7 @@ def player_display_name(player, include_account=True):
     )
     if not include_account:
         return race_name
-    alias = getattr(getattr(player, 'account', None), 'alias', None) or 'Unknown'
-    return '%s (%s)' % (race_name, alias)
+    return '%s (%s)' % (race_name, player_bracket_label(player, unknown='Unknown'))
 
 
 def diplomatic_actions_locked(player):
@@ -1301,6 +1301,9 @@ def refresh_contract_integrity(game):
         status__in=[DiplomaticContract.STATUS_SENT, DiplomaticContract.STATUS_ACCEPTED],
     ).select_related('sender', 'recipient')
     for contract in expirable:
+        if bool(getattr(contract.sender, 'defeated', False)) or bool(getattr(contract.recipient, 'defeated', False)):
+            _expire_contract(contract, game.year, apply_consequence=False)
+            continue
         if int(game.year or 0) > int(contract.expires_year or 0):
             _expire_contract(contract, game.year, apply_consequence=True)
 

@@ -342,10 +342,25 @@
     opacity: 0.9;
 }
 
-.ai-slot-editor-table td:first-child {
-    width: 46px;
+.ai-slot-editor-table th:nth-child(1),
+.ai-slot-editor-table td:nth-child(1) {
+    width: 1%;
+    white-space: nowrap;
     text-align: center;
     font-weight: bold;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+.ai-slot-editor-table th:nth-child(4),
+.ai-slot-editor-table td:nth-child(4) {
+    width: 84px;
+}
+
+.ai-slot-editor-table th:nth-child(5),
+.ai-slot-editor-table td:nth-child(5) {
+    width: 24%;
+    min-width: 130px;
 }
 
 .ai-slot-editor-table select,

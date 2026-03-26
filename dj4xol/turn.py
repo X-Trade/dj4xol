@@ -149,8 +149,11 @@ from .micromanager_rules import (
     plan_micromanager_orders,
 )
 from .ai_players import (
+    AI_MODULE_IDLE,
+    AI_MODULE_MICROMANAGER,
     apply_ai_module_turn,
     get_ai_check_in_turns,
+    normalize_ai_module_code,
     player_ai_administration_tier,
 )
 from .fleet_thumbnails import choose_fleet_thumbnail
@@ -315,6 +318,7 @@ MICROMANAGER_COLONISE_DISPATCHES_PER_COLONY = 1
 MICROMANAGER_COLONISE_SEARCH_RADIUS = 20.0
 MICROMANAGER_COLONISE_MIN_PAYLOAD = 5
 MICROMANAGER_COLONISE_RESERVE_COLONISTS = 50
+MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD = 3
 MICROMANAGER_PATROL_IDLE_RATIO = 0.25
 MICROMANAGER_PATROL_RADIUS = 15
 
@@ -506,6 +510,7 @@ class GameTurn():
         self._first_contact_any_sent = set()
         self._stance_map_by_player_id = {}
         self._ambush_fleet_ids_for_year = set()
+        self._player_colony_count_cache = {}
 
     def generate_turn(self):
         """Generate a turn for the game. Requires at least one player."""
@@ -530,6 +535,7 @@ class GameTurn():
         """Process a single year of game time."""
         self._scanner_sources_by_player_id = {}
         self._stance_map_by_player_id = {}
+        self._player_colony_count_cache = {}
         refresh_contract_integrity(self.game)
         self._apply_pending_diplomacy_snapshot()
         self.move_comets()
@@ -2531,8 +2537,15 @@ class GameTurn():
                 last_checkin is None or
                 (current_year - int(last_checkin or 0)) >= interval
             )
-            if refresh_due:
+            module_code = normalize_ai_module_code(getattr(player, 'ai_module', ''))
+            is_passive_module = module_code in (AI_MODULE_MICROMANAGER, AI_MODULE_IDLE)
+
+            # Passive AI modules should always resolve incoming diplomacy promptly.
+            # The check-in interval still governs bookkeeping/refresh cadence.
+            if is_passive_module or refresh_due:
                 apply_ai_module_turn(player, self.game)
+
+            if refresh_due:
                 player.ai_last_checkin_year = current_year
                 update_fields.append('ai_last_checkin_year')
             if auto_turn_in and not bool(getattr(player, 'turned_in', False)):
@@ -7480,6 +7493,19 @@ class GameTurn():
             for key in ALL_RESOURCE_KEYS
         }
 
+    def _player_owned_colony_count(self, player):
+        if not player:
+            return 0
+        player_id = int(getattr(player, 'id', 0) or 0)
+        if player_id <= 0:
+            return 0
+        cached = self._player_colony_count_cache.get(player_id)
+        if cached is not None:
+            return cached
+        count = int(player.stars.filter(colonists__gt=0).count())
+        self._player_colony_count_cache[player_id] = count
+        return count
+
     @staticmethod
     def _distance_between_points(x1, y1, x2, y2):
         dx = float(int(x1) - int(x2))
@@ -8234,6 +8260,14 @@ class GameTurn():
         if tier < MICROMANAGER_FLEET_TIER:
             return
 
+        module_code = normalize_ai_module_code(getattr(player, 'ai_module', ''))
+        early_ai_expansion = (
+            int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER and
+            bool(getattr(player, 'is_ai', False)) and
+            module_code == AI_MODULE_MICROMANAGER and
+            self._player_owned_colony_count(player) < MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD
+        )
+
         cost_map = get_player_production_costs(player)
         if not hasattr(self, '_micromanager_auto_fleet_ids_for_year'):
             self._micromanager_auto_fleet_ids_for_year = set()
@@ -8250,6 +8284,11 @@ class GameTurn():
                 orbit_fleets,
                 cost_map,
             )
+            if early_ai_expansion:
+                # Early AI expansion mode (<3 colonies):
+                # try to send one colony ship first and keep one orbit fleet patrolling home.
+                self._dispatch_auto_colonise_route(star, orbit_fleets)
+                self._assign_auto_patrol_orders(star, orbit_fleets)
 
         idle_fleets = self._idle_orbit_fleets(orbit_fleets)
         dispatchable_fleets = self._dispatchable_idle_fleets_for_colony(
@@ -8319,7 +8358,7 @@ class GameTurn():
                         int(delivered.get(key, 0) or 0),
                     )
 
-        if int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER:
+        if int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER and not early_ai_expansion:
             self._dispatch_auto_colonise_route(star, orbit_fleets)
             self._assign_auto_patrol_orders(star, orbit_fleets)
 

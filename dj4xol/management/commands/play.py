@@ -31,6 +31,7 @@ from dj4xol.mineral_rules import ALL_RESOURCE_KEYS, SECRET_RESOURCE_KEYS, known_
 from dj4xol.colony_rules import calculate_habitability_factor
 from dj4xol.name_rules import validate_safe_public_text
 from dj4xol.objectdetails import DetailBuilder
+from dj4xol.player_labels import player_name_with_bracket
 from dj4xol.research import (
     build_research_budget,
     build_research_screen_data,
@@ -1831,8 +1832,12 @@ class Command(BaseCommand):
         return {category.code: payload}
 
     def _player_display_name(self, other):
-        alias = other.account.alias if getattr(other, "account", None) else "Unknown"
-        return "%s (%s)" % (other.name, alias)
+        return player_name_with_bracket(
+            other,
+            name=getattr(other, "name", None),
+            unknown_name="Unknown race",
+            unknown_label="Unknown",
+        )
 
     def _diplomacy_overview_summary(self, player):
         default_stance = player_pending_default_stance(player)

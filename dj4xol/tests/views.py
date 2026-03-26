@@ -1891,9 +1891,9 @@ class TestGameCreationView(TestCase):
         payload = json.loads(default_json)
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0].get('module'), 'micromanager')
-        self.assertIn('race_id', payload[0])
+        self.assertEqual(payload[0].get('race_id'), AI_SLOT_RANDOM_RACE)
         self.assertIn('starting_tech_level', payload[0])
-        self.assertEqual(payload[0].get('default_diplomatic_stance'), 'NEUTRAL')
+        self.assertEqual(payload[0].get('default_diplomatic_stance'), AI_SLOT_RANDOM_STANCE)
 
     def test_new_game_form_rejects_improved_star_names_without_systems(self):
         race = get_default_race()
@@ -1923,7 +1923,7 @@ class TestGameCreationView(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('improved_star_names', form.errors)
 
-    def test_new_game_form_rejects_ai_counts_above_capacity(self):
+    def test_new_game_form_allows_idle_and_micromanager_beyond_server_cap(self):
         race = get_default_race()
         race.public = True
         race.save(update_fields=['public'])
@@ -1932,7 +1932,7 @@ class TestGameCreationView(TestCase):
         self._set_server_setting('ai_module_micromanager_enabled', 'True', 'Enable AI module: micromanager')
         self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
 
-        # Consume one active AI slot on another game.
+        # Consume one active idle slot on another game (should not consume server cap).
         other_game = default_game(stars=6)
         other_game.joinable = True
         other_game.save(update_fields=['joinable'])
@@ -1967,8 +1967,53 @@ class TestGameCreationView(TestCase):
                 {'module': 'micromanager', 'race_id': str(race.id), 'starting_tech_level': 3, 'default_diplomatic_stance': 'NEUTRAL'},
             ]),
         })
+        self.assertTrue(form.is_valid(), msg=form.errors.as_json())
+
+    def test_new_game_form_rejects_server_capped_modules_when_server_cap_is_full(self):
+        race = get_default_race()
+        race.public = True
+        race.save(update_fields=['public'])
+        self._set_server_setting('ai_max_per_game', 3, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 1, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_openai_enabled', 'True', 'Enable AI module: openai')
+        self._set_server_setting('ai_module_micromanager_enabled', 'True', 'Enable AI module: micromanager')
+
+        # Consume one server-capped AI slot on another game.
+        other_game = default_game(stars=6)
+        other_game.joinable = True
+        other_game.save(update_fields=['joinable'])
+        gf = GameFactory(other_game)
+        gf.join_player(None, race, invited=True, is_ai=True, ai_module='openai')
+
+        form = NewGameForm(self.account, data={
+            'name': 'AI Server Cap Test',
+            'description': '',
+            'race': race.id,
+            'starting_year': 2400,
+            'map_size_x': 128,
+            'map_size_y': 128,
+            'num_stars': 50,
+            'systems': '',
+            'improved_star_names': '',
+            'public': '',
+            'joinable': '',
+            'turn_scheme': 'QUORUM',
+            'years_per_turn': 1,
+            'research_cost_multiplier': 1.0,
+            'warp_speed_multiplier': 1.0,
+            'random_events': '',
+            'anomalies_enabled': 'on',
+            'anomaly_spawn_rate': 'NORMAL',
+            'no_scanners': '',
+            'max_starting_tech_level': 5,
+            'invitations': '',
+            'ai_player_count': 1,
+            'ai_player_config_json': json.dumps([
+                {'module': 'openai', 'race_id': str(race.id), 'starting_tech_level': 3, 'default_diplomatic_stance': 'NEUTRAL'},
+            ]),
+        })
         self.assertFalse(form.is_valid())
-        self.assertIn('ai_player_count', form.errors)
+        self.assertIn('ai_player_config_json', form.errors)
 
     def test_new_game_form_allows_ai_when_max_players_is_human_only(self):
         race = get_default_race()
@@ -2216,6 +2261,81 @@ class TestGameCreationView(TestCase):
         ai_player = game.players.filter(is_ai=True).first()
         self.assertIsNotNone(ai_player)
         self.assertNotEqual(ai_player.default_diplomatic_stance, 'ALLIED')
+
+    def test_create_game_randomized_ai_homeworld_environmentals_match_race_centers_on_first_turn(self):
+        race = get_default_race()
+        race.public = True
+        race.save(update_fields=['public'])
+        self._set_server_setting('ai_max_per_game', 2, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 4, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
+        self._set_server_setting('ai_module_micromanager_enabled', 'True', 'Enable AI module: micromanager')
+
+        response = self.client.post(
+            reverse('dj4xol:create_game'),
+            {
+                'name': 'AI Random Homeworld Env Test',
+                'description': '',
+                'race': race.id,
+                'starting_year': 2400,
+                'map_size_x': 128,
+                'map_size_y': 128,
+                'num_stars': 70,
+                'clusters': '',
+                'spiral_arms': '',
+                'systems': '',
+                'improved_star_names': '',
+                'public': '',
+                'joinable': 'on',
+                'join_open_years': '',
+                'max_players': '',
+                'turn_scheme': 'QUORUM',
+                'years_per_turn': 1,
+                'research_cost_multiplier': 1.0,
+                'warp_speed_multiplier': 1.0,
+                'random_events': '',
+                'anomalies_enabled': 'on',
+                'anomaly_spawn_rate': 'NORMAL',
+                'no_scanners': '',
+                'max_starting_tech_level': 5,
+                'invitations': '',
+                'ai_player_count': 2,
+                'ai_player_config_json': json.dumps([
+                    {
+                        'module': 'idle',
+                        'race_id': AI_SLOT_RANDOM_RACE,
+                        'starting_tech_level': 3,
+                        'default_diplomatic_stance': AI_SLOT_RANDOM_STANCE,
+                    },
+                    {
+                        'module': 'micromanager',
+                        'race_id': AI_SLOT_RANDOM_RACE,
+                        'starting_tech_level': 3,
+                        'default_diplomatic_stance': AI_SLOT_RANDOM_STANCE,
+                    },
+                ]),
+            },
+            follow=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        game = Game.objects.get(name='AI Random Homeworld Env Test')
+        ai_players = list(game.players.filter(is_ai=True).select_related('homeworld'))
+        self.assertEqual(len(ai_players), 2)
+        for ai_player in ai_players:
+            self.assertIsNotNone(ai_player.homeworld)
+            self.assertAlmostEqual(
+                float(ai_player.homeworld.gravity),
+                float(ai_player.gravity_center),
+            )
+            self.assertAlmostEqual(
+                float(ai_player.homeworld.temperature),
+                float(ai_player.temperature_center),
+            )
+            self.assertAlmostEqual(
+                float(ai_player.homeworld.radiation),
+                float(ai_player.radiation_center),
+            )
 
 
 class TestRenameObjectView(TestCase):
@@ -4338,6 +4458,32 @@ class TestDiplomacyView(TestCase):
         self.assertContains(response, "panel.classList.toggle('open');", html=False)
         self.assertContains(response, "lcars-variant-1', 'lcars-variant-2', 'lcars-variant-3", html=False)
 
+    def test_diplomacy_detail_shows_ai_module_in_brackets(self):
+        game = default_game(stars=6, fleets=0)
+        player = game.players.first()
+        ai_player = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        self.assertIsNotNone(ai_player)
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        self._create_contact_star_report(game, player, ai_player, contact_star)
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': ai_player.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '%s (Micromanager)' % ai_player.name)
+
     def test_diplomacy_disables_draft_negotiation_button_when_turned_in(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
@@ -4860,6 +5006,169 @@ class TestDiplomacyView(TestCase):
             PlayerTechnologyGrant.objects.filter(player=player, technology=tech).exists()
         )
         self.assertIn(tech.id, {item.id for item in get_player_unlocked_technologies(player)})
+
+    def test_diplomacy_send_to_passive_ai_triggers_immediate_response(self):
+        game = default_game(stars=6, fleets=0)
+        game.turn_scheme = 'HOURLY'
+        game.next_generation = timezone.now() + timedelta(hours=2)
+        game.save(update_fields=['turn_scheme', 'next_generation'])
+        player = game.players.first()
+        ai_player = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        self.assertIsNotNone(ai_player)
+        self._create_contact_star_report(game, player, ai_player, ai_player.homeworld)
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': ai_player.short_id,
+                'action': 'send_contract',
+                'temperature': 'PROPOSE',
+                'deadline_years': '24',
+                'extend_on_accept_years': '0',
+                'request_clause_type': 'SPECIFIC_COLONY',
+                'request_star': str(ai_player.homeworld_id),
+                'offer_clause_type': 'NOTHING',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        contract = DiplomaticContract.objects.get(
+            sender=player,
+            recipient=ai_player,
+            request_clause_type='SPECIFIC_COLONY',
+            request_star_id=ai_player.homeworld_id,
+        )
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_DECLINED)
+
+    def test_diplomacy_send_contract_rejects_defeated_target(self):
+        game = default_game(stars=6, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_defeated_target', 'diplo_defeated_target@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DDT')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Defeated Race',
+            plural_name='Defeated Races',
+            race_type=race_type,
+            defeated=True,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        self._create_contact_star_report(game, player, other_player, contact_star)
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'send_contract',
+                'temperature': 'PROPOSE',
+                'deadline_years': '24',
+                'extend_on_accept_years': '0',
+                'request_clause_type': 'STANCE',
+                'request_stance': 'WARM',
+                'offer_clause_type': 'NOTHING',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Cannot negotiate with defeated races.')
+        self.assertContains(response, 'diplomacy-name-defeated', html=False)
+        self.assertContains(response, 'Negotiations are unavailable for defeated races.')
+        self.assertNotContains(response, 'id="diplomacy-compose-toggle-button"', html=False)
+        self.assertNotContains(response, 'id="diplomacy-compose-form"', html=False)
+        self.assertFalse(
+            DiplomaticContract.objects.filter(
+                game=game,
+                sender=player,
+                recipient=other_player,
+                status=DiplomaticContract.STATUS_SENT,
+            ).exists()
+        )
+
+    def test_diplomacy_compose_query_param_does_not_open_for_defeated_target(self):
+        game = default_game(stars=6, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user(
+            'diplo_defeated_compose',
+            'diplo_defeated_compose@test.com',
+            'pass',
+        )
+        other_account = Account.objects.create(
+            django_user=other_user,
+            alias='DDC',
+        )
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Defeated Compose Race',
+            plural_name='Defeated Compose Races',
+            race_type=race_type,
+            defeated=True,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        self._create_contact_star_report(game, player, other_player, contact_star)
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'compose': '1',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Negotiations are unavailable for defeated races.')
+        self.assertNotContains(response, 'id="diplomacy-compose-toggle-button"', html=False)
+        self.assertNotContains(response, 'id="diplomacy-compose-form"', html=False)
+
+    def test_refresh_contract_integrity_expires_sent_contract_when_recipient_defeated(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_contract_defeated', 'diplo_contract_defeated@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DCD')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Defeat Contract Race',
+            plural_name='Defeat Contract Races',
+            race_type=race_type,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_STANCE,
+            request_stance='WARM',
+            offer_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+        )
+
+        other_player.defeated = True
+        other_player.save(update_fields=['defeated'])
+        refresh_contract_integrity(game)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_EXPIRED)
 
     def test_diplomacy_technology_exchange_grants_correct_tech_to_each_player(self):
         game = default_game(stars=5, fleets=0)

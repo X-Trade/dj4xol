@@ -24,6 +24,10 @@ AI_MODULE_ORDER = (
     AI_MODULE_IDLE,
     AI_MODULE_OPENAI,
 )
+AI_SERVER_CAP_EXCLUDED_MODULES = frozenset((
+    AI_MODULE_MICROMANAGER,
+    AI_MODULE_IDLE,
+))
 
 AI_MODULE_SPECS = {
     AI_MODULE_MICROMANAGER: {
@@ -126,6 +130,14 @@ def player_ai_administration_tier(player):
     if not is_ai_module_enabled(module_code):
         return 0
     return ai_module_administration_tier(module_code)
+
+
+def ai_module_counts_towards_server_cap(code):
+    module_code = normalize_ai_module_code(code)
+    if not module_code:
+        # Unknown/legacy module values should be counted conservatively.
+        return True
+    return module_code not in AI_SERVER_CAP_EXCLUDED_MODULES
 
 
 def get_ai_max_per_game():
@@ -1111,25 +1123,28 @@ def apply_ai_module_turn(player, game):
     }
 
 
-def count_active_ai_players():
+def count_active_ai_players(server_capped_only=False):
     from .models import Player
 
-    return Player.objects.filter(
+    qs = Player.objects.filter(
         is_ai=True,
         defeated=False,
         game__ended=False,
-    ).count()
+    )
+    if not server_capped_only:
+        return qs.count()
+    return qs.exclude(ai_module__in=list(AI_SERVER_CAP_EXCLUDED_MODULES)).count()
 
 
 def get_remaining_server_ai_capacity():
     max_server = get_ai_max_per_server()
     if max_server <= 0:
         return 0
-    return max(0, max_server - count_active_ai_players())
+    return max(0, max_server - count_active_ai_players(server_capped_only=True))
 
 
 def get_create_game_ai_capacity():
     max_game = get_ai_max_per_game()
     if max_game <= 0:
         return 0
-    return min(max_game, get_remaining_server_ai_capacity())
+    return max_game

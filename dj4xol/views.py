@@ -48,7 +48,14 @@ from .research import (
     get_starting_tech_balance_costs, build_production_cost_entries,
     get_player_available_production_orders, get_player_unlocked_technologies,
 )
-from .ai_players import build_random_ai_race_template, resolve_ai_slot_stance
+from .ai_players import (
+    AI_MODULE_IDLE,
+    AI_MODULE_MICROMANAGER,
+    apply_ai_module_turn,
+    build_random_ai_race_template,
+    normalize_ai_module_code,
+    resolve_ai_slot_stance,
+)
 from .diplomacy import (
     STANCE_ALLIED,
     STANCE_CHOICES,
@@ -110,6 +117,7 @@ from .forms import (
     CustomHelpPageBlockFormSet,
 )
 from .name_rules import validate_safe_public_text
+from .player_labels import player_name_with_bracket
 from .scanners import get_scanner_sources_for_player
 
 
@@ -3274,8 +3282,12 @@ def _diplomacy_contract_progress(contract, viewer):
 
 
 def _diplomacy_player_display_name(player_obj):
-    alias = getattr(getattr(player_obj, 'account', None), 'alias', None) or 'Unknown'
-    return '%s (%s)' % (player_obj.name, alias)
+    return player_name_with_bracket(
+        player_obj,
+        name=getattr(player_obj, 'name', None),
+        unknown_name='Unknown race',
+        unknown_label='Unknown',
+    )
 
 
 def _diplomacy_group_technologies(technologies):
@@ -3698,6 +3710,11 @@ def diplomacy(request, game_short_id):
     if selected_target != 'default' and selected_player is None:
         selected_target = 'default'
 
+    can_compose_negotiation = bool(
+        selected_player is not None and
+        not bool(getattr(selected_player, 'defeated', False))
+    )
+
     locked, lock_reason = diplomatic_actions_locked(player)
 
     if request.method == 'POST':
@@ -3759,7 +3776,19 @@ def diplomacy(request, game_short_id):
         elif action == 'send_contract':
             compose_requested = True
             if selected_player is None:
-                contract_errors.append('Select a discovered race before drafting a negotiation.')
+                defeated_target = None
+                if selected_target and selected_target != 'default':
+                    defeated_target = Player.objects.filter(
+                        game=game,
+                        short_id=selected_target,
+                        defeated=True,
+                    ).first()
+                if defeated_target is not None:
+                    contract_errors.append('Cannot negotiate with defeated races.')
+                else:
+                    contract_errors.append('Select a discovered race before drafting a negotiation.')
+            elif bool(getattr(selected_player, 'defeated', False)):
+                contract_errors.append('Cannot negotiate with defeated races.')
             elif locked:
                 contract_errors.append(lock_reason)
             else:
@@ -3833,6 +3862,12 @@ def diplomacy(request, game_short_id):
                             ensure_specific_colony_report(contract)
                         if counter_contract is not None:
                             mark_countered(counter_contract, contract)
+                        if bool(getattr(selected_player, 'is_ai', False)):
+                            module_code = normalize_ai_module_code(
+                                getattr(selected_player, 'ai_module', '')
+                            )
+                            if module_code in (AI_MODULE_MICROMANAGER, AI_MODULE_IDLE):
+                                apply_ai_module_turn(selected_player, game)
                         return redirect(
                             _diplomacy_redirect_url(
                                 game.short_id,
@@ -3861,6 +3896,7 @@ def diplomacy(request, game_short_id):
             'stance': own_stance_map[other.id],
             'selected': selected_target == other.short_id,
             'is_default': False,
+            'is_defeated': bool(getattr(other, 'defeated', False)),
         })
 
     contract_rows = []
@@ -3926,6 +3962,7 @@ def diplomacy(request, game_short_id):
         combat_modifier = combat_chance_modifier_percent(player, selected_player)
         detail = {
             'name': _diplomacy_player_display_name(selected_player),
+            'is_defeated': bool(getattr(selected_player, 'defeated', False)),
             'their_stance': stance_label(their_stance),
             'our_stance': stance_label(our_stance),
             'combat_chance_base': combat_chance_base,
@@ -3943,6 +3980,7 @@ def diplomacy(request, game_short_id):
     else:
         detail = {
             'name': 'Default Stance',
+            'is_defeated': False,
             'their_stance': None,
             'our_stance': stance_label(pending_default_stance),
             'our_stance_raw': pending_default_stance,
@@ -3997,7 +4035,8 @@ def diplomacy(request, game_short_id):
         'stance_choices': STANCE_CHOICES,
         'user_theme': account.theme if account else 'classic',
         'contracts': contract_rows,
-        'compose_open': bool(compose_requested and selected_player is not None),
+        'compose_open': bool(compose_requested and can_compose_negotiation),
+        'can_compose_negotiation': can_compose_negotiation,
         'compose_state': compose_state,
         'compose_errors': contract_errors,
         'compose_notice': contract_notice,

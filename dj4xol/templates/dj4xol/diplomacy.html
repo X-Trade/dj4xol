@@ -63,7 +63,7 @@
                             </div>
                             {% for row in rows %}
                             <div class="allocation-row diplomacy-row">
-                                <a href="?target={{ row.short_id }}" class="allocation-name diplomacy-name{% if row.selected %} selected{% endif %}" title="{{ row.name }}">{{ row.name }}</a>
+                                <a href="?target={{ row.short_id }}" class="allocation-name diplomacy-name{% if row.selected %} selected{% endif %}{% if row.is_defeated %} diplomacy-name-defeated{% endif %}" title="{{ row.name }}">{{ row.name }}</a>
                                 <div class="allocation-control diplomacy-control">
                                     {% for value, label in stance_choices %}
                                     <label class="diplomacy-radio">
@@ -90,7 +90,7 @@
                             <div class="research-detail-kv">
                                 <div class="detail-row">
                                     <span class="env-label">Name</span>
-                                    <span class="detail-value">{{ detail.name }}</span>
+                                    <span class="detail-value{% if detail.is_defeated %} diplomacy-name-defeated{% endif %}">{{ detail.name }}</span>
                                 </div>
                                 {% if detail.is_default %}
                                 <div class="detail-row">
@@ -157,7 +157,9 @@
                             {% if diplomacy_locked %}
                             <p class="diplomacy-compose-warning">{{ diplomacy_lock_reason }}</p>
                             {% endif %}
-                            {% if not compose_open %}
+                            {% if not can_compose_negotiation %}
+                            <p class="diplomacy-compose-warning">Negotiations are unavailable for defeated races.</p>
+                            {% elif not compose_open %}
                             <p class="diplomacy-compose-toggle">
                                 <form method="get" class="diplomacy-compose-toggle-form">
                                     <input type="hidden" name="target" value="{{ selected_target }}">

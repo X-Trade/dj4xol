@@ -28,9 +28,11 @@ from .research import get_global_research_max_level, get_starting_tech_balance_c
 from .ai_players import (
     AI_SLOT_RANDOM_RACE,
     AI_SLOT_RANDOM_STANCE,
+    ai_module_counts_towards_server_cap,
     get_create_game_ai_capacity,
     get_enabled_ai_modules,
     get_ai_max_per_game,
+    get_remaining_server_ai_capacity,
 )
 
 
@@ -471,10 +473,11 @@ class NewGameForm(forms.Form):
                 initial=0,
                 help_text=(
                     'Total AI players for this game. Per-game cap: %s. '
-                    'Remaining server cap: %s.'
+                    'Remaining server-capped slots: %s '
+                    '(micromanager/idle do not consume server cap).'
                 ) % (
                     int(get_ai_max_per_game() or 0),
-                    int(get_create_game_ai_capacity() or 0),
+                    int(get_remaining_server_ai_capacity() or 0),
                 ),
             )
             self.fields['ai_player_config_json'] = forms.CharField(
@@ -518,11 +521,11 @@ class NewGameForm(forms.Form):
             sample_race = self.fields['race'].queryset.first()
             sample_entry = {
                 'module': sample_module,
-                'race_id': str(sample_race.id) if sample_race is not None else '',
+                'race_id': AI_SLOT_RANDOM_RACE,
                 'starting_tech_level': int(
                     getattr(sample_race, 'starting_tech_level', 0) or 0
                 ) if sample_race is not None else 0,
-                'default_diplomatic_stance': 'NEUTRAL',
+                'default_diplomatic_stance': AI_SLOT_RANDOM_STANCE,
             }
             self.fields['ai_player_config_json'].initial = json.dumps(
                 [sample_entry],
@@ -558,8 +561,8 @@ class NewGameForm(forms.Form):
     def clean(self):
         cleaned = super().clean()
         max_per_game = int(get_ai_max_per_game() or 0)
-        remaining_server = int(get_create_game_ai_capacity() or 0)
-        ai_cap = max(0, min(max_per_game, remaining_server))
+        remaining_server = int(get_remaining_server_ai_capacity() or 0)
+        ai_cap = max(0, max_per_game)
         self._clean_ai_slot_config(cleaned, ai_cap, max_per_game, remaining_server)
         if cleaned.get('clusters') and cleaned.get('spiral_arms'):
             self.add_error('clusters', 'Clusters cannot be combined with spiral arm galaxy generation.')
@@ -621,14 +624,13 @@ class NewGameForm(forms.Form):
                 'ai_player_count',
                 (
                     'Requested %s AI player%s but only %s slot%s are available '
-                    '(max per game %s; remaining server capacity %s).'
+                    '(max per game %s).'
                 ) % (
                     ai_count,
                     '' if ai_count == 1 else 's',
                     ai_cap,
                     '' if ai_cap == 1 else 's',
                     max_per_game,
-                    remaining_server,
                 ),
             )
 
@@ -772,6 +774,24 @@ class NewGameForm(forms.Form):
                 'default_diplomatic_stance': stance,
             })
 
+        server_capped_slots = sum(
+            1 for slot in slots
+            if ai_module_counts_towards_server_cap(slot.get('module_code'))
+        )
+        if server_capped_slots > remaining_server:
+            self.add_error(
+                'ai_player_config_json',
+                (
+                    'Requested %s server-capped AI slot%s but only %s server slot%s '
+                    'are currently available.'
+                ) % (
+                    server_capped_slots,
+                    '' if server_capped_slots == 1 else 's',
+                    remaining_server,
+                    '' if remaining_server == 1 else 's',
+                ),
+            )
+
         cleaned['ai_player_slots'] = slots
         return ai_count
 
@@ -810,22 +830,13 @@ class NewGameForm(forms.Form):
                 'label': str(module.get('label') or code.title()),
             })
 
-        raw_selected_race = None
+        default_race_id = AI_SLOT_RANDOM_RACE
         if self.is_bound:
             raw_selected_race = self.data.get('race')
-        if raw_selected_race is None and self.initial:
-            raw_selected_race = self.initial.get('race')
-        selected_race_id = str(raw_selected_race).strip() if raw_selected_race is not None else None
-        if not selected_race_id:
-            selected_race_id = None
-        if selected_race_id is None and races:
-            non_random = [
-                row for row in races
-                if str(row.get('id')) != AI_SLOT_RANDOM_RACE
-            ]
-            selected_race_id = str(
-                (non_random[0] if non_random else races[0]).get('id')
-            )
+            if raw_selected_race is not None:
+                selected_race_id = str(raw_selected_race).strip()
+                if selected_race_id:
+                    default_race_id = selected_race_id
 
         return {
             'capacity': int(self._ai_capacity),
@@ -839,7 +850,8 @@ class NewGameForm(forms.Form):
                 'code': AI_SLOT_RANDOM_STANCE,
                 'label': 'Random (Hostile to Warm)',
             }],
-            'selected_race_id': selected_race_id,
+            'default_race_id': default_race_id,
+            'default_stance': AI_SLOT_RANDOM_STANCE,
         }
 
 
@@ -951,7 +963,10 @@ class ServerSettingsForm(forms.Form):
         required=False,
         min_value=0,
         initial=0,
-        help_text='Maximum active AI players allowed across all non-ended games.',
+        help_text=(
+            'Maximum active server-capped AI players allowed across all non-ended '
+            'games (micromanager/idle are excluded).'
+        ),
     )
     ai_check_in_turns = forms.IntegerField(
         label='AIs Check In Every X Turns',
@@ -1056,7 +1071,7 @@ class ServerSettingsForm(forms.Form):
             'default': 0,
         },
         'ai_max_per_server': {
-            'description': 'Maximum active AI players per server',
+            'description': 'Maximum active server-capped AI players per server',
             'default': 0,
         },
         'ai_check_in_turns': {

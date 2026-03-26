@@ -55,6 +55,7 @@ from dj4xol.colony_rules import (
     calculate_total_jobs,
     calculate_productivity_multiplier,
 )
+from dj4xol.player_labels import player_name_with_bracket
 
 from itertools import chain
 from math import ceil, sqrt
@@ -1338,13 +1339,12 @@ class DetailBuilder():
         """Return player display string as 'race name (username)' or None."""
         player = self.selected_obj.player
         if player:
-            if player.account:
-                username = player.account.alias
-            elif bool(getattr(player, 'is_ai', False)):
-                username = 'AI'
-            else:
-                username = 'Unknown'
-            return '%s (%s)' % (player.name, username)
+            return player_name_with_bracket(
+                player,
+                name=getattr(player, 'name', None),
+                unknown_name='Unknown race',
+                unknown_label='Unknown',
+            )
         if (
             isinstance(self.selected_obj, Star) and
             self._star_has_leftover_infrastructure(self.selected_obj)
@@ -1365,13 +1365,12 @@ class DetailBuilder():
         player = self.game.players.select_related('account').filter(name=player_name).order_by('id').first()
         if not player:
             return player_name
-        if player.account:
-            alias = player.account.alias
-        elif bool(getattr(player, 'is_ai', False)):
-            alias = 'AI'
-        else:
-            alias = 'Unknown'
-        return '%s (%s)' % (player.name, alias)
+        return player_name_with_bracket(
+            player,
+            name=getattr(player, 'name', None),
+            unknown_name=player_name,
+            unknown_label='Unknown',
+        )
 
     @staticmethod
     def _star_has_leftover_infrastructure(star):
@@ -1938,10 +1937,14 @@ class DetailBuilder():
         for other in others:
             if not has_encountered_player(self.player, other):
                 continue
-            alias = other.account.alias if getattr(other, 'account', None) else 'Unknown'
             recipients.append({
                 'value': other.short_id,
-                'label': '%s (%s)' % (other.name, alias),
+                'label': player_name_with_bracket(
+                    other,
+                    name=getattr(other, 'name', None),
+                    unknown_name='Unknown race',
+                    unknown_label='Unknown',
+                ),
             })
         return recipients
 

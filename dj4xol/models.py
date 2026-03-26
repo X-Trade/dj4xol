@@ -29,6 +29,7 @@ from .name_rules import (
     validate_non_reserved_identity_name,
     validate_safe_public_text,
 )
+from .player_labels import player_name_with_bracket
 from . import mineral_rules
 import random
 import uuid
@@ -869,13 +870,12 @@ class Fleet(AbstractMapObject):
     @property
     def owner_display_name(self):
         if self.player_id:
-            if getattr(self.player, 'account', None):
-                alias = self.player.account.alias
-            elif bool(getattr(self.player, 'is_ai', False)):
-                alias = 'AI'
-            else:
-                alias = 'Unknown'
-            return '%s (%s)' % (self.player.name, alias)
+            return player_name_with_bracket(
+                self.player,
+                name=getattr(self.player, 'name', None),
+                unknown_name='Unknown race',
+                unknown_label='Unknown',
+            )
         return "Abandoned"
 
     @property

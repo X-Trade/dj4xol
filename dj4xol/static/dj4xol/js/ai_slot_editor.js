@@ -48,14 +48,28 @@
         countInput.setAttribute("min", "0");
         countInput.setAttribute("max", String(capacity));
 
-        var selectedRaceId = String(payload.selected_race_id || races[0].id || "");
+        var selectedRaceId = String(payload.default_race_id || payload.selected_race_id || races[0].id || "");
         var defaultModule = String(modules[0].code || "");
-        var defaultStance = String((stances[0] && stances[0].code) || "NEUTRAL");
+        var defaultStance = String(payload.default_stance || (stances[0] && stances[0].code) || "NEUTRAL").toUpperCase();
         var jsonWrap = jsonField.closest(".ai-slot-editor-json-wrap");
+        var jsonCell = jsonField.closest("td");
         if (jsonWrap) {
             jsonWrap.style.display = "none";
         } else {
             jsonField.style.display = "none";
+        }
+        if (jsonCell) {
+            var row = jsonCell.parentElement;
+            if (row) {
+                var labelEl = row.querySelector("th label");
+                if (labelEl && labelEl.textContent) {
+                    labelEl.textContent = labelEl.textContent.replace("(JSON)", "").replace(/\s{2,}/g, " ").trim();
+                }
+            }
+            var helpBlocks = jsonCell.querySelectorAll(".help-text");
+            for (var hb = 0; hb < helpBlocks.length; hb++) {
+                helpBlocks[hb].style.display = "none";
+            }
         }
 
         function raceById(raceId) {

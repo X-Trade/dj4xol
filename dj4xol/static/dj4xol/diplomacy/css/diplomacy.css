@@ -35,6 +35,11 @@
     white-space: nowrap;
 }
 
+.diplomacy-name-defeated {
+    text-decoration: line-through;
+    opacity: 0.75;
+}
+
 .diplomacy-control {
     display: contents;
     grid-column: auto;
