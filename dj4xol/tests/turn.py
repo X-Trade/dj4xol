@@ -13147,6 +13147,63 @@ class TestHomeworldLossAndDerelicts(TestCase):
         self.assertEqual(contract.status, DiplomaticContract.STATUS_DECLINED)
         self.assertEqual(ai_player.ai_last_checkin_year, game.year)
 
+    def test_micromanager_ai_orders_survive_without_built_administration(self):
+        from ..models import ServerSettings
+
+        game = default_game(stars=8)
+        race = get_default_race()
+        ai_player = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        self.assertIsNotNone(ai_player)
+        ServerSettings.objects.update_or_create(
+            key='ai_module_micromanager_enabled',
+            defaults={
+                'value': 'True',
+                'description': 'Enable AI module: micromanager',
+            },
+        )
+
+        homeworld = ai_player.homeworld
+        homeworld.has_administration = False
+        homeworld.ironium_inventory = 0
+        homeworld.boranium_inventory = 0
+        homeworld.germanium_inventory = 0
+        homeworld.resource_x_inventory = 0
+        homeworld.resource_y_inventory = 0
+        homeworld.resource_z_inventory = 0
+        homeworld.save(update_fields=[
+            'has_administration',
+            'ironium_inventory',
+            'boranium_inventory',
+            'germanium_inventory',
+            'resource_x_inventory',
+            'resource_y_inventory',
+            'resource_z_inventory',
+        ])
+
+        order = ProductionOrder.objects.create(
+            game=game,
+            star=homeworld,
+            order_type='BUILD_FACTORY',
+            position=1,
+            quantity=1,
+            completed=0,
+            spent_ironium=1,
+            added_by_micromanager=True,
+        )
+
+        GameTurn(game).production()
+
+        self.assertTrue(
+            ProductionOrder.objects.filter(id=order.id).exists(),
+            'Micromanager orders should persist for AI-tier automation without a built Administration item.',
+        )
+
     def test_derelict_fleet_claimed_on_encounter(self):
         game, player, _ = self._make_two_player_game()
         x, y = self._find_empty_location(game)

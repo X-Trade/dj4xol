@@ -6861,6 +6861,10 @@ class GameTurn():
             blocked = False
             fleets_built_this_turn = 0  # Track fleets built for shipyard availability
             shipyard_blocked_message_sent = False  # Only send once per star
+            ai_tier = int(player_ai_administration_tier(star.player) or 0)
+            admin_active_for_automation = bool(
+                getattr(star, 'has_administration', False) or ai_tier > 0
+            )
             cost_map = get_player_production_costs(star.player)
             terraform_profile = get_player_terraforming_profile(star.player)
             terraform_rate = float(terraform_profile.get('rate', 0.0) or 0.0)
@@ -6877,7 +6881,7 @@ class GameTurn():
 
                 if (
                     order.added_by_micromanager and
-                    not bool(getattr(star, 'has_administration', False))
+                    not admin_active_for_automation
                 ):
                     order.delete()
                     continue

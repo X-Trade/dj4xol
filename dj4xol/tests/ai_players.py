@@ -17,6 +17,8 @@ from ..ai_players import (
 from ..factory import GameFactory
 from ..models import (
     DiplomaticContract,
+    Fleet,
+    FleetOrders,
     PlayerDiplomaticStance,
     PlayerTechnologyGrant,
     ResearchCategory,
@@ -214,33 +216,89 @@ class TestAIPlayerModules(TestCase):
         self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
         self.assertEqual(offered_fleet.player_id, ai_player.id)
 
-    def test_passive_ai_rejects_unimplemented_delivery_requests(self):
+    def test_idle_ai_rejects_delivery_requests(self):
         game = default_game(stars=8)
         sender = game.players.first()
         offered_fleet = sender.fleets.first()
-        for module_code in (AI_MODULE_IDLE, AI_MODULE_MICROMANAGER):
-            ai_player = GameFactory(game).join_player(
-                None,
-                get_default_race(),
-                invited=True,
-                is_ai=True,
-                ai_module=module_code,
-            )
-            contract = DiplomaticContract.objects.create(
-                game=game,
-                sender=sender,
-                recipient=ai_player,
-                status=DiplomaticContract.STATUS_SENT,
-                sent_year=game.year,
-                expires_year=game.year + 24,
-                request_clause_type=DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
-                request_ironium=250,
-                offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
-                offer_fleet=offered_fleet,
-            )
+        ai_player = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module=AI_MODULE_IDLE,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
+            request_ironium=250,
+            offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
+            offer_fleet=offered_fleet,
+        )
+        apply_ai_module_turn(ai_player, game)
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_DECLINED)
+
+    def test_micromanager_ai_accepts_feasible_resource_to_world_and_queues_orders(self):
+        game = default_game(stars=10, fleets=0)
+        sender = game.players.first()
+        ai_player = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module=AI_MODULE_MICROMANAGER,
+        )
+        offered_fleet = sender.fleets.first()
+        source_star = ai_player.homeworld
+        self.assertIsNotNone(source_star)
+        source_star.ironium_inventory = 1200
+        source_star.save(update_fields=['ironium_inventory'])
+        delivery_fleet = Fleet.objects.create(
+            game=game,
+            player=ai_player,
+            name='Courier',
+            x=source_star.x,
+            y=source_star.y,
+            ship_count=2,
+            cargo_capacity=400,
+            integrity=100,
+            max_safe_warp=8,
+            max_cloaked_warp=0,
+        )
+        target_star = sender.homeworld
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
+            request_ironium=250,
+            request_suggested_star=target_star,
+            offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
+            offer_fleet=offered_fleet,
+        )
+
+        with patch('dj4xol.ai_players.random.random', return_value=0.05):
             apply_ai_module_turn(ai_player, game)
-            contract.refresh_from_db()
-            self.assertEqual(contract.status, DiplomaticContract.STATUS_DECLINED)
+
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_ACCEPTED)
+        queued = list(
+            FleetOrders.objects.filter(fleet=delivery_fleet).order_by('position')
+        )
+        self.assertEqual([item.order_type for item in queued], ['TRANSFER', 'MOVE', 'TRANSFER'])
+        self.assertEqual(queued[0].transfer_type, 'LOAD')
+        self.assertEqual(queued[0].transfer_ironium, 250)
+        self.assertEqual(queued[1].target_star_id, target_star.id)
+        self.assertEqual(queued[2].transfer_type, 'UNLOAD')
+        self.assertEqual(queued[2].transfer_ironium, 250)
 
     def test_micromanager_ai_rejects_homeworld_transfer_request(self):
         game = default_game(stars=8)

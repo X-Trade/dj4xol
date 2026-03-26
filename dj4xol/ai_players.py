@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 
 import json
 import logging
+import math
 import os
 import random
 import urllib.error
@@ -965,8 +966,6 @@ def _should_reject_unimplemented_delivery_clause(contract):
 
     clause = str(getattr(contract, 'request_clause_type', '') or '')
     return clause in (
-        DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
-        DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET,
         DiplomaticContract.CLAUSE_FLEET_BY_SHIP_COUNT,
         DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
     )
@@ -1076,6 +1075,358 @@ def _gift_offer_acceptance_chance(player, contract):
     return 0.0
 
 
+_RESOURCE_DELIVERY_KEYS = (
+    'ironium',
+    'boranium',
+    'germanium',
+    'resource_x',
+    'resource_y',
+    'resource_z',
+    'colonists',
+)
+
+
+def _resource_delivery_request_bundle(contract):
+    if contract is None:
+        return {}
+    bundle = {}
+    for key in _RESOURCE_DELIVERY_KEYS:
+        amount = int(getattr(contract, 'request_%s' % key, 0) or 0)
+        if amount > 0:
+            bundle[key] = amount
+    return bundle
+
+
+def _resource_delivery_colony_reserve(key):
+    if key in ('ironium', 'boranium', 'germanium'):
+        return 50
+    if key in ('resource_x', 'resource_y', 'resource_z'):
+        return 10
+    if key == 'colonists':
+        return 20
+    return 0
+
+
+def _fleet_default_delivery_speed(fleet):
+    try:
+        safe_warp = int(getattr(fleet, 'max_safe_warp', 5) or 5)
+    except (TypeError, ValueError):
+        safe_warp = 5
+    try:
+        cloaked_warp = int(getattr(fleet, 'max_cloaked_warp', 0) or 0)
+    except (TypeError, ValueError):
+        cloaked_warp = 0
+    speed = cloaked_warp if cloaked_warp != 0 else safe_warp
+    return max(1, min(13, int(speed or 1)))
+
+
+def _distance_years(x1, y1, x2, y2, speed):
+    try:
+        dx = float(x2) - float(x1)
+        dy = float(y2) - float(y1)
+    except (TypeError, ValueError):
+        return 9999
+    step = max(1, int(speed or 1))
+    distance = math.sqrt((dx * dx) + (dy * dy))
+    return int(math.ceil(distance / float(step)))
+
+
+def _is_idle_fleet(fleet):
+    if fleet is None:
+        return False
+    return not fleet.orders.exists()
+
+
+def _fleet_remaining_capacity(fleet):
+    capacity = int(getattr(fleet, 'cargo_capacity', 0) or 0)
+    used = int(getattr(fleet, 'cargo_used', 0) or 0)
+    return max(0, capacity - used)
+
+
+def _fleet_requested_bundle_onboard(fleet, bundle):
+    onboard = {}
+    for key, needed in (bundle or {}).items():
+        if key == 'colonists':
+            amount = int(getattr(fleet, 'colonists', 0) or 0)
+        else:
+            amount = int(getattr(fleet, '%s_inventory' % key, 0) or 0)
+        onboard[key] = min(max(0, amount), int(needed or 0))
+    return onboard
+
+
+def _star_available_for_bundle(star, bundle):
+    if star is None:
+        return {}
+    available = {}
+    for key, needed in (bundle or {}).items():
+        reserve = _resource_delivery_colony_reserve(key)
+        if key == 'colonists':
+            raw = max(0, int(getattr(star, 'colonists', 0) or 0) // 1000)
+        else:
+            raw = max(0, int(getattr(star, '%s_inventory' % key, 0) or 0))
+        available[key] = max(0, raw - reserve)
+    return available
+
+
+def _bundle_total(bundle):
+    total = 0
+    for key in _RESOURCE_DELIVERY_KEYS:
+        total += max(0, int((bundle or {}).get(key, 0) or 0))
+    return int(total)
+
+
+def _remaining_contract_years(contract):
+    if contract is None:
+        return 0
+    now = int(getattr(getattr(contract, 'game', None), 'year', 0) or 0)
+    expires = int(getattr(contract, 'expires_year', 0) or 0)
+    return max(0, (expires - now) + 1)
+
+
+def _resource_to_world_destination_candidates(contract):
+    sender = getattr(contract, 'sender', None)
+    if sender is None:
+        return []
+    candidates = []
+    suggested = getattr(contract, 'request_suggested_star', None)
+    if (
+        suggested is not None and
+        int(getattr(suggested, 'game_id', 0) or 0) == int(getattr(contract, 'game_id', 0) or 0) and
+        int(getattr(suggested, 'player_id', 0) or 0) == int(getattr(sender, 'id', 0) or 0)
+    ):
+        candidates.append(suggested)
+    for star in sender.stars.filter(colonists__gt=0).order_by('-colonists', 'id'):
+        if int(getattr(star, 'id', 0) or 0) in [int(getattr(item, 'id', 0) or 0) for item in candidates]:
+            continue
+        candidates.append(star)
+    return candidates
+
+
+def _plan_resource_to_world_delivery(player, contract):
+    from .models import DiplomaticContract
+
+    if contract is None:
+        return None
+    if str(getattr(contract, 'request_clause_type', '') or '') != DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD:
+        return None
+    request_bundle = _resource_delivery_request_bundle(contract)
+    if not request_bundle:
+        return None
+    required_total = _bundle_total(request_bundle)
+    if required_total <= 0:
+        return None
+    destination_candidates = _resource_to_world_destination_candidates(contract)
+    if not destination_candidates:
+        return None
+    remaining_years = _remaining_contract_years(contract)
+    if remaining_years <= 0:
+        return None
+
+    best = None
+    for source in player.stars.filter(colonists__gt=0).order_by('-colonists', 'id'):
+        available = _star_available_for_bundle(source, request_bundle)
+        if any(int(available.get(key, 0) or 0) < int(amount or 0) for key, amount in request_bundle.items()):
+            continue
+        fleets = player.fleets.filter(x=source.x, y=source.y).order_by('-ship_count', 'id')
+        for fleet in fleets:
+            if not _is_idle_fleet(fleet):
+                continue
+            if _fleet_remaining_capacity(fleet) < required_total:
+                continue
+            speed = _fleet_default_delivery_speed(fleet)
+            for destination in destination_candidates:
+                travel_years = _distance_years(source.x, source.y, destination.x, destination.y, speed)
+                eta_years = 2 + int(travel_years)
+                if eta_years > remaining_years:
+                    continue
+                score = (
+                    eta_years,
+                    travel_years,
+                    -int(getattr(fleet, 'ship_count', 0) or 0),
+                    str(getattr(fleet, 'id', '') or ''),
+                )
+                if best is None or score < best['score']:
+                    best = {
+                        'score': score,
+                        'kind': 'resource_to_world',
+                        'fleet_id': str(fleet.id),
+                        'source_star_id': str(source.id),
+                        'destination_star_id': str(destination.id),
+                        'bundle': dict(request_bundle),
+                        'speed': int(speed),
+                    }
+    return best
+
+
+def _plan_resource_on_given_fleet_delivery(player, contract):
+    from .models import DiplomaticContract
+
+    if contract is None:
+        return None
+    if str(getattr(contract, 'request_clause_type', '') or '') != DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET:
+        return None
+    request_bundle = _resource_delivery_request_bundle(contract)
+    if not request_bundle:
+        return None
+    remaining_years = _remaining_contract_years(contract)
+    if remaining_years <= 0:
+        return None
+
+    best = None
+    for source in player.stars.filter(colonists__gt=0).order_by('-colonists', 'id'):
+        fleets = player.fleets.filter(x=source.x, y=source.y).order_by('-ship_count', 'id')
+        for fleet in fleets:
+            if not _is_idle_fleet(fleet):
+                continue
+            if int(getattr(fleet, 'ship_count', 0) or 0) <= 0:
+                continue
+            onboard = _fleet_requested_bundle_onboard(fleet, request_bundle)
+            required_load = {}
+            for key, amount in request_bundle.items():
+                required_load[key] = max(0, int(amount or 0) - int(onboard.get(key, 0) or 0))
+            if _fleet_remaining_capacity(fleet) < _bundle_total(required_load):
+                continue
+            available = _star_available_for_bundle(source, required_load)
+            if any(int(available.get(key, 0) or 0) < int(amount or 0) for key, amount in required_load.items()):
+                continue
+            score = (
+                1,
+                -int(getattr(fleet, 'ship_count', 0) or 0),
+                str(getattr(fleet, 'id', '') or ''),
+            )
+            if best is None or score < best['score']:
+                best = {
+                    'score': score,
+                    'kind': 'resource_on_given_fleet',
+                    'fleet_id': str(fleet.id),
+                    'source_star_id': str(source.id),
+                    'required_load': dict(required_load),
+                    'speed': int(_fleet_default_delivery_speed(fleet)),
+                }
+    return best
+
+
+def _plan_resource_delivery_contract(player, contract, module_code):
+    from .models import DiplomaticContract
+
+    if module_code != AI_MODULE_MICROMANAGER:
+        return None
+    clause = str(getattr(contract, 'request_clause_type', '') or '')
+    if clause == DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD:
+        return _plan_resource_to_world_delivery(player, contract)
+    if clause == DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET:
+        return _plan_resource_on_given_fleet_delivery(player, contract)
+    return None
+
+
+def _queue_transfer_order_to_star(game, fleet, star, transfer_type, transfer_bundle):
+    from .models import FleetOrders
+
+    kwargs = {
+        'game': game,
+        'fleet': fleet,
+        'order_type': 'TRANSFER',
+        'repeat': False,
+        'transfer_type': transfer_type,
+        'transfer_ironium': int((transfer_bundle or {}).get('ironium', 0) or 0),
+        'transfer_boranium': int((transfer_bundle or {}).get('boranium', 0) or 0),
+        'transfer_germanium': int((transfer_bundle or {}).get('germanium', 0) or 0),
+        'transfer_resource_x': int((transfer_bundle or {}).get('resource_x', 0) or 0),
+        'transfer_resource_y': int((transfer_bundle or {}).get('resource_y', 0) or 0),
+        'transfer_resource_z': int((transfer_bundle or {}).get('resource_z', 0) or 0),
+        'transfer_colonists': int((transfer_bundle or {}).get('colonists', 0) or 0),
+        'target_star': star,
+        'target_kind': 'OBJECT',
+        'target_short_id': star.short_id,
+        'x': int(star.x),
+        'y': int(star.y),
+        'added_by_micromanager': True,
+    }
+    FleetOrders.objects.create(**kwargs)
+
+
+def _queue_move_order_to_star(game, fleet, star, speed):
+    from .models import FleetOrders
+
+    warp = max(1, min(13, int(speed or 1)))
+    FleetOrders.objects.create(
+        game=game,
+        fleet=fleet,
+        order_type='MOVE',
+        repeat=False,
+        warpfactor=warp,
+        original_warpfactor=warp,
+        overmax_risk_checked=False,
+        target_star=star,
+        target_kind='OBJECT',
+        target_short_id=star.short_id,
+        x=int(star.x),
+        y=int(star.y),
+        added_by_micromanager=True,
+    )
+
+
+def _queue_resource_delivery_plan(player, contract, plan):
+    from .models import Fleet, Star, FleetOrders
+
+    if player is None or contract is None or not isinstance(plan, dict):
+        return False
+    fleet = Fleet.objects.filter(
+        id=str(plan.get('fleet_id') or ''),
+        game=player.game,
+        player=player,
+    ).first()
+    if fleet is None:
+        return False
+    if not _is_idle_fleet(fleet):
+        return False
+
+    kind = str(plan.get('kind') or '')
+    if kind == 'resource_to_world':
+        source = Star.objects.filter(
+            id=str(plan.get('source_star_id') or ''),
+            game=player.game,
+            player=player,
+        ).first()
+        destination = Star.objects.filter(
+            id=str(plan.get('destination_star_id') or ''),
+            game=player.game,
+            player=getattr(contract, 'sender', None),
+        ).first()
+        if source is None or destination is None:
+            return False
+        bundle = dict(plan.get('bundle') or {})
+        if _bundle_total(bundle) <= 0:
+            return False
+        _queue_transfer_order_to_star(player.game, fleet, source, 'LOAD', bundle)
+        if int(source.x) != int(destination.x) or int(source.y) != int(destination.y):
+            _queue_move_order_to_star(player.game, fleet, destination, int(plan.get('speed', 1) or 1))
+        _queue_transfer_order_to_star(player.game, fleet, destination, 'UNLOAD', bundle)
+        return True
+
+    if kind == 'resource_on_given_fleet':
+        source = Star.objects.filter(
+            id=str(plan.get('source_star_id') or ''),
+            game=player.game,
+            player=player,
+        ).first()
+        if source is None:
+            return False
+        load_bundle = dict(plan.get('required_load') or {})
+        if _bundle_total(load_bundle) > 0:
+            _queue_transfer_order_to_star(player.game, fleet, source, 'LOAD', load_bundle)
+        FleetOrders.objects.create(
+            game=player.game,
+            fleet=fleet,
+            order_type='GIVE',
+            repeat=False,
+            transfer_player=getattr(contract, 'sender', None),
+            added_by_micromanager=True,
+        )
+        return True
+    return False
+
+
 def _next_lower_stance(current):
     value = str(current or '').strip().upper()
     if value not in _STANCE_ORDER:
@@ -1163,13 +1514,13 @@ def _decide_passive_ai_contract_response(player, contract, module_code):
     from .models import DiplomaticContract
 
     if _should_reject_unimplemented_delivery_clause(contract):
-        return False, 'delivery-not-implemented'
+        return False, 'delivery-not-implemented', None
 
     if (
         str(getattr(contract, 'request_clause_type', '') or '') == DiplomaticContract.CLAUSE_SPECIFIC_COLONY and
         int(getattr(contract, 'request_star_id', 0) or 0) == int(getattr(player, 'homeworld_id', 0) or 0)
     ):
-        return False, 'homeworld-protected'
+        return False, 'homeworld-protected', None
 
     offer_value = _contract_offer_value_kt(contract)
     request_value = _contract_request_cost_kt(contract)
@@ -1189,22 +1540,47 @@ def _decide_passive_ai_contract_response(player, contract, module_code):
     ):
         gift_base = _gift_offer_acceptance_chance(player, contract)
         if gift_base > 0.0:
-            return _ai_roll_acceptance(gift_base, repeat_count), 'pure-gift-roll'
+            return _ai_roll_acceptance(gift_base, repeat_count), 'pure-gift-roll', None
+
+    if request_clause in (
+        DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
+        DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET,
+    ):
+        if module_code != AI_MODULE_MICROMANAGER:
+            return False, 'delivery-not-implemented', None
+        plan = _plan_resource_delivery_contract(player, contract, module_code)
+        if not isinstance(plan, dict):
+            return False, 'resource-delivery-not-feasible', None
+        if request_value <= 0:
+            return False, 'resource-delivery-invalid-request', None
+        if offer_value <= 0:
+            return False, 'resource-delivery-no-reward', None
+        ratio = float(offer_value) / float(max(1, request_value))
+        if ratio < 0.85:
+            return False, 'resource-delivery-unfavorable', None
+        reward_base = _gift_offer_acceptance_chance(player, contract)
+        if reward_base <= 0.0:
+            reward_base = 0.22
+        base = reward_base * min(1.35, max(0.45, ratio))
+        base += min(0.04, trust * 0.01)
+        if offer_value > request_value:
+            base += 0.04
+        return _ai_roll_acceptance(base, repeat_count), 'resource-delivery-roll', plan
 
     if request_clause == DiplomaticContract.CLAUSE_TECHNOLOGY:
         if not _technology_trade_has_new_offer(contract):
-            return False, 'technology-trade-invalid'
+            return False, 'technology-trade-invalid', None
         base = 0.10 if module_code == AI_MODULE_IDLE else 0.20
         if offer_value > request_value:
             base += 0.05
-        return _ai_roll_acceptance(base, repeat_count), 'technology-trade-roll'
+        return _ai_roll_acceptance(base, repeat_count), 'technology-trade-roll', None
 
     if request_clause == DiplomaticContract.CLAUSE_STANCE:
         if module_code == AI_MODULE_IDLE:
             base = 0.04
             if offer_value > request_value:
                 base += 0.04
-            return _ai_roll_acceptance(base, repeat_count), 'stance-roll-idle'
+            return _ai_roll_acceptance(base, repeat_count), 'stance-roll-idle', None
 
         requested = str(getattr(contract, 'request_stance', '') or '').strip().upper()
         current = _current_stance_towards_sender(player, getattr(contract, 'sender', None))
@@ -1230,22 +1606,22 @@ def _decide_passive_ai_contract_response(player, contract, module_code):
                 base = 0.03
         if offer_value > request_value:
             base += 0.05
-        return _ai_roll_acceptance(base, repeat_count), 'stance-roll-micromanager'
+        return _ai_roll_acceptance(base, repeat_count), 'stance-roll-micromanager', None
 
     if module_code == AI_MODULE_IDLE:
         if offer_value <= 0:
-            return False, 'idle-requires-material-offer'
+            return False, 'idle-requires-material-offer', None
         if request_value > 0 and offer_value <= request_value:
-            return False, 'idle-unfavorable'
-        return True, 'idle-material-accept'
+            return False, 'idle-unfavorable', None
+        return True, 'idle-material-accept', None
 
     if request_value > 0:
         if offer_value <= request_value:
-            return False, 'unfavorable-trade'
-        return True, 'favorable-trade'
+            return False, 'unfavorable-trade', None
+        return True, 'favorable-trade', None
     if offer_value > 0:
-        return True, 'free-material-offer'
-    return False, 'default-reject'
+        return True, 'free-material-offer', None
+    return False, 'default-reject', None
 
 
 def _apply_passive_ai_diplomacy_turn(player, game, module_code):
@@ -1263,7 +1639,7 @@ def _apply_passive_ai_diplomacy_turn(player, game, module_code):
     downgraded_senders = set()
     upgraded_senders = set()
     for contract in contracts:
-        should_accept, _reason = _decide_passive_ai_contract_response(
+        should_accept, _reason, delivery_plan = _decide_passive_ai_contract_response(
             player,
             contract,
             module_code,
@@ -1272,6 +1648,8 @@ def _apply_passive_ai_diplomacy_turn(player, game, module_code):
             ok, _msg = perform_contract_action(contract, player, 'accept')
             if ok:
                 contract.refresh_from_db()
+                if isinstance(delivery_plan, dict):
+                    _queue_resource_delivery_plan(player, contract, delivery_plan)
                 accepted += 1
                 sender_id = int(getattr(contract, 'sender_id', 0) or 0)
                 if (
