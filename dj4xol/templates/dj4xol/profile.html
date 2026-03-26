@@ -100,7 +100,7 @@
                                 HTML emails (theme-based styling)
                             </label>
                             <div class="panel-footer">
-                                <button type="submit">Save Preferences</button>
+                                <button type="submit" id="email-pref-submit">Save Preferences</button>
                                 <span id="email-pref-status"></span>
                             </div>
                         </form>
@@ -347,6 +347,7 @@
             var themeStatus = document.getElementById('theme-status');
             var emailPrefForm = document.getElementById('email-preferences-form');
             var emailPrefStatus = document.getElementById('email-pref-status');
+            var emailPrefSubmit = document.getElementById('email-pref-submit');
             var csrfToken = '{{ csrf_token }}';
             var emailRollupsSelect = document.getElementById('email-rollups-select');
             var deleteOverlay = document.getElementById('owned-game-delete-overlay');
@@ -622,10 +623,29 @@
                 }
                 syncRollupState();
 
+                var emailPrefResetTimer = null;
+
+                function setEmailPrefSubmitState(label, disabled) {
+                    if (!emailPrefSubmit) {
+                        return;
+                    }
+                    emailPrefSubmit.textContent = label;
+                    emailPrefSubmit.disabled = !!disabled;
+                }
+
+                function clearEmailPrefResetTimer() {
+                    if (emailPrefResetTimer) {
+                        window.clearTimeout(emailPrefResetTimer);
+                        emailPrefResetTimer = null;
+                    }
+                }
+
                 emailPrefForm.addEventListener('submit', function(e) {
                     e.preventDefault();
+                    clearEmailPrefResetTimer();
+                    setEmailPrefSubmitState('Saving...', true);
                     if (emailPrefStatus) {
-                        emailPrefStatus.textContent = 'Saving...';
+                        emailPrefStatus.textContent = '';
                     }
 
                     var params = new URLSearchParams();
@@ -652,11 +672,25 @@
                     })
                     .then(function(response) { return response.json(); })
                     .then(function(data) {
+                        if (data.success) {
+                            setEmailPrefSubmitState('Saved.', true);
+                            if (emailPrefStatus) {
+                                emailPrefStatus.textContent = '';
+                            }
+                            emailPrefResetTimer = window.setTimeout(function() {
+                                setEmailPrefSubmitState('Save Preferences', false);
+                                emailPrefResetTimer = null;
+                            }, 30000);
+                            return;
+                        }
+
+                        setEmailPrefSubmitState('Save Preferences', false);
                         if (emailPrefStatus) {
-                            emailPrefStatus.textContent = data.success ? 'Saved.' : ('Error: ' + (data.error || 'Failed to save'));
+                            emailPrefStatus.textContent = 'Error: ' + (data.error || 'Failed to save');
                         }
                     })
                     .catch(function() {
+                        setEmailPrefSubmitState('Save Preferences', false);
                         if (emailPrefStatus) {
                             emailPrefStatus.textContent = 'Network error';
                         }

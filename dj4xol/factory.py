@@ -1179,6 +1179,11 @@ class GameFactory():
                 )
         self._apply_starting_research_level(player)
         self._create_starting_fleets(player)
+        if (not bool(is_ai)) and self.game.max_players and self.game.joinable:
+            human_player_count = self.game.players.filter(is_ai=False).count()
+            if human_player_count >= int(self.game.max_players):
+                self.game.joinable = False
+                self.game.save(update_fields=['joinable'])
         return player
 
     def _create_starting_fleets(self, player):

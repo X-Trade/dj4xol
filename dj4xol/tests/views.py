@@ -1128,6 +1128,32 @@ class TestPreJoinNavigation(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(game.players.filter(account=joiner_account).exists())
 
+    def test_join_game_disables_joinable_when_human_cap_is_reached(self):
+        game = default_game(stars=8)
+        game.joinable = True
+        game.max_players = 2
+        game.save(update_fields=['joinable', 'max_players'])
+
+        joiner_user = User.objects.create_user('joiner_cap_user', 'joiner-cap@example.com', 'pass')
+        joiner_account = Account.objects.create(django_user=joiner_user)
+        race = ServerRace.objects.create(
+            name='JoinerCapRace',
+            plural_name='JoinerCapRaces',
+            race_type=get_default_race_type(),
+            owner=joiner_account,
+        )
+
+        client = Client()
+        client.force_login(joiner_user)
+        response = client.post(
+            reverse('dj4xol:join_game', args=[game.short_id]),
+            {'race': str(race.id)},
+        )
+        self.assertEqual(response.status_code, 302)
+
+        game.refresh_from_db()
+        self.assertFalse(game.joinable)
+
     def test_join_game_player_count_display_ignores_ai_players(self):
         game = default_game(stars=10)
         game.joinable = True
