@@ -119,6 +119,18 @@
                             {% empty %}
                             <p>No research categories configured.</p>
                             {% endfor %}
+                            {% if singular_research %}
+                            <div class="allocation-singular-next-field">
+                                <label for="singular-next-field">Next Field</label>
+                                <select id="singular-next-field"
+                                        name="singular_next_field"
+                                        {% if player.turned_in %}disabled{% endif %}>
+                                    {% for code, label in singular_research_next_field_choices %}
+                                    <option value="{{ code }}"{% if singular_research_next_field == code %} selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            {% endif %}
                             {% if not singular_research %}
                             <div class="allocation-actions">
                                 <button type="button" id="alloc-even-btn" {% if player.turned_in %}disabled{% endif %}>Even Split</button>
@@ -408,7 +420,7 @@
                 }
                 form.classList.add('allocation-locked');
                 var controls = form.querySelectorAll(
-                    'input[name="focus_category"], .allocation-input, .allocation-actions button'
+                    'input[name="focus_category"], select[name="singular_next_field"], .allocation-input, .allocation-actions button'
                 );
                 Array.prototype.forEach.call(controls, function(control) {
                     control.disabled = true;
@@ -462,6 +474,10 @@
                 if (selectedFocus) {
                     values.focus_category = selectedFocus.value;
                 }
+                var singularNextField = form.querySelector('select[name="singular_next_field"]');
+                if (singularNextField) {
+                    values.singular_next_field = singularNextField.value;
+                }
                 storage.setItem(draftKey, JSON.stringify(values));
                 storage.setItem(draftPendingKey, JSON.stringify({ ts: Date.now() }));
             }
@@ -506,6 +522,12 @@
                         radio.checked = true;
                     }
                 }
+                if (Object.prototype.hasOwnProperty.call(values, 'singular_next_field')) {
+                    var singularNextField = form.querySelector('select[name="singular_next_field"]');
+                    if (singularNextField) {
+                        singularNextField.value = values.singular_next_field;
+                    }
+                }
             }
 
             restoreDraft();
@@ -532,20 +554,27 @@
             if (!singularResearch) return;
             var form = document.getElementById('research-allocation-form');
             if (!form) return;
+            function submitSingularForm() {
+                if (window.__clearResearchDraft) {
+                    window.__clearResearchDraft();
+                }
+                if (window.__researchUiState) {
+                    window.__researchUiState.saveAndMark();
+                }
+                form.submit();
+            }
             var radios = form.querySelectorAll('input[name=\"focus_category\"]');
             Array.prototype.forEach.call(radios, function(radio) {
                 radio.addEventListener('change', function() {
                     if (this.checked) {
-                        if (window.__clearResearchDraft) {
-                            window.__clearResearchDraft();
-                        }
-                        if (window.__researchUiState) {
-                            window.__researchUiState.saveAndMark();
-                        }
-                        form.submit();
+                        submitSingularForm();
                     }
                 });
             });
+            var nextField = form.querySelector('select[name="singular_next_field"]');
+            if (nextField) {
+                nextField.addEventListener('change', submitSingularForm);
+            }
         })();
         (function() {
             var form = document.getElementById('research-allocation-form');

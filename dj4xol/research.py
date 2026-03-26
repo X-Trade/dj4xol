@@ -17,6 +17,7 @@ from .micromanager_rules import (
 )
 from .models import (
     DefaultResearchLevelRequirement,
+    Player,
     PlayerTechnologyGrant,
     PlayerResearch,
     ResearchCategory,
@@ -1218,6 +1219,60 @@ def set_singular_allocation(player, category_id):
     return rows
 
 
+def _current_singular_focus_row(rows):
+    if not rows:
+        return None
+    selected = max(
+        rows,
+        key=lambda row: (float(row.allocation_percent or 0.0), -int(row.category_id)),
+    )
+    if float(selected.allocation_percent or 0.0) <= 0.0:
+        return None
+    return selected
+
+
+def _lowest_level_row(rows):
+    if not rows:
+        return None
+    return min(
+        rows,
+        key=lambda row: (
+            int(row.current_level or 0),
+            int(getattr(row.category, 'display_order', 0) or 0),
+            str(getattr(row.category, 'name', '') or ''),
+            int(row.category_id),
+        ),
+    )
+
+
+def _retarget_singular_focus_after_unlocks(player, rows, unlocked_category_ids):
+    if not bool(getattr(player, 'singular_research', False)):
+        return False
+    mode = str(
+        getattr(
+            player,
+            'singular_research_next_field',
+            Player.SINGULAR_RESEARCH_NEXT_FIELD_LOWEST,
+        ) or ''
+    ).strip().lower()
+    if mode != Player.SINGULAR_RESEARCH_NEXT_FIELD_LOWEST:
+        return False
+    unlocked_ids = {int(cid) for cid in (unlocked_category_ids or []) if cid is not None}
+    if not unlocked_ids:
+        return False
+    focused = _current_singular_focus_row(rows)
+    if focused is None or int(focused.category_id) not in unlocked_ids:
+        return False
+    target = _lowest_level_row(rows)
+    if target is None or int(target.category_id) == int(focused.category_id):
+        return False
+    if not _apply_singular_allocations(rows, focus_category_id=target.category_id):
+        return False
+    for row in rows:
+        row.save(update_fields=['allocation_percent'])
+    return True
+
+
 def get_player_unlocked_technologies(player):
     """Return all enabled technologies unlocked by player state."""
     rows = ensure_player_research_rows(player)
@@ -1623,6 +1678,7 @@ def process_player_research_for_year(player):
     _allocate_mineral_progress(rows, eligible_stars, max_level_by_category)
 
     unlocks = []
+    unlocked_category_ids = []
     for idx, row in enumerate(rows):
         max_level = max_level_by_category.get(row.category_id, int(row.current_level))
         old_level, new_level = _advance_research_row_with_requirements(
@@ -1639,6 +1695,7 @@ def process_player_research_for_year(player):
                 'old_level': int(old_level),
                 'new_level': int(new_level),
             })
+            unlocked_category_ids.append(int(row.category_id))
             level_map[row.category_id] = int(new_level)
 
     for row in rows:
@@ -1652,6 +1709,7 @@ def process_player_research_for_year(player):
             'resource_y_paid',
             'resource_z_paid',
         ])
+    _retarget_singular_focus_after_unlocks(player, rows, unlocked_category_ids)
     if budget.get('leftover_bonus_rp', 0) > 0 and player.spend_leftover_points_on_research:
         player.leftover_points = 0.0
         player.save(update_fields=['leftover_points'])
@@ -1692,6 +1750,8 @@ def apply_research_bonus_rp(player, category_id, bonus_rp):
         'resource_y_paid',
         'resource_z_paid',
     ])
+    if int(new_level) > int(old_level):
+        _retarget_singular_focus_after_unlocks(player, rows, [row.category_id])
     return {
         'category': row.category,
         'old_level': int(old_level),

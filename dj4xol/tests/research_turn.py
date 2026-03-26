@@ -13,6 +13,7 @@ from ..models import (
     Technology,
 )
 from ..research import (
+    apply_research_bonus_rp,
     build_research_budget,
     ensure_player_research_rows,
     get_player_unlocked_technologies,
@@ -105,6 +106,61 @@ class ResearchTurnTest(TestCase):
         row.refresh_from_db()
         self.assertGreaterEqual(row.current_level, 1.0)
         self.assertGreaterEqual(int(row.stored_rp), 0)
+
+    def test_singular_research_lowest_mode_switches_focus_after_level_up(self):
+        self.player.singular_research = True
+        self.player.singular_research_next_field = 'lowest'
+        self.player.save(update_fields=['singular_research', 'singular_research_next_field'])
+        rows = ensure_player_research_rows(self.player)
+        self.assertGreater(len(rows), 1)
+
+        focused = rows[0]
+        for row in rows:
+            row.current_level = 0.0
+            row.stored_rp = 0.0
+            row.allocation_percent = 100.0 if row.id == focused.id else 0.0
+            row.save(update_fields=['current_level', 'stored_rp', 'allocation_percent'])
+
+        result = apply_research_bonus_rp(self.player, focused.category_id, 50)
+        self.assertIsNotNone(result)
+
+        refreshed = list(
+            self.player.research_progress.select_related('category')
+            .order_by('category__display_order', 'category__name')
+        )
+        refreshed_by_id = {row.category_id: row for row in refreshed}
+        new_target = min(
+            refreshed,
+            key=lambda row: (
+                int(row.current_level or 0),
+                int(getattr(row.category, 'display_order', 0) or 0),
+                str(getattr(row.category, 'name', '') or ''),
+                int(row.category_id),
+            ),
+        )
+        self.assertEqual(new_target.allocation_percent, 100.0)
+        self.assertNotEqual(new_target.category_id, focused.category_id)
+        self.assertEqual(refreshed_by_id[focused.category_id].allocation_percent, 0.0)
+
+    def test_singular_research_same_mode_keeps_focus_after_level_up(self):
+        self.player.singular_research = True
+        self.player.singular_research_next_field = 'same'
+        self.player.save(update_fields=['singular_research', 'singular_research_next_field'])
+        rows = ensure_player_research_rows(self.player)
+        self.assertGreater(len(rows), 1)
+
+        focused = rows[0]
+        for row in rows:
+            row.current_level = 0.0
+            row.stored_rp = 0.0
+            row.allocation_percent = 100.0 if row.id == focused.id else 0.0
+            row.save(update_fields=['current_level', 'stored_rp', 'allocation_percent'])
+
+        result = apply_research_bonus_rp(self.player, focused.category_id, 50)
+        self.assertIsNotNone(result)
+
+        focused.refresh_from_db()
+        self.assertEqual(focused.allocation_percent, 100.0)
 
     def test_warmonger_race_type_blocks_selected_hulls_and_smart_bombs(self):
         from ..models import ServerRaceType

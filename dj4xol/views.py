@@ -3145,6 +3145,14 @@ def research(request, game_short_id):
     )
     if request.method == 'POST' and not player.turned_in:
         if player.singular_research:
+            next_field_mode = str(request.POST.get('singular_next_field') or '').strip().lower()
+            valid_modes = {choice[0] for choice in Player.SINGULAR_RESEARCH_NEXT_FIELD_CHOICES}
+            if (
+                next_field_mode in valid_modes and
+                player.singular_research_next_field != next_field_mode
+            ):
+                player.singular_research_next_field = next_field_mode
+                player.save(update_fields=['singular_research_next_field'])
             focus_category = request.POST.get('focus_category') or selected_category
             set_singular_allocation(player, focus_category)
         elif request.POST.get('alloc_action') == 'even':
@@ -3184,6 +3192,8 @@ def research(request, game_short_id):
         'next_level_items': data['next_level_items'],
         'recently_unlocked_items': data['recently_unlocked_items'],
         'singular_research': player.singular_research,
+        'singular_research_next_field': player.singular_research_next_field,
+        'singular_research_next_field_choices': Player.SINGULAR_RESEARCH_NEXT_FIELD_CHOICES,
         'user_theme': account.theme if account else 'classic',
     })
 

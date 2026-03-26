@@ -1052,6 +1052,12 @@ class Player(AbstractGameObject, HabitabilityMixin):
         ('WARM', 'Warm'),
         ('ALLIED', 'Allied'),
     ]
+    SINGULAR_RESEARCH_NEXT_FIELD_LOWEST = 'lowest'
+    SINGULAR_RESEARCH_NEXT_FIELD_SAME = 'same'
+    SINGULAR_RESEARCH_NEXT_FIELD_CHOICES = [
+        (SINGULAR_RESEARCH_NEXT_FIELD_LOWEST, 'Lowest'),
+        (SINGULAR_RESEARCH_NEXT_FIELD_SAME, 'Same'),
+    ]
 
     account = models.ForeignKey(Account, related_name="players",
                                 null=True, default=None,
@@ -1074,6 +1080,11 @@ class Player(AbstractGameObject, HabitabilityMixin):
     starting_tech_level = models.IntegerField(default=3)
     convert_unused_buildpoints_to_research = models.BooleanField(default=False)
     singular_research = models.BooleanField(default=False)
+    singular_research_next_field = models.CharField(
+        max_length=8,
+        choices=SINGULAR_RESEARCH_NEXT_FIELD_CHOICES,
+        default=SINGULAR_RESEARCH_NEXT_FIELD_LOWEST,
+    )
     spend_leftover_points_on_research = models.BooleanField(default=False)
     leftover_points = models.FloatField(default=0.0)
     turned_in = models.BooleanField(default=False)

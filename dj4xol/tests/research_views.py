@@ -56,6 +56,7 @@ class ResearchViewTest(TestCase):
             reverse('dj4xol:research', args=[self.game.short_id]),
             {
                 'focus_category': str(self.electronics.id),
+                'singular_next_field': 'same',
                 'alloc_action': 'focus',
             }
         )
@@ -70,6 +71,18 @@ class ResearchViewTest(TestCase):
         }
         self.assertEqual(rows[self.electronics.id], 100.0)
         self.assertEqual(rows[self.energy.id], 0.0)
+        self.player.refresh_from_db()
+        self.assertEqual(self.player.singular_research_next_field, 'same')
+
+    def test_singular_research_view_shows_next_field_selector(self):
+        self.player.singular_research = True
+        self.player.save(update_fields=['singular_research'])
+        response = self.client.get(
+            reverse('dj4xol:research', args=[self.game.short_id])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="singular_next_field"', html=False)
+        self.assertContains(response, '<option value="lowest" selected>Lowest</option>', html=False)
 
     def test_singular_research_view_hides_set_focus_button(self):
         self.player.singular_research = True

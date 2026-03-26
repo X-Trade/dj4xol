@@ -7,7 +7,7 @@ from ..models import (
 )
 from math import atanh, tanh
 
-from ..research import get_player_tech_effects
+from ..research import ensure_player_research_rows, get_player_tech_effects
 from ..mineral_rules import random_asteroid_field_minerals
 from ._util import default_game
 from django.contrib.auth.models import User
@@ -473,6 +473,21 @@ class testGameFactory(TestCase):
             player.research_progress.values_list('current_level', flat=True)
         )
         self.assertEqual(levels, {3.0})
+
+    def test_join_player_defaults_non_singular_research_to_even_split(self):
+        self.races[0].singular_research = False
+        self.races[0].save(update_fields=['singular_research'])
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(5)
+        gf.save()
+
+        player = gf.join_player(self.accounts[0], self.races[0])
+        rows = ensure_player_research_rows(player)
+        allocations = [int(row.allocation_percent or 0) for row in rows]
+        self.assertEqual(sum(allocations), 100)
+        self.assertLessEqual(max(allocations) - min(allocations), 1)
 
     def test_game_scoped_short_ids_resolve_map_object_collision(self):
         game = default_game(stars=1, fleets=0)

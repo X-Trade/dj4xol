@@ -139,6 +139,14 @@ body {
     margin-top: 10px;
 }
 
+.allocation-singular-next-field {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+}
+
 .tech-item {
     display: flex;
     gap: 10px;
