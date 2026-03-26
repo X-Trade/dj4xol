@@ -7429,6 +7429,7 @@ class GameTurn():
             queue_requirements=remaining_queue_requirements(
                 queue_orders, cost_map
             ),
+            administration_active=admin_active,
         )
         planned_runs = collapse_micromanager_order_totals(planned)
         if preserved and planned_runs:

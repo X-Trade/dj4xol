@@ -526,11 +526,14 @@ def get_micromanager_candidate_orders(
     terraform_used=False,
     dyson_available=False,
     cost_map=None,
+    administration_active=None,
 ):
     """Return candidate automatic production orders in priority order."""
     if int(tier or 0) <= 0:
         return []
-    if not bool(getattr(star, 'has_administration', False)):
+    if administration_active is None:
+        administration_active = bool(getattr(star, 'has_administration', False))
+    if not bool(administration_active):
         return []
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
@@ -808,9 +811,14 @@ def plan_micromanager_orders(
     cost_map=None,
     queue_requirements=None,
     limit=12,
+    administration_active=None,
 ):
     """Plan queued Micromanager orders for one colony."""
     if int(tier or 0) <= 0:
+        return []
+    if administration_active is None:
+        administration_active = bool(getattr(star, 'has_administration', False))
+    if not bool(administration_active):
         return []
     projected = _project_star_state(
         star,
@@ -847,6 +855,7 @@ def plan_micromanager_orders(
             terraform_used=terraform_used,
             dyson_available=dyson_available,
             cost_map=cost_map,
+            administration_active=administration_active,
         )
         if not candidates:
             break

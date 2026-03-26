@@ -1663,6 +1663,49 @@ class AdministrationAutomationTest(TestCase):
         self.assertIsNotNone(order)
         self.assertEqual(order.quantity, 1)
 
+    def test_ai_micromanager_level_five_populates_production_queue_without_built_administration(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 200_000
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 2_000
+        self.star.boranium_inventory = 2_000
+        self.star.germanium_inventory = 2_000
+        self.star.ironium_yield = 50
+        self.star.boranium_yield = 50
+        self.star.germanium_yield = 50
+        self.star.save(update_fields=[
+            'has_administration',
+            'colonists',
+            'mines',
+            'factories',
+            'labs',
+            'defenses',
+            'shipyards',
+            'ironium_inventory',
+            'boranium_inventory',
+            'germanium_inventory',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+        ])
+        self.star.production_orders.all().delete()
+
+        turn = GameTurn(self.game)
+        turn._refresh_administration_production_queue(self.star)
+
+        orders = list(self.star.production_orders.filter(
+            added_by_micromanager=True,
+        ).order_by('position', 'id'))
+        self.assertTrue(orders)
+        self.assertIn(orders[0].order_type, {'BUILD_MINE', 'BUILD_FACTORY', 'BUILD_DEFENSE'})
+
     def test_ai_micromanager_level_five_dispatches_one_idle_fleet_for_colonise(self):
         self.player.is_ai = True
         self.player.ai_module = 'micromanager'
