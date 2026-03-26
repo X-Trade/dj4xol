@@ -1097,7 +1097,8 @@ class GameFactory():
         if not can_bypass:
             if not self.game.joinable:
                 return None
-            if self.game.max_players and self.game.players.count() >= self.game.max_players:
+            human_player_count = self.game.players.filter(is_ai=False).count()
+            if self.game.max_players and human_player_count >= self.game.max_players:
                 return None
 
         if account is not None and self.game.players.filter(account=account).exists():

@@ -552,18 +552,6 @@ class NewGameForm(forms.Form):
                     remaining_server,
                 ),
             )
-        max_players = cleaned.get('max_players')
-        if max_players not in (None, ''):
-            try:
-                max_players_int = int(max_players)
-            except (TypeError, ValueError):
-                max_players_int = None
-            if max_players_int is not None and ai_total + 1 > max_players_int:
-                self.add_error(
-                    'max_players',
-                    'Max Players must allow at least one human plus selected AI players.',
-                )
-
         if cleaned.get('clusters') and cleaned.get('spiral_arms'):
             self.add_error('clusters', 'Clusters cannot be combined with spiral arm galaxy generation.')
             self.add_error('spiral_arms', 'Spiral arm galaxy generation cannot be combined with clusters.')

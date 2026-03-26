@@ -713,7 +713,8 @@ def join_game(request, game_short_id):
             'message': 'This game is not open for joining.'
         })
 
-    if game.max_players and game.players.count() >= game.max_players:
+    human_player_count = game.players.filter(is_ai=False).count()
+    if game.max_players and human_player_count >= game.max_players:
         return render(request, 'dj4xol/forbidden.html', {
             'message': 'This game is full.'
         })
@@ -778,7 +779,7 @@ def join_game(request, game_short_id):
                 'refund_destination': refund_destination,
             }
 
-    player_count = game.players.count()
+    player_count = human_player_count
     return render(request, 'dj4xol/join_game.html', {
         'form': form,
         'game': game,

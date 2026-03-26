@@ -1096,6 +1096,59 @@ class TestPreJoinNavigation(TestCase):
         self.assertIn('y=%s' % int(player.homeworld.y), response.url)
         self.assertIn('sel=%s' % player.homeworld.short_id, response.url)
 
+    def test_join_game_max_players_ignores_ai_players(self):
+        game = default_game(stars=10)
+        game.joinable = True
+        game.max_players = 2
+        game.save(update_fields=['joinable', 'max_players'])
+
+        GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module='idle',
+        )
+
+        joiner_user = User.objects.create_user('joiner_human_slot_user', 'joiner-human-slot@example.com', 'pass')
+        joiner_account = Account.objects.create(django_user=joiner_user)
+        race = ServerRace.objects.create(
+            name='JoinerHumanSlotRace',
+            plural_name='JoinerHumanSlotRaces',
+            race_type=get_default_race_type(),
+            owner=joiner_account,
+        )
+
+        client = Client()
+        client.force_login(joiner_user)
+        response = client.post(
+            reverse('dj4xol:join_game', args=[game.short_id]),
+            {'race': str(race.id)},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(game.players.filter(account=joiner_account).exists())
+
+    def test_join_game_player_count_display_ignores_ai_players(self):
+        game = default_game(stars=10)
+        game.joinable = True
+        game.max_players = 2
+        game.save(update_fields=['joinable', 'max_players'])
+        GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module='idle',
+        )
+
+        user = User.objects.create_user('joiner_count_user', 'joiner-count@example.com', 'pass')
+        Account.objects.create(django_user=user)
+        client = Client()
+        client.force_login(user)
+        response = client.get(reverse('dj4xol:join_game', args=[game.short_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<td>1/2</td>', html=True)
+
     @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_join_game_sends_owner_email_for_public_join(self):
         ServerSettings.objects.update_or_create(
@@ -1844,6 +1897,41 @@ class TestGameCreationView(TestCase):
         })
         self.assertFalse(form.is_valid())
         self.assertIn('ai_module_count_micromanager', form.errors)
+
+    def test_new_game_form_allows_ai_when_max_players_is_human_only(self):
+        race = get_default_race()
+        race.public = True
+        race.save(update_fields=['public'])
+        self._set_server_setting('ai_max_per_game', 3, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 3, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
+
+        form = NewGameForm(self.account, data={
+            'name': 'AI + Human Cap Test',
+            'description': '',
+            'race': race.id,
+            'starting_year': 2400,
+            'map_size_x': 128,
+            'map_size_y': 128,
+            'num_stars': 50,
+            'systems': 'on',
+            'improved_star_names': '',
+            'public': '',
+            'joinable': '',
+            'turn_scheme': 'QUORUM',
+            'years_per_turn': 1,
+            'research_cost_multiplier': 1.0,
+            'warp_speed_multiplier': 1.0,
+            'random_events': '',
+            'anomalies_enabled': 'on',
+            'anomaly_spawn_rate': 'NORMAL',
+            'no_scanners': '',
+            'max_starting_tech_level': 5,
+            'max_players': 1,
+            'invitations': '',
+            'ai_module_count_idle': 3,
+        })
+        self.assertTrue(form.is_valid(), msg=form.errors.as_json())
 
     def test_create_game_can_add_ai_players_by_module(self):
         race = get_default_race()
