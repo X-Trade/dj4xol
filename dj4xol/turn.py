@@ -319,6 +319,7 @@ MICROMANAGER_COLONISE_DISPATCHES_PER_COLONY = 1
 MICROMANAGER_COLONISE_SEARCH_RADIUS = 20.0
 MICROMANAGER_COLONISE_MIN_PAYLOAD = 5
 MICROMANAGER_COLONISE_RESERVE_COLONISTS = 50
+MICROMANAGER_COLONISE_MAX_EMPLOYMENT_RATIO = 0.85
 MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD = 3
 MICROMANAGER_PATROL_IDLE_RATIO = 0.30
 MICROMANAGER_PATROL_MIN_RATIO = 0.25
@@ -8112,15 +8113,7 @@ class GameTurn():
             return True
         if int(getattr(star, 'defenses', 0) or 0) <= 0:
             return True
-        return star.production_orders.filter(
-            order_type__in=(
-                'BUILD_MINE',
-                'BUILD_FACTORY',
-                'BUILD_LAB',
-                'BUILD_DEFENSE',
-                'BUILD_SHIPYARD',
-            )
-        ).exists()
+        return False
 
     def _queue_auto_build_fleet_order_for_colony(self, star, orbit_fleets, cost_map):
         """Tier-5: queue one auto build-fleet order when below orbit target."""
@@ -8135,9 +8128,11 @@ class GameTurn():
             return
         if self._has_pending_foundational_infrastructure_orders(star):
             return
-        if self._idle_orbit_fleets(orbit_fleets):
+        idle_fleets = self._idle_orbit_fleets(orbit_fleets)
+        if self._dispatchable_idle_fleets_for_colony(orbit_fleets, idle_fleets):
             return
-        if self._reassignable_patrol_fleets_for_colony(orbit_fleets):
+        patrol_fleets = self._reassignable_patrol_fleets_for_colony(orbit_fleets)
+        if self._dispatchable_idle_fleets_for_colony(orbit_fleets, patrol_fleets):
             return
         budget = self._one_year_planning_budget(star, cost_map)
         income = self._one_year_income(star)
@@ -8608,10 +8603,17 @@ class GameTurn():
     def _spare_colonists_for_auto_colonise(self, star):
         """Return spare colony colonists in kt while preserving local workforce."""
         current_colonists = max(0, int(getattr(star, 'colonists', 0) or 0))
-        reserve_colonists = max(
-            int(getattr(star, 'base_capacity', 0) or 0),
-            int(calculate_total_jobs(star) or 0) * 2,
+        current_jobs = max(0, int(calculate_total_jobs(star) or 0))
+        workforce_reserve = int(ceil(
+            float(current_jobs) / float(MICROMANAGER_COLONISE_MAX_EMPLOYMENT_RATIO)
+        )) if current_jobs > 0 else 0
+        soft_pop_reserve = min(
             int(MICROMANAGER_COLONISE_RESERVE_COLONISTS or 0) * 1000,
+            max(0, int(current_colonists / 2)),
+        )
+        reserve_colonists = max(
+            workforce_reserve,
+            soft_pop_reserve,
         )
         return max(0, int((current_colonists - reserve_colonists) / 1000))
 

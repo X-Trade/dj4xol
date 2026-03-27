@@ -203,6 +203,17 @@ def _mine_bootstrap_pressure(star):
     return _clamp((1.0 - mine_ratio) / 0.50)
 
 
+def _employment_job_build_tailoff(job_ratio):
+    ratio = float(job_ratio or 0.0)
+    if ratio <= JOB_TARGET_RATIO:
+        return 1.0
+    if ratio >= JOB_MAX_RATIO:
+        return 0.0
+    return _clamp(
+        (JOB_MAX_RATIO - ratio) / (JOB_MAX_RATIO - JOB_TARGET_RATIO)
+    )
+
+
 def _job_capacity_after(star, order_type):
     extra = 0
     if order_type in (
@@ -230,6 +241,12 @@ def _jobs_added_by_order(order_type):
     if order_type == DYSON_SPHERE_ORDER_TYPE:
         return DYSON_SPHERE_JOBS
     return 0
+
+
+def _can_queue_job_expansion(player, star, order_type):
+    if int(_jobs_added_by_order(order_type) or 0) <= 0:
+        return True
+    return _can_add_jobs_without_breaking_limit(player, star, order_type)
 
 
 def _can_add_order_without_exceeding_max_jobs(player, star, order_type):
@@ -629,6 +646,8 @@ def _scored_micromanager_candidate_orders(
     mine_ratio = _mine_fill_ratio(star)
     bootstrap_pressure = _mine_bootstrap_pressure(star)
     extraction_ready = 1.0 - bootstrap_pressure
+    job_build_tailoff = _employment_job_build_tailoff(job_ratio)
+    high_employment = job_ratio >= JOB_MAX_RATIO
     candidates = {}
     first_seen = {}
 
@@ -647,22 +666,19 @@ def _scored_micromanager_candidate_orders(
         tier,
     )
     if growth_priority == 'top':
-        growth_multiplier = 0.45 if bootstrap_pressure >= 1.0 else (
-            0.70 if bootstrap_pressure > 0.0 else 1.0
-        )
         for idx, order_type in enumerate(growth_candidates):
             append_candidate(
                 order_type,
-                (105.0 - (idx * 5.0)) * growth_multiplier,
+                1200.0 - (idx * 20.0),
             )
     elif growth_priority == 'normal':
-        growth_multiplier = 0.30 if bootstrap_pressure >= 1.0 else (
-            0.60 if bootstrap_pressure > 0.0 else 1.0
-        )
+        growth_score = 120.0 + ((1.0 - job_build_tailoff) * 280.0)
+        if high_employment:
+            growth_score = 1000.0
         for idx, order_type in enumerate(growth_candidates):
             append_candidate(
                 order_type,
-                (55.0 - (idx * 4.0)) * growth_multiplier,
+                growth_score - (idx * 20.0),
             )
 
     if (
@@ -676,48 +692,90 @@ def _scored_micromanager_candidate_orders(
     ):
         append_candidate(DYSON_SPHERE_ORDER_TYPE, 180.0)
 
-    if current_mines <= 0 and max_mines > 0:
-        append_candidate('BUILD_MINE', 300.0)
-    if current_factories <= 0:
-        append_candidate('BUILD_FACTORY', 280.0)
+    if (
+        current_mines <= 0 and
+        max_mines > 0 and
+        _can_queue_job_expansion(player, star, 'BUILD_MINE')
+    ):
+        append_candidate(
+            'BUILD_MINE',
+            max(25.0, 300.0 * job_build_tailoff),
+        )
+    if (
+        current_factories <= 0 and
+        _can_queue_job_expansion(player, star, 'BUILD_FACTORY')
+    ):
+        append_candidate(
+            'BUILD_FACTORY',
+            max(25.0, 280.0 * job_build_tailoff),
+        )
 
-    if mine_room:
+    if mine_room and _can_queue_job_expansion(player, star, 'BUILD_MINE'):
+        mine_score = 0.0
         if mine_ratio < 0.50:
-            append_candidate('BUILD_MINE', 260.0 + ((0.50 - mine_ratio) * 220.0))
+            mine_score += 260.0 + ((0.50 - mine_ratio) * 220.0)
         elif mine_ratio < 0.75:
-            append_candidate('BUILD_MINE', 145.0 + ((0.75 - mine_ratio) * 120.0))
+            mine_score += 145.0 + ((0.75 - mine_ratio) * 120.0)
         elif mine_ratio < 1.00:
-            append_candidate('BUILD_MINE', 40.0 + ((1.00 - mine_ratio) * 55.0))
+            mine_score += 40.0 + ((1.00 - mine_ratio) * 55.0)
         if queue_pressure.get('mines'):
-            append_candidate('BUILD_MINE', 90.0)
+            mine_score += 90.0
+        if mine_score > 0.0:
+            append_candidate('BUILD_MINE', mine_score * job_build_tailoff)
 
-    if job_ratio < JOB_MIN_RATIO:
+    if (
+        _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
+        job_ratio < JOB_MIN_RATIO
+    ):
         append_candidate(
             'BUILD_FACTORY',
-            220.0 + ((JOB_MIN_RATIO - job_ratio) * 260.0) +
-            (extraction_ready * 40.0),
+            (
+                220.0 + ((JOB_MIN_RATIO - job_ratio) * 260.0) +
+                (extraction_ready * 40.0)
+            ) * job_build_tailoff,
         )
-    elif job_ratio < 0.40:
+    elif (
+        _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
+        job_ratio < 0.40
+    ):
         append_candidate(
             'BUILD_FACTORY',
-            135.0 + ((0.40 - job_ratio) * 150.0) +
-            (extraction_ready * 25.0),
+            (
+                135.0 + ((0.40 - job_ratio) * 150.0) +
+                (extraction_ready * 25.0)
+            ) * job_build_tailoff,
         )
-    elif job_ratio < JOB_TARGET_RATIO:
+    elif (
+        _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
+        job_ratio < JOB_TARGET_RATIO
+    ):
         append_candidate(
             'BUILD_FACTORY',
-            80.0 + ((JOB_TARGET_RATIO - job_ratio) * 90.0) +
-            (extraction_ready * 20.0),
+            (
+                80.0 + ((JOB_TARGET_RATIO - job_ratio) * 90.0) +
+                (extraction_ready * 20.0)
+            ) * job_build_tailoff,
         )
-    elif queue_pressure.get('factories'):
-        append_candidate('BUILD_FACTORY', 90.0)
-    elif job_ratio < JOB_MAX_RATIO:
-        append_candidate('BUILD_FACTORY', 12.0 + (extraction_ready * 10.0))
+    elif (
+        _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
+        queue_pressure.get('factories')
+    ):
+        append_candidate('BUILD_FACTORY', 90.0 * job_build_tailoff)
+    elif (
+        _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
+        job_ratio < JOB_MAX_RATIO
+    ):
+        append_candidate(
+            'BUILD_FACTORY',
+            (12.0 + (extraction_ready * 10.0)) * job_build_tailoff,
+        )
 
     if int(tier or 0) >= TIER_SUPPORT:
         for idx, order_type in enumerate(_ordered_support_balance_candidates(star)):
             gap_score = float(support_gap_scores.get(order_type, 0) or 0)
             if gap_score <= 0:
+                continue
+            if not _can_queue_job_expansion(player, star, order_type):
                 continue
             support_pressure = _clamp(
                 _safe_ratio(gap_score, max(1, current_factories), default=0.0)
@@ -762,7 +820,11 @@ def _scored_micromanager_candidate_orders(
                 shipyard_score *= 0.60
             append_candidate('BUILD_SHIPYARD', shipyard_score)
 
-        if not support_gap_scores and not queue_pressure.get('factories'):
+        if (
+            not support_gap_scores and
+            not queue_pressure.get('factories') and
+            _can_queue_job_expansion(player, star, 'BUILD_FACTORY')
+        ):
             append_candidate('BUILD_FACTORY', 12.0)
 
     if (
