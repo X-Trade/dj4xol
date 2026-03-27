@@ -1,6 +1,6 @@
 from django.test import TestCase
 
-from ..models import Fleet, FleetOrders, ProductionOrder, ResearchCategory, Salvage, Technology
+from ..models import Fleet, FleetOrders, ProductionOrder, Report, ResearchCategory, Salvage, Technology
 from ..colony_rules import calculate_employment_percent
 from ..research import (
     ensure_player_research_rows,
@@ -108,6 +108,39 @@ class AdministrationAutomationTest(TestCase):
         )
         self._unlock_category_level(category, tech_level)
         return category
+
+    def _create_star_report(
+        self,
+        star,
+        report_tier='basic',
+        is_survivable=True,
+        player_name=None,
+        colonists=None,
+    ):
+        report, _created = Report.objects.update_or_create(
+            game=self.game,
+            player=self.player,
+            target_type='star',
+            target_id=star.id,
+            defaults={
+                'year': self.game.year,
+                'cached_report': '{}',
+            },
+        )
+        data = {
+            'name': star.name,
+            'x': int(star.x),
+            'y': int(star.y),
+            'report_tier': report_tier,
+            'is_survivable': bool(is_survivable),
+        }
+        if player_name is not None:
+            data['player_name'] = player_name
+        if colonists is not None:
+            data['colonists'] = int(colonists)
+        report.set_report_data(data)
+        report.save(update_fields=['cached_report'])
+        return report
 
     def test_administration_order_available_only_when_unlocked_and_needed(self):
         options = get_player_available_production_orders(self.player, self.star)
@@ -1219,7 +1252,7 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertFalse(self.star.production_orders.exists())
 
-    def test_level_two_can_queue_shipyard_when_under_five_year_horizon(self):
+    def test_level_two_prioritises_support_before_shipyard_when_support_is_missing(self):
         self._create_administration_tech(2, 2)
         self.player.race_type.population_growth_multiplier = 0
         self.player.race_type.save(update_fields=['population_growth_multiplier'])
@@ -1247,7 +1280,38 @@ class AdministrationAutomationTest(TestCase):
         )
 
         self.assertGreaterEqual(len(planned), 1)
-        self.assertEqual(planned[0], 'BUILD_SHIPYARD')
+        self.assertIn(planned[0], {'BUILD_DEFENSE', 'BUILD_LAB'})
+        self.assertNotEqual(planned[0], 'BUILD_SHIPYARD')
+
+    def test_level_two_keeps_shipyard_behind_factory_when_economy_can_still_grow(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 20
+        self.star.factories = 20
+        self.star.labs = 10
+        self.star.defenses = 10
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 2_500
+        self.star.boranium_inventory = 500
+        self.star.germanium_inventory = 1_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertGreaterEqual(len(planned), 1)
+        self.assertEqual(planned[0], 'BUILD_FACTORY')
 
     def test_level_three_queues_dyson_when_under_nine_year_horizon(self):
         self._create_administration_tech(3, 3)
@@ -1765,16 +1829,16 @@ class AdministrationAutomationTest(TestCase):
         self.player.ai_module = 'micromanager'
         self.player.save(update_fields=['is_ai', 'ai_module'])
         self.star.has_administration = False
-        self.star.colonists = 12_000
-        self.star.mines = 0
-        self.star.factories = 2  # 20 BP/year, below one-year BUILD_FLEET cost.
-        self.star.labs = 0
-        self.star.defenses = 0
+        self.star.colonists = 100_000
+        self.star.mines = 1
+        self.star.factories = 5
+        self.star.labs = 1
+        self.star.defenses = 1
         self.star.shipyards = 1
         self.star.ironium_inventory = 1_000
         self.star.boranium_inventory = 1_000
         self.star.germanium_inventory = 1_000
-        self.star.ironium_yield = 0
+        self.star.ironium_yield = 10
         self.star.boranium_yield = 0
         self.star.germanium_yield = 0
         self.star.save()
@@ -1797,16 +1861,16 @@ class AdministrationAutomationTest(TestCase):
         self.player.save(update_fields=['is_ai', 'ai_module'])
         self._create_administration_tech(1, 1)
         self.star.has_administration = False
-        self.star.colonists = 12_000
-        self.star.mines = 0
-        self.star.factories = 2
-        self.star.labs = 0
-        self.star.defenses = 0
+        self.star.colonists = 100_000
+        self.star.mines = 1
+        self.star.factories = 5
+        self.star.labs = 1
+        self.star.defenses = 1
         self.star.shipyards = 1
         self.star.ironium_inventory = 1_000
         self.star.boranium_inventory = 1_000
         self.star.germanium_inventory = 1_000
-        self.star.ironium_yield = 0
+        self.star.ironium_yield = 10
         self.star.boranium_yield = 0
         self.star.germanium_yield = 0
         self.star.save()
@@ -1822,6 +1886,79 @@ class AdministrationAutomationTest(TestCase):
         ).first()
         self.assertIsNotNone(order)
         self.assertEqual(order.quantity, 1)
+
+    def test_ai_micromanager_level_five_skips_fleet_build_while_foundations_missing(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 100_000
+        self.star.mines = 1
+        self.star.factories = 5
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 1_000
+        self.star.boranium_inventory = 1_000
+        self.star.germanium_inventory = 1_000
+        self.star.ironium_yield = 10
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        self.player.fleets.all().delete()
+        self.star.production_orders.all().delete()
+
+        turn = GameTurn(self.game)
+        turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertFalse(
+            self.star.production_orders.filter(
+                order_type='BUILD_FLEET',
+                added_by_micromanager=True,
+            ).exists()
+        )
+
+    def test_ai_micromanager_level_five_skips_fleet_build_when_idle_fleet_exists(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 100_000
+        self.star.mines = 1
+        self.star.factories = 5
+        self.star.labs = 1
+        self.star.defenses = 1
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 1_000
+        self.star.boranium_inventory = 1_000
+        self.star.germanium_inventory = 1_000
+        self.star.ironium_yield = 10
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        self.player.fleets.all().delete()
+        self.star.production_orders.all().delete()
+
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Idle Orbit Fleet',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+        )
+
+        turn = GameTurn(self.game)
+        turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertFalse(
+            self.star.production_orders.filter(
+                order_type='BUILD_FLEET',
+                added_by_micromanager=True,
+            ).exists()
+        )
 
     def test_ai_micromanager_locked_terraform_order_is_not_executed(self):
         self.player.is_ai = True
@@ -1944,6 +2081,7 @@ class AdministrationAutomationTest(TestCase):
         target.save(update_fields=[
             'player', 'x', 'y', 'gravity', 'temperature', 'radiation', 'colonists',
         ])
+        self._create_star_report(target, is_survivable=True)
 
         strong = Fleet.objects.create(
             game=self.game,
@@ -2054,6 +2192,133 @@ class AdministrationAutomationTest(TestCase):
         target.save(update_fields=[
             'player', 'x', 'y', 'gravity', 'temperature', 'radiation', 'colonists',
         ])
+        self._create_star_report(target, is_survivable=True)
+
+        strong = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Home Patrol',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            offense_level=6,
+            defense_level=6,
+            cargo_capacity=120,
+        )
+        weak = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Colony Scout',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+            cargo_capacity=120,
+        )
+
+        turn = GameTurn(self.game)
+        turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertTrue(strong.orders.filter(
+            order_type='PATROL',
+            repeat=True,
+            added_by_micromanager=True,
+        ).exists())
+        self.assertTrue(weak.orders.filter(
+            order_type='COLONISE',
+            added_by_micromanager=True,
+        ).exists())
+
+        transfer_orders = FleetOrders.objects.filter(
+            fleet__in=[strong, weak],
+            order_type='TRANSFER',
+        )
+        self.assertFalse(transfer_orders.filter(transfer_ironium__gt=0).exists())
+        self.assertFalse(transfer_orders.filter(transfer_boranium__gt=0).exists())
+        self.assertFalse(transfer_orders.filter(transfer_germanium__gt=0).exists())
+        self.assertFalse(transfer_orders.filter(transfer_resource_x__gt=0).exists())
+        self.assertFalse(transfer_orders.filter(transfer_resource_y__gt=0).exists())
+        self.assertFalse(transfer_orders.filter(transfer_resource_z__gt=0).exists())
+
+    def test_ai_micromanager_level_five_prioritises_colonise_before_logistics_after_early_expansion(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 220_000
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save(update_fields=[
+            'has_administration',
+            'colonists',
+            'mines',
+            'factories',
+            'labs',
+            'defenses',
+            'shipyards',
+            'ironium_inventory',
+            'boranium_inventory',
+            'germanium_inventory',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+        ])
+        self.star.production_orders.all().delete()
+        self.player.fleets.all().delete()
+
+        donor = self.game.stars.exclude(id=self.star.id).first()
+        donor.player = self.player
+        donor.colonists = 150_000
+        donor.ironium_inventory = 800
+        donor.boranium_inventory = 800
+        donor.germanium_inventory = 800
+        donor.save(update_fields=[
+            'player',
+            'colonists',
+            'ironium_inventory',
+            'boranium_inventory',
+            'germanium_inventory',
+        ])
+
+        extra_owned = self.game.stars.exclude(
+            id__in=[self.star.id, donor.id]
+        ).first()
+        extra_owned.player = self.player
+        extra_owned.colonists = 100_000
+        extra_owned.save(update_fields=['player', 'colonists'])
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            quantity=1,
+            position=1,
+        )
+
+        target = self.game.stars.exclude(
+            id__in=[self.star.id, donor.id, extra_owned.id]
+        ).first()
+        target.player = None
+        target.x = int(self.star.x) + 1
+        target.y = int(self.star.y)
+        target.gravity = self.player.gravity_center
+        target.temperature = self.player.temperature_center
+        target.radiation = self.player.radiation_center
+        target.colonists = 0
+        target.save(update_fields=[
+            'player', 'x', 'y', 'gravity', 'temperature', 'radiation', 'colonists',
+        ])
+        self._create_star_report(target, is_survivable=True)
 
         strong = Fleet.objects.create(
             game=self.game,
@@ -2154,10 +2419,13 @@ class AdministrationAutomationTest(TestCase):
                 added_by_micromanager=True,
             ).exists()
         ]
-        self.assertEqual(len(patrol_assigned), 1)
-        self.assertEqual(patrol_assigned[0].id, fleets[-1].id)
+        self.assertEqual(len(patrol_assigned), 2)
+        self.assertEqual(
+            sorted(fleet.id for fleet in patrol_assigned),
+            sorted([fleets[-1].id, fleets[-2].id]),
+        )
 
-    def test_ai_micromanager_level_five_assigns_minimum_one_patrol_when_possible(self):
+    def test_ai_micromanager_single_available_fleet_keeps_patrol(self):
         self.player.is_ai = True
         self.player.ai_module = 'micromanager'
         self.player.save(update_fields=['is_ai', 'ai_module'])
@@ -2214,6 +2482,7 @@ class AdministrationAutomationTest(TestCase):
         target.save(update_fields=[
             'player', 'x', 'y', 'gravity', 'temperature', 'radiation', 'colonists',
         ])
+        self._create_star_report(target, is_survivable=True)
 
         guard = Fleet.objects.create(
             game=self.game,
@@ -2414,6 +2683,82 @@ class AdministrationAutomationTest(TestCase):
             ).exists()
         )
         self.assertEqual(patrol_count, 1)
+
+    def test_mechanical_micromanager_can_target_worlds_when_race_type_ignores_all_env(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.player.race_type.is_mechanical = True
+        self.player.race_type.ignores_gravity = True
+        self.player.race_type.ignores_temperature = True
+        self.player.race_type.ignores_radiation = True
+        self.player.race_type.save(update_fields=[
+            'is_mechanical',
+            'ignores_gravity',
+            'ignores_temperature',
+            'ignores_radiation',
+        ])
+
+        target = self.game.stars.exclude(id=self.star.id).first()
+        target.player = None
+        target.x = int(self.star.x) + 1
+        target.y = int(self.star.y)
+        target.gravity = 0.0
+        target.temperature = 2.0
+        target.radiation = 0.0
+        target.colonists = 0
+        target.save(update_fields=[
+            'player',
+            'x',
+            'y',
+            'gravity',
+            'temperature',
+            'radiation',
+            'colonists',
+        ])
+        self._create_star_report(target, is_survivable=True)
+
+        best = GameTurn(self.game)._best_colonise_target_for_colony(self.star)
+        self.assertIsNotNone(best)
+        self.assertEqual(best.id, target.id)
+
+    def test_mechanical_micromanager_uses_reported_far_target_with_wide_search(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.player.race_type.is_mechanical = True
+        self.player.race_type.ignores_gravity = True
+        self.player.race_type.ignores_temperature = True
+        self.player.race_type.ignores_radiation = True
+        self.player.race_type.save(update_fields=[
+            'is_mechanical',
+            'ignores_gravity',
+            'ignores_temperature',
+            'ignores_radiation',
+        ])
+
+        target = self.game.stars.exclude(id=self.star.id).first()
+        target.player = None
+        target.x = int(self.star.x) + 30
+        target.y = int(self.star.y)
+        target.gravity = 0.0
+        target.temperature = 2.0
+        target.radiation = 0.0
+        target.colonists = 0
+        target.save(update_fields=[
+            'player',
+            'x',
+            'y',
+            'gravity',
+            'temperature',
+            'radiation',
+            'colonists',
+        ])
+        self._create_star_report(target, is_survivable=True)
+
+        best = GameTurn(self.game)._best_colonise_target_for_colony(self.star)
+        self.assertIsNotNone(best)
+        self.assertEqual(best.id, target.id)
 
     def test_administration_level_four_can_collect_from_asteroids_when_colonies_cannot_spare(self):
         self._create_administration_tech(4, 4)

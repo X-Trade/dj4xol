@@ -640,12 +640,6 @@ def get_micromanager_candidate_orders(
         if int(tier or 0) >= TIER_SUPPORT:
             if queue_pressure.get('factories'):
                 append_candidate('BUILD_FACTORY')
-            if _can_add_jobs_without_breaking_limit(
-                player, star, 'BUILD_SHIPYARD'
-            ) and _can_add_order_without_exceeding_max_jobs(
-                player, star, 'BUILD_SHIPYARD'
-            ) and current_shipyards < shipyard_target:
-                append_candidate('BUILD_SHIPYARD')
             if support_balance_candidates:
                 for order_type in support_balance_candidates:
                     if _can_add_jobs_without_breaking_limit(
@@ -654,6 +648,12 @@ def get_micromanager_candidate_orders(
                         append_candidate(order_type)
             else:
                 append_candidate('BUILD_FACTORY')
+            if _can_add_jobs_without_breaking_limit(
+                player, star, 'BUILD_SHIPYARD'
+            ) and _can_add_order_without_exceeding_max_jobs(
+                player, star, 'BUILD_SHIPYARD'
+            ) and current_shipyards < shipyard_target:
+                append_candidate('BUILD_SHIPYARD')
             if queue_pressure.get('mines') and mine_room:
                 append_candidate('BUILD_MINE')
             if mine_room and current_mines < (current_factories + 1) * 2:
@@ -669,12 +669,6 @@ def get_micromanager_candidate_orders(
                 append_candidate('BUILD_MINE')
         else:
             if int(tier or 0) >= TIER_SUPPORT:
-                if _can_add_jobs_without_breaking_limit(
-                    player, star, 'BUILD_SHIPYARD'
-                ) and _can_add_order_without_exceeding_max_jobs(
-                    player, star, 'BUILD_SHIPYARD'
-                ) and current_shipyards < shipyard_target:
-                    append_candidate('BUILD_SHIPYARD')
                 if (
                     int(getattr(star, 'defenses', 0) or 0) <
                     LEVEL_TWO_DEFENSE_FLOOR and
@@ -691,6 +685,12 @@ def get_micromanager_candidate_orders(
                     )
                 ):
                     append_candidate('BUILD_LAB')
+                if _can_add_jobs_without_breaking_limit(
+                    player, star, 'BUILD_SHIPYARD'
+                ) and _can_add_order_without_exceeding_max_jobs(
+                    player, star, 'BUILD_SHIPYARD'
+                ) and current_shipyards < shipyard_target:
+                    append_candidate('BUILD_SHIPYARD')
             if queue_pressure.get('factories'):
                 append_candidate('BUILD_FACTORY')
             for order_type in filler_order_types:
@@ -706,14 +706,6 @@ def get_micromanager_candidate_orders(
         if queue_pressure.get('factories'):
             append_candidate('BUILD_FACTORY')
         if int(tier or 0) >= TIER_SUPPORT:
-            if (
-                int(getattr(star, 'shipyards', 0) or 0) < int(fleets_in_orbit or 0) and
-                _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD') and
-                _can_add_order_without_exceeding_max_jobs(
-                    player, star, 'BUILD_SHIPYARD'
-                )
-            ):
-                append_candidate('BUILD_SHIPYARD')
             if support_balance_candidates:
                 for order_type in support_balance_candidates:
                     if _can_add_jobs_without_breaking_limit(
@@ -722,6 +714,14 @@ def get_micromanager_candidate_orders(
                         append_candidate(order_type)
             elif not queue_pressure.get('factories'):
                 append_candidate('BUILD_FACTORY')
+            if (
+                int(getattr(star, 'shipyards', 0) or 0) < int(fleets_in_orbit or 0) and
+                _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD') and
+                _can_add_order_without_exceeding_max_jobs(
+                    player, star, 'BUILD_SHIPYARD'
+                )
+            ):
+                append_candidate('BUILD_SHIPYARD')
         for order_type in level_one_support_candidates:
             append_candidate(order_type)
 

@@ -320,10 +320,11 @@ MICROMANAGER_COLONISE_SEARCH_RADIUS = 20.0
 MICROMANAGER_COLONISE_MIN_PAYLOAD = 5
 MICROMANAGER_COLONISE_RESERVE_COLONISTS = 50
 MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD = 3
-MICROMANAGER_PATROL_IDLE_RATIO = 0.25
-MICROMANAGER_PATROL_MIN_RATIO = 0.20
-MICROMANAGER_PATROL_MAX_RATIO = 0.40
+MICROMANAGER_PATROL_IDLE_RATIO = 0.30
+MICROMANAGER_PATROL_MIN_RATIO = 0.25
+MICROMANAGER_PATROL_MAX_RATIO = 0.34
 MICROMANAGER_PATROL_RADIUS = 15
+MICROMANAGER_WIDE_COLONISE_SEARCH_RADIUS = 40.0
 
 
 # Chance calculation functions (separated for testability)
@@ -8097,6 +8098,30 @@ class GameTurn():
                 return False
         return True
 
+    @staticmethod
+    def _has_pending_foundational_infrastructure_orders(star):
+        total_yield = sum(
+            int(getattr(star, '%s_yield' % key, 0) or 0)
+            for key in ALL_RESOURCE_KEYS
+        )
+        if int(getattr(star, 'factories', 0) or 0) <= 0:
+            return True
+        if total_yield > 0 and int(getattr(star, 'mines', 0) or 0) <= 0:
+            return True
+        if int(getattr(star, 'labs', 0) or 0) <= 0:
+            return True
+        if int(getattr(star, 'defenses', 0) or 0) <= 0:
+            return True
+        return star.production_orders.filter(
+            order_type__in=(
+                'BUILD_MINE',
+                'BUILD_FACTORY',
+                'BUILD_LAB',
+                'BUILD_DEFENSE',
+                'BUILD_SHIPYARD',
+            )
+        ).exists()
+
     def _queue_auto_build_fleet_order_for_colony(self, star, orbit_fleets, cost_map):
         """Tier-5: queue one auto build-fleet order when below orbit target."""
         from .models import ProductionOrder
@@ -8107,6 +8132,12 @@ class GameTurn():
         if int(getattr(star, 'shipyards', 0) or 0) <= 0:
             return
         if star.production_orders.filter(order_type='BUILD_FLEET').exists():
+            return
+        if self._has_pending_foundational_infrastructure_orders(star):
+            return
+        if self._idle_orbit_fleets(orbit_fleets):
+            return
+        if self._reassignable_patrol_fleets_for_colony(orbit_fleets):
             return
         budget = self._one_year_planning_budget(star, cost_map)
         income = self._one_year_income(star)
@@ -8562,6 +8593,18 @@ class GameTurn():
             target = min(target, available_count - 1)
         return target
 
+    @staticmethod
+    def _colonise_search_radius_for_player(player):
+        race_type = getattr(player, 'race_type', None)
+        if race_type is None:
+            return float(MICROMANAGER_COLONISE_SEARCH_RADIUS)
+        if all(
+            bool(getattr(race_type, attr, False))
+            for attr in ('ignores_gravity', 'ignores_temperature', 'ignores_radiation')
+        ):
+            return float(MICROMANAGER_WIDE_COLONISE_SEARCH_RADIUS)
+        return float(MICROMANAGER_COLONISE_SEARCH_RADIUS)
+
     def _spare_colonists_for_auto_colonise(self, star):
         """Return spare colony colonists in kt while preserving local workforce."""
         current_colonists = max(0, int(getattr(star, 'colonists', 0) or 0))
@@ -8573,31 +8616,65 @@ class GameTurn():
         return max(0, int((current_colonists - reserve_colonists) / 1000))
 
     def _best_colonise_target_for_colony(self, star):
-        from .models import Star
+        from .models import Report, Star
 
         player = getattr(star, 'player', None)
         if player is None:
             return None
-        min_x = int(star.x) - int(ceil(MICROMANAGER_COLONISE_SEARCH_RADIUS))
-        max_x = int(star.x) + int(ceil(MICROMANAGER_COLONISE_SEARCH_RADIUS))
-        min_y = int(star.y) - int(ceil(MICROMANAGER_COLONISE_SEARCH_RADIUS))
-        max_y = int(star.y) + int(ceil(MICROMANAGER_COLONISE_SEARCH_RADIUS))
+        search_radius = self._colonise_search_radius_for_player(player)
+        reports = list(Report.objects.filter(
+            game=self.game,
+            player=player,
+            target_type='star',
+        ).only('target_id', 'cached_report'))
+        if not reports:
+            return None
+
+        report_data_by_target_id = {}
+        for report in reports:
+            data = report.get_report_data()
+            if not isinstance(data, dict):
+                continue
+            if not bool(data.get('is_survivable')):
+                continue
+            try:
+                report_x = int(data.get('x'))
+                report_y = int(data.get('y'))
+            except (TypeError, ValueError):
+                continue
+            distance = self._distance_between_points(
+                star.x, star.y, report_x, report_y
+            )
+            if distance > search_radius:
+                continue
+            if report.target_id == star.id:
+                continue
+            if data.get('player_name') not in (None, ''):
+                continue
+            if int(data.get('colonists', 0) or 0) > 0:
+                continue
+            report_data_by_target_id[report.target_id] = {
+                'data': data,
+                'distance': distance,
+            }
+        if not report_data_by_target_id:
+            return None
+
+        candidate_stars = {
+            target.id: target
+            for target in Star.objects.filter(
+                game=self.game,
+                id__in=list(report_data_by_target_id.keys()),
+            )
+        }
         best = None
         best_distance = None
         best_hab = None
-        for target in Star.objects.filter(
-            game=self.game,
-            player__isnull=True,
-            x__gte=min_x,
-            x__lte=max_x,
-            y__gte=min_y,
-            y__lte=max_y,
-        ).exclude(id=star.id):
-            distance = self._distance_between_points(
-                star.x, star.y, target.x, target.y
-            )
-            if distance > MICROMANAGER_COLONISE_SEARCH_RADIUS:
+        for target_id, report_info in report_data_by_target_id.items():
+            target = candidate_stars.get(target_id)
+            if target is None:
                 continue
+            distance = float(report_info.get('distance', 0.0) or 0.0)
             hab = float(calculate_habitability_factor(player, target) or 0.0)
             if hab <= 0.0:
                 continue
@@ -8775,10 +8852,9 @@ class GameTurn():
                 orbit_fleets,
                 cost_map,
             )
+            # Colonisation should take first claim on eligible idle fleets.
+            self._dispatch_auto_colonise_route(star, orbit_fleets)
             if early_ai_expansion:
-                # Early AI expansion mode (<3 colonies):
-                # try to send one colony ship first and keep one orbit fleet patrolling home.
-                self._dispatch_auto_colonise_route(star, orbit_fleets)
                 self._assign_auto_patrol_orders(star, orbit_fleets)
 
         idle_fleets = self._idle_orbit_fleets(orbit_fleets)
@@ -8848,9 +8924,7 @@ class GameTurn():
                         int(deficits.get(key, 0) or 0) -
                         int(delivered.get(key, 0) or 0),
                     )
-
         if int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER and not early_ai_expansion:
-            self._dispatch_auto_colonise_route(star, orbit_fleets)
             self._assign_auto_patrol_orders(star, orbit_fleets)
 
     def _fleet_service_requirements(self, fleet):
