@@ -25,6 +25,7 @@ JOB_MAX_RATIO = 0.75
 
 MICROMANAGER_MODE_STANDARD = 'standard'
 MICROMANAGER_MODE_EXPANSIONIST = 'expansionist'
+EXPANSIONIST_MINE_TARGET_MULTIPLIER = 1.75
 
 TIER_BASIC = 1
 TIER_SUPPORT = 2
@@ -188,6 +189,26 @@ def _mine_fill_ratio(star):
     return _safe_ratio(int(getattr(star, 'mines', 0) or 0), max_mines, default=1.0)
 
 
+def _target_mine_count(star, micromanager_mode=MICROMANAGER_MODE_STANDARD):
+    micromanager_mode = _normalize_micromanager_mode(micromanager_mode)
+    safe_count = int(safe_mine_count(star) or 0)
+    if safe_count <= 0:
+        return 0
+    if micromanager_mode != MICROMANAGER_MODE_EXPANSIONIST:
+        return safe_count
+    return max(
+        safe_count,
+        int(ceil(float(safe_count) * EXPANSIONIST_MINE_TARGET_MULTIPLIER)),
+    )
+
+
+def _target_mine_fill_ratio(star, micromanager_mode=MICROMANAGER_MODE_STANDARD):
+    target_mines = int(_target_mine_count(star, micromanager_mode=micromanager_mode) or 0)
+    if target_mines <= 0:
+        return 1.0
+    return _safe_ratio(int(getattr(star, 'mines', 0) or 0), target_mines, default=1.0)
+
+
 def _support_gap_scores(star):
     current_factories = int(getattr(star, 'factories', 0) or 0)
     if current_factories <= 0:
@@ -270,8 +291,11 @@ def _support_gap_scores_for_tier(star, tier):
     }
 
 
-def _mine_bootstrap_pressure(star):
-    mine_ratio = _mine_fill_ratio(star)
+def _mine_bootstrap_pressure(star, micromanager_mode=MICROMANAGER_MODE_STANDARD):
+    mine_ratio = _target_mine_fill_ratio(
+        star,
+        micromanager_mode=micromanager_mode,
+    )
     if mine_ratio < 0.50:
         return 1.0
     if mine_ratio >= 1.0:
@@ -517,6 +541,7 @@ def _planning_limit_for_star(
     plan_limit = max(0, int(limit or 0))
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
+    target_mines = int(_target_mine_count(star, micromanager_mode=micromanager_mode) or 0)
     if int(tier or 0) <= TIER_BASIC:
         if current_jobs < thresholds['min_jobs']:
             missing_jobs = thresholds['min_jobs'] - current_jobs
@@ -558,20 +583,20 @@ def _planning_limit_for_star(
             cap = int(ceil(float(cap) * 1.5))
         return max(plan_limit, min(cap, int(catchup_limit)))
 
-    mine_ratio = _mine_fill_ratio(star)
-    max_mines = int(safe_mine_count(star) or 0)
+    mine_ratio = _target_mine_fill_ratio(star, micromanager_mode=micromanager_mode)
+    max_mines = target_mines
     if max_mines > 0 and mine_ratio < 0.50:
         missing_mines = max(0, int((max_mines * 0.50) - int(getattr(star, 'mines', 0) or 0)))
         cap = 18 if int(tier or 0) >= TIER_MECHANICAL_GROWTH else 10
         if expansionist_mode:
             cap = int(ceil(float(cap) * 1.5))
         return max(plan_limit, min(cap, max(1, missing_mines)))
-    if expansionist_mode and max_mines > 0 and mine_ratio < 0.75:
+    if expansionist_mode and max_mines > 0 and mine_ratio < 0.90:
         missing_mines = max(
             0,
-            int((max_mines * 0.75) - int(getattr(star, 'mines', 0) or 0)),
+            int((max_mines * 0.90) - int(getattr(star, 'mines', 0) or 0)),
         )
-        return max(plan_limit, min(18, max(1, missing_mines)))
+        return max(plan_limit, min(32, max(1, missing_mines)))
     return plan_limit
 
 
@@ -741,13 +766,16 @@ def _scored_micromanager_candidate_orders(
         int(fleets_in_orbit or 0),
         _balanced_shipyard_target(star, tier),
     )
-    max_mines = int(safe_mine_count(star) or 0)
+    max_mines = int(_target_mine_count(star, micromanager_mode=micromanager_mode) or 0)
     mine_room = current_mines < max_mines
     queue_pressure = _queue_throughput_pressure(star)
     support_gap_scores = _support_gap_scores_for_tier(star, tier)
     job_ratio = _job_fill_ratio(player, star)
-    mine_ratio = _mine_fill_ratio(star)
-    bootstrap_pressure = _mine_bootstrap_pressure(star)
+    mine_ratio = _target_mine_fill_ratio(star, micromanager_mode=micromanager_mode)
+    bootstrap_pressure = _mine_bootstrap_pressure(
+        star,
+        micromanager_mode=micromanager_mode,
+    )
     extraction_ready = 1.0 - bootstrap_pressure
     job_build_tailoff = _employment_job_build_tailoff(job_ratio)
     high_employment = job_ratio >= JOB_MAX_RATIO
@@ -832,11 +860,11 @@ def _scored_micromanager_candidate_orders(
         if mine_score > 0.0:
             if expansionist_mode:
                 if mine_ratio < 0.50:
-                    mine_score *= 1.40
-                elif mine_ratio < 0.75:
-                    mine_score *= 1.25
+                    mine_score *= 1.75
+                elif mine_ratio < 0.90:
+                    mine_score *= 1.45
                 else:
-                    mine_score *= 1.10
+                    mine_score *= 1.20
             append_candidate('BUILD_MINE', mine_score * job_build_tailoff)
 
     if (
@@ -1019,7 +1047,7 @@ def get_micromanager_candidate_orders(
     current_factories = int(getattr(star, 'factories', 0) or 0)
     current_shipyards = int(getattr(star, 'shipyards', 0) or 0)
     shipyard_target = max(1, int(fleets_in_orbit or 0))
-    max_mines = safe_mine_count(star)
+    max_mines = _target_mine_count(star, micromanager_mode=micromanager_mode)
     if int(tier or 0) == TIER_BASIC:
         mine_room = max_mines > 0
     else:

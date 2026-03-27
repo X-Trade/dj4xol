@@ -2545,10 +2545,21 @@ class TestAnomalyInteractions(TestCase):
 class TestEconomicCalculations(TestCase):
     """Tests for economic factor calculations."""
 
+    @staticmethod
+    def _basic_employment_star(game):
+        star = game.players.first().homeworld
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.defenses = 0
+        star.shipyards = 0
+        star.has_dyson_sphere = False
+        return star
+
     def test_employment_percent_no_colonists(self):
         """Empty star returns 0% employment."""
         game = default_game()
-        star = game.stars.first()
+        star = self._basic_employment_star(game)
         star.colonists = 0
         star.mines = 5
         star.factories = 5
@@ -2557,7 +2568,7 @@ class TestEconomicCalculations(TestCase):
     def test_employment_percent_full_employment(self):
         """When jobs >= colonists, employment is 100%."""
         game = default_game()
-        star = game.stars.first()
+        star = self._basic_employment_star(game)
         star.colonists = 10000
         star.mines = 5
         star.factories = 5  # 10 jobs * 1000 = 10000 capacity
@@ -2566,7 +2577,7 @@ class TestEconomicCalculations(TestCase):
     def test_employment_percent_over_employment_capped(self):
         """More jobs than colonists still caps at 100%."""
         game = default_game()
-        star = game.stars.first()
+        star = self._basic_employment_star(game)
         star.colonists = 5000
         star.mines = 5
         star.factories = 5  # 10000 job capacity, only 5000 colonists
@@ -2575,7 +2586,7 @@ class TestEconomicCalculations(TestCase):
     def test_employment_percent_partial(self):
         """Partial employment calculates correctly."""
         game = default_game()
-        star = game.stars.first()
+        star = self._basic_employment_star(game)
         star.colonists = 20000
         star.mines = 5
         star.factories = 5  # 10000 job capacity / 20000 = 50%

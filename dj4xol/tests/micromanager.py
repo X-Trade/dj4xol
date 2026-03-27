@@ -1415,6 +1415,48 @@ class AdministrationAutomationTest(TestCase):
         self.assertGreaterEqual(len(planned), 1)
         self.assertEqual(planned[0], 'BUILD_MINE')
 
+    def test_expansionist_level_five_can_keep_mining_beyond_safe_rate(self):
+        self._create_administration_tech(4, 4)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = True
+        self.star.colonists = 300_000
+        self.star.mines = 50
+        self.star.factories = 40
+        self.star.labs = 10
+        self.star.defenses = 10
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 10_000
+        self.star.boranium_inventory = 10_000
+        self.star.germanium_inventory = 10_000
+        self.star.ironium_yield = 180
+        self.star.boranium_yield = 180
+        self.star.germanium_yield = 180
+        self.star.save()
+
+        standard_candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            5,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+            micromanager_mode='standard',
+        )
+        expansionist_candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            5,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+            micromanager_mode='expansionist',
+        )
+
+        self.assertNotIn('BUILD_MINE', standard_candidates)
+        self.assertIn('BUILD_MINE', expansionist_candidates)
+
     def test_level_three_queues_dyson_when_under_nine_year_horizon(self):
         self._create_administration_tech(3, 3)
         self._create_dyson_sphere_tech()

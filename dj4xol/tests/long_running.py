@@ -722,6 +722,7 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
         )
         final = result["snapshots"][-1]
         history = "\n".join(snapshot["line"] for snapshot in result["snapshots"])
+        expansion_years = list(result["expansion_years"])
 
         self.assertGreaterEqual(final["colony_count"], 20, msg=history)
         self.assertGreater(
@@ -729,3 +730,15 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             result["snapshots"][0]["empire_colonists"],
             msg=history,
         )
+        self.assertTrue(expansion_years, msg=history)
+        self.assertLessEqual(
+            int(expansion_years[0]),
+            int(result["initial_year"] + 9),
+            msg=history,
+        )
+        for previous_year, year in zip(expansion_years, expansion_years[1:]):
+            self.assertLessEqual(
+                int(year - previous_year),
+                9,
+                msg=history,
+            )
