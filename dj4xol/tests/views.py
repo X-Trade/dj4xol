@@ -3737,8 +3737,12 @@ class TestFleetOrderViews(TestCase):
         FleetOrders.objects.create(
             game=game,
             fleet=enemy_fleet,
-            order_type='SCUTTLE',
+            order_type='MOVE',
             position=1,
+            x=homeworld.x + 1,
+            y=homeworld.y,
+            warpfactor=5,
+            repeat=True,
         )
 
         user, _ = get_default_user()
@@ -3766,9 +3770,10 @@ class TestFleetOrderViews(TestCase):
         self.assertTrue(detail.get('show_fleet_orders_panel'))
         self.assertTrue(detail.get('fleet_orders_read_only'))
         self.assertEqual(len(detail.get('fleet_orders', [])), 1)
-        self.assertContains(response, 'Scuttle Fleet')
+        self.assertContains(response, 'Warp 5 to')
         self.assertNotContains(response, 'id="order-form"')
         self.assertNotContains(response, 'class="order-edit-btn"')
+        self.assertContains(response, 'order-status-badge--repeat')
 
     def test_orders_panel_shows_popout_button(self):
         game = default_game(stars=5, fleets=1)

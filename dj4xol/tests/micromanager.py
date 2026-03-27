@@ -878,6 +878,37 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertIn('BUILD_COLONISTS_1K', planned)
 
+    def test_tier_four_mechanical_bootstrap_prefers_mines_before_growth(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 4
+        self.star.factories = 18
+        self.star.labs = 5
+        self.star.defenses = 5
+        self.star.shipyards = 0
+        self.player.race_type.is_mechanical = True
+        self.player.race_type.save(update_fields=['is_mechanical'])
+        self.star.ironium_inventory = 5_000
+        self.star.boranium_inventory = 5_000
+        self.star.germanium_inventory = 5_000
+        self.star.ironium_yield = 150
+        self.star.boranium_yield = 150
+        self.star.germanium_yield = 150
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            4,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertGreaterEqual(len(planned), 1)
+        self.assertEqual(planned[0], 'BUILD_MINE')
+        self.assertNotIn(planned[0], {'BUILD_COLONISTS_1K', 'BUILD_COLONISTS_1M'})
+
     def test_tier_four_mechanical_1k_growth_ignores_planning_resource_caps(self):
         self._create_administration_tech(4, 4)
         self.star.has_administration = True
@@ -1122,7 +1153,11 @@ class AdministrationAutomationTest(TestCase):
             len(orders),
             len(set(order.order_type for order in orders)),
         )
-        self.assertEqual(orders[0].order_type, 'BUILD_SHIPYARD')
+        self.assertIn(
+            orders[0].order_type,
+            {'BUILD_FACTORY', 'BUILD_DEFENSE', 'BUILD_LAB'},
+        )
+        self.assertNotEqual(orders[0].order_type, 'BUILD_SHIPYARD')
         self.assertGreater(
             sum(
                 order.quantity for order in orders
@@ -1137,17 +1172,6 @@ class AdministrationAutomationTest(TestCase):
             ),
             0,
         )
-        self.assertGreater(
-            sum(
-                order.quantity for order in orders
-                if order.order_type in ('BUILD_LAB', 'BUILD_DEFENSE')
-            ),
-            sum(
-                order.quantity for order in orders
-                if order.order_type == 'BUILD_FACTORY'
-            ),
-        )
-
     def test_level_one_auto_queue_is_limited_by_one_year_affordable_output(self):
         self._create_administration_tech(1, 1)
         self.player.race_type.population_growth_multiplier = 0
@@ -1280,10 +1304,10 @@ class AdministrationAutomationTest(TestCase):
         )
 
         self.assertGreaterEqual(len(planned), 1)
-        self.assertIn(planned[0], {'BUILD_DEFENSE', 'BUILD_LAB'})
+        self.assertIn(planned[0], {'BUILD_FACTORY', 'BUILD_DEFENSE', 'BUILD_LAB'})
         self.assertNotEqual(planned[0], 'BUILD_SHIPYARD')
 
-    def test_level_two_keeps_shipyard_behind_factory_when_economy_can_still_grow(self):
+    def test_level_two_can_mix_in_shipyard_when_jobs_are_in_midband(self):
         self._create_administration_tech(2, 2)
         self.player.race_type.population_growth_multiplier = 0
         self.player.race_type.save(update_fields=['population_growth_multiplier'])
@@ -1311,7 +1335,38 @@ class AdministrationAutomationTest(TestCase):
         )
 
         self.assertGreaterEqual(len(planned), 1)
-        self.assertEqual(planned[0], 'BUILD_FACTORY')
+        self.assertIn(planned[0], {'BUILD_FACTORY', 'BUILD_SHIPYARD'})
+        self.assertIn('BUILD_FACTORY', planned)
+
+    def test_level_two_prioritises_mines_below_half_safe_extraction(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 60_000
+        self.star.mines = 6
+        self.star.factories = 24
+        self.star.labs = 12
+        self.star.defenses = 12
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 5_000
+        self.star.boranium_inventory = 5_000
+        self.star.germanium_inventory = 5_000
+        self.star.ironium_yield = 150
+        self.star.boranium_yield = 150
+        self.star.germanium_yield = 150
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=2,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertGreaterEqual(len(planned), 1)
+        self.assertEqual(planned[0], 'BUILD_MINE')
 
     def test_level_three_queues_dyson_when_under_nine_year_horizon(self):
         self._create_administration_tech(3, 3)

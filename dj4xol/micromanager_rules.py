@@ -153,6 +153,56 @@ def _projected_job_thresholds(player, star):
     }
 
 
+def _safe_ratio(numerator, denominator, default=0.0):
+    denominator = float(denominator or 0.0)
+    if denominator <= 0.0:
+        return float(default)
+    return float(numerator or 0.0) / denominator
+
+
+def _clamp(value, minimum=0.0, maximum=1.0):
+    return max(float(minimum), min(float(maximum), float(value or 0.0)))
+
+
+def _job_fill_ratio(player, star):
+    projected_population = int(_projected_population(player, star) or 0)
+    if projected_population <= 0:
+        return 1.0
+    return _safe_ratio(_job_capacity(star), projected_population, default=1.0)
+
+
+def _mine_fill_ratio(star):
+    max_mines = int(safe_mine_count(star) or 0)
+    if max_mines <= 0:
+        return 1.0
+    return _safe_ratio(int(getattr(star, 'mines', 0) or 0), max_mines, default=1.0)
+
+
+def _support_gap_scores(star):
+    current_factories = int(getattr(star, 'factories', 0) or 0)
+    if current_factories <= 0:
+        return {}
+    return {
+        'BUILD_LAB': max(
+            0,
+            current_factories - (int(getattr(star, 'labs', 0) or 0) * 2),
+        ),
+        'BUILD_DEFENSE': max(
+            0,
+            current_factories - (int(getattr(star, 'defenses', 0) or 0) * 2),
+        ),
+    }
+
+
+def _mine_bootstrap_pressure(star):
+    mine_ratio = _mine_fill_ratio(star)
+    if mine_ratio < 0.50:
+        return 1.0
+    if mine_ratio >= 1.0:
+        return 0.0
+    return _clamp((1.0 - mine_ratio) / 0.50)
+
+
 def _job_capacity_after(star, order_type):
     extra = 0
     if order_type in (
@@ -361,23 +411,54 @@ def get_micromanager_managed_order_types(tier):
     return ()
 
 
-def _planning_limit_for_star(player, star, limit):
-    """Return a deeper queue target when jobs are critically low."""
+def _planning_limit_for_star(player, star, limit, tier=1):
+    """Return a deeper queue target when jobs or extraction are underbuilt."""
     plan_limit = max(0, int(limit or 0))
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
-    if current_jobs < thresholds['min_jobs']:
+    if int(tier or 0) <= TIER_BASIC:
+        if current_jobs < thresholds['min_jobs']:
+            missing_jobs = thresholds['min_jobs'] - current_jobs
+            catchup_limit = (
+                missing_jobs + COLONISTS_PER_JOB - 1
+            ) // COLONISTS_PER_JOB
+            return max(plan_limit, min(1000, int(catchup_limit)))
+        if current_jobs < thresholds['target_jobs']:
+            missing_jobs = thresholds['target_jobs'] - current_jobs
+            catchup_limit = (
+                missing_jobs + COLONISTS_PER_JOB - 1
+            ) // COLONISTS_PER_JOB
+            return max(plan_limit, min(120, int(catchup_limit)))
+        return plan_limit
+
+    job_ratio = _job_fill_ratio(player, star)
+    if job_ratio < JOB_MIN_RATIO:
         missing_jobs = thresholds['min_jobs'] - current_jobs
         catchup_limit = (
             missing_jobs + COLONISTS_PER_JOB - 1
         ) // COLONISTS_PER_JOB
         return max(plan_limit, min(1000, int(catchup_limit)))
-    if current_jobs < thresholds['target_jobs']:
+    if job_ratio < 0.40:
         missing_jobs = thresholds['target_jobs'] - current_jobs
         catchup_limit = (
             missing_jobs + COLONISTS_PER_JOB - 1
         ) // COLONISTS_PER_JOB
-        return max(plan_limit, min(120, int(catchup_limit)))
+        cap = 60 if int(tier or 0) >= TIER_MECHANICAL_GROWTH else 36
+        return max(plan_limit, min(cap, int(catchup_limit)))
+    if job_ratio < JOB_TARGET_RATIO:
+        missing_jobs = thresholds['target_jobs'] - current_jobs
+        catchup_limit = (
+            missing_jobs + COLONISTS_PER_JOB - 1
+        ) // COLONISTS_PER_JOB
+        cap = 24 if int(tier or 0) >= TIER_MECHANICAL_GROWTH else 12
+        return max(plan_limit, min(cap, int(catchup_limit)))
+
+    mine_ratio = _mine_fill_ratio(star)
+    max_mines = int(safe_mine_count(star) or 0)
+    if max_mines > 0 and mine_ratio < 0.50:
+        missing_mines = max(0, int((max_mines * 0.50) - int(getattr(star, 'mines', 0) or 0)))
+        cap = 18 if int(tier or 0) >= TIER_MECHANICAL_GROWTH else 10
+        return max(plan_limit, min(cap, max(1, missing_mines)))
     return plan_limit
 
 
@@ -500,25 +581,7 @@ def _has_resource_surplus_for_order(player, star, cost_map, order_type, reserve_
 
 def _ordered_support_balance_candidates(star):
     """Return support orders that bring labs/defenses back toward factory parity."""
-    current_factories = int(getattr(star, 'factories', 0) or 0)
-    if current_factories <= 0:
-        return []
-    support_gaps = [
-        (
-            'BUILD_LAB',
-            max(
-                0,
-                current_factories - (int(getattr(star, 'labs', 0) or 0) * 2),
-            ),
-        ),
-        (
-            'BUILD_DEFENSE',
-            max(
-                0,
-                current_factories - (int(getattr(star, 'defenses', 0) or 0) * 2),
-            ),
-        ),
-    ]
+    support_gaps = list(_support_gap_scores(star).items())
     support_gaps.sort(key=lambda item: (-item[1], item[0]))
     return [
         order_type for order_type, gap in support_gaps
@@ -542,6 +605,183 @@ def _mechanical_growth_candidate_orders(player, star, tier):
     return 'none', []
 
 
+def _scored_micromanager_candidate_orders(
+    player,
+    star,
+    tier,
+    fleets_in_orbit=0,
+    terraform_available=False,
+    terraform_used=False,
+    dyson_available=False,
+    cost_map=None,
+):
+    thresholds = _projected_job_thresholds(player, star)
+    current_jobs = _job_capacity(star)
+    current_mines = int(getattr(star, 'mines', 0) or 0)
+    current_factories = int(getattr(star, 'factories', 0) or 0)
+    current_shipyards = int(getattr(star, 'shipyards', 0) or 0)
+    shipyard_target = max(1, int(fleets_in_orbit or 0))
+    max_mines = int(safe_mine_count(star) or 0)
+    mine_room = current_mines < max_mines
+    queue_pressure = _queue_throughput_pressure(star)
+    support_gap_scores = _support_gap_scores(star)
+    job_ratio = _job_fill_ratio(player, star)
+    mine_ratio = _mine_fill_ratio(star)
+    bootstrap_pressure = _mine_bootstrap_pressure(star)
+    extraction_ready = 1.0 - bootstrap_pressure
+    candidates = {}
+    first_seen = {}
+
+    def append_candidate(order_type, score):
+        score = float(score or 0.0)
+        if score <= 0.0:
+            return
+        if order_type not in first_seen:
+            first_seen[order_type] = len(first_seen)
+            candidates[order_type] = 0.0
+        candidates[order_type] += score
+
+    growth_priority, growth_candidates = _mechanical_growth_candidate_orders(
+        player,
+        star,
+        tier,
+    )
+    if growth_priority == 'top':
+        growth_multiplier = 0.45 if bootstrap_pressure >= 1.0 else (
+            0.70 if bootstrap_pressure > 0.0 else 1.0
+        )
+        for idx, order_type in enumerate(growth_candidates):
+            append_candidate(
+                order_type,
+                (105.0 - (idx * 5.0)) * growth_multiplier,
+            )
+    elif growth_priority == 'normal':
+        growth_multiplier = 0.30 if bootstrap_pressure >= 1.0 else (
+            0.60 if bootstrap_pressure > 0.0 else 1.0
+        )
+        for idx, order_type in enumerate(growth_candidates):
+            append_candidate(
+                order_type,
+                (55.0 - (idx * 4.0)) * growth_multiplier,
+            )
+
+    if (
+        job_ratio < JOB_TARGET_RATIO and
+        int(tier or 0) >= TIER_TERRAFORM and
+        dyson_available and
+        _can_add_order_without_exceeding_max_jobs(
+            player, star, DYSON_SPHERE_ORDER_TYPE
+        ) and
+        not bool(getattr(star, 'has_dyson_sphere', False))
+    ):
+        append_candidate(DYSON_SPHERE_ORDER_TYPE, 180.0)
+
+    if current_mines <= 0 and max_mines > 0:
+        append_candidate('BUILD_MINE', 300.0)
+    if current_factories <= 0:
+        append_candidate('BUILD_FACTORY', 280.0)
+
+    if mine_room:
+        if mine_ratio < 0.50:
+            append_candidate('BUILD_MINE', 260.0 + ((0.50 - mine_ratio) * 220.0))
+        elif mine_ratio < 0.75:
+            append_candidate('BUILD_MINE', 145.0 + ((0.75 - mine_ratio) * 120.0))
+        elif mine_ratio < 1.00:
+            append_candidate('BUILD_MINE', 40.0 + ((1.00 - mine_ratio) * 55.0))
+        if queue_pressure.get('mines'):
+            append_candidate('BUILD_MINE', 90.0)
+
+    if job_ratio < JOB_MIN_RATIO:
+        append_candidate(
+            'BUILD_FACTORY',
+            220.0 + ((JOB_MIN_RATIO - job_ratio) * 260.0) +
+            (extraction_ready * 40.0),
+        )
+    elif job_ratio < 0.40:
+        append_candidate(
+            'BUILD_FACTORY',
+            135.0 + ((0.40 - job_ratio) * 150.0) +
+            (extraction_ready * 25.0),
+        )
+    elif job_ratio < JOB_TARGET_RATIO:
+        append_candidate(
+            'BUILD_FACTORY',
+            80.0 + ((JOB_TARGET_RATIO - job_ratio) * 90.0) +
+            (extraction_ready * 20.0),
+        )
+    elif queue_pressure.get('factories'):
+        append_candidate('BUILD_FACTORY', 90.0)
+    elif job_ratio < JOB_MAX_RATIO:
+        append_candidate('BUILD_FACTORY', 12.0 + (extraction_ready * 10.0))
+
+    if int(tier or 0) >= TIER_SUPPORT:
+        for idx, order_type in enumerate(_ordered_support_balance_candidates(star)):
+            gap_score = float(support_gap_scores.get(order_type, 0) or 0)
+            if gap_score <= 0:
+                continue
+            support_pressure = _clamp(
+                _safe_ratio(gap_score, max(1, current_factories), default=0.0)
+            )
+            base_score = (
+                80.0 +
+                min(80.0, gap_score * 4.0) +
+                (support_pressure * 140.0)
+            )
+            if current_factories >= 100 and support_pressure >= 0.50:
+                base_score += 90.0
+            if job_ratio < JOB_MIN_RATIO:
+                base_score *= 0.75
+            elif job_ratio < JOB_TARGET_RATIO:
+                base_score *= 0.80
+            if bootstrap_pressure >= 1.0:
+                base_score *= 0.55
+            elif bootstrap_pressure > 0.0:
+                base_score *= 0.75
+            append_candidate(order_type, base_score - (idx * 5.0))
+
+        shipyard_deficit = max(0, shipyard_target - current_shipyards)
+        if (
+            shipyard_deficit > 0 and
+            _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD') and
+            _can_add_order_without_exceeding_max_jobs(
+                player, star, 'BUILD_SHIPYARD'
+            )
+        ):
+            shipyard_score = 15.0 + (shipyard_deficit * 16.0)
+            if job_ratio < JOB_MIN_RATIO:
+                shipyard_score += 40.0
+            elif job_ratio < 0.40:
+                shipyard_score += 25.0
+            elif job_ratio < JOB_TARGET_RATIO:
+                shipyard_score += 12.0
+            elif job_ratio < JOB_MAX_RATIO:
+                shipyard_score += 5.0
+            if bootstrap_pressure >= 1.0:
+                shipyard_score *= 0.35
+            elif bootstrap_pressure > 0.0:
+                shipyard_score *= 0.60
+            append_candidate('BUILD_SHIPYARD', shipyard_score)
+
+        if not support_gap_scores and not queue_pressure.get('factories'):
+            append_candidate('BUILD_FACTORY', 12.0)
+
+    if (
+        int(tier or 0) >= TIER_TERRAFORM and
+        terraform_available and
+        not terraform_used and
+        current_jobs >= thresholds['min_jobs']
+    ):
+        terraform_order = preferred_terraform_order(player, star)
+        if terraform_order:
+            append_candidate(terraform_order, 85.0)
+
+    ranked = sorted(
+        candidates.items(),
+        key=lambda item: (-item[1], first_seen[item[0]], item[0]),
+    )
+    return [order_type for order_type, _score in ranked]
+
+
 def get_micromanager_candidate_orders(
     player,
     star,
@@ -560,6 +800,17 @@ def get_micromanager_candidate_orders(
         administration_active = bool(getattr(star, 'has_administration', False))
     if not bool(administration_active):
         return []
+    if int(tier or 0) > TIER_BASIC:
+        return _scored_micromanager_candidate_orders(
+            player,
+            star,
+            tier,
+            fleets_in_orbit=fleets_in_orbit,
+            terraform_available=terraform_available,
+            terraform_used=terraform_used,
+            dyson_available=dyson_available,
+            cost_map=cost_map,
+        )
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
     candidates = []
@@ -894,24 +1145,13 @@ def plan_micromanager_orders(
             terraform_used = True
 
     planned = []
-    plan_limit = _planning_limit_for_star(player, projected, limit)
-    for _ in range(plan_limit):
-        candidates = get_micromanager_candidate_orders(
-            player,
-            projected,
-            tier,
-            fleets_in_orbit=fleets_in_orbit,
-            terraform_available=terraform_available,
-            terraform_used=terraform_used,
-            dyson_available=dyson_available,
-            cost_map=cost_map,
-            administration_active=administration_active,
-        )
-        if not candidates:
-            break
-        selected = None
+    plan_limit = _planning_limit_for_star(player, projected, limit, tier=tier)
+
+    def pick_candidate(candidates, excluded_order_type=None):
         one_year_income = _one_year_income(projected)
         for candidate in candidates:
+            if candidate == excluded_order_type:
+                continue
             if candidate in ('BUILD_SHIPYARD', DYSON_SPHERE_ORDER_TYPE):
                 if not _can_add_order_without_exceeding_max_jobs(
                     player, projected, candidate
@@ -931,8 +1171,7 @@ def plan_micromanager_orders(
                         SHIPYARD_COMPLETION_MAX_YEARS,
                     )
                 ):
-                    selected = candidate
-                    break
+                    return candidate
                 if (
                     candidate == DYSON_SPHERE_ORDER_TYPE and
                     _can_complete_within_years(
@@ -943,11 +1182,35 @@ def plan_micromanager_orders(
                         DYSON_COMPLETION_MAX_YEARS,
                     )
                 ):
-                    selected = candidate
-                    break
+                    return candidate
                 continue
-            selected = candidate
+            return candidate
+        return None
+
+    for _ in range(plan_limit):
+        candidates = get_micromanager_candidate_orders(
+            player,
+            projected,
+            tier,
+            fleets_in_orbit=fleets_in_orbit,
+            terraform_available=terraform_available,
+            terraform_used=terraform_used,
+            dyson_available=dyson_available,
+            cost_map=cost_map,
+            administration_active=administration_active,
+        )
+        if not candidates:
             break
+        selected = pick_candidate(candidates)
+        if (
+            selected is not None and
+            int(tier or 0) >= TIER_SUPPORT and
+            len(planned) >= 2 and
+            planned[-1] == planned[-2] == selected
+        ):
+            alternate = pick_candidate(candidates, excluded_order_type=selected)
+            if alternate is not None:
+                selected = alternate
         if selected is None:
             # Tier-2/3 may surface support-only candidate sets. If none of
             # those are affordable, allow an initial factory bootstrap so the

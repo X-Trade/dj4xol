@@ -184,6 +184,7 @@ class SpectatorViewTest(TestCase):
             order_type='BUILD_FACTORY',
             position=1,
             quantity=1,
+            repeat=True,
         )
 
         Spectator.objects.create(game=self.game, account=self.account)
@@ -201,3 +202,4 @@ class SpectatorViewTest(TestCase):
             reverse('dj4xol:add_production', args=[self.game.short_id]),
         )
         self.assertNotContains(response, 'Select production...')
+        self.assertContains(response, 'order-status-badge--repeat')

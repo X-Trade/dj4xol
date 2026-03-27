@@ -67,6 +67,7 @@
                     {% else %}
                         <span>Unknown order type: {{ order.order_type }}</span>
                     {% endif %}
+                    {% if detail.fleet_orders_read_only and order.repeat %} <span class="order-status-badge order-status-badge--repeat" title="Repeats">&#x21bb;</span>{% endif %}
                     {% if order.added_by_micromanager %} <span class="order-automation-tag">Auto</span>{% endif %}
                     </div>
                     {% if not detail.fleet_orders_read_only %}
