@@ -1331,7 +1331,17 @@ def admin_generate_report(request, game_short_id, object_short_id):
         })
 
     turn = GameTurn(game)
-    report_data = turn._build_report_data(player, target_obj, target_type)
+    report_kwargs = {'report_tier': 'advanced', 'include_cargo': False}
+    if target_type == 'star':
+        report_kwargs = {'report_tier': 'encounter', 'include_cargo': False}
+    elif target_type == 'fleet':
+        report_kwargs = {'report_tier': 'encounter', 'include_cargo': True}
+    report_data = turn._build_report_data(
+        player,
+        target_obj,
+        target_type,
+        **report_kwargs,
+    )
     report, _created = Report.objects.update_or_create(
         player=player,
         target_type=target_type,

@@ -76,7 +76,7 @@
         {% endif %}
         <div class="columns game-layout two-column">
             <div class="game-map-slot column-left">
-                <div class="panel no-transition open" data-panel="starmap">
+                <div class="panel no-transition open" data-panel="starmap" data-lcars-variant="1">
                     <h2><span>Starmap</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content">
                         <div class="starmap-wrapper">
@@ -111,7 +111,7 @@
                     {% if detail %}
                         {% include 'dj4xol/_detail_panel.html' %}
                     {% else %}
-                        <div class="detail-section panel no-transition open" data-panel="detail">
+                        <div class="detail-section panel no-transition open" data-panel="detail" data-lcars-variant="2">
                             <h2><span>Detail</span><span class="panel-toggle"></span></h2>
                             <div class="panel-content panel-stack detail-panel-stack">
                                 <section id="detail" class="unknown-detail-body">

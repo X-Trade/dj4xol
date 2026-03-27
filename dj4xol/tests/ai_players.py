@@ -7,6 +7,7 @@ from ..ai_players import (
     AI_MODULE_OPENAI,
     AI_MODULE_IDLE,
     AI_SLOT_RANDOM_STANCE,
+    _fleet_default_delivery_speed,
     ai_module_uses_micromanager_behavior,
     build_random_ai_race_template,
     ai_module_choices,
@@ -54,6 +55,19 @@ class TestAIPlayerModules(TestCase):
         self.assertTrue(ai_module_uses_micromanager_behavior(AI_MODULE_MICROMANAGER))
         self.assertTrue(ai_module_uses_micromanager_behavior(AI_MODULE_EXPANSIONIST))
         self.assertFalse(ai_module_uses_micromanager_behavior(AI_MODULE_IDLE))
+
+    def test_fleet_default_delivery_speed_ignores_negative_one_cloak_sentinel(self):
+        game = default_game(stars=5)
+        fleet = Fleet.objects.create(
+            game=game,
+            player=game.players.first(),
+            name='Courier',
+            x=0,
+            y=0,
+            max_safe_warp=9,
+            max_cloaked_warp=-1,
+        )
+        self.assertEqual(_fleet_default_delivery_speed(fleet), 9)
 
     def test_openai_module_disabled_by_default(self):
         self.assertFalse(is_ai_module_enabled(AI_MODULE_OPENAI))

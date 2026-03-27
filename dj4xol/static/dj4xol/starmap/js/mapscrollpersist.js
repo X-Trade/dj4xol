@@ -1676,7 +1676,12 @@ $(document).ready(function() {
             var $panel = $(this);
             $panel.removeClass('lcars-variant-1 lcars-variant-2 lcars-variant-3');
             if (useLcarsVariants) {
-                $panel.addClass(variants[index % variants.length]);
+                var requestedVariant = parseInt($panel.attr('data-lcars-variant'), 10);
+                if (!isNaN(requestedVariant) && requestedVariant >= 1 && requestedVariant <= variants.length) {
+                    $panel.addClass(variants[requestedVariant - 1]);
+                } else {
+                    $panel.addClass(variants[index % variants.length]);
+                }
             }
         });
     }

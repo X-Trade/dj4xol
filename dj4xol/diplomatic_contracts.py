@@ -1156,7 +1156,7 @@ def _queue_fleet_to_nearest_owned_colony(fleet, player):
         cloaked_warp = int(getattr(fleet, 'max_cloaked_warp', 0) or 0)
     except (TypeError, ValueError):
         cloaked_warp = 0
-    move_warp = cloaked_warp if cloaked_warp != 0 else safe_warp
+    move_warp = cloaked_warp if cloaked_warp > 0 else safe_warp
     move_warp = max(1, min(13, move_warp))
 
     FleetOrders.objects.create(

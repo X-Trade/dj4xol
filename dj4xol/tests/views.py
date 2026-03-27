@@ -3705,6 +3705,29 @@ class TestFleetOrderViews(TestCase):
             ),
         )
 
+    def test_messages_panel_pins_lcars_pink_variant(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        user, account = get_default_user()
+        account.theme = 'lcars'
+        account.save(update_fields=['theme'])
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {
+                'x': player.homeworld.x,
+                'y': player.homeworld.y,
+                'sel': player.homeworld.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-panel="starmap" data-lcars-variant="1"', html=False)
+        self.assertContains(response, 'data-panel="messages" data-lcars-variant="3"', html=False)
+        self.assertContains(response, 'data-panel="detail" data-lcars-variant="2"', html=False)
+
     def test_staff_debug_actions_show_foreign_fleet_orders_readonly(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
@@ -3774,6 +3797,93 @@ class TestFleetOrderViews(TestCase):
         self.assertNotContains(response, 'id="order-form"')
         self.assertNotContains(response, 'class="order-edit-btn"')
         self.assertContains(response, 'order-status-badge--repeat')
+
+    def test_staff_debug_generate_report_keeps_full_foreign_fleet_report_data(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        homeworld = player.homeworld
+        race_type = get_default_race_type()
+        enemy_user = User.objects.create_user(
+            'debug_report_enemy_user',
+            'debug_report_enemy@test.com',
+            'pass',
+        )
+        enemy_account = Account.objects.create(
+            django_user=enemy_user,
+            alias='DRG',
+        )
+        enemy_player = Player.objects.create(
+            game=game,
+            account=enemy_account,
+            name='Debug Report Enemy',
+            plural_name='Debug Report Enemies',
+            race_type=race_type,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=enemy_player,
+            name='Debug Target Fleet',
+            x=homeworld.x,
+            y=homeworld.y,
+            ship_count=3,
+            integrity=87,
+            max_safe_warp=9,
+            cargo_capacity=250,
+            ironium_inventory=40,
+            boranium_inventory=30,
+            germanium_inventory=20,
+            fuel=44.0,
+            max_fuel=60.0,
+        )
+
+        existing_report = Report.objects.create(
+            game=game,
+            player=player,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            year=game.year,
+            cached_report='{}',
+        )
+        existing_report.set_report_data(
+            GameTurn(game)._build_report_data(
+                player,
+                enemy_fleet,
+                'fleet',
+                report_tier='encounter',
+                include_cargo=True,
+            )
+        )
+        existing_report.save()
+
+        user, _ = get_default_user()
+        user.is_superuser = True
+        user.is_staff = True
+        user.save(update_fields=['is_superuser', 'is_staff'])
+        ServerSettings.objects.update_or_create(
+            key='enable_debug_actions',
+            defaults={'value': 'True'},
+        )
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:admin_generate_report', args=[game.short_id, enemy_fleet.short_id]),
+            {
+                'x': enemy_fleet.x,
+                'y': enemy_fleet.y,
+                'sel': enemy_fleet.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        existing_report.refresh_from_db()
+        data = existing_report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'encounter')
+        self.assertEqual(data.get('player_name'), enemy_player.name)
+        self.assertEqual(data.get('max_safe_warp'), 9)
+        self.assertEqual(data.get('cargo_capacity'), 250)
+        self.assertEqual(data.get('ironium_inventory'), 40)
+        self.assertEqual(data.get('fuel'), 44.0)
 
     def test_orders_panel_shows_popout_button(self):
         game = default_game(stars=5, fleets=1)
@@ -7210,6 +7320,62 @@ class TestDiplomacyView(TestCase):
         move_order = offered_fleet.orders.filter(order_type='MOVE').first()
         self.assertIsNotNone(move_order)
         self.assertEqual(move_order.warpfactor, 7)
+
+    def test_diplomacy_specific_fleet_transfer_auto_route_uses_max_safe_when_cloak_negative_one(self):
+        game = default_game(stars=9, fleets=0)
+        sender = game.players.first()
+        recipient = GameFactory(game).join_player(
+            None,
+            get_default_race(),
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        self.assertIsNotNone(recipient)
+        secondary_colony = (
+            game.stars
+            .filter(player__isnull=True)
+            .exclude(id__in=[sender.homeworld_id, recipient.homeworld_id])
+            .order_by('id')
+            .first()
+        )
+        self.assertIsNotNone(secondary_colony)
+        secondary_colony.player = recipient
+        secondary_colony.colonists = 1000
+        secondary_colony.save(update_fields=['player', 'colonists'])
+
+        offered_fleet = Fleet.objects.create(
+            game=game,
+            player=sender,
+            name='Gift Runner Default Cloak',
+            x=secondary_colony.x + 1,
+            y=secondary_colony.y + 1,
+            ship_count=1,
+            integrity=100,
+            heading=0.0,
+            travel_warp=3,
+            max_safe_warp=9,
+            max_cloaked_warp=-1,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=recipient,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='SPECIFIC_FLEET',
+            offer_fleet=offered_fleet,
+        )
+
+        ok, _message = accept_contract(contract, recipient)
+        self.assertTrue(ok)
+        move_order = offered_fleet.orders.filter(order_type='MOVE').first()
+        self.assertIsNotNone(move_order)
+        self.assertEqual(move_order.warpfactor, 9)
 
     def test_diplomacy_colony_transfer_evacuates_population_into_owner_orbiting_fleets(self):
         game = default_game(stars=6, fleets=1)

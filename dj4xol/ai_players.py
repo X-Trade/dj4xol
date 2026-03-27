@@ -1155,7 +1155,7 @@ def _fleet_default_delivery_speed(fleet):
         cloaked_warp = int(getattr(fleet, 'max_cloaked_warp', 0) or 0)
     except (TypeError, ValueError):
         cloaked_warp = 0
-    speed = cloaked_warp if cloaked_warp != 0 else safe_warp
+    speed = cloaked_warp if cloaked_warp > 0 else safe_warp
     return max(1, min(13, int(speed or 1)))
 
 
