@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+from math import ceil
 from types import SimpleNamespace
 
 from .colony_rules import (
@@ -21,6 +22,9 @@ from .mineral_rules import ALL_RESOURCE_KEYS
 JOB_MIN_RATIO = 0.25
 JOB_TARGET_RATIO = 0.50
 JOB_MAX_RATIO = 0.75
+
+MICROMANAGER_MODE_STANDARD = 'standard'
+MICROMANAGER_MODE_EXPANSIONIST = 'expansionist'
 
 TIER_BASIC = 1
 TIER_SUPPORT = 2
@@ -69,6 +73,12 @@ LEVEL_TWO_DEFENSE_FLOOR = 12
 LEVEL_TWO_LAB_FLOOR = 8
 SHIPYARD_COMPLETION_MAX_YEARS = 5
 DYSON_COMPLETION_MAX_YEARS = 9
+
+
+def _normalize_micromanager_mode(micromanager_mode):
+    if str(micromanager_mode or '').strip().lower() == MICROMANAGER_MODE_EXPANSIONIST:
+        return MICROMANAGER_MODE_EXPANSIONIST
+    return MICROMANAGER_MODE_STANDARD
 
 
 def empty_queue_requirements():
@@ -186,6 +196,72 @@ def _support_gap_scores(star):
         'BUILD_LAB': max(
             0,
             current_factories - (int(getattr(star, 'labs', 0) or 0) * 2),
+        ),
+        'BUILD_DEFENSE': max(
+            0,
+            current_factories - (int(getattr(star, 'defenses', 0) or 0) * 2),
+        ),
+    }
+
+
+def _mature_support_balance_factor(star, tier):
+    if int(tier or 0) < TIER_TERRAFORM:
+        return 0.5
+    if int(getattr(star, 'factories', 0) or 0) < 20:
+        return 0.5
+    if _mine_fill_ratio(star) < 0.50:
+        return 0.5
+    if int(tier or 0) >= TIER_MECHANICAL_GROWTH:
+        return 1.0
+    return 0.75
+
+
+def _balanced_lab_target(star, tier):
+    balance_factor = _mature_support_balance_factor(star, tier)
+    return int(ceil(
+        float(int(getattr(star, 'factories', 0) or 0)) * float(balance_factor)
+    ))
+
+
+def _balanced_shipyard_target(star, tier):
+    balance_factor = _mature_support_balance_factor(star, tier)
+    factory_jobs = (
+        int(getattr(star, 'factories', 0) or 0) * COLONISTS_PER_JOB
+    )
+    if factory_jobs <= 0:
+        return 0
+    target_jobs = int(ceil(float(factory_jobs) * float(balance_factor)))
+    return int(ceil(float(target_jobs) / float(COLONISTS_PER_SHIPYARD)))
+
+
+def _factory_balance_penalty(star, tier):
+    balance_factor = _mature_support_balance_factor(star, tier)
+    if balance_factor <= 0.5:
+        return 1.0
+    factory_jobs = int(getattr(star, 'factories', 0) or 0) * COLONISTS_PER_JOB
+    if factory_jobs <= 0:
+        return 1.0
+    target_jobs = max(1, int(ceil(float(factory_jobs) * float(balance_factor))))
+    lab_jobs = int(getattr(star, 'labs', 0) or 0) * COLONISTS_PER_JOB
+    shipyard_jobs = (
+        int(getattr(star, 'shipyards', 0) or 0) * COLONISTS_PER_SHIPYARD
+    )
+    support_ratio = min(
+        _safe_ratio(lab_jobs, target_jobs, default=1.0),
+        _safe_ratio(shipyard_jobs, target_jobs, default=1.0),
+    )
+    return 0.35 + (0.65 * _clamp(support_ratio))
+
+
+def _support_gap_scores_for_tier(star, tier):
+    current_factories = int(getattr(star, 'factories', 0) or 0)
+    if current_factories <= 0:
+        return {}
+    return {
+        'BUILD_LAB': max(
+            0,
+            _balanced_lab_target(star, tier) -
+            int(getattr(star, 'labs', 0) or 0),
         ),
         'BUILD_DEFENSE': max(
             0,
@@ -428,8 +504,16 @@ def get_micromanager_managed_order_types(tier):
     return ()
 
 
-def _planning_limit_for_star(player, star, limit, tier=1):
+def _planning_limit_for_star(
+    player,
+    star,
+    limit,
+    tier=1,
+    micromanager_mode=MICROMANAGER_MODE_STANDARD,
+):
     """Return a deeper queue target when jobs or extraction are underbuilt."""
+    micromanager_mode = _normalize_micromanager_mode(micromanager_mode)
+    expansionist_mode = micromanager_mode == MICROMANAGER_MODE_EXPANSIONIST
     plan_limit = max(0, int(limit or 0))
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
@@ -461,6 +545,8 @@ def _planning_limit_for_star(player, star, limit, tier=1):
             missing_jobs + COLONISTS_PER_JOB - 1
         ) // COLONISTS_PER_JOB
         cap = 60 if int(tier or 0) >= TIER_MECHANICAL_GROWTH else 36
+        if expansionist_mode:
+            cap = int(ceil(float(cap) * 1.5))
         return max(plan_limit, min(cap, int(catchup_limit)))
     if job_ratio < JOB_TARGET_RATIO:
         missing_jobs = thresholds['target_jobs'] - current_jobs
@@ -468,6 +554,8 @@ def _planning_limit_for_star(player, star, limit, tier=1):
             missing_jobs + COLONISTS_PER_JOB - 1
         ) // COLONISTS_PER_JOB
         cap = 24 if int(tier or 0) >= TIER_MECHANICAL_GROWTH else 12
+        if expansionist_mode:
+            cap = int(ceil(float(cap) * 1.5))
         return max(plan_limit, min(cap, int(catchup_limit)))
 
     mine_ratio = _mine_fill_ratio(star)
@@ -475,7 +563,15 @@ def _planning_limit_for_star(player, star, limit, tier=1):
     if max_mines > 0 and mine_ratio < 0.50:
         missing_mines = max(0, int((max_mines * 0.50) - int(getattr(star, 'mines', 0) or 0)))
         cap = 18 if int(tier or 0) >= TIER_MECHANICAL_GROWTH else 10
+        if expansionist_mode:
+            cap = int(ceil(float(cap) * 1.5))
         return max(plan_limit, min(cap, max(1, missing_mines)))
+    if expansionist_mode and max_mines > 0 and mine_ratio < 0.75:
+        missing_mines = max(
+            0,
+            int((max_mines * 0.75) - int(getattr(star, 'mines', 0) or 0)),
+        )
+        return max(plan_limit, min(18, max(1, missing_mines)))
     return plan_limit
 
 
@@ -596,9 +692,9 @@ def _has_resource_surplus_for_order(player, star, cost_map, order_type, reserve_
     return True
 
 
-def _ordered_support_balance_candidates(star):
+def _ordered_support_balance_candidates(star, tier):
     """Return support orders that bring labs/defenses back toward factory parity."""
-    support_gaps = list(_support_gap_scores(star).items())
+    support_gaps = list(_support_gap_scores_for_tier(star, tier).items())
     support_gaps.sort(key=lambda item: (-item[1], item[0]))
     return [
         order_type for order_type, gap in support_gaps
@@ -631,23 +727,31 @@ def _scored_micromanager_candidate_orders(
     terraform_used=False,
     dyson_available=False,
     cost_map=None,
+    micromanager_mode=MICROMANAGER_MODE_STANDARD,
 ):
+    micromanager_mode = _normalize_micromanager_mode(micromanager_mode)
+    expansionist_mode = micromanager_mode == MICROMANAGER_MODE_EXPANSIONIST
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
     current_mines = int(getattr(star, 'mines', 0) or 0)
     current_factories = int(getattr(star, 'factories', 0) or 0)
     current_shipyards = int(getattr(star, 'shipyards', 0) or 0)
-    shipyard_target = max(1, int(fleets_in_orbit or 0))
+    shipyard_target = max(
+        1,
+        int(fleets_in_orbit or 0),
+        _balanced_shipyard_target(star, tier),
+    )
     max_mines = int(safe_mine_count(star) or 0)
     mine_room = current_mines < max_mines
     queue_pressure = _queue_throughput_pressure(star)
-    support_gap_scores = _support_gap_scores(star)
+    support_gap_scores = _support_gap_scores_for_tier(star, tier)
     job_ratio = _job_fill_ratio(player, star)
     mine_ratio = _mine_fill_ratio(star)
     bootstrap_pressure = _mine_bootstrap_pressure(star)
     extraction_ready = 1.0 - bootstrap_pressure
     job_build_tailoff = _employment_job_build_tailoff(job_ratio)
     high_employment = job_ratio >= JOB_MAX_RATIO
+    factory_balance_penalty = _factory_balance_penalty(star, tier)
     candidates = {}
     first_seen = {}
 
@@ -667,14 +771,19 @@ def _scored_micromanager_candidate_orders(
     )
     if growth_priority == 'top':
         for idx, order_type in enumerate(growth_candidates):
+            score = 1200.0 - (idx * 20.0)
+            if expansionist_mode:
+                score += 120.0
             append_candidate(
                 order_type,
-                1200.0 - (idx * 20.0),
+                score,
             )
     elif growth_priority == 'normal':
         growth_score = 120.0 + ((1.0 - job_build_tailoff) * 280.0)
         if high_employment:
             growth_score = 1000.0
+        if expansionist_mode:
+            growth_score = (growth_score * 1.35) + 60.0
         for idx, order_type in enumerate(growth_candidates):
             append_candidate(
                 order_type,
@@ -721,6 +830,13 @@ def _scored_micromanager_candidate_orders(
         if queue_pressure.get('mines'):
             mine_score += 90.0
         if mine_score > 0.0:
+            if expansionist_mode:
+                if mine_ratio < 0.50:
+                    mine_score *= 1.40
+                elif mine_ratio < 0.75:
+                    mine_score *= 1.25
+                else:
+                    mine_score *= 1.10
             append_candidate('BUILD_MINE', mine_score * job_build_tailoff)
 
     if (
@@ -732,7 +848,9 @@ def _scored_micromanager_candidate_orders(
             (
                 220.0 + ((JOB_MIN_RATIO - job_ratio) * 260.0) +
                 (extraction_ready * 40.0)
-            ) * job_build_tailoff,
+            ) * job_build_tailoff * factory_balance_penalty * (
+                1.20 if expansionist_mode else 1.0
+            ),
         )
     elif (
         _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
@@ -743,7 +861,9 @@ def _scored_micromanager_candidate_orders(
             (
                 135.0 + ((0.40 - job_ratio) * 150.0) +
                 (extraction_ready * 25.0)
-            ) * job_build_tailoff,
+            ) * job_build_tailoff * factory_balance_penalty * (
+                1.15 if expansionist_mode else 1.0
+            ),
         )
     elif (
         _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
@@ -754,24 +874,31 @@ def _scored_micromanager_candidate_orders(
             (
                 80.0 + ((JOB_TARGET_RATIO - job_ratio) * 90.0) +
                 (extraction_ready * 20.0)
-            ) * job_build_tailoff,
+            ) * job_build_tailoff * factory_balance_penalty * (
+                1.10 if expansionist_mode else 1.0
+            ),
         )
     elif (
         _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
         queue_pressure.get('factories')
     ):
-        append_candidate('BUILD_FACTORY', 90.0 * job_build_tailoff)
+        append_candidate(
+            'BUILD_FACTORY',
+            90.0 * job_build_tailoff * factory_balance_penalty,
+        )
     elif (
         _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
         job_ratio < JOB_MAX_RATIO
     ):
         append_candidate(
             'BUILD_FACTORY',
-            (12.0 + (extraction_ready * 10.0)) * job_build_tailoff,
+            (
+                12.0 + (extraction_ready * 10.0)
+            ) * job_build_tailoff * factory_balance_penalty,
         )
 
     if int(tier or 0) >= TIER_SUPPORT:
-        for idx, order_type in enumerate(_ordered_support_balance_candidates(star)):
+        for idx, order_type in enumerate(_ordered_support_balance_candidates(star, tier)):
             gap_score = float(support_gap_scores.get(order_type, 0) or 0)
             if gap_score <= 0:
                 continue
@@ -794,6 +921,10 @@ def _scored_micromanager_candidate_orders(
             if bootstrap_pressure >= 1.0:
                 base_score *= 0.55
             elif bootstrap_pressure > 0.0:
+                base_score *= 0.75
+            if expansionist_mode and (
+                bootstrap_pressure > 0.0 or job_ratio >= JOB_TARGET_RATIO
+            ):
                 base_score *= 0.75
             append_candidate(order_type, base_score - (idx * 5.0))
 
@@ -818,6 +949,8 @@ def _scored_micromanager_candidate_orders(
                 shipyard_score *= 0.35
             elif bootstrap_pressure > 0.0:
                 shipyard_score *= 0.60
+            if expansionist_mode and current_shipyards > 0:
+                shipyard_score *= 0.70
             append_candidate('BUILD_SHIPYARD', shipyard_score)
 
         if (
@@ -854,8 +987,10 @@ def get_micromanager_candidate_orders(
     dyson_available=False,
     cost_map=None,
     administration_active=None,
+    micromanager_mode=MICROMANAGER_MODE_STANDARD,
 ):
     """Return candidate automatic production orders in priority order."""
+    micromanager_mode = _normalize_micromanager_mode(micromanager_mode)
     if int(tier or 0) <= 0:
         return []
     if administration_active is None:
@@ -872,6 +1007,7 @@ def get_micromanager_candidate_orders(
             terraform_used=terraform_used,
             dyson_available=dyson_available,
             cost_map=cost_map,
+            micromanager_mode=micromanager_mode,
         )
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
@@ -894,7 +1030,7 @@ def get_micromanager_candidate_orders(
     support_balance_candidates = []
     if int(tier or 0) >= TIER_SUPPORT:
         queue_pressure = _queue_throughput_pressure(star)
-        support_balance_candidates = _ordered_support_balance_candidates(star)
+        support_balance_candidates = _ordered_support_balance_candidates(star, tier)
     level_one_support_candidates = []
     growth_priority, growth_candidates = _mechanical_growth_candidate_orders(
         player,
@@ -1175,8 +1311,10 @@ def plan_micromanager_orders(
     queue_requirements=None,
     limit=12,
     administration_active=None,
+    micromanager_mode=MICROMANAGER_MODE_STANDARD,
 ):
     """Plan queued Micromanager orders for one colony."""
+    micromanager_mode = _normalize_micromanager_mode(micromanager_mode)
     if int(tier or 0) <= 0:
         return []
     if administration_active is None:
@@ -1207,7 +1345,13 @@ def plan_micromanager_orders(
             terraform_used = True
 
     planned = []
-    plan_limit = _planning_limit_for_star(player, projected, limit, tier=tier)
+    plan_limit = _planning_limit_for_star(
+        player,
+        projected,
+        limit,
+        tier=tier,
+        micromanager_mode=micromanager_mode,
+    )
 
     def pick_candidate(candidates, excluded_order_type=None):
         one_year_income = _one_year_income(projected)
@@ -1260,6 +1404,7 @@ def plan_micromanager_orders(
             dyson_available=dyson_available,
             cost_map=cost_map,
             administration_active=administration_active,
+            micromanager_mode=micromanager_mode,
         )
         if not candidates:
             break

@@ -42,6 +42,10 @@ AI_MODULE_CONFIG_EXAMPLES = {
         'version': 1,
         'settings': {},
     },
+    'expansionist': {
+        'version': 1,
+        'settings': {},
+    },
     'idle': {
         'version': 1,
         'settings': {},
@@ -521,7 +525,7 @@ class NewGameForm(forms.Form):
                 help_text=(
                     'Total AI players for this game. Per-game cap: %s. '
                     'Remaining server-capped slots: %s '
-                    '(micromanager/idle do not consume server cap).'
+                    '(micromanager/expansionist/idle do not consume server cap).'
                 ) % (
                     int(get_ai_max_per_game() or 0),
                     int(get_remaining_server_ai_capacity() or 0),
@@ -927,9 +931,11 @@ class ServerSettingsForm(forms.Form):
             'ai_max_per_server',
             'ai_check_in_turns',
             'ai_module_micromanager_enabled',
+            'ai_module_expansionist_enabled',
             'ai_module_idle_enabled',
             'ai_module_openai_enabled',
             'ai_module_micromanager_config',
+            'ai_module_expansionist_config',
             'ai_module_idle_config',
             'ai_module_openai_config',
         ]),
@@ -1012,7 +1018,7 @@ class ServerSettingsForm(forms.Form):
         initial=0,
         help_text=(
             'Maximum active server-capped AI players allowed across all non-ended '
-            'games (micromanager/idle are excluded).'
+            'games (micromanager/expansionist/idle are excluded).'
         ),
     )
     ai_check_in_turns = forms.IntegerField(
@@ -1027,6 +1033,12 @@ class ServerSettingsForm(forms.Form):
         required=False,
         initial=True,
         help_text='Max-tier Administration automation on all AI colonies.',
+    )
+    ai_module_expansionist_enabled = forms.BooleanField(
+        label='Enable AI Module: Expansionist',
+        required=False,
+        initial=True,
+        help_text='Micromanager-derived AI with stronger expansion, extraction, and growth priorities.',
     )
     ai_module_idle_enabled = forms.BooleanField(
         label='Enable AI Module: Idle',
@@ -1053,6 +1065,21 @@ class ServerSettingsForm(forms.Form):
             'JSON object for micromanager module settings. '
             'Current gameplay behavior does not consume module-specific keys yet.',
             AI_MODULE_CONFIG_EXAMPLES['micromanager'],
+        ),
+    )
+    ai_module_expansionist_config = forms.CharField(
+        label='Expansionist Module Settings',
+        required=False,
+        initial=_pretty_json_example(AI_MODULE_CONFIG_EXAMPLES['expansionist']),
+        widget=forms.Textarea(attrs={
+            'rows': 6,
+            'spellcheck': 'false',
+            'placeholder': _pretty_json_example(AI_MODULE_CONFIG_EXAMPLES['expansionist']),
+        }),
+        help_text=_module_settings_help_text(
+            'JSON object for expansionist module settings. '
+            'Current gameplay behavior does not consume module-specific keys yet.',
+            AI_MODULE_CONFIG_EXAMPLES['expansionist'],
         ),
     )
     ai_module_idle_config = forms.CharField(
@@ -1153,6 +1180,11 @@ class ServerSettingsForm(forms.Form):
             'boolean': True,
             'default': True,
         },
+        'ai_module_expansionist_enabled': {
+            'description': 'Enable AI module: expansionist',
+            'boolean': True,
+            'default': True,
+        },
         'ai_module_idle_enabled': {
             'description': 'Enable AI module: idle',
             'boolean': True,
@@ -1165,6 +1197,11 @@ class ServerSettingsForm(forms.Form):
         },
         'ai_module_micromanager_config': {
             'description': 'AI module config: micromanager',
+            'use_long_value': True,
+            'default': '',
+        },
+        'ai_module_expansionist_config': {
+            'description': 'AI module config: expansionist',
             'use_long_value': True,
             'default': '',
         },
@@ -1193,6 +1230,7 @@ class ServerSettingsForm(forms.Form):
             if setting is None:
                 if key in (
                     'ai_module_micromanager_config',
+                    'ai_module_expansionist_config',
                     'ai_module_idle_config',
                     'ai_module_openai_config',
                 ):

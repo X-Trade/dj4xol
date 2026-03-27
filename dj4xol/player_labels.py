@@ -2,6 +2,7 @@
 
 AI_MODULE_LABELS = {
     'micromanager': 'Micromanager',
+    'expansionist': 'Expansionist',
     'idle': 'Idle',
     'openai': 'OpenAI-Compatible',
 }

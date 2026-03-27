@@ -1,5 +1,7 @@
 from __future__ import unicode_literals
 
+from .ai_players import ai_module_uses_micromanager_behavior
+
 from datetime import timedelta
 import hashlib
 import random
@@ -1179,8 +1181,7 @@ def _is_micromanager_ai_player(player):
         return False
     if not bool(getattr(player, 'is_ai', False)):
         return False
-    module = str(getattr(player, 'ai_module', '') or '').strip().lower()
-    return module == 'micromanager'
+    return ai_module_uses_micromanager_behavior(getattr(player, 'ai_module', ''))
 
 
 def _resource_progress_complete(contract):

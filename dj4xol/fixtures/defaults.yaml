@@ -98,6 +98,11 @@
     value: 'True'
 - model: dj4xol.ServerSettings
   fields:
+    key: 'ai_module_expansionist_enabled'
+    description: 'Enable AI module: expansionist'
+    value: 'True'
+- model: dj4xol.ServerSettings
+  fields:
     key: 'ai_module_idle_enabled'
     description: 'Enable AI module: idle'
     value: 'True'
@@ -110,6 +115,11 @@
   fields:
     key: 'ai_module_micromanager_config'
     description: 'AI module config: micromanager'
+    long_value: ''
+- model: dj4xol.ServerSettings
+  fields:
+    key: 'ai_module_expansionist_config'
+    description: 'AI module config: expansionist'
     long_value: ''
 - model: dj4xol.ServerSettings
   fields:

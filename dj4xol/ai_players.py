@@ -12,6 +12,7 @@ from .models import ServerSettings, server_setting_enabled, server_setting_int
 
 
 AI_MODULE_MICROMANAGER = 'micromanager'
+AI_MODULE_EXPANSIONIST = 'expansionist'
 AI_MODULE_IDLE = 'idle'
 AI_MODULE_OPENAI = 'openai'
 AI_SLOT_RANDOM_RACE = '__RANDOM__'
@@ -22,12 +23,18 @@ logger = logging.getLogger(__name__)
 
 AI_MODULE_ORDER = (
     AI_MODULE_MICROMANAGER,
+    AI_MODULE_EXPANSIONIST,
     AI_MODULE_IDLE,
     AI_MODULE_OPENAI,
 )
 AI_SERVER_CAP_EXCLUDED_MODULES = frozenset((
     AI_MODULE_MICROMANAGER,
+    AI_MODULE_EXPANSIONIST,
     AI_MODULE_IDLE,
+))
+AI_MICROMANAGER_FAMILY_MODULES = frozenset((
+    AI_MODULE_MICROMANAGER,
+    AI_MODULE_EXPANSIONIST,
 ))
 
 AI_MODULE_SPECS = {
@@ -38,6 +45,16 @@ AI_MODULE_SPECS = {
             'regardless of built Administration structures or unlocked '
             'Administration tech, while still respecting research-gated '
             'production unlocks.'
+        ),
+        'administration_tier': 5,
+        'default_enabled': True,
+    },
+    AI_MODULE_EXPANSIONIST: {
+        'label': 'Expansionist',
+        'description': (
+            'Uses the Micromanager AI core with a stronger bias toward '
+            'extraction, population growth, and colony expansion while still '
+            'respecting research-gated production unlocks.'
         ),
         'administration_tier': 5,
         'default_enabled': True,
@@ -144,6 +161,23 @@ def ai_module_counts_towards_server_cap(code):
         # Unknown/legacy module values should be counted conservatively.
         return True
     return module_code not in AI_SERVER_CAP_EXCLUDED_MODULES
+
+
+def ai_module_uses_micromanager_behavior(code):
+    return normalize_ai_module_code(code) in AI_MICROMANAGER_FAMILY_MODULES
+
+
+def micromanager_mode_for_module(code):
+    module_code = normalize_ai_module_code(code)
+    if module_code == AI_MODULE_EXPANSIONIST:
+        return 'expansionist'
+    return 'standard'
+
+
+def micromanager_mode_for_player(player):
+    if player is None:
+        return 'standard'
+    return micromanager_mode_for_module(getattr(player, 'ai_module', ''))
 
 
 def get_ai_max_per_game():
@@ -1314,7 +1348,7 @@ def _plan_resource_on_given_fleet_delivery(player, contract):
 def _plan_resource_delivery_contract(player, contract, module_code):
     from .models import DiplomaticContract
 
-    if module_code != AI_MODULE_MICROMANAGER:
+    if not ai_module_uses_micromanager_behavior(module_code):
         return None
     clause = str(getattr(contract, 'request_clause_type', '') or '')
     if clause == DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD:
@@ -1540,7 +1574,7 @@ def _decide_passive_ai_contract_response(player, contract, module_code):
 
     request_clause = str(getattr(contract, 'request_clause_type', '') or '')
     if (
-        module_code == AI_MODULE_MICROMANAGER and
+        ai_module_uses_micromanager_behavior(module_code) and
         _is_pure_gift_request(contract)
     ):
         gift_base = _gift_offer_acceptance_chance(player, contract)
@@ -1551,7 +1585,7 @@ def _decide_passive_ai_contract_response(player, contract, module_code):
         DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
         DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET,
     ):
-        if module_code != AI_MODULE_MICROMANAGER:
+        if not ai_module_uses_micromanager_behavior(module_code):
             return False, 'delivery-not-implemented', None
         plan = _plan_resource_delivery_contract(player, contract, module_code)
         if not isinstance(plan, dict):
@@ -1658,7 +1692,7 @@ def _apply_passive_ai_diplomacy_turn(player, game, module_code):
                 accepted += 1
                 sender_id = int(getattr(contract, 'sender_id', 0) or 0)
                 if (
-                    module_code == AI_MODULE_MICROMANAGER and
+                    ai_module_uses_micromanager_behavior(module_code) and
                     sender_id and
                     sender_id not in upgraded_senders
                 ):

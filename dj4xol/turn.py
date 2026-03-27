@@ -151,9 +151,10 @@ from .micromanager_rules import (
 )
 from .ai_players import (
     AI_MODULE_IDLE,
-    AI_MODULE_MICROMANAGER,
+    ai_module_uses_micromanager_behavior,
     apply_ai_module_turn,
     get_ai_check_in_turns,
+    micromanager_mode_for_player,
     normalize_ai_module_code,
     player_ai_administration_tier,
 )
@@ -313,19 +314,31 @@ MICROMANAGER_FLEET_DISPATCHES_PER_COLONY = 1
 MICROMANAGER_DEFENSE_FLEET_RATIO = 0.50
 MICROMANAGER_DEFENSE_SHIP_RATIO = 0.50
 MICROMANAGER_ASTEROID_SEARCH_RADIUS = 18.0
-MICROMANAGER_MAX_ORBIT_FLEETS = 5
+MICROMANAGER_MAX_ORBIT_FLEETS = 20
 MICROMANAGER_FLEET_BUILD_MAX_YEARS = 3
+EXPANSIONIST_FLEET_BUILD_MAX_YEARS = 4
 MICROMANAGER_COLONISE_DISPATCHES_PER_COLONY = 1
+EXPANSIONIST_COLONISE_DISPATCHES_PER_COLONY = 2
 MICROMANAGER_COLONISE_SEARCH_RADIUS = 20.0
 MICROMANAGER_COLONISE_MIN_PAYLOAD = 5
 MICROMANAGER_COLONISE_RESERVE_COLONISTS = 50
 MICROMANAGER_COLONISE_MAX_EMPLOYMENT_RATIO = 0.85
+EXPANSIONIST_COLONISE_MAX_EMPLOYMENT_RATIO = 0.92
+EXPANSIONIST_COLONISE_SOFT_RESERVE_RATIO = 0.30
 MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD = 3
+EXPANSIONIST_EARLY_EXPANSION_COLONY_THRESHOLD = 10
 MICROMANAGER_PATROL_IDLE_RATIO = 0.30
 MICROMANAGER_PATROL_MIN_RATIO = 0.25
 MICROMANAGER_PATROL_MAX_RATIO = 0.34
+EXPANSIONIST_PATROL_IDLE_RATIO = 0.24
+EXPANSIONIST_PATROL_MIN_RATIO = 0.20
+EXPANSIONIST_PATROL_MAX_RATIO = 0.25
 MICROMANAGER_PATROL_RADIUS = 15
 MICROMANAGER_WIDE_COLONISE_SEARCH_RADIUS = 40.0
+EXPANSIONIST_COLONISE_SEARCH_RADIUS = 28.0
+EXPANSIONIST_WIDE_COLONISE_SEARCH_RADIUS = 60.0
+EXPANSIONIST_DEFENSE_FLEET_RATIO = 0.34
+EXPANSIONIST_DEFENSE_SHIP_RATIO = 0.34
 
 
 # Chance calculation functions (separated for testability)
@@ -2812,7 +2825,10 @@ class GameTurn():
                 (current_year - int(last_checkin or 0)) >= interval
             )
             module_code = normalize_ai_module_code(getattr(player, 'ai_module', ''))
-            is_passive_module = module_code in (AI_MODULE_MICROMANAGER, AI_MODULE_IDLE)
+            is_passive_module = (
+                ai_module_uses_micromanager_behavior(module_code) or
+                module_code == AI_MODULE_IDLE
+            )
 
             # Passive AI modules should always resolve incoming diplomacy promptly.
             # The check-in interval still governs bookkeeping/refresh cadence.
@@ -7840,6 +7856,7 @@ class GameTurn():
                 queue_orders, cost_map
             ),
             administration_active=admin_active,
+            micromanager_mode=micromanager_mode_for_player(star.player),
         )
         planned = [
             order_type for order_type in planned
@@ -7962,8 +7979,20 @@ class GameTurn():
         ships = int(getattr(fleet, 'ship_count', 0) or 0)
         return (offense + defense, ships)
 
-    def _dispatchable_idle_fleets_for_colony(self, orbit_fleets, idle_fleets):
+    @staticmethod
+    def _is_expansionist_micromanager_mode(micromanager_mode):
+        return str(micromanager_mode or '').strip().lower() == 'expansionist'
+
+    def _dispatchable_idle_fleets_for_colony(
+        self,
+        orbit_fleets,
+        idle_fleets,
+        micromanager_mode='standard',
+    ):
         """Return weakest idle fleets that can be sent without stripping defense."""
+        expansionist_mode = self._is_expansionist_micromanager_mode(
+            micromanager_mode
+        )
         orbit = list(orbit_fleets or [])
         idle = list(idle_fleets or [])
         if not orbit or not idle:
@@ -7982,12 +8011,20 @@ class GameTurn():
         )
         reserve_fleet_count = max(
             1,
-            int(ceil(float(len(ranked)) * MICROMANAGER_DEFENSE_FLEET_RATIO)),
+            int(ceil(float(len(ranked)) * (
+                EXPANSIONIST_DEFENSE_FLEET_RATIO
+                if expansionist_mode else
+                MICROMANAGER_DEFENSE_FLEET_RATIO
+            ))),
         )
         total_ships = sum(int(getattr(fleet, 'ship_count', 0) or 0) for fleet in ranked)
         reserve_ship_count = max(
             1,
-            int(ceil(float(total_ships) * MICROMANAGER_DEFENSE_SHIP_RATIO)),
+            int(ceil(float(total_ships) * (
+                EXPANSIONIST_DEFENSE_SHIP_RATIO
+                if expansionist_mode else
+                MICROMANAGER_DEFENSE_SHIP_RATIO
+            ))),
         )
 
         reserved_ids = set()
@@ -8115,12 +8152,29 @@ class GameTurn():
             return True
         return False
 
-    def _queue_auto_build_fleet_order_for_colony(self, star, orbit_fleets, cost_map):
+    def _queue_auto_build_fleet_order_for_colony(
+        self,
+        star,
+        orbit_fleets,
+        cost_map,
+        micromanager_mode='standard',
+    ):
         """Tier-5: queue one auto build-fleet order when below orbit target."""
         from .models import ProductionOrder
 
+        expansionist_mode = self._is_expansionist_micromanager_mode(
+            micromanager_mode
+        )
         orbit_count = len(list(orbit_fleets or []))
+        existing_auto_build_orders = star.production_orders.filter(
+            order_type='BUILD_FLEET',
+            added_by_micromanager=True,
+        )
         if orbit_count >= MICROMANAGER_MAX_ORBIT_FLEETS:
+            for order in existing_auto_build_orders:
+                if self._order_has_progress(order):
+                    continue
+                order.delete()
             return
         if int(getattr(star, 'shipyards', 0) or 0) <= 0:
             return
@@ -8129,10 +8183,20 @@ class GameTurn():
         if self._has_pending_foundational_infrastructure_orders(star):
             return
         idle_fleets = self._idle_orbit_fleets(orbit_fleets)
-        if self._dispatchable_idle_fleets_for_colony(orbit_fleets, idle_fleets):
+        dispatchable_idle = self._dispatchable_idle_fleets_for_colony(
+            orbit_fleets,
+            idle_fleets,
+            micromanager_mode=micromanager_mode,
+        )
+        if len(dispatchable_idle) > (1 if expansionist_mode else 0):
             return
         patrol_fleets = self._reassignable_patrol_fleets_for_colony(orbit_fleets)
-        if self._dispatchable_idle_fleets_for_colony(orbit_fleets, patrol_fleets):
+        dispatchable_patrol = self._dispatchable_idle_fleets_for_colony(
+            orbit_fleets,
+            patrol_fleets,
+            micromanager_mode=micromanager_mode,
+        )
+        if len(dispatchable_patrol) > (1 if expansionist_mode else 0):
             return
         budget = self._one_year_planning_budget(star, cost_map)
         income = self._one_year_income(star)
@@ -8141,7 +8205,11 @@ class GameTurn():
             'BUILD_FLEET',
             budget,
             income,
-            MICROMANAGER_FLEET_BUILD_MAX_YEARS,
+            (
+                EXPANSIONIST_FLEET_BUILD_MAX_YEARS
+                if expansionist_mode else
+                MICROMANAGER_FLEET_BUILD_MAX_YEARS
+            ),
         ):
             return
         tail_base = star.production_orders.aggregate(
@@ -8567,50 +8635,99 @@ class GameTurn():
         return candidates
 
     @staticmethod
-    def _patrol_target_count(available_count):
+    def _patrol_target_count(available_count, micromanager_mode='standard'):
         available_count = max(0, int(available_count or 0))
         if available_count <= 0:
             return 0
+        expansionist_mode = str(micromanager_mode or '').strip().lower() == 'expansionist'
+        patrol_min_ratio = (
+            EXPANSIONIST_PATROL_MIN_RATIO
+            if expansionist_mode else
+            MICROMANAGER_PATROL_MIN_RATIO
+        )
+        patrol_max_ratio = (
+            EXPANSIONIST_PATROL_MAX_RATIO
+            if expansionist_mode else
+            MICROMANAGER_PATROL_MAX_RATIO
+        )
+        patrol_idle_ratio = (
+            EXPANSIONIST_PATROL_IDLE_RATIO
+            if expansionist_mode else
+            MICROMANAGER_PATROL_IDLE_RATIO
+        )
         min_patrols = max(
             1,
-            int(ceil(float(available_count) * MICROMANAGER_PATROL_MIN_RATIO)),
+            int(ceil(float(available_count) * patrol_min_ratio)),
         )
         max_patrols = max(
             min_patrols,
-            int(ceil(float(available_count) * MICROMANAGER_PATROL_MAX_RATIO)),
+            int(ceil(float(available_count) * patrol_max_ratio)),
         )
         target = max(
             min_patrols,
-            int(ceil(float(available_count) * MICROMANAGER_PATROL_IDLE_RATIO)),
+            int(ceil(float(available_count) * patrol_idle_ratio)),
         )
         target = min(max_patrols, target)
         if available_count > 1:
             target = min(target, available_count - 1)
         return target
 
-    @staticmethod
-    def _colonise_search_radius_for_player(player):
+    def _colonise_search_radius_for_player(self, player):
         race_type = getattr(player, 'race_type', None)
+        micromanager_mode = micromanager_mode_for_player(player)
+        expansionist_mode = self._is_expansionist_micromanager_mode(
+            micromanager_mode
+        )
         if race_type is None:
-            return float(MICROMANAGER_COLONISE_SEARCH_RADIUS)
+            return float(
+                EXPANSIONIST_COLONISE_SEARCH_RADIUS
+                if expansionist_mode else
+                MICROMANAGER_COLONISE_SEARCH_RADIUS
+            )
         if all(
             bool(getattr(race_type, attr, False))
             for attr in ('ignores_gravity', 'ignores_temperature', 'ignores_radiation')
         ):
-            return float(MICROMANAGER_WIDE_COLONISE_SEARCH_RADIUS)
-        return float(MICROMANAGER_COLONISE_SEARCH_RADIUS)
+            return float(
+                EXPANSIONIST_WIDE_COLONISE_SEARCH_RADIUS
+                if expansionist_mode else
+                MICROMANAGER_WIDE_COLONISE_SEARCH_RADIUS
+            )
+        return float(
+            EXPANSIONIST_COLONISE_SEARCH_RADIUS
+            if expansionist_mode else
+            MICROMANAGER_COLONISE_SEARCH_RADIUS
+        )
 
-    def _spare_colonists_for_auto_colonise(self, star):
+    def _spare_colonists_for_auto_colonise(
+        self,
+        star,
+        micromanager_mode='standard',
+    ):
         """Return spare colony colonists in kt while preserving local workforce."""
+        expansionist_mode = self._is_expansionist_micromanager_mode(
+            micromanager_mode
+        )
         current_colonists = max(0, int(getattr(star, 'colonists', 0) or 0))
         current_jobs = max(0, int(calculate_total_jobs(star) or 0))
         workforce_reserve = int(ceil(
-            float(current_jobs) / float(MICROMANAGER_COLONISE_MAX_EMPLOYMENT_RATIO)
+            float(current_jobs) / float(
+                EXPANSIONIST_COLONISE_MAX_EMPLOYMENT_RATIO
+                if expansionist_mode else
+                MICROMANAGER_COLONISE_MAX_EMPLOYMENT_RATIO
+            )
         )) if current_jobs > 0 else 0
-        soft_pop_reserve = min(
-            int(MICROMANAGER_COLONISE_RESERVE_COLONISTS or 0) * 1000,
-            max(0, int(current_colonists / 2)),
-        )
+        soft_pop_cap = max(0, int(current_colonists / 2))
+        if expansionist_mode:
+            soft_pop_reserve = min(
+                int(float(current_colonists) * EXPANSIONIST_COLONISE_SOFT_RESERVE_RATIO),
+                soft_pop_cap,
+            )
+        else:
+            soft_pop_reserve = min(
+                int(MICROMANAGER_COLONISE_RESERVE_COLONISTS or 0) * 1000,
+                soft_pop_cap,
+            )
         reserve_colonists = max(
             workforce_reserve,
             soft_pop_reserve,
@@ -8676,6 +8793,10 @@ class GameTurn():
             target = candidate_stars.get(target_id)
             if target is None:
                 continue
+            if int(getattr(target, 'player_id', 0) or 0) > 0:
+                continue
+            if int(getattr(target, 'colonists', 0) or 0) > 0:
+                continue
             distance = float(report_info.get('distance', 0.0) or 0.0)
             hab = float(calculate_habitability_factor(player, target) or 0.0)
             if hab <= 0.0:
@@ -8690,11 +8811,18 @@ class GameTurn():
                 best_distance = distance
         return best
 
-    def _dispatch_auto_colonise_route(self, star, orbit_fleets):
+    def _dispatch_auto_colonise_route(
+        self,
+        star,
+        orbit_fleets,
+        micromanager_mode='standard',
+    ):
         """Tier-5: dispatch one idle fleet to colonise a nearby viable star."""
         idle_fleets = self._idle_orbit_fleets(orbit_fleets)
         dispatchable = self._dispatchable_idle_fleets_for_colony(
-            orbit_fleets, idle_fleets
+            orbit_fleets,
+            idle_fleets,
+            micromanager_mode=micromanager_mode,
         )
         repurposed_patrol_ids = set()
         if not dispatchable:
@@ -8702,6 +8830,7 @@ class GameTurn():
             dispatchable = self._dispatchable_idle_fleets_for_colony(
                 orbit_fleets,
                 patrol_fleets,
+                micromanager_mode=micromanager_mode,
             )
             repurposed_patrol_ids = {
                 int(getattr(fleet, 'id', 0) or 0)
@@ -8712,13 +8841,21 @@ class GameTurn():
         target_star = self._best_colonise_target_for_colony(star)
         if target_star is None:
             return
-        spare_colonists = self._spare_colonists_for_auto_colonise(star)
+        spare_colonists = self._spare_colonists_for_auto_colonise(
+            star,
+            micromanager_mode=micromanager_mode,
+        )
         if spare_colonists <= 0:
             return
 
         dispatches = 0
+        dispatch_limit = (
+            EXPANSIONIST_COLONISE_DISPATCHES_PER_COLONY
+            if self._is_expansionist_micromanager_mode(micromanager_mode) else
+            MICROMANAGER_COLONISE_DISPATCHES_PER_COLONY
+        )
         for fleet in dispatchable:
-            if dispatches >= MICROMANAGER_COLONISE_DISPATCHES_PER_COLONY:
+            if dispatches >= dispatch_limit:
                 break
             cargo_remaining = int(getattr(fleet, 'cargo_remaining', 0) or 0)
             if cargo_remaining <= 0:
@@ -8753,7 +8890,12 @@ class GameTurn():
             if spare_colonists < MICROMANAGER_COLONISE_MIN_PAYLOAD:
                 break
 
-    def _assign_auto_patrol_orders(self, star, orbit_fleets):
+    def _assign_auto_patrol_orders(
+        self,
+        star,
+        orbit_fleets,
+        micromanager_mode='standard',
+    ):
         """Tier-5: keep patrol duty on the strongest available orbit fleets."""
         candidate_fleets = self._available_patrol_candidate_fleets_for_colony(
             orbit_fleets
@@ -8761,7 +8903,10 @@ class GameTurn():
         if not candidate_fleets:
             return
 
-        patrol_target = self._patrol_target_count(len(candidate_fleets))
+        patrol_target = self._patrol_target_count(
+            len(candidate_fleets),
+            micromanager_mode=micromanager_mode,
+        )
         ranked_candidates = sorted(
             candidate_fleets,
             key=lambda fleet: (
@@ -8831,11 +8976,17 @@ class GameTurn():
             return
 
         module_code = normalize_ai_module_code(getattr(player, 'ai_module', ''))
+        micromanager_mode = micromanager_mode_for_player(player)
+        expansion_threshold = (
+            EXPANSIONIST_EARLY_EXPANSION_COLONY_THRESHOLD
+            if self._is_expansionist_micromanager_mode(micromanager_mode) else
+            MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD
+        )
         early_ai_expansion = (
             int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER and
             bool(getattr(player, 'is_ai', False)) and
-            module_code == AI_MODULE_MICROMANAGER and
-            self._player_owned_colony_count(player) < MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD
+            ai_module_uses_micromanager_behavior(module_code) and
+            self._player_owned_colony_count(player) < expansion_threshold
         )
 
         cost_map = self._get_player_production_costs_cached(player)
@@ -8853,15 +9004,26 @@ class GameTurn():
                 star,
                 orbit_fleets,
                 cost_map,
+                micromanager_mode=micromanager_mode,
             )
             # Colonisation should take first claim on eligible idle fleets.
-            self._dispatch_auto_colonise_route(star, orbit_fleets)
+            self._dispatch_auto_colonise_route(
+                star,
+                orbit_fleets,
+                micromanager_mode=micromanager_mode,
+            )
             if early_ai_expansion:
-                self._assign_auto_patrol_orders(star, orbit_fleets)
+                self._assign_auto_patrol_orders(
+                    star,
+                    orbit_fleets,
+                    micromanager_mode=micromanager_mode,
+                )
 
         idle_fleets = self._idle_orbit_fleets(orbit_fleets)
         dispatchable_fleets = self._dispatchable_idle_fleets_for_colony(
-            orbit_fleets, idle_fleets
+            orbit_fleets,
+            idle_fleets,
+            micromanager_mode=micromanager_mode,
         )
         if dispatchable_fleets:
             deficits = self._resource_deficits_for_star(star, cost_map)
@@ -8927,7 +9089,11 @@ class GameTurn():
                         int(delivered.get(key, 0) or 0),
                     )
         if int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER and not early_ai_expansion:
-            self._assign_auto_patrol_orders(star, orbit_fleets)
+            self._assign_auto_patrol_orders(
+                star,
+                orbit_fleets,
+                micromanager_mode=micromanager_mode,
+            )
 
     def _fleet_service_requirements(self, fleet):
         """Return per-fleet service demand in shipyard-units (repair/refuel)."""

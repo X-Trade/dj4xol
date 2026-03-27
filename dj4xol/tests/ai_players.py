@@ -2,10 +2,12 @@ from django.test import TestCase
 from unittest.mock import patch
 
 from ..ai_players import (
+    AI_MODULE_EXPANSIONIST,
     AI_MODULE_MICROMANAGER,
     AI_MODULE_OPENAI,
     AI_MODULE_IDLE,
     AI_SLOT_RANDOM_STANCE,
+    ai_module_uses_micromanager_behavior,
     build_random_ai_race_template,
     ai_module_choices,
     apply_ai_module_turn,
@@ -43,6 +45,15 @@ class TestAIPlayerModules(TestCase):
     def test_ai_module_choices_include_openai_module(self):
         codes = [code for code, _label in ai_module_choices(enabled_only=False)]
         self.assertIn(AI_MODULE_OPENAI, codes)
+
+    def test_ai_module_choices_include_expansionist_module(self):
+        codes = [code for code, _label in ai_module_choices(enabled_only=False)]
+        self.assertIn(AI_MODULE_EXPANSIONIST, codes)
+
+    def test_expansionist_uses_micromanager_behavior_family(self):
+        self.assertTrue(ai_module_uses_micromanager_behavior(AI_MODULE_MICROMANAGER))
+        self.assertTrue(ai_module_uses_micromanager_behavior(AI_MODULE_EXPANSIONIST))
+        self.assertFalse(ai_module_uses_micromanager_behavior(AI_MODULE_IDLE))
 
     def test_openai_module_disabled_by_default(self):
         self.assertFalse(is_ai_module_enabled(AI_MODULE_OPENAI))

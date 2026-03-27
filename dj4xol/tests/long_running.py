@@ -8,7 +8,11 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 
-from ..ai_players import AI_MODULE_IDLE, AI_MODULE_MICROMANAGER
+from ..ai_players import (
+    AI_MODULE_EXPANSIONIST,
+    AI_MODULE_IDLE,
+    AI_MODULE_MICROMANAGER,
+)
 from ..colony_rules import calculate_employment_percent
 from ..factory import GameFactory
 from ..micromanager_rules import projected_mining_output
@@ -214,6 +218,11 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             "Enable AI module: micromanager",
         )
         self._set_server_setting(
+            "ai_module_expansionist_enabled",
+            "True",
+            "Enable AI module: expansionist",
+        )
+        self._set_server_setting(
             "ai_module_idle_enabled",
             "True",
             "Enable AI module: idle",
@@ -277,6 +286,9 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
         module_code,
         survivable_all=None,
         report_survivable=None,
+        star_count=18,
+        map_size=80,
+        report_all=False,
     ):
         factory = GameFactory()
         factory.game.name = label
@@ -284,9 +296,9 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
         factory.game.random_events = False
         factory.game.anomalies_enabled = False
         factory.game.years_per_turn = 1
-        factory.set_map_size(80, 80)
+        factory.set_map_size(map_size, map_size)
         factory.set_owner(self.account)
-        factory.create_stars(18)
+        factory.create_stars(star_count)
         game = factory.save()
         game.random_events = False
         game.anomalies_enabled = False
@@ -307,11 +319,34 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             ai_player,
             survivable_all=bool(survivable_all),
             report_survivable=bool(report_survivable),
+            report_all=bool(report_all),
         )
         return game, ai_player
 
-    def _prepare_observation_map(self, player, survivable_all=True, report_survivable=True):
+    def _grid_offsets(self, count, spacing=6):
+        radius = 1
+        offsets = []
+        while len(offsets) < count:
+            coords = set()
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    if dx == 0 and dy == 0:
+                        continue
+                    coords.add((dx * spacing, dy * spacing))
+            offsets = sorted(coords, key=lambda pair: (pair[0] * pair[0]) + (pair[1] * pair[1]))
+            radius += 1
+        return offsets[:count]
+
+    def _prepare_observation_map(
+        self,
+        player,
+        survivable_all=True,
+        report_survivable=True,
+        report_all=False,
+    ):
         homeworld = player.homeworld
+        homeworld.x = int(player.game.map_size_x / 2)
+        homeworld.y = int(player.game.map_size_y / 2)
         homeworld.ironium_yield = 180
         homeworld.boranium_yield = 150
         homeworld.germanium_yield = 140
@@ -325,12 +360,23 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             "ironium_inventory",
             "boranium_inventory",
             "germanium_inventory",
+            "x",
+            "y",
         ])
-
-        offsets = [(1, 0), (3, 1), (-3, 0), (0, -4), (5, 3), (-5, 3)]
-        nearby = list(
-            player.game.stars.exclude(id=homeworld.id).order_by("id")[:len(offsets)]
+        Fleet.objects.filter(game=player.game, player=player).update(
+            x=homeworld.x,
+            y=homeworld.y,
         )
+
+        candidates = list(
+            player.game.stars.exclude(id=homeworld.id).order_by("id")
+        )
+        if report_all:
+            offsets = self._grid_offsets(len(candidates), spacing=6)
+            nearby = candidates
+        else:
+            offsets = [(1, 0), (3, 1), (-3, 0), (0, -4), (5, 3), (-5, 3)]
+            nearby = candidates[:len(offsets)]
         occupied = {(int(homeworld.x), int(homeworld.y))}
         for star, (dx, dy) in zip(nearby, offsets):
             target_x = int(homeworld.x) + dx
@@ -646,3 +692,40 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             msg=history,
         )
         self.assertGreaterEqual(final["colony_count"], 3, msg=history)
+
+    def test_default_joat_expansionist_ai_reaches_twenty_colonies_within_hundred_years(self):
+        race_type = ServerRaceType.objects.get(code="JOAT")
+        race = ServerRace.objects.create(
+            name="LongJoatExpansion",
+            plural_name="LongJoatExpansions",
+            homeworld_name="Long Joat Expansion Prime",
+            race_type=race_type,
+            owner=self.account,
+            description="Default JOAT expansionist AI long-running test race",
+        )
+        _game, ai_player = self._build_ai_game(
+            "JOAT Expansionist Long Test",
+            race,
+            AI_MODULE_EXPANSIONIST,
+            survivable_all=False,
+            report_survivable=True,
+            star_count=64,
+            map_size=180,
+            report_all=True,
+        )
+
+        years = max(self.AI_YEARS, 100)
+        result = self._run_ai_year_trace(
+            ai_player,
+            years,
+            "joat-exp",
+        )
+        final = result["snapshots"][-1]
+        history = "\n".join(snapshot["line"] for snapshot in result["snapshots"])
+
+        self.assertGreaterEqual(final["colony_count"], 20, msg=history)
+        self.assertGreater(
+            final["empire_colonists"],
+            result["snapshots"][0]["empire_colonists"],
+            msg=history,
+        )
