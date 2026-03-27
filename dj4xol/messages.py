@@ -771,7 +771,8 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
         defenses_lost, colonists_lost, mines_lost, factories_lost, labs_lost,
         shipyards_lost, administration_lost=0, dyson_sphere_lost=0,
         integrity_lost=0, ships_lost=0, star_destroyed=False,
-        perspective='attacker', attacker_fleet_name=None, star=None, message=None
+        perspective='attacker', attacker_fleet_name=None, star=None,
+        extra_effects_text='', message=None
     ):
         super().__init__(game, player, message, intensity=-0.5)
         self.fleet = fleet
@@ -791,6 +792,7 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
         self.perspective = perspective
         self.attacker_fleet_name = attacker_fleet_name or getattr(fleet, 'name', 'Unknown Fleet')
         self.star = star
+        self.extra_effects_text = str(extra_effects_text or '')
 
     def format_message(self):
         infra = []
@@ -842,6 +844,8 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
                 )
         if self.star_destroyed:
             msg += f" {escape(self.star_name)} was annihilated."
+        if self.extra_effects_text:
+            msg += f" {escape(self.extra_effects_text)}"
         return msg
 
 

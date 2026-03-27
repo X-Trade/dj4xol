@@ -263,6 +263,17 @@ NOVA_STAR_DESTRUCTION_CHANCE = 0.40
 NOVA_BLACK_HOLE_SPAWN_CHANCE = 0.10
 NOVA_ASTEROID_FIELD_SPAWN_CHANCE = 0.40
 NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION = 0.05
+SUPERNOVA_BLACK_HOLE_SPAWN_CHANCE = 0.45
+SUPERNOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION = NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION
+SUPERNOVA_BOMBER_DESTRUCTION_CHANCE = 0.40
+SUPERNOVA_BOMBER_INTEGRITY_LOSS_MIN = 45
+SUPERNOVA_BOMBER_INTEGRITY_LOSS_MAX = 80
+SUPERNOVA_BOMBER_SHIP_LOSS_FRACTION = 0.35
+SUPERNOVA_COLLATERAL_FLEET_DESTRUCTION_CHANCE = 0.65
+SUPERNOVA_COLLATERAL_INTEGRITY_LOSS_MIN = 55
+SUPERNOVA_COLLATERAL_INTEGRITY_LOSS_MAX = 95
+SUPERNOVA_COLLATERAL_SHIP_LOSS_FRACTION_MIN = 0.25
+SUPERNOVA_COLLATERAL_SHIP_LOSS_FRACTION_MAX = 0.60
 STAR_VANISH_FLEET_MENTION_CHANCE = 0.35
 REMOTE_MINER_UNITS_BY_TYPE = {
     'SMALL': 1,
@@ -5858,32 +5869,30 @@ class GameTurn():
 
         star_destroyed = False
         destroyed_star_name = star.name
-        if bomb_type == 'NOVA' and roll_chance(NOVA_STAR_DESTRUCTION_CHANCE):
+        blast_summary = None
+        if bomb_type == 'SUPERNOVA':
             star_destroyed = True
-            star_snapshot = self._snapshot_star_for_nova_remnant(star)
-            destroyed_x = star.x
-            destroyed_y = star.y
-            destroyed_owner_id = star.player_id
-            destroyed_star_id = star.id
-            destroyed_star_short_id = star.short_id
-            star.delete()
-            if destroyed_owner_id:
-                from .models import Player
-                lost_player = Player.objects.filter(id=destroyed_owner_id).first()
-                if lost_player:
-                    self._handle_homeworld_loss(
-                        lost_player,
-                        lost_star_id=destroyed_star_id,
-                        location=(destroyed_x, destroyed_y),
-                    )
-            self._retarget_or_remove_orders_for_destroyed_star(
-                destroyed_star_id, destroyed_star_short_id, destroyed_x, destroyed_y,
-                preserve_order_id=order.id
+            blast_x = star.x
+            blast_y = star.y
+            star_snapshots = []
+            doomed_stars = list(
+                Star.objects.filter(game=self.game, x=star.x, y=star.y).order_by('id')
             )
-            self._notify_star_vanished(
-                destroyed_star_name, destroyed_x, destroyed_y, fleet,
-                former_owner_id=destroyed_owner_id
+            for doomed_star in doomed_stars:
+                star_snapshot = self._destroy_star_for_bombardment(doomed_star, order, fleet)
+                if star_snapshot is not None:
+                    star_snapshots.append(star_snapshot)
+            self._create_supernova_star_remnant(
+                self._merge_star_remnant_snapshots(star_snapshots)
             )
+            blast_summary = self._apply_supernova_fleet_blast(
+                fleet,
+                blast_x,
+                blast_y,
+            )
+        elif bomb_type == 'NOVA' and roll_chance(NOVA_STAR_DESTRUCTION_CHANCE):
+            star_destroyed = True
+            star_snapshot = self._destroy_star_for_bombardment(star, order, fleet)
             self._create_nova_star_remnant(star_snapshot)
         else:
             star.save(update_fields=[
@@ -5909,6 +5918,10 @@ class GameTurn():
             ships_lost=defense_fire.get('ships_lost', 0),
             star_destroyed=star_destroyed,
             star=None if star_destroyed else star,
+            extra_effects_text=self._supernova_blast_report_text(
+                blast_summary,
+                perspective='attacker',
+            ),
         )
         msg = factory.new_message()
         msg.year = self.game.year
@@ -5941,6 +5954,10 @@ class GameTurn():
                     perspective='defender',
                     attacker_fleet_name=fleet.name,
                     star=None if star_destroyed else star,
+                    extra_effects_text=self._supernova_blast_report_text(
+                        blast_summary,
+                        perspective='defender',
+                    ),
                 )
                 defender_msg = defender_factory.new_message()
                 defender_msg.year = self.game.year
@@ -5984,6 +6001,256 @@ class GameTurn():
             )
         return snapshot
 
+    def _apply_supernova_fleet_blast(self, bomber_fleet, x, y):
+        """Apply supernova fallout to the bomber and other fleets at the location."""
+        from .models import Fleet, GameMessage
+
+        summary = {
+            'attacker_destroyed': False,
+            'attacker_integrity_lost': 0,
+            'attacker_ships_lost': 0,
+            'other_fleets_destroyed': 0,
+            'other_fleets_damaged': 0,
+            'other_ships_lost': 0,
+        }
+        bomber_name = getattr(bomber_fleet, 'name', 'Unknown Fleet')
+        location = format_location(x=x, y=y, link=True, game=self.game)
+
+        if roll_chance(SUPERNOVA_BOMBER_DESTRUCTION_CHANCE):
+            summary['attacker_destroyed'] = True
+            summary['attacker_integrity_lost'] = int(getattr(bomber_fleet, 'integrity', 0) or 0)
+            summary['attacker_ships_lost'] = int(getattr(bomber_fleet, 'ship_count', 0) or 0)
+            self._handle_combat_destruction(bomber_fleet)
+            GameMessage.objects.create(
+                game=self.game,
+                player=bomber_fleet.player,
+                year=self.game.year,
+                category='COMBAT',
+                priority=True,
+                message=(
+                    f"The Supernova detonation at {location} destroyed your fleet "
+                    f"{bomber_name}."
+                ),
+            )
+        else:
+            attacker_result = self._apply_supernova_damage_to_fleet(
+                bomber_fleet,
+                integrity_loss_min=SUPERNOVA_BOMBER_INTEGRITY_LOSS_MIN,
+                integrity_loss_max=SUPERNOVA_BOMBER_INTEGRITY_LOSS_MAX,
+                ship_loss_fraction_min=SUPERNOVA_BOMBER_SHIP_LOSS_FRACTION,
+                ship_loss_fraction_max=SUPERNOVA_BOMBER_SHIP_LOSS_FRACTION,
+                destruction_chance=0.0,
+            )
+            summary['attacker_destroyed'] = bool(attacker_result.get('destroyed'))
+            summary['attacker_integrity_lost'] = int(attacker_result.get('integrity_lost', 0) or 0)
+            summary['attacker_ships_lost'] = int(attacker_result.get('ships_lost', 0) or 0)
+            if summary['attacker_destroyed']:
+                GameMessage.objects.create(
+                    game=self.game,
+                    player=bomber_fleet.player,
+                    year=self.game.year,
+                    category='COMBAT',
+                    priority=True,
+                    message=(
+                        f"The Supernova detonation at {location} destroyed your fleet "
+                        f"{bomber_name}."
+                    ),
+                )
+            elif summary['attacker_integrity_lost'] > 0 or summary['attacker_ships_lost'] > 0:
+                GameMessage.objects.create(
+                    game=self.game,
+                    player=bomber_fleet.player,
+                    year=self.game.year,
+                    category='COMBAT',
+                    priority=True,
+                    message=(
+                        f"The Supernova detonation at {location} blasted your fleet "
+                        f"{bomber_name} for {summary['attacker_integrity_lost']}% integrity loss"
+                        f" and {summary['attacker_ships_lost']} ships lost."
+                    ),
+                )
+
+        collateral_fleets = list(
+            Fleet.objects.filter(game=self.game, x=x, y=y).exclude(id=getattr(bomber_fleet, 'id', None))
+        )
+        for fleet in collateral_fleets:
+            result = self._apply_supernova_damage_to_fleet(
+                fleet,
+                integrity_loss_min=SUPERNOVA_COLLATERAL_INTEGRITY_LOSS_MIN,
+                integrity_loss_max=SUPERNOVA_COLLATERAL_INTEGRITY_LOSS_MAX,
+                ship_loss_fraction_min=SUPERNOVA_COLLATERAL_SHIP_LOSS_FRACTION_MIN,
+                ship_loss_fraction_max=SUPERNOVA_COLLATERAL_SHIP_LOSS_FRACTION_MAX,
+                destruction_chance=SUPERNOVA_COLLATERAL_FLEET_DESTRUCTION_CHANCE,
+            )
+            if result.get('destroyed'):
+                summary['other_fleets_destroyed'] += 1
+            elif result.get('integrity_lost', 0) > 0 or result.get('ships_lost', 0) > 0:
+                summary['other_fleets_damaged'] += 1
+            summary['other_ships_lost'] += int(result.get('ships_lost', 0) or 0)
+            if result.get('destroyed'):
+                text = (
+                    f"The Supernova blast at {location} destroyed your fleet "
+                    f"{getattr(fleet, 'name', 'Unknown Fleet')}."
+                )
+            elif result.get('integrity_lost', 0) > 0 or result.get('ships_lost', 0) > 0:
+                text = (
+                    f"The Supernova blast at {location} struck your fleet "
+                    f"{getattr(fleet, 'name', 'Unknown Fleet')} for "
+                    f"{int(result.get('integrity_lost', 0) or 0)}% integrity loss and "
+                    f"{int(result.get('ships_lost', 0) or 0)} ships lost."
+                )
+            else:
+                text = ''
+            if text:
+                GameMessage.objects.create(
+                    game=self.game,
+                    player=fleet.player,
+                    year=self.game.year,
+                    category='COMBAT',
+                    priority=True,
+                    message=text,
+                )
+        return summary
+
+    def _apply_supernova_damage_to_fleet(
+        self,
+        fleet,
+        integrity_loss_min,
+        integrity_loss_max,
+        ship_loss_fraction_min,
+        ship_loss_fraction_max,
+        destruction_chance,
+    ):
+        """Apply heavy supernova fallout to one fleet."""
+        if fleet is None:
+            return {'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0}
+        starting_integrity = int(getattr(fleet, 'integrity', 0) or 0)
+        starting_ship_count = int(getattr(fleet, 'ship_count', 0) or 0)
+        if starting_ship_count <= 0:
+            return {'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0}
+        if destruction_chance > 0 and roll_chance(destruction_chance):
+            self._handle_combat_destruction(fleet)
+            return {
+                'destroyed': True,
+                'integrity_lost': starting_integrity,
+                'ships_lost': starting_ship_count,
+            }
+
+        integrity_loss = random.randint(
+            int(integrity_loss_min),
+            int(max(integrity_loss_min, integrity_loss_max)),
+        )
+        fleet.integrity = max(1, starting_integrity - integrity_loss)
+        ships_lost = 0
+        if starting_ship_count > 1:
+            fraction = random.uniform(
+                float(ship_loss_fraction_min),
+                float(max(ship_loss_fraction_min, ship_loss_fraction_max)),
+            )
+            ships_lost = max(1, int(round(starting_ship_count * fraction)))
+            ships_lost = min(starting_ship_count - 1, ships_lost)
+            fleet.ship_count = max(1, starting_ship_count - ships_lost)
+
+        if fleet.integrity <= 0 or fleet.ship_count <= 0:
+            self._handle_combat_destruction(fleet)
+            return {
+                'destroyed': True,
+                'integrity_lost': starting_integrity,
+                'ships_lost': starting_ship_count,
+            }
+
+        fleet.save(update_fields=['integrity', 'ship_count'])
+        return {
+            'destroyed': False,
+            'integrity_lost': max(0, starting_integrity - int(fleet.integrity or 0)),
+            'ships_lost': ships_lost,
+        }
+
+    @staticmethod
+    def _supernova_blast_report_text(blast_summary, perspective='attacker'):
+        """Return extra bombardment report text for supernova fleet fallout."""
+        if not blast_summary:
+            return ''
+        parts = []
+        attacker_destroyed = bool(blast_summary.get('attacker_destroyed'))
+        attacker_integrity_lost = int(blast_summary.get('attacker_integrity_lost', 0) or 0)
+        attacker_ships_lost = int(blast_summary.get('attacker_ships_lost', 0) or 0)
+        other_fleets_destroyed = int(blast_summary.get('other_fleets_destroyed', 0) or 0)
+        other_fleets_damaged = int(blast_summary.get('other_fleets_damaged', 0) or 0)
+
+        if perspective == 'attacker':
+            if attacker_destroyed:
+                parts.append('The Supernova backlash destroyed the attacking fleet.')
+            elif attacker_integrity_lost > 0 or attacker_ships_lost > 0:
+                parts.append(
+                    'The Supernova backlash inflicted %s%% integrity loss and %s ships lost on the attacking fleet.'
+                    % (attacker_integrity_lost, attacker_ships_lost)
+                )
+        if other_fleets_destroyed > 0 or other_fleets_damaged > 0:
+            parts.append(
+                'The orbital blast destroyed %s other fleets and damaged %s more.'
+                % (other_fleets_destroyed, other_fleets_damaged)
+            )
+        return ' '.join(parts).strip()
+
+    def _merge_star_remnant_snapshots(self, star_snapshots):
+        """Combine multiple destroyed-star snapshots into one remnant payload."""
+        merged = None
+        for star_snapshot in star_snapshots or []:
+            if not star_snapshot:
+                continue
+            if merged is None:
+                merged = {
+                    'x': int(star_snapshot.get('x', 0) or 0),
+                    'y': int(star_snapshot.get('y', 0) or 0),
+                }
+                for key in ALL_RESOURCE_KEYS:
+                    merged['%s_yield' % key] = 0
+                    merged['%s_inventory' % key] = 0
+            for key in ALL_RESOURCE_KEYS:
+                merged['%s_yield' % key] += int(star_snapshot.get('%s_yield' % key, 0) or 0)
+                merged['%s_inventory' % key] += int(
+                    star_snapshot.get('%s_inventory' % key, 0) or 0
+                )
+        return merged
+
+    def _destroy_star_for_bombardment(self, star, order, fleet):
+        """Destroy a star and perform cleanup and notifications for bombardment."""
+        if star is None:
+            return None
+        star_snapshot = self._snapshot_star_for_nova_remnant(star)
+        destroyed_star_name = star.name
+        destroyed_x = star.x
+        destroyed_y = star.y
+        destroyed_owner_id = star.player_id
+        destroyed_star_id = star.id
+        destroyed_star_short_id = star.short_id
+        star.delete()
+        if destroyed_owner_id:
+            from .models import Player
+            lost_player = Player.objects.filter(id=destroyed_owner_id).first()
+            if lost_player:
+                self._handle_homeworld_loss(
+                    lost_player,
+                    lost_star_id=destroyed_star_id,
+                    location=(destroyed_x, destroyed_y),
+                )
+        self._retarget_or_remove_orders_for_destroyed_star(
+            destroyed_star_id,
+            destroyed_star_short_id,
+            destroyed_x,
+            destroyed_y,
+            preserve_order_id=order.id,
+        )
+        self._notify_star_vanished(
+            destroyed_star_name,
+            destroyed_x,
+            destroyed_y,
+            fleet,
+            former_owner_id=destroyed_owner_id,
+        )
+        return star_snapshot
+
     def _stars_remain_at_location(self, x, y):
         """Return True if any star in this game still exists at the coordinate."""
         from .models import Star
@@ -5996,23 +6263,61 @@ class GameTurn():
 
     def _create_nova_star_remnant(self, star_snapshot):
         """Create a black hole or asteroid field after nova star destruction."""
+        return self._create_destroyed_star_remnant(
+            star_snapshot,
+            black_hole_spawn_chance=NOVA_BLACK_HOLE_SPAWN_CHANCE,
+            asteroid_field_spawn_chance=NOVA_ASTEROID_FIELD_SPAWN_CHANCE,
+            asteroid_required=False,
+            exposed_potential_fraction=NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION,
+        )
+
+    def _create_supernova_star_remnant(self, star_snapshot):
+        """Create a black hole or asteroid field after supernova destruction."""
+        return self._create_destroyed_star_remnant(
+            star_snapshot,
+            black_hole_spawn_chance=SUPERNOVA_BLACK_HOLE_SPAWN_CHANCE,
+            asteroid_field_spawn_chance=1.0,
+            asteroid_required=True,
+            exposed_potential_fraction=SUPERNOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION,
+        )
+
+    def _create_destroyed_star_remnant(
+        self,
+        star_snapshot,
+        black_hole_spawn_chance,
+        asteroid_field_spawn_chance,
+        asteroid_required,
+        exposed_potential_fraction,
+    ):
+        """Create a black hole or asteroid field after star destruction."""
         if not star_snapshot:
             return None
         x = int(star_snapshot.get('x', 0) or 0)
         y = int(star_snapshot.get('y', 0) or 0)
         if self._stars_remain_at_location(x, y):
             return None
-        if self._maybe_spawn_black_hole_from_nova(x, y):
+        if self._maybe_spawn_black_hole_from_destroyed_star(x, y, black_hole_spawn_chance):
             return 'black_hole'
-        if roll_chance(NOVA_ASTEROID_FIELD_SPAWN_CHANCE):
-            salvage = self._create_asteroid_field_from_nova(star_snapshot)
+        if asteroid_required or roll_chance(asteroid_field_spawn_chance):
+            salvage = self._create_asteroid_field_from_destroyed_star(
+                star_snapshot,
+                exposed_potential_fraction,
+            )
             if salvage is not None:
                 return salvage
         return None
 
     def _maybe_spawn_black_hole_from_nova(self, x, y):
         """Create a black hole at a nova-destroyed star location when it rolls."""
-        if not roll_chance(NOVA_BLACK_HOLE_SPAWN_CHANCE):
+        return self._maybe_spawn_black_hole_from_destroyed_star(
+            x,
+            y,
+            NOVA_BLACK_HOLE_SPAWN_CHANCE,
+        )
+
+    def _maybe_spawn_black_hole_from_destroyed_star(self, x, y, black_hole_spawn_chance):
+        """Create a black hole at a destroyed-star location when it rolls."""
+        if not roll_chance(black_hole_spawn_chance):
             return None
         if self._stars_remain_at_location(x, y):
             return None
@@ -6031,6 +6336,13 @@ class GameTurn():
 
     def _nova_exposed_minerals_from_yield(self, yield_pct):
         """Expose a recoverable fraction of a star's long-term mineral potential."""
+        return self._exposed_minerals_from_yield(
+            yield_pct,
+            NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION,
+        )
+
+    def _exposed_minerals_from_yield(self, yield_pct, exposed_potential_fraction):
+        """Expose a recoverable fraction of a star's long-term mineral potential."""
         try:
             yield_pct = int(yield_pct or 0)
         except (TypeError, ValueError):
@@ -6038,10 +6350,21 @@ class GameTurn():
         if yield_pct <= 0:
             return 0
         potential_kt = float(yield_pct) / float(YIELD_DEPLETION_RATE)
-        exposed = potential_kt * float(NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION)
+        exposed = potential_kt * float(exposed_potential_fraction)
         return max(0, int(round(exposed)))
 
     def _create_asteroid_field_from_nova(self, star_snapshot):
+        """Create or enrich an asteroid field with surface and exposed deep minerals."""
+        return self._create_asteroid_field_from_destroyed_star(
+            star_snapshot,
+            NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION,
+        )
+
+    def _create_asteroid_field_from_destroyed_star(
+        self,
+        star_snapshot,
+        exposed_potential_fraction,
+    ):
         """Create or enrich an asteroid field with surface and exposed deep minerals."""
         from .models import Salvage
 
@@ -6053,7 +6376,10 @@ class GameTurn():
         for key in ALL_RESOURCE_KEYS:
             surface = int(star_snapshot.get('%s_inventory' % key, 0) or 0)
             yield_pct = int(star_snapshot.get('%s_yield' % key, 0) or 0)
-            minerals[key] = surface + self._nova_exposed_minerals_from_yield(yield_pct)
+            minerals[key] = surface + self._exposed_minerals_from_yield(
+                yield_pct,
+                exposed_potential_fraction,
+            )
 
         if sum(int(value or 0) for value in minerals.values()) <= 0:
             return None
@@ -6588,7 +6914,7 @@ class GameTurn():
         target_fleet.integrity = avg_integrity
         source_bomb = normalize_bomb_type(source_fleet.has_bombs)
         target_bomb = normalize_bomb_type(target_fleet.has_bombs)
-        bomb_priority = {'CONVENTIONAL': 1, 'SMART': 2, 'NOVA': 3}
+        bomb_priority = {'CONVENTIONAL': 1, 'SMART': 2, 'NOVA': 3, 'SUPERNOVA': 4}
         if bomb_priority.get(source_bomb, 0) > bomb_priority.get(target_bomb, 0):
             target_fleet.has_bombs = source_bomb
 

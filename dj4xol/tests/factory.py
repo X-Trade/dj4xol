@@ -446,6 +446,22 @@ class testGameFactory(TestCase):
         self.assertEqual(singular, 'Centuroid')
         self.assertEqual(plural, 'Centuroids')
 
+    def test_ai_name_generation_ignores_trailing_roman_numeral_system_suffix(self):
+        singular, plural = GameFactory._build_unique_ai_identity(
+            'Centauri I',
+            existing_names=set(),
+        )
+        self.assertEqual(singular, 'Centauroid')
+        self.assertEqual(plural, 'Centauroids')
+
+    def test_ai_name_generation_keeps_single_alphanumeric_token_fragments(self):
+        singular, plural = GameFactory._build_unique_ai_identity(
+            'X-254',
+            existing_names=set(),
+        )
+        self.assertEqual(singular, 'Xan')
+        self.assertEqual(plural, 'Xans')
+
     def test_systems_adds_companion_stars(self):
         """Systems option should add companion stars at same coordinates."""
         gf = GameFactory()

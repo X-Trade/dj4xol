@@ -1167,6 +1167,14 @@ class ResearchTurnTest(TestCase):
             params_json='{"has_bombs":"NOVA"}',
             enabled=True,
         )
+        Technology.objects.create(
+            category=construction,
+            level=26,
+            name='Supernova Bombs',
+            tech_type='BOMB',
+            params_json='{"has_bombs":"SUPERNOVA","defense_level":-1.5}',
+            enabled=True,
+        )
 
         Technology.objects.create(
             category=electronics,
@@ -1195,11 +1203,12 @@ class ResearchTurnTest(TestCase):
 
         rows = ensure_player_research_rows(self.player)
         for row in rows:
-            row.current_level = 14.0
+            row.current_level = 26.0
             row.save(update_fields=['current_level'])
 
         effects = get_player_tech_effects(self.player)
-        self.assertEqual(effects['has_bombs'], 'NOVA')
+        self.assertEqual(effects['has_bombs'], 'SUPERNOVA')
+        self.assertAlmostEqual(effects['defense_level'], -1.5, places=4)
         self.assertEqual(effects['has_miners'], 'LARGE')
 
 

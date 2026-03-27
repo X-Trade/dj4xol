@@ -6,6 +6,9 @@ from ..turn import (
     NOVA_ASTEROID_FIELD_SPAWN_CHANCE,
     NOVA_BLACK_HOLE_SPAWN_CHANCE,
     NOVA_STAR_DESTRUCTION_CHANCE,
+    SUPERNOVA_BLACK_HOLE_SPAWN_CHANCE,
+    SUPERNOVA_BOMBER_DESTRUCTION_CHANCE,
+    SUPERNOVA_COLLATERAL_FLEET_DESTRUCTION_CHANCE,
     YIELD_DEPLETION_RATE,
     apply_population_change,
     calculate_fleet_defense_multiplier,
@@ -12240,6 +12243,191 @@ class TestBombardmentOrders(TestCase):
         self.assertTrue(Star.objects.filter(id=sibling.id).exists())
         self.assertFalse(Anomaly.objects.filter(game=game, x=star.x, y=star.y).exists())
         self.assertFalse(Salvage.objects.filter(game=game, x=star.x, y=star.y).exists())
+
+    def test_supernova_bombs_destroy_all_stars_at_target_location(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_supernova_def')
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10_000
+        star.defenses = 0
+        star.ironium_inventory = 700
+        star.boranium_inventory = 0
+        star.germanium_inventory = 0
+        star.resource_x_inventory = 0
+        star.resource_y_inventory = 0
+        star.resource_z_inventory = 0
+        star.ironium_yield = 100
+        star.boranium_yield = 0
+        star.germanium_yield = 0
+        star.resource_x_yield = 0
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
+        star.save(update_fields=[
+            'player', 'colonists', 'defenses',
+            'ironium_inventory', 'boranium_inventory', 'germanium_inventory',
+            'resource_x_inventory', 'resource_y_inventory', 'resource_z_inventory',
+            'ironium_yield', 'boranium_yield', 'germanium_yield',
+            'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
+        ])
+
+        sibling = Star.objects.create(
+            game=game,
+            name='Supernova Sibling',
+            x=star.x,
+            y=star.y,
+            player=defender,
+            colonists=8_000,
+            defenses=0,
+            ironium_inventory=0,
+            boranium_inventory=300,
+            germanium_inventory=0,
+            resource_x_inventory=0,
+            resource_y_inventory=0,
+            resource_z_inventory=0,
+            ironium_yield=0,
+            boranium_yield=80,
+            germanium_yield=0,
+            resource_x_yield=0,
+            resource_y_yield=0,
+            resource_z_yield=0,
+        )
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Supernova Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='SUPERNOVA',
+        )
+        FleetOrders.objects.create(game=game, fleet=fleet, order_type='BOMB', target_star=star)
+
+        with patch('dj4xol.turn.roll_chance', return_value=False), patch(
+            'dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet',
+            return_value={'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
+        ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Star.objects.filter(id=star.id).exists())
+        self.assertFalse(Star.objects.filter(id=sibling.id).exists())
+        self.assertFalse(Anomaly.objects.filter(game=game, x=star.x, y=star.y).exists())
+
+        asteroid_field = Salvage.objects.get(game=game, x=star.x, y=star.y)
+        self.assertEqual(asteroid_field.salvage_type, Salvage.TYPE_ASTEROID_FIELD)
+        self.assertEqual(
+            asteroid_field.ironium_inventory,
+            700 + int(round((100 / YIELD_DEPLETION_RATE) * NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION)),
+        )
+        self.assertEqual(
+            asteroid_field.boranium_inventory,
+            300 + int(round((80 / YIELD_DEPLETION_RATE) * NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION)),
+        )
+
+    def test_supernova_bombs_use_higher_black_hole_chance_than_nova(self):
+        self.assertGreater(
+            SUPERNOVA_BLACK_HOLE_SPAWN_CHANCE,
+            NOVA_BLACK_HOLE_SPAWN_CHANCE,
+        )
+
+    def test_supernova_bombs_can_destroy_bomber_and_other_fleets_in_orbit(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_supernova_blast_def')
+        observer = self._ensure_other_player(game, attacker, 'bomb_supernova_blast_obs')
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10_000
+        star.defenses = 0
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+
+        sibling = Star.objects.create(
+            game=game,
+            name='Blast Sibling',
+            x=star.x,
+            y=star.y,
+            player=defender,
+            colonists=5_000,
+            defenses=0,
+        )
+
+        bomber = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Supernova Suicide Fleet',
+            x=star.x,
+            y=star.y,
+            ship_count=8,
+            integrity=100,
+            has_bombs='SUPERNOVA',
+        )
+        defender_fleet = Fleet.objects.create(
+            game=game,
+            player=defender,
+            name='Defender Orbit Guard',
+            x=star.x,
+            y=star.y,
+            ship_count=5,
+            integrity=100,
+        )
+        observer_fleet = Fleet.objects.create(
+            game=game,
+            player=observer,
+            name='Observer Task Group',
+            x=star.x,
+            y=star.y,
+            ship_count=4,
+            integrity=100,
+        )
+        distant_fleet = Fleet.objects.create(
+            game=game,
+            player=observer,
+            name='Distant Fleet',
+            x=star.x + 2,
+            y=star.y + 2,
+            ship_count=4,
+            integrity=100,
+        )
+        FleetOrders.objects.create(game=game, fleet=bomber, order_type='BOMB', target_star=star)
+
+        def supernova_roll(threshold):
+            if threshold == SUPERNOVA_BOMBER_DESTRUCTION_CHANCE:
+                return True
+            if threshold == SUPERNOVA_COLLATERAL_FLEET_DESTRUCTION_CHANCE:
+                return True
+            if threshold == SUPERNOVA_BLACK_HOLE_SPAWN_CHANCE:
+                return False
+            return False
+
+        with patch('dj4xol.turn.roll_chance', side_effect=supernova_roll), patch(
+            'dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet',
+            return_value={'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
+        ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Star.objects.filter(id=star.id).exists())
+        self.assertFalse(Star.objects.filter(id=sibling.id).exists())
+        self.assertFalse(Fleet.objects.filter(id=bomber.id).exists())
+        self.assertFalse(Fleet.objects.filter(id=defender_fleet.id).exists())
+        self.assertFalse(Fleet.objects.filter(id=observer_fleet.id).exists())
+        self.assertTrue(Fleet.objects.filter(id=distant_fleet.id).exists())
+        self.assertTrue(
+            attacker.messages.filter(message__icontains='destroyed your fleet').exists()
+        )
+        self.assertTrue(
+            defender.messages.filter(message__icontains='Supernova blast').exists()
+        )
+        self.assertTrue(
+            observer.messages.filter(message__icontains='Supernova blast').exists()
+        )
 
     def test_destroyed_star_retargets_movement_orders_and_deletes_other_orders(self):
         from ..models import FleetOrders

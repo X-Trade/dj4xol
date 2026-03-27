@@ -1581,6 +1581,19 @@
     enabled: True
 
 - model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000606"
+  fields:
+    short_id: "tech00000606"
+    category: 4
+    level: 26
+    name: 'Supernova Bombs'
+    description: 'System-shattering stellar weapons that annihilate every star in a coordinate.'
+    tech_type: 'BOMB'
+    params_json: '{"has_bombs": "SUPERNOVA", "defense_level": -1.5}'
+    display_order: 251
+    enabled: True
+
+- model: dj4xol.Technology
   pk: "00000000-0000-0000-0000-000000000700"
   fields:
     short_id: "tech00000700"

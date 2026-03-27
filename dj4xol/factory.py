@@ -1073,10 +1073,26 @@ class GameFactory():
         return candidates
 
     @classmethod
+    def _is_terminal_roman_numeral_token(cls, token):
+        token_text = str(token or '').strip().upper()
+        if not token_text:
+            return False
+        if not re.match(r'^[IVXLCDM]+$', token_text):
+            return False
+        return token_text in set(cls._ROMAN_NUMERALS)
+
+    @classmethod
     def _pick_ai_name_fragment(cls, homeworld_name):
         candidates = cls._ai_name_fragment_candidates(homeworld_name)
         if not candidates:
             return ''
+        tokens = [token for token in re.split(r'\s+', str(homeworld_name or '').strip()) if token]
+        if (
+            len(candidates) > 1 and
+            tokens and
+            cls._is_terminal_roman_numeral_token(tokens[-1])
+        ):
+            return candidates[-2]
         # Prefer the last lexical token to produce a compact demonym stem.
         return candidates[-1]
 

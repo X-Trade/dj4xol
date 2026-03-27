@@ -134,6 +134,13 @@ class DefaultSyncTest(TestCase):
             id='00000000-0000-0000-0000-000000000605'
         )
         self.assertEqual(nova_bombs.level, 21)
+        supernova_bombs = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000606'
+        )
+        self.assertEqual(supernova_bombs.level, 26)
+        self.assertEqual(
+            json.loads(supernova_bombs.params_json).get('defense_level'), -1.5
+        )
         prototype_wormhole = Technology.objects.get(
             id='00000000-0000-0000-0000-000000000114'
         )
