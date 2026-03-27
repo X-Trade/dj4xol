@@ -80,7 +80,7 @@
   fields:
     key: 'ai_max_per_game'
     description: 'Maximum AI players per game'
-    value: '0'
+    value: '2'
 - model: dj4xol.ServerSettings
   fields:
     key: 'ai_max_per_server'
@@ -90,7 +90,7 @@
   fields:
     key: 'ai_check_in_turns'
     description: 'AI check-in cadence in turns'
-    value: '1'
+    value: '4'
 - model: dj4xol.ServerSettings
   fields:
     key: 'ai_module_micromanager_enabled'

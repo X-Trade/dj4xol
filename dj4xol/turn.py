@@ -2824,15 +2824,9 @@ class GameTurn():
                 last_checkin is None or
                 (current_year - int(last_checkin or 0)) >= interval
             )
-            module_code = normalize_ai_module_code(getattr(player, 'ai_module', ''))
-            is_passive_module = (
-                ai_module_uses_micromanager_behavior(module_code) or
-                module_code == AI_MODULE_IDLE
-            )
-
-            # Passive AI modules should always resolve incoming diplomacy promptly.
-            # The check-in interval still governs bookkeeping/refresh cadence.
-            if is_passive_module or refresh_due:
+            # AI module work, including passive diplomacy responses, happens
+            # on scheduled check-ins only.
+            if refresh_due:
                 apply_ai_module_turn(player, self.game)
 
             if refresh_due:

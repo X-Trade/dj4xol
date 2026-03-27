@@ -49,9 +49,6 @@ from .research import (
     get_player_available_production_orders, get_player_unlocked_technologies,
 )
 from .ai_players import (
-    AI_MODULE_IDLE,
-    AI_MODULE_MICROMANAGER,
-    apply_ai_module_turn,
     build_random_ai_race_template,
     normalize_ai_module_code,
     resolve_ai_slot_stance,
@@ -3878,12 +3875,6 @@ def diplomacy(request, game_short_id):
                             ensure_specific_colony_report(contract)
                         if counter_contract is not None:
                             mark_countered(counter_contract, contract)
-                        if bool(getattr(selected_player, 'is_ai', False)):
-                            module_code = normalize_ai_module_code(
-                                getattr(selected_player, 'ai_module', '')
-                            )
-                            if module_code in (AI_MODULE_MICROMANAGER, AI_MODULE_IDLE):
-                                apply_ai_module_turn(selected_player, game)
                         return redirect(
                             _diplomacy_redirect_url(
                                 game.short_id,

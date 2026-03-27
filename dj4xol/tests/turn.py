@@ -13123,7 +13123,7 @@ class TestHomeworldLossAndDerelicts(TestCase):
         self.assertTrue(ai_player.turned_in)
         self.assertEqual(ai_player.ai_last_checkin_year, game.year)
 
-    def test_passive_ai_diplomacy_resolves_even_when_checkin_not_due(self):
+    def test_passive_ai_diplomacy_waits_until_checkin_due(self):
         from ..models import ServerSettings
 
         game = default_game(stars=8)
@@ -13145,6 +13145,48 @@ class TestHomeworldLossAndDerelicts(TestCase):
             },
         )
         ai_player.ai_last_checkin_year = game.year
+        ai_player.save(update_fields=['ai_last_checkin_year'])
+
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+        )
+
+        GameTurn(game)._update_ai_checkin_state(auto_turn_in=False)
+
+        contract.refresh_from_db()
+        ai_player.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_SENT)
+        self.assertEqual(ai_player.ai_last_checkin_year, game.year)
+
+    def test_passive_ai_diplomacy_resolves_when_checkin_due(self):
+        from ..models import ServerSettings
+
+        game = default_game(stars=8)
+        human = game.players.first()
+        race = get_default_race()
+        ai_player = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        self.assertIsNotNone(ai_player)
+        ServerSettings.objects.update_or_create(
+            key='ai_check_in_turns',
+            defaults={
+                'value': '4',
+                'description': 'AI check-in cadence in turns',
+            },
+        )
+        ai_player.ai_last_checkin_year = game.year - 4
         ai_player.save(update_fields=['ai_last_checkin_year'])
 
         contract = DiplomaticContract.objects.create(

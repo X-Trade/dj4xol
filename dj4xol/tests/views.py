@@ -5138,7 +5138,7 @@ class TestDiplomacyView(TestCase):
         )
         self.assertIn(tech.id, {item.id for item in get_player_unlocked_technologies(player)})
 
-    def test_diplomacy_send_to_passive_ai_triggers_immediate_response(self):
+    def test_diplomacy_send_to_passive_ai_leaves_contract_pending_until_turn(self):
         game = default_game(stars=6, fleets=0)
         game.turn_scheme = 'HOURLY'
         game.next_generation = timezone.now() + timedelta(hours=2)
@@ -5178,7 +5178,7 @@ class TestDiplomacyView(TestCase):
             request_clause_type='SPECIFIC_COLONY',
             request_star_id=ai_player.homeworld_id,
         )
-        self.assertEqual(contract.status, DiplomaticContract.STATUS_DECLINED)
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_SENT)
 
     def test_diplomacy_send_contract_rejects_defeated_target(self):
         game = default_game(stars=6, fleets=0)
