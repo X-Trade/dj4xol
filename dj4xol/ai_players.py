@@ -33,7 +33,12 @@ AI_SERVER_CAP_EXCLUDED_MODULES = frozenset((
 AI_MODULE_SPECS = {
     AI_MODULE_MICROMANAGER: {
         'label': 'Micromanager',
-        'description': 'Uses max-tier Administration behavior across all colonies, including tier-5 fleet automation.',
+        'description': (
+            'Uses tier-5 colony micromanager behavior across all colonies, '
+            'regardless of built Administration structures or unlocked '
+            'Administration tech, while still respecting research-gated '
+            'production unlocks.'
+        ),
         'administration_tier': 5,
         'default_enabled': True,
     },

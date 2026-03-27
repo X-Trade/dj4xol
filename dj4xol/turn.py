@@ -321,6 +321,8 @@ MICROMANAGER_COLONISE_MIN_PAYLOAD = 5
 MICROMANAGER_COLONISE_RESERVE_COLONISTS = 50
 MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD = 3
 MICROMANAGER_PATROL_IDLE_RATIO = 0.25
+MICROMANAGER_PATROL_MIN_RATIO = 0.20
+MICROMANAGER_PATROL_MAX_RATIO = 0.40
 MICROMANAGER_PATROL_RADIUS = 15
 
 
@@ -8502,6 +8504,64 @@ class GameTurn():
             idle.append(fleet)
         return idle
 
+    @staticmethod
+    def _fleet_has_only_repeat_micromanager_patrol_orders(fleet):
+        orders = list(fleet.orders.order_by('position', 'id'))
+        if not orders:
+            return False
+        return not any(
+            order.order_type != 'PATROL' or
+            not bool(getattr(order, 'repeat', False)) or
+            not bool(getattr(order, 'added_by_micromanager', False))
+            for order in orders
+        )
+
+    def _reassignable_patrol_fleets_for_colony(self, orbit_fleets):
+        """Return patrol fleets that Micromanager may repurpose for colonisation."""
+        candidates = []
+        for fleet in list(orbit_fleets or []):
+            if fleet.id in self._micromanager_auto_fleet_ids_for_year:
+                continue
+            if not self._fleet_has_only_repeat_micromanager_patrol_orders(fleet):
+                continue
+            candidates.append(fleet)
+        return candidates
+
+    def _available_patrol_candidate_fleets_for_colony(self, orbit_fleets):
+        """Return fleets Micromanager can freely use or rebalance for patrol duty."""
+        candidates = []
+        for fleet in list(orbit_fleets or []):
+            if fleet.id in self._micromanager_auto_fleet_ids_for_year:
+                continue
+            if not fleet.orders.exists():
+                candidates.append(fleet)
+                continue
+            if self._fleet_has_only_repeat_micromanager_patrol_orders(fleet):
+                candidates.append(fleet)
+        return candidates
+
+    @staticmethod
+    def _patrol_target_count(available_count):
+        available_count = max(0, int(available_count or 0))
+        if available_count <= 0:
+            return 0
+        min_patrols = max(
+            1,
+            int(ceil(float(available_count) * MICROMANAGER_PATROL_MIN_RATIO)),
+        )
+        max_patrols = max(
+            min_patrols,
+            int(ceil(float(available_count) * MICROMANAGER_PATROL_MAX_RATIO)),
+        )
+        target = max(
+            min_patrols,
+            int(ceil(float(available_count) * MICROMANAGER_PATROL_IDLE_RATIO)),
+        )
+        target = min(max_patrols, target)
+        if available_count > 1:
+            target = min(target, available_count - 1)
+        return target
+
     def _spare_colonists_for_auto_colonise(self, star):
         """Return spare colony colonists in kt while preserving local workforce."""
         current_colonists = max(0, int(getattr(star, 'colonists', 0) or 0))
@@ -8557,6 +8617,17 @@ class GameTurn():
         dispatchable = self._dispatchable_idle_fleets_for_colony(
             orbit_fleets, idle_fleets
         )
+        repurposed_patrol_ids = set()
+        if not dispatchable:
+            patrol_fleets = self._reassignable_patrol_fleets_for_colony(orbit_fleets)
+            dispatchable = self._dispatchable_idle_fleets_for_colony(
+                orbit_fleets,
+                patrol_fleets,
+            )
+            repurposed_patrol_ids = {
+                int(getattr(fleet, 'id', 0) or 0)
+                for fleet in patrol_fleets
+            }
         if not dispatchable:
             return
         target_star = self._best_colonise_target_for_colony(star)
@@ -8583,6 +8654,12 @@ class GameTurn():
             )
             if transfer_colonists < MICROMANAGER_COLONISE_MIN_PAYLOAD:
                 continue
+            if int(getattr(fleet, 'id', 0) or 0) in repurposed_patrol_ids:
+                fleet.orders.filter(
+                    order_type='PATROL',
+                    repeat=True,
+                    added_by_micromanager=True,
+                ).delete()
             created = self._queue_auto_colonise_route(
                 fleet,
                 source_star=star,
@@ -8597,31 +8674,17 @@ class GameTurn():
             if spare_colonists < MICROMANAGER_COLONISE_MIN_PAYLOAD:
                 break
 
-    def _count_colony_patrol_fleets(self, orbit_fleets):
-        count = 0
-        for fleet in list(orbit_fleets or []):
-            if fleet.orders.filter(order_type='PATROL').exists():
-                count += 1
-        return count
-
     def _assign_auto_patrol_orders(self, star, orbit_fleets):
-        """Tier-5: assign repeat patrol orders to idle orbit fleets."""
-        idle_fleets = self._idle_orbit_fleets(orbit_fleets)
-        if not idle_fleets:
-            return
-        patrol_fleets_now = self._count_colony_patrol_fleets(orbit_fleets)
-        patrol_target = int(
-            ceil(float(len(orbit_fleets or [])) * MICROMANAGER_PATROL_IDLE_RATIO)
+        """Tier-5: keep patrol duty on the strongest available orbit fleets."""
+        candidate_fleets = self._available_patrol_candidate_fleets_for_colony(
+            orbit_fleets
         )
-        if patrol_target <= 0 and len(orbit_fleets or []) > 0:
-            patrol_target = 1
-        patrol_target = max(1, patrol_target)
-        needed = max(0, patrol_target - patrol_fleets_now)
-        if needed <= 0:
+        if not candidate_fleets:
             return
 
-        ranked_idle = sorted(
-            idle_fleets,
+        patrol_target = self._patrol_target_count(len(candidate_fleets))
+        ranked_candidates = sorted(
+            candidate_fleets,
             key=lambda fleet: (
                 self._fleet_defense_score(fleet)[0],
                 self._fleet_defense_score(fleet)[1],
@@ -8629,10 +8692,28 @@ class GameTurn():
             ),
             reverse=True,
         )
+        desired_patrol_ids = {
+            int(getattr(fleet, 'id', 0) or 0)
+            for fleet in ranked_candidates[:patrol_target]
+        }
         from .models import FleetOrders
-        for fleet in ranked_idle:
-            if needed <= 0:
-                break
+
+        for fleet in candidate_fleets:
+            if (
+                int(getattr(fleet, 'id', 0) or 0) not in desired_patrol_ids and
+                self._fleet_has_only_repeat_micromanager_patrol_orders(fleet)
+            ):
+                fleet.orders.filter(
+                    order_type='PATROL',
+                    repeat=True,
+                    added_by_micromanager=True,
+                ).delete()
+
+        for fleet in ranked_candidates:
+            if int(getattr(fleet, 'id', 0) or 0) not in desired_patrol_ids:
+                continue
+            if self._fleet_has_only_repeat_micromanager_patrol_orders(fleet):
+                continue
             try:
                 intercept_speed = int(getattr(fleet, 'max_safe_warp', 5) or 5)
             except (TypeError, ValueError):
@@ -8652,7 +8733,6 @@ class GameTurn():
                 added_by_micromanager=True,
             )
             self._micromanager_auto_fleet_ids_for_year.add(fleet.id)
-            needed -= 1
 
     def _refresh_administration_fleet_dispatch_queue(self, star):
         """Tier-4 Administration: auto-dispatch idle fleets for logistics."""

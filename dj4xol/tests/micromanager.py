@@ -13,6 +13,7 @@ from ..research import (
 from ..objectdetails import DetailBuilder
 from ..turn import GameTurn
 from ..micromanager_rules import (
+    ADMINISTRATION_ORDER_TYPE,
     get_micromanager_candidate_orders,
     plan_micromanager_orders,
 )
@@ -1906,6 +1907,10 @@ class AdministrationAutomationTest(TestCase):
         ).order_by('position', 'id'))
         self.assertTrue(orders)
         self.assertIn(orders[0].order_type, {'BUILD_MINE', 'BUILD_FACTORY', 'BUILD_DEFENSE'})
+        self.assertNotIn(
+            ADMINISTRATION_ORDER_TYPE,
+            [order.order_type for order in orders],
+        )
 
     def test_ai_micromanager_level_five_dispatches_one_idle_fleet_for_colonise(self):
         self.player.is_ai = True
@@ -2150,6 +2155,7 @@ class AdministrationAutomationTest(TestCase):
             ).exists()
         ]
         self.assertEqual(len(patrol_assigned), 1)
+        self.assertEqual(patrol_assigned[0].id, fleets[-1].id)
 
     def test_ai_micromanager_level_five_assigns_minimum_one_patrol_when_possible(self):
         self.player.is_ai = True
@@ -2185,6 +2191,229 @@ class AdministrationAutomationTest(TestCase):
             repeat=True,
             added_by_micromanager=True,
         ).exists())
+
+    def test_ai_micromanager_level_five_can_reassign_patrol_fleet_to_colonise(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 220_000
+        self.star.shipyards = 1
+        self.star.save(update_fields=['has_administration', 'colonists', 'shipyards'])
+        self.star.production_orders.all().delete()
+        self.player.fleets.all().delete()
+
+        target = self.game.stars.exclude(id=self.star.id).first()
+        target.player = None
+        target.x = int(self.star.x) + 1
+        target.y = int(self.star.y)
+        target.gravity = self.player.gravity_center
+        target.temperature = self.player.temperature_center
+        target.radiation = self.player.radiation_center
+        target.colonists = 0
+        target.save(update_fields=[
+            'player', 'x', 'y', 'gravity', 'temperature', 'radiation', 'colonists',
+        ])
+
+        guard = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Guard Patrol',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            offense_level=6,
+            defense_level=6,
+            cargo_capacity=120,
+        )
+        scout = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Scout Patrol',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+            cargo_capacity=120,
+        )
+
+        for fleet in (guard, scout):
+            FleetOrders.objects.create(
+                game=self.game,
+                fleet=fleet,
+                order_type='PATROL',
+                repeat=True,
+                patrol_radius=15,
+                intercept_speed=5,
+                x=int(self.star.x),
+                y=int(self.star.y),
+                target_kind='SPACE',
+                target_short_id=None,
+                added_by_micromanager=True,
+            )
+
+        turn = GameTurn(self.game)
+        turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        colonise_fleets = []
+        for fleet in (guard, scout):
+            if fleet.orders.filter(order_type='COLONISE').exists():
+                colonise_fleets.append(fleet)
+        self.assertEqual(len(colonise_fleets), 1)
+        reassigned = colonise_fleets[0]
+        self.assertFalse(reassigned.orders.filter(order_type='PATROL').exists())
+
+    def test_ai_micromanager_patrol_rebalances_to_stronger_available_fleet(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 200_000
+        self.star.shipyards = 1
+        self.star.save(update_fields=['has_administration', 'colonists', 'shipyards'])
+        self.star.production_orders.all().delete()
+        self.player.fleets.all().delete()
+
+        weak_patrol = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Weak Patrol',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+        )
+        strong_idle = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Strong Idle',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            offense_level=6,
+            defense_level=6,
+        )
+
+        FleetOrders.objects.create(
+            game=self.game,
+            fleet=weak_patrol,
+            order_type='PATROL',
+            repeat=True,
+            patrol_radius=15,
+            intercept_speed=5,
+            x=int(self.star.x),
+            y=int(self.star.y),
+            target_kind='SPACE',
+            target_short_id=None,
+            added_by_micromanager=True,
+        )
+
+        turn = GameTurn(self.game)
+        with patch.object(
+            GameTurn,
+            '_best_colonise_target_for_colony',
+            return_value=None,
+        ):
+            turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertFalse(weak_patrol.orders.filter(order_type='PATROL').exists())
+        self.assertTrue(
+            strong_idle.orders.filter(
+                order_type='PATROL',
+                repeat=True,
+                added_by_micromanager=True,
+            ).exists()
+        )
+
+    def test_ai_micromanager_patrol_keeps_only_top_slice_of_available_fleets(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 200_000
+        self.star.shipyards = 1
+        self.star.save(update_fields=['has_administration', 'colonists', 'shipyards'])
+        self.star.production_orders.all().delete()
+        self.player.fleets.all().delete()
+
+        fleets = []
+        for idx in range(5):
+            fleets.append(Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Slice Fleet %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=1 + idx,
+                offense_level=1 + idx,
+                defense_level=1 + idx,
+            ))
+
+        turn = GameTurn(self.game)
+        with patch.object(
+            GameTurn,
+            '_best_colonise_target_for_colony',
+            return_value=None,
+        ):
+            turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        patrol_assigned = [
+            fleet for fleet in fleets
+            if fleet.orders.filter(
+                order_type='PATROL',
+                repeat=True,
+                added_by_micromanager=True,
+            ).exists()
+        ]
+        self.assertEqual(len(patrol_assigned), 2)
+        self.assertEqual(
+            sorted(fleet.id for fleet in patrol_assigned),
+            sorted([fleets[-1].id, fleets[-2].id]),
+        )
+
+    def test_ai_micromanager_patrol_leaves_one_idle_fleet_when_possible(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 200_000
+        self.star.shipyards = 1
+        self.star.save(update_fields=['has_administration', 'colonists', 'shipyards'])
+        self.star.production_orders.all().delete()
+        self.player.fleets.all().delete()
+
+        fleets = []
+        for idx in range(2):
+            fleets.append(Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Reserve Fleet %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=1 + idx,
+                offense_level=1 + idx,
+                defense_level=1 + idx,
+            ))
+
+        turn = GameTurn(self.game)
+        with patch.object(
+            GameTurn,
+            '_best_colonise_target_for_colony',
+            return_value=None,
+        ):
+            turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        patrol_count = sum(
+            1 for fleet in fleets
+            if fleet.orders.filter(
+                order_type='PATROL',
+                repeat=True,
+                added_by_micromanager=True,
+            ).exists()
+        )
+        self.assertEqual(patrol_count, 1)
 
     def test_administration_level_four_can_collect_from_asteroids_when_colonies_cannot_spare(self):
         self._create_administration_tech(4, 4)
