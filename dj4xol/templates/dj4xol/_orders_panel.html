@@ -605,8 +605,8 @@
             </div>
         </form>
         {% endif %}
-        {% if not detail.fleet_orders_read_only %}
     </div>
+    {% if not detail.fleet_orders_read_only %}
     <div id="order-params-overlay" class="order-params-overlay" hidden aria-hidden="true">
         <div class="order-params-overlay-backdrop"></div>
         <div class="order-params-overlay-shell" role="dialog" aria-modal="true" aria-labelledby="order-params-overlay-title">
@@ -620,7 +620,7 @@
             <div class="order-params-overlay-body" id="order-params-overlay-body"></div>
         </div>
     </div>
-        {% endif %}
+    {% endif %}
 </div>
 
 <script>
