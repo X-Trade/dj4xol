@@ -29,6 +29,7 @@
                             {% if order.cost.bp %}<tr><td>BP</td><td>{{ order.cost.bp }}</td><td>{{ order.remaining.bp }}</td></tr>{% endif %}
                         </table>
                     </div>
+                    {% if not detail.production_orders_read_only %}
                     <div class="order-actions">
                         <form method="post" action="{% url 'dj4xol:toggle_production_order_repeat' game.short_id order.short_id %}" style="display:inline">
                             {% csrf_token %}
@@ -45,12 +46,14 @@
                             <button type="submit" class="order-remove-btn">×</button>
                         </form>
                     </div>
+                    {% endif %}
                 </div>
                 {% endfor %}
             {% else %}
                 <p class="no-orders">No production orders.</p>
             {% endif %}
         </section>
+        {% if not detail.production_orders_read_only %}
         <form method="post" action="{% url 'dj4xol:add_production' game.short_id %}" class="order-form panel-footer-form">
             {% csrf_token %}
             <input type="hidden" name="star" value="{{ detail.star_short_id }}">
@@ -118,6 +121,7 @@
                 <span class="detail-value"><span class="cost-value"></span></span>
             </div>
         </div>
+        {% endif %}
     </div>
 </div>
 <script>

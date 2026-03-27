@@ -3705,6 +3705,71 @@ class TestFleetOrderViews(TestCase):
             ),
         )
 
+    def test_staff_debug_actions_show_foreign_fleet_orders_readonly(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        homeworld = player.homeworld
+        race_type = get_default_race_type()
+        enemy_user = User.objects.create_user(
+            'debug_enemy_user',
+            'debug_enemy@test.com',
+            'pass',
+        )
+        enemy_account = Account.objects.create(
+            django_user=enemy_user,
+            alias='DBG',
+        )
+        enemy_player = Player.objects.create(
+            game=game,
+            account=enemy_account,
+            name='Debug Enemy',
+            plural_name='Debug Enemies',
+            race_type=race_type,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=enemy_player,
+            name='Enemy Patrol',
+            x=homeworld.x,
+            y=homeworld.y,
+            ship_count=3,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=enemy_fleet,
+            order_type='SCUTTLE',
+            position=1,
+        )
+
+        user, _ = get_default_user()
+        user.is_superuser = True
+        user.is_staff = True
+        user.save(update_fields=['is_superuser', 'is_staff'])
+        ServerSettings.objects.update_or_create(
+            key='enable_debug_actions',
+            defaults={'value': 'True'},
+        )
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {
+                'x': enemy_fleet.x,
+                'y': enemy_fleet.y,
+                'sel': enemy_fleet.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        detail = response.context['detail']
+        self.assertTrue(detail.get('show_fleet_orders_panel'))
+        self.assertTrue(detail.get('fleet_orders_read_only'))
+        self.assertEqual(len(detail.get('fleet_orders', [])), 1)
+        self.assertContains(response, 'Scuttle Fleet')
+        self.assertNotContains(response, 'id="order-form"')
+        self.assertNotContains(response, 'class="order-edit-btn"')
+
     def test_orders_panel_shows_popout_button(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()

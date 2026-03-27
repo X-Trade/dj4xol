@@ -104,11 +104,13 @@ class DetailBuilder():
         return max(1, int(ceil(distance / float(speed))))
 
     def __init__(self, game, x=None, y=None, selected=None, player=None,
-                 viewer_account=None, detail_mode=None):
+                 viewer_account=None, detail_mode=None,
+                 allow_foreign_orders_debug=False):
         self.game = game
         self.player = player
         self.viewer_account = viewer_account
         self.detail_mode = detail_mode
+        self.allow_foreign_orders_debug = bool(allow_foreign_orders_debug)
         self.spectator_mode = detail_mode in ('spectator_basic', 'spectator_admin')
         self.admin_view = detail_mode == 'spectator_admin'
         self._scanner_sources = (
@@ -311,6 +313,8 @@ class DetailBuilder():
                 detail['effective_location_name'] = self.format_empty_space(effective_x, effective_y)
         else:
             detail = None
+        if detail is not None:
+            self._apply_order_panel_state(detail)
         return detail
 
     def _build_detail_shell(self):
@@ -377,6 +381,13 @@ class DetailBuilder():
             'star_marker_color': PlayerStarMarker.COLOR_BLUE,
             'marker_star_short_id': None,
             'infrastructure_has_any': False,
+            'production_orders': [],
+            'production_order_choices': [],
+            'fleet_orders': [],
+            'show_production_panel': False,
+            'show_fleet_orders_panel': False,
+            'production_orders_read_only': False,
+            'fleet_orders_read_only': False,
         }
 
     def _build_spectator_detail(self):
@@ -404,6 +415,7 @@ class DetailBuilder():
         if detail.get('is_anomaly'):
             detail['stability'] = None
         self._apply_fleet_motion_summary(detail)
+        self._apply_order_panel_state(detail)
         return detail
 
     def _build_admin_detail(self):
@@ -432,6 +444,7 @@ class DetailBuilder():
             'is_current': True,
         })
         self._apply_fleet_motion_summary(detail)
+        self._apply_order_panel_state(detail)
         return detail
 
     def _build_spectator_fleet_capacity(self):
@@ -703,6 +716,7 @@ class DetailBuilder():
                 )
 
         self._apply_fleet_motion_summary(detail)
+        self._apply_order_panel_state(detail)
         return detail
 
     def _get_star_marker_type(self):
@@ -1706,14 +1720,66 @@ class DetailBuilder():
         percent = int(round((multiplier - 1.0) * 100.0))
         return f"{base_text} ({percent:+d}%)"
 
+    def _can_view_foreign_orders_debug(self):
+        if not self.allow_foreign_orders_debug:
+            return False
+        if not self.selected_obj:
+            return False
+        return bool(getattr(self.selected_obj, 'player_id', None))
+
+    def _can_edit_selected_star_orders(self):
+        return bool(
+            self.selected_obj and
+            isinstance(self.selected_obj, Star) and
+            self.player and
+            getattr(self.selected_obj, 'player_id', None) == getattr(self.player, 'id', None)
+        )
+
+    def _can_view_selected_star_orders(self):
+        if not self.selected_obj or not isinstance(self.selected_obj, Star):
+            return False
+        return self._can_edit_selected_star_orders() or self._can_view_foreign_orders_debug()
+
+    def _can_edit_selected_fleet_orders(self):
+        return bool(
+            self.selected_obj and
+            isinstance(self.selected_obj, Fleet) and
+            self.player and
+            getattr(self.selected_obj, 'player_id', None) == getattr(self.player, 'id', None)
+        )
+
+    def _can_view_selected_fleet_orders(self):
+        if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
+            return False
+        return self._can_edit_selected_fleet_orders() or self._can_view_foreign_orders_debug()
+
+    def _apply_order_panel_state(self, detail):
+        detail['production_orders'] = self.get_production_orders()
+        detail['production_order_choices'] = self.get_available_production_orders()
+        detail['fleet_orders'] = self.get_fleet_orders()
+        detail['show_production_panel'] = self._can_view_selected_star_orders()
+        detail['show_fleet_orders_panel'] = self._can_view_selected_fleet_orders()
+        detail['production_orders_read_only'] = bool(
+            detail['show_production_panel'] and
+            not self._can_edit_selected_star_orders()
+        )
+        detail['fleet_orders_read_only'] = bool(
+            detail['show_fleet_orders_panel'] and
+            not self._can_edit_selected_fleet_orders()
+        )
+        return detail
+
     def get_production_orders(self):
         """Get production orders for selected star."""
         if not self.selected_obj or not isinstance(self.selected_obj, Star):
             return []
-        if not self.player or self.selected_obj.player != self.player:
+        if not self._can_view_selected_star_orders():
             return []
-        cost_map = get_player_production_costs(self.player)
-        profile = get_player_terraforming_profile(self.player)
+        order_player = getattr(self.selected_obj, 'player', None)
+        if order_player is None:
+            return []
+        cost_map = get_player_production_costs(order_player)
+        profile = get_player_terraforming_profile(order_player)
         rate_percent = int(round(profile.get('rate', 0.0) * 100.0))
         orders = []
         for o in self.selected_obj.production_orders.order_by('position'):
@@ -1785,7 +1851,7 @@ class DetailBuilder():
         """Return available production orders for the selected star."""
         if not self.selected_obj or not isinstance(self.selected_obj, Star):
             return []
-        if not self.player or self.selected_obj.player != self.player:
+        if not self._can_edit_selected_star_orders():
             return []
         orders = get_player_available_production_orders(self.player, self.selected_obj)
         cost_map = get_player_production_costs(self.player)
@@ -1806,8 +1872,12 @@ class DetailBuilder():
         """Get movement orders for selected fleet."""
         if not self.selected_obj or not isinstance(self.selected_obj, Fleet):
             return []
-        if not self.player or self.selected_obj.player != self.player:
+        if not self._can_view_selected_fleet_orders():
             return []
+        show_debug_targets = bool(
+            self._can_view_foreign_orders_debug() and
+            not self._can_edit_selected_fleet_orders()
+        )
         orders = []
         current_x = int(self.selected_obj.x)
         current_y = int(self.selected_obj.y)
@@ -1817,15 +1887,19 @@ class DetailBuilder():
             obj, x, y, kind = o.get_actual_target()
             eta_years = None
             if kind in ['star', 'fleet', 'salvage', 'anomaly'] and obj:
-                target = self._display_name_for_target(obj, kind)
+                target = obj.name if show_debug_targets else self._display_name_for_target(obj, kind)
                 if kind == 'fleet':
-                    link_x = None
-                    link_y = None
-                    if self._is_fleet_currently_visible(obj):
+                    if show_debug_targets:
                         link_x = obj.x
                         link_y = obj.y
                     else:
-                        link_x, link_y = self._fleet_report_coordinates(obj)
+                        link_x = None
+                        link_y = None
+                        if self._is_fleet_currently_visible(obj):
+                            link_x = obj.x
+                            link_y = obj.y
+                        else:
+                            link_x, link_y = self._fleet_report_coordinates(obj)
                     if link_x is not None and link_y is not None:
                         target_link = f'?x={link_x}&y={link_y}&sel={obj.short_id}&locate=1'
                     else:

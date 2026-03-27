@@ -123,9 +123,9 @@
                 </div>
                 <div class="game-orders-slot column-orders">
                     {% if detail %}
-                        {% if detail.is_owned and detail.is_star %}
+                        {% if detail.show_production_panel %}
                             {% include 'dj4xol/_production_panel.html' %}
-                        {% elif detail.is_owned and not detail.is_star %}
+                        {% elif detail.show_fleet_orders_panel %}
                             {% include 'dj4xol/_orders_panel.html' %}
                         {% endif %}
                     {% endif %}

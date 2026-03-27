@@ -69,6 +69,7 @@
                     {% endif %}
                     {% if order.added_by_micromanager %} <span class="order-automation-tag">Auto</span>{% endif %}
                     </div>
+                    {% if not detail.fleet_orders_read_only %}
                     <div class="order-actions">
                         {% if order.order_type == 'TRANSFER' or order.order_type == 'GIVE' or order.order_type == 'BOMB' or order.order_type == 'REMOTEMINE' or order.order_type == 'PATROL' %}
                         <button
@@ -116,6 +117,7 @@
                         <button type="submit" class="order-remove-btn">&times;</button>
                     </form>
                     </div>
+                    {% endif %}
                 </div>
                 {% endfor %}
             {% else %}
@@ -123,6 +125,7 @@
             {% endif %}
         </section>
 
+        {% if not detail.fleet_orders_read_only %}
         <div id="order-form-home" hidden></div>
         <form method="post" action="{% url 'dj4xol:add_fleet_order' game.short_id %}" class="order-form panel-footer-form" id="order-form">
             {% csrf_token %}
@@ -601,6 +604,8 @@
                 </div>
             </div>
         </form>
+        {% endif %}
+        {% if not detail.fleet_orders_read_only %}
     </div>
     <div id="order-params-overlay" class="order-params-overlay" hidden aria-hidden="true">
         <div class="order-params-overlay-backdrop"></div>
@@ -615,10 +620,12 @@
             <div class="order-params-overlay-body" id="order-params-overlay-body"></div>
         </div>
     </div>
+        {% endif %}
 </div>
 
 <script>
 (function() {
+    var isReadOnly = {% if detail.fleet_orders_read_only %}true{% else %}false{% endif %};
     var orderType = document.getElementById('order-type');
     var editOrderInput = document.getElementById('edit-order-input');
     var orderTypeInput = document.getElementById('order-type-input');
@@ -648,6 +655,80 @@
     var orderParamsPopoutToggle = document.getElementById('order-params-popout-toggle');
     var repeatCheckbox = document.getElementById('repeat-checkbox');
     var savedRepeatPreference = repeatCheckbox ? repeatCheckbox.checked : false;
+
+    function getFloatingOrderTooltip() {
+        var tooltip = document.getElementById('floating-order-tooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.id = 'floating-order-tooltip';
+            tooltip.className = 'order-tooltip order-tooltip-floating';
+            document.body.appendChild(tooltip);
+        }
+        return tooltip;
+    }
+
+    function shouldSuppressTooltipEvent(e, item) {
+        if (!e || !item || isReadOnly) {
+            return false;
+        }
+        if (e.target && e.target.closest('.order-actions')) {
+            return true;
+        }
+        var rect = item.getBoundingClientRect();
+        var rightActionZoneStart = rect.left + (rect.width * 0.8);
+        return e.clientX >= rightActionZoneStart;
+    }
+
+    function positionTooltip(e, item) {
+        if (shouldSuppressTooltipEvent(e, item)) {
+            hideTooltip();
+            return;
+        }
+        var sourceTooltip = item.querySelector('.order-tooltip');
+        if (sourceTooltip) {
+            var tooltip = getFloatingOrderTooltip();
+            tooltip.innerHTML = sourceTooltip.innerHTML;
+            tooltip.style.display = 'block';
+
+            var x = e.clientX + 12;
+            var y = e.clientY + 12;
+            var maxX = window.innerWidth - tooltip.offsetWidth - 8;
+            var maxY = window.innerHeight - tooltip.offsetHeight - 8;
+
+            tooltip.style.left = Math.max(8, Math.min(x, maxX)) + 'px';
+            tooltip.style.top = Math.max(8, Math.min(y, maxY)) + 'px';
+        }
+    }
+
+    function hideTooltip() {
+        var tooltip = document.getElementById('floating-order-tooltip');
+        if (tooltip) {
+            tooltip.style.display = 'none';
+        }
+    }
+
+    function bindOrderItemTooltips() {
+        var orderItems = document.querySelectorAll('.order-item');
+        orderItems.forEach(function(item) {
+            var tooltip = item.querySelector('.order-tooltip');
+            if (tooltip) {
+                item.addEventListener('mouseenter', function(e) {
+                    positionTooltip(e, item);
+                });
+                item.addEventListener('mouseleave', function() {
+                    hideTooltip();
+                });
+                item.addEventListener('mousemove', function(e) {
+                    positionTooltip(e, item);
+                });
+            }
+        });
+    }
+
+    if (isReadOnly) {
+        bindOrderItemTooltips();
+        return;
+    }
     
     // Warp factor slider elements
     var warpSlider = document.getElementById('warp-slider');
@@ -2419,74 +2500,7 @@
     }
     emitPatrolPreview();
     
-    function getFloatingOrderTooltip() {
-        var tooltip = document.getElementById('floating-order-tooltip');
-        if (!tooltip) {
-            tooltip = document.createElement('div');
-            tooltip.id = 'floating-order-tooltip';
-            tooltip.className = 'order-tooltip order-tooltip-floating';
-            document.body.appendChild(tooltip);
-        }
-        return tooltip;
-    }
-
-    // Fleet order tooltip functionality (same as production orders)
-    function shouldSuppressTooltipEvent(e, item) {
-        if (!e || !item) {
-            return false;
-        }
-        if (e.target && e.target.closest('.order-actions')) {
-            return true;
-        }
-        var rect = item.getBoundingClientRect();
-        var rightActionZoneStart = rect.left + (rect.width * 0.8);
-        return e.clientX >= rightActionZoneStart;
-    }
-
-    function positionTooltip(e, item) {
-        if (shouldSuppressTooltipEvent(e, item)) {
-            hideTooltip();
-            return;
-        }
-        var sourceTooltip = item.querySelector('.order-tooltip');
-        if (sourceTooltip) {
-            var tooltip = getFloatingOrderTooltip();
-            tooltip.innerHTML = sourceTooltip.innerHTML;
-            tooltip.style.display = 'block';
-
-            var x = e.clientX + 12;
-            var y = e.clientY + 12;
-            var maxX = window.innerWidth - tooltip.offsetWidth - 8;
-            var maxY = window.innerHeight - tooltip.offsetHeight - 8;
-
-            tooltip.style.left = Math.max(8, Math.min(x, maxX)) + 'px';
-            tooltip.style.top = Math.max(8, Math.min(y, maxY)) + 'px';
-        }
-    }
-    
-    function hideTooltip() {
-        var tooltip = document.getElementById('floating-order-tooltip');
-        if (tooltip) {
-            tooltip.style.display = 'none';
-        }
-    }
-    
-    // Add tooltip event listeners to transfer orders
-    var orderItems = document.querySelectorAll('.order-item');
-    orderItems.forEach(function(item) {
-        var tooltip = item.querySelector('.order-tooltip');
-        if (tooltip) {
-            item.addEventListener('mouseenter', function(e) {
-                positionTooltip(e, item);
-            });
-            item.addEventListener('mouseleave', function() {
-                hideTooltip();
-            });
-            item.addEventListener('mousemove', function(e) {
-                positionTooltip(e, item);
-            });
-        }
-    });
+    bindOrderItemTooltips();
 
     // Persist repeat checkbox state
     var repeatCheckbox = document.getElementById('repeat-checkbox');

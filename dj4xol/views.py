@@ -859,6 +859,9 @@ def spectate_starmap(request, game_short_id):
         return redirect('dj4xol:spectate_game_confirm', game_short_id=game.short_id)
 
     is_admin_view = bool(request.user.is_staff or request.user.is_superuser)
+    allow_foreign_orders_debug = bool(
+        _debug_actions_enabled() and is_admin_view
+    )
     x = request.GET.get('x', None)
     y = request.GET.get('y', None)
     selected = request.GET.get('sel', None)
@@ -872,6 +875,7 @@ def spectate_starmap(request, game_short_id):
         player=None,
         viewer_account=account,
         detail_mode=detail_mode,
+        allow_foreign_orders_debug=allow_foreign_orders_debug,
     )
     detail = detail_builder.build_detail()
 
@@ -931,7 +935,19 @@ def starmap(request, game_short_id):
     y = request.GET.get('y', None)
 
     selected = request.GET.get('sel', None)
-    detail_builder = DetailBuilder(game, x, y, selected, player=player)
+    allow_foreign_orders_debug = bool(
+        _debug_actions_enabled() and (
+            request.user.is_staff or request.user.is_superuser
+        )
+    )
+    detail_builder = DetailBuilder(
+        game,
+        x,
+        y,
+        selected,
+        player=player,
+        allow_foreign_orders_debug=allow_foreign_orders_debug,
+    )
     detail = detail_builder.build_detail()
 
     # Check for destination selection mode

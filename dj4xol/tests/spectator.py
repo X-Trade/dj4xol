@@ -2,7 +2,7 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
 
-from ..models import Account, Fleet, ServerSettings, Spectator
+from ..models import Account, Fleet, ProductionOrder, ServerSettings, Spectator
 from ..factory import GameFactory
 from ._util import get_default_race
 
@@ -165,3 +165,39 @@ class SpectatorViewTest(TestCase):
         self.assertTrue(detail.get('show_composition'))
         self.assertEqual(detail.get('fleet_cargo', {}).get('ship_count'), 4)
         self.assertEqual(detail.get('fleet_cargo', {}).get('ironium'), 20)
+
+    def test_spectator_admin_debug_can_view_foreign_production_orders_readonly(self):
+        self.user.is_staff = True
+        self.user.save(update_fields=['is_staff'])
+        ServerSettings.objects.update_or_create(
+            key='enable_debug_actions',
+            defaults={'value': 'True'},
+        )
+
+        star = self.game.stars.first()
+        star.player = self.player
+        star.colonists = 5000
+        star.save(update_fields=['player', 'colonists'])
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=star,
+            order_type='BUILD_FACTORY',
+            position=1,
+            quantity=1,
+        )
+
+        Spectator.objects.create(game=self.game, account=self.account)
+        response = self.client.get(
+            reverse('dj4xol:spectate_game', args=[self.game.short_id]) + f'?sel={star.short_id}'
+        )
+
+        self.assertEqual(response.status_code, 200)
+        detail = response.context['detail']
+        self.assertTrue(detail.get('show_production_panel'))
+        self.assertTrue(detail.get('production_orders_read_only'))
+        self.assertEqual(len(detail.get('production_orders', [])), 1)
+        self.assertNotContains(
+            response,
+            reverse('dj4xol:add_production', args=[self.game.short_id]),
+        )
+        self.assertNotContains(response, 'Select production...')

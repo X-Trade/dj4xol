@@ -58,6 +58,15 @@
                         </div>
                     {% endif %}
                 </div>
+                <div class="column-orders">
+                    {% if detail %}
+                        {% if detail.show_production_panel %}
+                            {% include 'dj4xol/_production_panel.html' %}
+                        {% elif detail.show_fleet_orders_panel %}
+                            {% include 'dj4xol/_orders_panel.html' %}
+                        {% endif %}
+                    {% endif %}
+                </div>
             </div>
         </div>
         <script type="text/javascript" src="{% static 'dj4xol/js/thumb_pop.js' %}"></script>
