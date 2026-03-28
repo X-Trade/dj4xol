@@ -609,6 +609,8 @@ class GameTurn():
         self.generate_reports()
         self.generate_shared_intel_reports()
         self.game.year += 1
+        refresh_contract_integrity(self.game)
+        self._apply_pending_diplomacy_snapshot()
 
     def _apply_pending_diplomacy_snapshot(self):
         """Apply staged diplomacy updates and notify affected players."""

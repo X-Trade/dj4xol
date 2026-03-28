@@ -34,7 +34,6 @@ APPLY_ON_ACCEPT_CLAUSE_TYPES = IMMEDIATE_CLAUSE_TYPES + (
     DiplomaticContract.CLAUSE_SPECIFIC_COLONY,
 )
 HANDLED_CONTRACT_STATUSES = (
-    DiplomaticContract.STATUS_ACCEPTED,
     DiplomaticContract.STATUS_FULFILLED,
     DiplomaticContract.STATUS_DECLINED,
     DiplomaticContract.STATUS_COUNTERED,

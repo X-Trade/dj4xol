@@ -5851,6 +5851,45 @@ class TestProductionRollupMessages(TestCase):
 class TestFleetTransferOrders(TestCase):
     """Test fleet transfer order functionality."""
 
+    def test_accepted_contract_expires_after_turn_advances_past_deadline(self):
+        game = default_game(stars=8, fleets=0)
+        player1 = game.players.first()
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        other_user = User.objects.create_user('contract_expire_user', 'contract_expire@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='CTE')
+        player2 = GameFactory(game).join_player(other_account, get_default_race())
+
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player1,
+            recipient=player2,
+            temperature='REQUEST',
+            status='ACCEPTED',
+            sent_year=game.year - 1,
+            accepted_year=game.year - 1,
+            expires_year=game.year,
+            request_clause_type='RESOURCE_TO_WORLD',
+            request_ironium=25,
+            offer_clause_type='NOTHING',
+        )
+
+        GameTurn(game).generate_turn()
+
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_EXPIRED)
+        self.assertEqual(contract.handled_year, game.year)
+        self.assertTrue(
+            player1.messages.filter(message__icontains='Diplomatic request to').filter(
+                message__icontains='expired:'
+            ).exists()
+        )
+        self.assertTrue(
+            player2.messages.filter(message__icontains='Diplomatic request from').filter(
+                message__icontains='expired:'
+            ).exists()
+        )
+
     def test_resource_to_world_contract_fulfills_oldest_first(self):
         game = default_game(stars=8, fleets=0)
         player1 = game.players.first()
