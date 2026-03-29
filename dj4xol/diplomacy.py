@@ -343,6 +343,23 @@ def player_can_refuel_fleet(player, other_player, stance_map=None):
     )
 
 
+def player_can_transfer_with_fleet(
+    player,
+    other_player,
+    stance_map=None,
+    other_stance_map=None,
+):
+    """Fleet-to-fleet material/colonist transfers require mutual alliance."""
+    if not player or not other_player:
+        return False
+    if player.id == other_player.id:
+        return True
+    return (
+        stance_towards(player, other_player, stance_map=stance_map) == STANCE_ALLIED and
+        stance_towards(other_player, player, stance_map=other_stance_map) == STANCE_ALLIED
+    )
+
+
 def player_grants_permission(player, other_player, permission_key, stance_map=None):
     return bool(
         player_permission_value(

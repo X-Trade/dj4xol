@@ -4006,6 +4006,78 @@ class TestFleetTransferOrderExecution(TestCase):
         self.assertFalse(targets[current_fleet_index]['is_future'])
         self.assertTrue(targets[future_fleet_index]['is_future'])
 
+    def test_transfer_targets_hide_non_allied_foreign_fleets(self):
+        game = default_game(stars=6, fleets=0)
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        player = game.players.first()
+        selected = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Selected',
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+            basic_scanner_range=6,
+        )
+        other_user = User.objects.create_user('transfer_enemy_a', 'te_a@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        enemy_player = GameFactory(game=game).join_player(other_account, get_default_race())
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=enemy_player,
+            name='Enemy Transfer Fleet',
+            x=selected.x,
+            y=selected.y,
+        )
+
+        builder = DetailBuilder(game, selected.x, selected.y, selected.short_id, player)
+        targets = builder.get_transfer_targets()['targets']
+        self.assertFalse(any(
+            target.get('type') == 'fleet' and target.get('short_id') == enemy_fleet.short_id
+            for target in targets
+        ))
+
+    def test_transfer_targets_include_mutually_allied_foreign_fleets(self):
+        game = default_game(stars=6, fleets=0)
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        player = game.players.first()
+        selected = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Selected',
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+            basic_scanner_range=6,
+        )
+        other_user = User.objects.create_user('transfer_enemy_b', 'te_b@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        ally_player = GameFactory(game=game).join_player(other_account, get_default_race())
+        ally_fleet = Fleet.objects.create(
+            game=game,
+            player=ally_player,
+            name='Allied Transfer Fleet',
+            x=selected.x,
+            y=selected.y,
+        )
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=player,
+            target_player=ally_player,
+            defaults={'stance': 'ALLIED'},
+        )
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=ally_player,
+            target_player=player,
+            defaults={'stance': 'ALLIED'},
+        )
+
+        builder = DetailBuilder(game, selected.x, selected.y, selected.short_id, player)
+        targets = builder.get_transfer_targets()['targets']
+        self.assertTrue(any(
+            target.get('type') == 'fleet' and target.get('short_id') == ally_fleet.short_id
+            for target in targets
+        ))
+
     def test_objects_here_order_homeworld_stars_then_fleets(self):
         game = default_game(stars=5, fleets=0)
         game.joinable = True
@@ -6529,6 +6601,9 @@ class TestFleetTransferOrders(TestCase):
         game.no_scanners = True
         game.save(update_fields=['no_scanners'])
         attacker = game.players.first()
+        attacker_race = attacker.race_type
+        attacker_race.population_growth_multiplier = 0
+        attacker_race.save(update_fields=['population_growth_multiplier'])
         defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
         if not defender:
             other_user = User.objects.create_user('inv_def_destroy', 'invdefd@test.com', 'pass')
@@ -6538,6 +6613,9 @@ class TestFleetTransferOrders(TestCase):
                 account=other_account,
                 race_type=attacker.race_type,
             )
+        defender_race = defender.race_type
+        defender_race.population_growth_multiplier = 0
+        defender_race.save(update_fields=['population_growth_multiplier'])
 
         star = game.stars.exclude(pk=attacker.homeworld.pk).first()
         star.player = defender
@@ -6572,6 +6650,8 @@ class TestFleetTransferOrders(TestCase):
             GameTurn(game).generate_turn()
 
         self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
+        star.refresh_from_db()
+        self.assertEqual(star.colonists, 5000)
         self.assertFalse(Report.objects.filter(
             game=game,
             player=attacker,
@@ -6640,6 +6720,126 @@ class TestFleetTransferOrders(TestCase):
         # Defenders 20k - invaders 5k = 15k remaining
         self.assertEqual(star.colonists, 15000)
         self.assertEqual(fleet.colonists, 0)
+
+    def test_transfer_invasion_failed_against_parasitic_defender_absorbs_invaders(self):
+        """Parasitic defenders absorb invading colonist losses on failed invasions."""
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
+        if not defender:
+            other_user = User.objects.create_user('inv_para_def', 'invparadef@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(
+                game=game,
+                account=other_account,
+                race_type=attacker.race_type,
+            )
+        parasitic_type = ServerRaceType.objects.create(
+            code='PIV1',
+            name='Parasitic Invaders',
+            description='Parasitic defender for invasion tests',
+            is_parasitic=True,
+            population_growth_multiplier=0.0,
+        )
+        defender.race_type = parasitic_type
+        defender.save(update_fields=['race_type'])
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 20000
+        star.defenses = 0
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name="Invader",
+            x=star.x,
+            y=star.y,
+            colonists=5,
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='UNLOAD',
+            transfer_colonists=5
+        )
+
+        GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertEqual(star.player, defender)
+        # Without parasitic absorption this would be 15k (20k - 5k).
+        self.assertEqual(star.colonists, 20000)
+        self.assertEqual(fleet.colonists, 0)
+
+    def test_transfer_invasion_destroyed_attacker_absorbed_by_parasitic_defender(self):
+        """Parasitic defenders absorb invaders when defenses destroy the fleet pre-landing."""
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = Player.objects.filter(game=game).exclude(id=attacker.id).first()
+        if not defender:
+            other_user = User.objects.create_user('inv_para_dd', 'invparadd@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            defender = Player.objects.create(
+                game=game,
+                account=other_account,
+                race_type=attacker.race_type,
+            )
+        parasitic_type = ServerRaceType.objects.create(
+            code='PIV2',
+            name='Parasitic Defense',
+            description='Parasitic defender for defense-fire tests',
+            is_parasitic=True,
+            population_growth_multiplier=0.0,
+        )
+        defender.race_type = parasitic_type
+        defender.save(update_fields=['race_type'])
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 5000
+        star.defenses = 10
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name="Doomed Invader",
+            x=star.x,
+            y=star.y,
+            colonists=5,
+            integrity=100,
+            ship_count=1,
+        )
+
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='UNLOAD',
+            transfer_colonists=5
+        )
+
+        with patch.object(GameTurn, '_calculate_combat_damage', return_value={
+            attacker: 200.0,
+            defender: 0.0,
+        }):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
+        star.refresh_from_db()
+        self.assertEqual(star.player, defender)
+        self.assertEqual(star.colonists, 10000)
 
     def test_transfer_invasion_defenses_damage_fleet(self):
         """Planetary defenses should damage the invading fleet."""
@@ -13241,6 +13441,266 @@ class TestHomeworldLossAndDerelicts(TestCase):
         )
         self.assertGreater(base, heavy)
         self.assertLess(damaged, base)
+
+    def test_non_allied_colonist_raid_applies_losses_and_minimum_damage(self):
+        game, attacker, defender = self._make_two_player_game()
+        star = defender.homeworld
+        star.colonists = 20_000
+        star.defenses = 5
+        star.save(update_fields=['colonists', 'defenses'])
+        fleet = attacker.fleets.first()
+        fleet.x = star.x
+        fleet.y = star.y
+        fleet.colonists = 0
+        fleet.integrity = 100
+        fleet.cargo_capacity = max(int(fleet.cargo_capacity or 0), 100)
+        fleet.save(update_fields=['x', 'y', 'colonists', 'integrity', 'cargo_capacity'])
+
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_star=star,
+            transfer_colonists=10,
+        )
+        turn = GameTurn(game)
+        with patch.object(GameTurn, '_resolve_transfer_raid_defense_fire', return_value={
+            'destroyed': False,
+            'integrity_lost': 0,
+            'ships_lost': 0,
+            'defense_mult': 1.0,
+        }), patch.object(GameTurn, '_transfer_raid_successful', return_value=True), patch(
+            'dj4xol.turn.random.uniform',
+            return_value=0.5,
+        ):
+            result = turn._execute_transfer_order(fleet, order)
+
+        self.assertEqual(result, 'executed')
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertEqual(star.colonists, 10_000)
+        self.assertEqual(fleet.colonists, 5)
+        self.assertEqual(fleet.integrity, 90)
+        attacker_msgs = list(GameMessage.objects.filter(game=game, player=attacker).values_list('message', flat=True))
+        defender_msgs = list(GameMessage.objects.filter(game=game, player=defender).values_list('message', flat=True))
+        raid_tokens = ('raid', 'raided', 'seized', 'extracted')
+        self.assertTrue(any(any(token in msg.lower() for token in raid_tokens) for msg in attacker_msgs))
+        self.assertTrue(any(any(token in msg.lower() for token in raid_tokens) for msg in defender_msgs))
+        self.assertFalse(any('abduct' in msg.lower() for msg in attacker_msgs))
+
+    def test_parasitic_colonist_raid_uses_abduction_messaging(self):
+        game, attacker, defender = self._make_two_player_game()
+        parasitic = ServerRaceType.objects.create(
+            code='TPA1',
+            name='Test Parasites',
+            description='Parasitic test type',
+            is_parasitic=True,
+            luck_multiplier=2.0,
+        )
+        attacker.race_type = parasitic
+        attacker.save(update_fields=['race_type'])
+        star = defender.homeworld
+        star.colonists = 20_000
+        star.defenses = 5
+        star.save(update_fields=['colonists', 'defenses'])
+        fleet = attacker.fleets.first()
+        fleet.x = star.x
+        fleet.y = star.y
+        fleet.colonists = 0
+        fleet.integrity = 100
+        fleet.cargo_capacity = max(int(fleet.cargo_capacity or 0), 100)
+        fleet.save(update_fields=['x', 'y', 'colonists', 'integrity', 'cargo_capacity'])
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_star=star,
+            transfer_colonists=10,
+        )
+        turn = GameTurn(game)
+        with patch.object(GameTurn, '_resolve_transfer_raid_defense_fire', return_value={
+            'destroyed': False,
+            'integrity_lost': 0,
+            'ships_lost': 0,
+            'defense_mult': 1.0,
+        }), patch.object(GameTurn, '_transfer_raid_successful', return_value=True):
+            result = turn._execute_transfer_order(fleet, order)
+
+        self.assertEqual(result, 'executed')
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertEqual(star.colonists, 10_000)
+        self.assertEqual(fleet.colonists, 10)
+        self.assertEqual(fleet.integrity, 100)
+        attacker_msgs = list(GameMessage.objects.filter(game=game, player=attacker).values_list('message', flat=True))
+        defender_msgs = list(GameMessage.objects.filter(game=game, player=defender).values_list('message', flat=True))
+        self.assertTrue(any('abduct' in msg.lower() for msg in attacker_msgs))
+        self.assertTrue(any('abduct' in msg.lower() for msg in defender_msgs))
+
+    def test_parasitic_colonist_raid_thwarted_uses_abduction_thwarted_message(self):
+        game, attacker, defender = self._make_two_player_game()
+        parasitic = ServerRaceType.objects.create(
+            code='TPA2',
+            name='Test Parasites B',
+            description='Parasitic test type B',
+            is_parasitic=True,
+            luck_multiplier=2.0,
+        )
+        attacker.race_type = parasitic
+        attacker.save(update_fields=['race_type'])
+        star = defender.homeworld
+        star.colonists = 20_000
+        star.defenses = 5
+        star.save(update_fields=['colonists', 'defenses'])
+        fleet = attacker.fleets.first()
+        fleet.x = star.x
+        fleet.y = star.y
+        fleet.colonists = 0
+        fleet.integrity = 100
+        fleet.cargo_capacity = max(int(fleet.cargo_capacity or 0), 100)
+        fleet.save(update_fields=['x', 'y', 'colonists', 'integrity', 'cargo_capacity'])
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_star=star,
+            transfer_colonists=10,
+        )
+        turn = GameTurn(game)
+        with patch.object(GameTurn, '_resolve_transfer_raid_defense_fire', return_value={
+            'destroyed': False,
+            'integrity_lost': 7,
+            'ships_lost': 0,
+            'defense_mult': 1.0,
+        }), patch.object(GameTurn, '_transfer_raid_successful', return_value=False):
+            result = turn._execute_transfer_order(fleet, order)
+
+        self.assertEqual(result, 'executed')
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertEqual(star.colonists, 20_000)
+        self.assertEqual(fleet.colonists, 0)
+        attacker_msgs = list(GameMessage.objects.filter(game=game, player=attacker).values_list('message', flat=True))
+        self.assertTrue(any('abduction' in msg.lower() for msg in attacker_msgs))
+
+    def test_transfer_between_allied_fleets_allows_colonists(self):
+        game, player_a, player_b = self._make_two_player_game()
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=player_a,
+            target_player=player_b,
+            defaults={'stance': 'ALLIED'},
+        )
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=player_b,
+            target_player=player_a,
+            defaults={'stance': 'ALLIED'},
+        )
+
+        source = player_a.fleets.first()
+        target = player_b.fleets.first()
+        source.x = 10
+        source.y = 10
+        source.ironium_inventory = 0
+        source.colonists = 0
+        source.cargo_capacity = max(int(source.cargo_capacity or 0), 100)
+        source.save(update_fields=['x', 'y', 'ironium_inventory', 'colonists', 'cargo_capacity'])
+        target.x = 10
+        target.y = 10
+        target.ironium_inventory = 40
+        target.colonists = 7
+        target.save(update_fields=['x', 'y', 'ironium_inventory', 'colonists'])
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=source,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_fleet=target,
+            transfer_ironium=20,
+            transfer_colonists=3,
+        )
+
+        result = GameTurn(game)._execute_transfer_order(source, order)
+        self.assertEqual(result, 'executed')
+        source.refresh_from_db()
+        target.refresh_from_db()
+        self.assertEqual(source.ironium_inventory, 20)
+        self.assertEqual(target.ironium_inventory, 20)
+        self.assertEqual(source.colonists, 3)
+        self.assertEqual(target.colonists, 4)
+
+    def test_transfer_between_non_allied_fleets_is_blocked(self):
+        game, player_a, player_b = self._make_two_player_game()
+        source = player_a.fleets.first()
+        target = player_b.fleets.first()
+        source.x = 10
+        source.y = 10
+        source.ironium_inventory = 0
+        source.colonists = 0
+        source.save(update_fields=['x', 'y', 'ironium_inventory', 'colonists'])
+        target.x = 10
+        target.y = 10
+        target.ironium_inventory = 40
+        target.colonists = 7
+        target.save(update_fields=['x', 'y', 'ironium_inventory', 'colonists'])
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=source,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            target_fleet=target,
+            transfer_ironium=20,
+            transfer_colonists=3,
+        )
+
+        result = GameTurn(game)._execute_transfer_order(source, order)
+        self.assertEqual(result, 'executed')
+        source.refresh_from_db()
+        target.refresh_from_db()
+        self.assertEqual(source.ironium_inventory, 0)
+        self.assertEqual(target.ironium_inventory, 40)
+        self.assertEqual(source.colonists, 0)
+        self.assertEqual(target.colonists, 7)
+
+    def test_unload_colonists_to_allied_colony_does_not_trigger_invasion(self):
+        game, player_a, player_b = self._make_two_player_game()
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=player_a,
+            target_player=player_b,
+            defaults={'stance': 'ALLIED'},
+        )
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=player_b,
+            target_player=player_a,
+            defaults={'stance': 'ALLIED'},
+        )
+
+        star = player_b.homeworld
+        star.colonists = 40_000
+        star.save(update_fields=['colonists'])
+        fleet = player_a.fleets.first()
+        fleet.x = star.x
+        fleet.y = star.y
+        fleet.colonists = 5
+        fleet.save(update_fields=['x', 'y', 'colonists'])
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='UNLOAD',
+            target_star=star,
+            transfer_colonists=5,
+        )
+
+        result = GameTurn(game)._execute_transfer_order(fleet, order)
+        self.assertEqual(result, 'executed')
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertEqual(star.player_id, player_b.id)
+        self.assertEqual(star.colonists, 45_000)
+        self.assertEqual(fleet.colonists, 0)
 
     def test_homeworld_reassigned_to_highest_population(self):
         game, player, _ = self._make_two_player_game()

@@ -28,7 +28,11 @@ from dj4xol.salvage_thumbnails import (
     get_salvage_thumbnail,
 )
 from dj4xol.hazard_rules import danger_level_display, object_danger_level
-from dj4xol.diplomacy import build_stance_map, player_can_refuel_fleet
+from dj4xol.diplomacy import (
+    build_stance_map,
+    player_can_refuel_fleet,
+    player_can_transfer_with_fleet,
+)
 from dj4xol.research import (
     get_player_administration_profile,
     get_player_colony_defense_level,
@@ -557,10 +561,15 @@ class DetailBuilder():
                 'mines', 'factories', 'factories_bp', 'labs', 'labs_rp',
                 'defenses', 'shipyards',
             ]):
-                detail['infrastructure_has_any'] = any(
-                    int(data.get(field, 0) or 0) > 0
-                    for field in ('mines', 'factories', 'labs', 'defenses', 'shipyards')
-                ) or bool(data.get('has_dyson_sphere'))
+                has_any_infrastructure = (
+                    any(
+                        int(data.get(field, 0) or 0) > 0
+                        for field in ('mines', 'factories', 'labs', 'defenses', 'shipyards')
+                    ) or
+                    bool(data.get('has_administration')) or
+                    bool(data.get('has_dyson_sphere'))
+                )
+                detail['infrastructure_has_any'] = has_any_infrastructure
                 scanner_display = None
                 if 'basic_scanner_range' in data or 'advanced_scanner_range' in data:
                     scanner_display = self._format_scanner_range(
@@ -577,19 +586,14 @@ class DetailBuilder():
                     'Defenses': data.get('defenses'),
                     'DefensesTooltip': data.get('defenses_tooltip'),
                     'Shipyards': data.get('shipyards'),
+                    'Administration': 'Installed' if data.get('has_administration') else None,
                     'DysonSphere': 'Online' if data.get('has_dyson_sphere') else None,
                     'Jobs': {
                         'count': data.get('jobs_count', 0),
                         'employment': data.get('jobs_employment', 0.0),
                     },
                 }
-            if (
-                not detail.get('player') and
-                any(
-                    int(data.get(field, 0) or 0) > 0
-                    for field in ('mines', 'factories', 'labs', 'defenses', 'shipyards')
-                ) or bool(data.get('has_dyson_sphere'))
-            ):
+            if not detail.get('player') and detail.get('infrastructure_has_any'):
                 detail['player'] = 'Abandoned'
                 detail['owner_known'] = True
         elif target_type == 'fleet':
@@ -1393,6 +1397,7 @@ class DetailBuilder():
         infra_fields = ('mines', 'factories', 'labs', 'defenses', 'shipyards')
         return (
             any(int(getattr(star, field, 0) or 0) > 0 for field in infra_fields) or
+            bool(getattr(star, 'has_administration', False)) or
             bool(getattr(star, 'has_dyson_sphere', False))
         )
 
@@ -1690,6 +1695,8 @@ class DetailBuilder():
                 'Administration': (
                     'Level %s' % administration_level
                     if self.selected_obj.has_administration and administration_level > 0
+                    else 'Installed'
+                    if self.selected_obj.has_administration
                     else None
                 ),
                 'DysonSphere': (
@@ -2682,10 +2689,43 @@ class DetailBuilder():
             include_salvage=True,
             include_empty=True,
             include_future_fleets=True,
-            fleet_player=self.player,
             exclude_fleet_id=self.selected_obj.id,
             include_order_types=['MOVE', 'INTERCEPT', 'PATROL'],
         )
+        allowed_transfer_fleet_short_ids = set()
+        if self.player and self.selected_obj.player == self.player:
+            stance_map = build_stance_map(self.player)
+            target_short_ids = [
+                target.get('short_id')
+                for target in targets
+                if target.get('type') == 'fleet'
+            ]
+            fleet_player_map = {
+                fleet.short_id: fleet.player
+                for fleet in self.game.fleets.filter(short_id__in=target_short_ids)
+                .select_related('player')
+            }
+            other_stance_map_by_player_id = {}
+            for short_id, other_player in fleet_player_map.items():
+                if not other_player:
+                    continue
+                if other_player.id not in other_stance_map_by_player_id:
+                    other_stance_map_by_player_id[other_player.id] = (
+                        build_stance_map(other_player)
+                    )
+                if player_can_transfer_with_fleet(
+                    self.player,
+                    other_player,
+                    stance_map=stance_map,
+                    other_stance_map=other_stance_map_by_player_id.get(other_player.id),
+                ):
+                    allowed_transfer_fleet_short_ids.add(short_id)
+
+        targets = [
+            target for target in targets
+            if target.get('type') != 'fleet' or target.get('short_id') in allowed_transfer_fleet_short_ids
+        ]
+
         has_star = self.game.stars.filter(x=effective_x, y=effective_y).exists()
         has_salvage = self._visible_salvages_qs().filter(x=effective_x, y=effective_y).exists()
         if not has_star and not has_salvage:
@@ -2706,7 +2746,7 @@ class DetailBuilder():
                 for key in SECRET_RESOURCE_KEYS:
                     if int(getattr(star, f'{key}_inventory', 0) or 0) > 0:
                         resource_flags[key] = True
-            for fleet in self.game.fleets.filter(x=effective_x, y=effective_y, player=self.player):
+            for fleet in self.game.fleets.filter(short_id__in=allowed_transfer_fleet_short_ids):
                 for key in SECRET_RESOURCE_KEYS:
                     if int(getattr(fleet, f'{key}_inventory', 0) or 0) > 0:
                         resource_flags[key] = True

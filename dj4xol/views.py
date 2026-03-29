@@ -66,6 +66,7 @@ from .diplomacy import (
     has_encountered_player,
     normalise_stance,
     player_can_refuel_fleet,
+    player_can_transfer_with_fleet,
     player_pending_default_stance,
     stance_effect_items,
     stance_label,
@@ -1713,12 +1714,31 @@ def add_fleet_order(request, game_short_id):
         # Parse transfer target: "star:abc123", "fleet:def456", or "salvage:ghi789"
         if transfer_target and ':' in transfer_target:
             target_type, target_id = transfer_target.split(':', 1)
-            if target_type == 'star':
-                order.target_star = Star.objects.get(short_id=target_id, game=game)
-            elif target_type == 'fleet':
-                order.target_fleet = Fleet.objects.get(short_id=target_id, game=game, player=player)
-            elif target_type == 'salvage':
-                order.target_salvage = Salvage.objects.get(short_id=target_id, game=game)
+            try:
+                if target_type == 'star':
+                    order.target_star = Star.objects.get(short_id=target_id, game=game)
+                elif target_type == 'fleet':
+                    target_fleet = Fleet.objects.get(short_id=target_id, game=game)
+                    if not player_can_transfer_with_fleet(
+                        player,
+                        target_fleet.player,
+                        stance_map=build_stance_map(player),
+                        other_stance_map=build_stance_map(target_fleet.player),
+                    ):
+                        return _redirect_preserving_selection(
+                            request,
+                            game,
+                            suppress_autolocate=True,
+                        )
+                    order.target_fleet = target_fleet
+                elif target_type == 'salvage':
+                    order.target_salvage = Salvage.objects.get(short_id=target_id, game=game)
+            except (Star.DoesNotExist, Fleet.DoesNotExist, Salvage.DoesNotExist):
+                return _redirect_preserving_selection(
+                    request,
+                    game,
+                    suppress_autolocate=True,
+                )
         else:
             target_x = request.POST.get('target_x', '')
             target_y = request.POST.get('target_y', '')
@@ -2599,6 +2619,14 @@ def help_space_combat(request):
 def help_diplomacy(request):
     account = request.user.dj4xol_account
     return render(request, 'dj4xol/help_diplomacy.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
+def help_special_race_effects(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_special_race_effects.html', {
         'user_theme': account.theme if account else 'classic',
     })
 

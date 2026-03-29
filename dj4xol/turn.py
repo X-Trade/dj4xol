@@ -41,6 +41,9 @@ from .messages import (
     FleetRepairedMessageFactory,
     OrbitalDefenseHitMessageFactory,
     TransferRaidThwartedMessageFactory,
+    TransferAbductionThwartedMessageFactory,
+    TransferColonistRaidMessageFactory,
+    TransferAbductionSuccessMessageFactory,
     FleetBombardmentReportMessageFactory,
     BombardFailedNoStarMessageFactory,
     StarVanishedOminousMessageFactory,
@@ -69,6 +72,7 @@ from .diplomacy import (
     combined_diplomacy_chance_scale,
     combat_readiness_multiplier,
     ensure_contact_stance_entry,
+    player_can_transfer_with_fleet,
     player_grants_permission,
     player_permission_value,
     player_reveals_cloaked_fleets,
@@ -290,6 +294,13 @@ THEFT_SUCCESS_DAMAGE_WEIGHT = 0.5
 THEFT_SUCCESS_SHIP_WEIGHT = 0.4
 THEFT_SUCCESS_MIN_CHANCE = 0.0
 THEFT_SUCCESS_MAX_CHANCE = 1.0
+COLONIST_RAID_DEFENSE_DAMAGE_MULTIPLIER = 1.35
+PARASITIC_COLONIST_RAID_DEFENSE_DAMAGE_MULTIPLIER = 0.5
+COLONIST_RAID_DEFENDER_STRENGTH_MULTIPLIER = 1.5
+PARASITIC_COLONIST_RAID_DEFENDER_STRENGTH_MULTIPLIER = 0.5
+COLONIST_RAID_MIN_INTEGRITY_LOSS = 10
+COLONIST_RAID_PICKUP_LOSS_MIN = 0.50
+COLONIST_RAID_PICKUP_LOSS_MAX = 0.90
 DERELICT_CLAIM_CHANCE = 0.55
 DEFEATED_FLEET_CAPTURE_CHANCE = 0.45
 DEFEATED_FLEET_SCUTTLE_CHANCE = 0.25
@@ -2499,6 +2510,7 @@ class GameTurn():
                     'defenses': obj.defenses,
                     'defenses_tooltip': None,
                     'shipyards': obj.shipyards,
+                    'has_administration': bool(getattr(obj, 'has_administration', False)),
                     'has_dyson_sphere': bool(getattr(obj, 'has_dyson_sphere', False)),
                     'jobs_count': jobs,
                     'jobs_employment': employment,
@@ -4851,6 +4863,13 @@ class GameTurn():
                 print(f"Warning: Star {target_obj.name} coordinates mismatch")
 
         elif target_kind == 'fleet' and target_obj is not None:
+            if not player_can_transfer_with_fleet(
+                fleet.player,
+                target_obj.player,
+                stance_map=self._stance_map_for_player(fleet.player),
+                other_stance_map=self._stance_map_for_player(target_obj.player),
+            ):
+                return 'executed'
             # Check if target fleet is at expected location
             if target_obj.x != target_x or target_obj.y != target_y:
                 print(f"Transfer waiting: Fleet {target_obj.name} not at expected location ({target_x}, {target_y})")
@@ -4980,6 +4999,9 @@ class GameTurn():
         defender = star.player
         defender_race = defender.race_type if defender else None
         attacker_race = attacker.race_type
+        defender_is_parasitic = bool(
+            getattr(defender_race, 'is_parasitic', False)
+        ) if defender_race else False
         attacker_readiness = self._combat_readiness_multiplier(attacker, defender)
         defender_readiness = self._combat_readiness_multiplier(defender, attacker)
 
@@ -5012,6 +5034,9 @@ class GameTurn():
                 fleet_losses_desc = f"{ships_lost} ships lost, {integrity_lost}% integrity lost"
 
             if fleets_destroyed:
+                if defender and defender_is_parasitic:
+                    star.colonists = max(0, int(star.colonists or 0)) + (invader_colonists_kt * 1000)
+                    star.save(update_fields=['colonists'])
                 attacker_msg = InvasionReportMessageFactory(
                     self.game, attacker, star, False,
                     invader_colonists_kt * 1000, 0,
@@ -5087,6 +5112,9 @@ class GameTurn():
             defender_losses = defenders - remaining_defenders
             attacker_losses = invaders
             star.colonists = max(0, remaining_defenders)
+            if defender and defender_is_parasitic and attacker_losses > 0:
+                # Parasitic colonies absorb defeated invaders instead of losing them.
+                star.colonists += int(attacker_losses)
             star.save(update_fields=['colonists'])
 
         attacker_msg = InvasionReportMessageFactory(
@@ -5243,12 +5271,23 @@ class GameTurn():
             labels.append('Colonists')
         return format_readable_list(labels) or 'supplies'
 
-    def _resolve_transfer_raid_defense_fire(self, star, fleet):
+    def _resolve_transfer_raid_defense_fire(
+        self,
+        star,
+        fleet,
+        colonist_raid=False,
+        attacker_is_parasitic=False,
+    ):
         """Apply heavier, luck-weighted defense fire for theft attempts."""
         damage_multiplier = random.uniform(
             THEFT_DEFENSE_DAMAGE_MIN_MULTIPLIER,
             THEFT_DEFENSE_DAMAGE_MAX_MULTIPLIER,
         )
+        if colonist_raid:
+            if attacker_is_parasitic:
+                damage_multiplier *= PARASITIC_COLONIST_RAID_DEFENSE_DAMAGE_MULTIPLIER
+            else:
+                damage_multiplier *= COLONIST_RAID_DEFENSE_DAMAGE_MULTIPLIER
         luck_multiplier = float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0)
         jitter = random.uniform(-THEFT_LUCK_JITTER, THEFT_LUCK_JITTER) * luck_multiplier
         damage_multiplier = max(0.1, damage_multiplier * (1.0 + jitter))
@@ -5256,11 +5295,23 @@ class GameTurn():
             star, fleet, damage_multiplier=damage_multiplier
         )
 
-    def _transfer_raid_success_chance(self, star, fleet, defense_fire):
+    def _transfer_raid_success_chance(
+        self,
+        star,
+        fleet,
+        defense_fire,
+        colonist_raid=False,
+        attacker_is_parasitic=False,
+    ):
         defender = star.player
         defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
         attacker_strength = calculate_fleet_strength(fleet, defender_defence_mult)
         defender_strength = normalize_ship_count(calculate_effective_defenses(star))
+        if colonist_raid:
+            if attacker_is_parasitic:
+                defender_strength *= PARASITIC_COLONIST_RAID_DEFENDER_STRENGTH_MULTIPLIER
+            else:
+                defender_strength *= COLONIST_RAID_DEFENDER_STRENGTH_MULTIPLIER
         attacker_luck = float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0)
         defender_luck = float(getattr(defender.race_type, 'luck_multiplier', 1.0) or 1.0)
         integrity_lost = int(defense_fire.get('integrity_lost', 0) or 0)
@@ -5280,18 +5331,45 @@ class GameTurn():
             max_chance=THEFT_SUCCESS_MAX_CHANCE,
         )
 
-    def _transfer_raid_successful(self, star, fleet, defense_fire):
-        chance = self._transfer_raid_success_chance(star, fleet, defense_fire)
+    def _transfer_raid_successful(
+        self,
+        star,
+        fleet,
+        defense_fire,
+        colonist_raid=False,
+        attacker_is_parasitic=False,
+    ):
+        chance = self._transfer_raid_success_chance(
+            star,
+            fleet,
+            defense_fire,
+            colonist_raid=colonist_raid,
+            attacker_is_parasitic=attacker_is_parasitic,
+        )
         return chance_roll(chance)
 
-    def _create_transfer_raid_messages(self, attacker, defender, fleet, star, resource_desc, damage_pct):
+    def _create_transfer_raid_messages(
+        self,
+        attacker,
+        defender,
+        fleet,
+        star,
+        resource_desc,
+        damage_pct,
+        colonist_raid=False,
+        attacker_is_parasitic=False,
+    ):
+        owner_name = getattr(defender, 'plural_name', None) or getattr(defender, 'name', '')
+        factory_class = TransferRaidThwartedMessageFactory
+        if colonist_raid and attacker_is_parasitic:
+            factory_class = TransferAbductionThwartedMessageFactory
         if attacker:
-            msg = TransferRaidThwartedMessageFactory(
+            msg = factory_class(
                 self.game,
                 attacker,
                 fleet=fleet,
                 star=star,
-                owner_name=getattr(defender, 'plural_name', None) or getattr(defender, 'name', ''),
+                owner_name=owner_name,
                 resource_desc=resource_desc,
                 damage=damage_pct,
                 perspective='attacker',
@@ -5299,15 +5377,65 @@ class GameTurn():
             msg.year = self.game.year
             msg.save()
         if defender:
-            msg = TransferRaidThwartedMessageFactory(
+            msg = factory_class(
                 self.game,
                 defender,
                 fleet=fleet,
                 star=star,
-                owner_name=getattr(defender, 'plural_name', None) or getattr(defender, 'name', ''),
+                owner_name=owner_name,
                 resource_desc=resource_desc,
                 damage=damage_pct,
                 perspective='defender',
+            ).new_message()
+            msg.year = self.game.year
+            msg.save()
+
+    def _create_transfer_colonist_raid_messages(
+        self,
+        attacker,
+        defender,
+        fleet,
+        star,
+        taken_kt,
+        lost_kt,
+        damage_pct,
+        attacker_is_parasitic=False,
+    ):
+        owner_name = getattr(defender, 'plural_name', None) or getattr(defender, 'name', '')
+        if attacker_is_parasitic:
+            factory_class = TransferAbductionSuccessMessageFactory
+            kwargs = {
+                'owner_name': owner_name,
+                'abducted_kt': int(taken_kt or 0),
+                'damage': int(damage_pct or 0),
+            }
+        else:
+            factory_class = TransferColonistRaidMessageFactory
+            kwargs = {
+                'owner_name': owner_name,
+                'taken_kt': int(taken_kt or 0),
+                'lost_kt': int(lost_kt or 0),
+                'damage': int(damage_pct or 0),
+            }
+        if attacker:
+            msg = factory_class(
+                self.game,
+                attacker,
+                fleet=fleet,
+                star=star,
+                perspective='attacker',
+                **kwargs,
+            ).new_message()
+            msg.year = self.game.year
+            msg.save()
+        if defender:
+            msg = factory_class(
+                self.game,
+                defender,
+                fleet=fleet,
+                star=star,
+                perspective='defender',
+                **kwargs,
             ).new_message()
             msg.year = self.game.year
             msg.save()
@@ -5326,9 +5454,20 @@ class GameTurn():
             if total_requested == 0:
                 return
 
+            raid_attacker = None
+            raid_defender = None
+            raid_integrity_before = int(getattr(fleet, 'integrity', 0) or 0)
+            colonist_raid_non_allied = False
+            attacker_is_parasitic = False
             if star.player and star.player != fleet.player:
                 defender = star.player
                 attacker = fleet.player
+                raid_attacker = attacker
+                raid_defender = defender
+                attacker_is_parasitic = bool(
+                    getattr(getattr(attacker, 'race_type', None), 'is_parasitic', False)
+                )
+                is_colonist_raid = int(getattr(order, 'transfer_colonists', 0) or 0) > 0
                 defender_stance_map = self._stance_map_for_player(defender)
                 allow_defense = player_grants_permission(
                     defender,
@@ -5342,6 +5481,9 @@ class GameTurn():
                     PERMISSION_ALLOW_TRANSFER_RAID_ROLL,
                     stance_map=defender_stance_map,
                 )
+                colonist_raid_non_allied = bool(
+                    is_colonist_raid and (allow_defense or allow_roll)
+                )
 
                 defense_fire = {
                     'destroyed': False,
@@ -5350,19 +5492,44 @@ class GameTurn():
                     'defense_mult': 1.0,
                 }
                 if allow_defense:
-                    defense_fire = self._resolve_transfer_raid_defense_fire(star, fleet)
+                    defense_fire = self._resolve_transfer_raid_defense_fire(
+                        star,
+                        fleet,
+                        colonist_raid=colonist_raid_non_allied,
+                        attacker_is_parasitic=attacker_is_parasitic,
+                    )
                 if defense_fire.get('destroyed'):
                     damage_pct = 100
                     resource_desc = self._build_transfer_raid_resource_desc(fleet, order)
                     self._create_transfer_raid_messages(
-                        attacker, defender, fleet, star, resource_desc, damage_pct
+                        attacker,
+                        defender,
+                        fleet,
+                        star,
+                        resource_desc,
+                        damage_pct,
+                        colonist_raid=colonist_raid_non_allied,
+                        attacker_is_parasitic=attacker_is_parasitic,
                     )
                     return 'fleet_destroyed'
-                if allow_roll and not self._transfer_raid_successful(star, fleet, defense_fire):
+                if allow_roll and not self._transfer_raid_successful(
+                    star,
+                    fleet,
+                    defense_fire,
+                    colonist_raid=colonist_raid_non_allied,
+                    attacker_is_parasitic=attacker_is_parasitic,
+                ):
                     damage_pct = max(0, int(defense_fire.get('integrity_lost', 0) or 0))
                     resource_desc = self._build_transfer_raid_resource_desc(fleet, order)
                     self._create_transfer_raid_messages(
-                        attacker, defender, fleet, star, resource_desc, damage_pct
+                        attacker,
+                        defender,
+                        fleet,
+                        star,
+                        resource_desc,
+                        damage_pct,
+                        colonist_raid=colonist_raid_non_allied,
+                        attacker_is_parasitic=attacker_is_parasitic,
                     )
                     return
 
@@ -5379,9 +5546,51 @@ class GameTurn():
                 available = int(getattr(star, f'{key}_inventory', 0) or 0)
                 transfers[key] = min(int(requested * transfer_factor), available)
 
-            colonists_transfer_kt = int((order.transfer_colonists or 0) * transfer_factor)
-            colonists_transfer_individuals = min(colonists_transfer_kt * 1000, int(star.colonists or 0))
-            colonists_transfer_kt_actual = colonists_transfer_individuals // 1000
+            requested_colonists_kt = int((order.transfer_colonists or 0) * transfer_factor)
+            attempted_colonists_individuals = min(
+                requested_colonists_kt * 1000,
+                int(star.colonists or 0),
+            )
+            loaded_colonists_individuals = attempted_colonists_individuals
+            colonists_lost_individuals = 0
+            if attempted_colonists_individuals > 0 and colonist_raid_non_allied:
+                if attacker_is_parasitic:
+                    # Parasitic races abduct more effectively.
+                    loaded_colonists_individuals = attempted_colonists_individuals
+                else:
+                    pickup_loss_fraction = random.uniform(
+                        COLONIST_RAID_PICKUP_LOSS_MIN,
+                        COLONIST_RAID_PICKUP_LOSS_MAX,
+                    )
+                    loaded_colonists_individuals = int(
+                        attempted_colonists_individuals * (1.0 - pickup_loss_fraction)
+                    )
+                    loaded_colonists_individuals = max(0, loaded_colonists_individuals)
+                    loaded_colonists_individuals = (
+                        loaded_colonists_individuals // 1000
+                    ) * 1000
+                    colonists_lost_individuals = max(
+                        0,
+                        attempted_colonists_individuals - loaded_colonists_individuals,
+                    )
+                    minimum_integrity = max(
+                        0,
+                        int(raid_integrity_before or 0) - COLONIST_RAID_MIN_INTEGRITY_LOSS,
+                    )
+                    current_integrity = int(getattr(fleet, 'integrity', 0) or 0)
+                    if current_integrity > minimum_integrity:
+                        extra_loss = min(
+                            current_integrity - minimum_integrity,
+                            max(0, current_integrity - 1),
+                        )
+                        if extra_loss > 0:
+                            fleet.integrity = current_integrity - extra_loss
+
+            colonists_transfer_kt_actual = max(0, loaded_colonists_individuals // 1000)
+            colonists_lost_kt = max(
+                0,
+                int(colonists_lost_individuals // 1000),
+            )
 
             for key in resource_keys:
                 setattr(
@@ -5395,11 +5604,32 @@ class GameTurn():
                     int(getattr(fleet, f'{key}_inventory', 0) or 0) + transfers[key]
                 )
 
-            star.colonists -= colonists_transfer_individuals
+            star.colonists -= attempted_colonists_individuals
             fleet.colonists += colonists_transfer_kt_actual
 
             star.save()
             fleet.save()
+
+            if (
+                attempted_colonists_individuals > 0 and
+                colonist_raid_non_allied and
+                raid_attacker is not None and
+                raid_defender is not None
+            ):
+                raid_damage_pct = max(
+                    0,
+                    int(raid_integrity_before or 0) - int(getattr(fleet, 'integrity', 0) or 0),
+                )
+                self._create_transfer_colonist_raid_messages(
+                    raid_attacker,
+                    raid_defender,
+                    fleet,
+                    star,
+                    taken_kt=colonists_transfer_kt_actual,
+                    lost_kt=colonists_lost_kt,
+                    damage_pct=raid_damage_pct,
+                    attacker_is_parasitic=attacker_is_parasitic,
+                )
 
             self._discover_secret_resources_from_star(fleet.player, star, fleet=fleet)
 
@@ -5438,9 +5668,23 @@ class GameTurn():
                     colonists_transfer_kt = 0
 
             if colonists_transfer_kt > 0 and star.player and star.player != fleet.player:
-                self._handle_invasion(fleet, star, colonists_transfer_kt)
-                fleet.colonists -= colonists_transfer_kt
-                colonists_transfer_kt = 0
+                defender_stance_map = self._stance_map_for_player(star.player)
+                allow_defense = player_grants_permission(
+                    star.player,
+                    fleet.player,
+                    PERMISSION_ALLOW_TRANSFER_RAID_DEFENSE,
+                    stance_map=defender_stance_map,
+                )
+                allow_roll = player_grants_permission(
+                    star.player,
+                    fleet.player,
+                    PERMISSION_ALLOW_TRANSFER_RAID_ROLL,
+                    stance_map=defender_stance_map,
+                )
+                if allow_defense or allow_roll:
+                    self._handle_invasion(fleet, star, colonists_transfer_kt)
+                    fleet.colonists -= colonists_transfer_kt
+                    colonists_transfer_kt = 0
 
             colonists_transfer_individuals = colonists_transfer_kt * 1000
 
@@ -8115,6 +8359,10 @@ class GameTurn():
         if tier <= 0 or not admin_active:
             for order in micromanager_orders:
                 if self._order_has_progress(order):
+                    # Preserve in-flight work, but hand it back to the player
+                    # when colony-level Administration is no longer active.
+                    order.added_by_micromanager = False
+                    order.save(update_fields=['added_by_micromanager'])
                     continue
                 order.delete()
             self._resequence_production_orders(star)

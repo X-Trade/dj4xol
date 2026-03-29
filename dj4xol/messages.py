@@ -1684,6 +1684,122 @@ class TransferRaidThwartedMessageFactory(MessageFactory):
         )
 
 
+class TransferAbductionThwartedMessageFactory(MessageFactory):
+    """Messages when a parasitic abduction attempt is repelled."""
+    category = 'COMBAT'
+    priority = True
+    templates_attacker = [
+        "Abduction attempt at {star} failed: {fleet} could not abduct colonists from {owner} and took {damage}% damage.",
+        "{fleet} was repelled while attempting to abduct colonists from {owner} at {star}; {damage}% integrity was lost.",
+        "Colony defenses at {star} stopped our abduction run; {fleet} took {damage}% damage.",
+    ]
+    templates_defender = [
+        "Defenses at {star} repelled an abduction attempt by {fleet}; attackers lost {damage}% integrity.",
+        "{fleet} failed to abduct colonists at {star}; defense fire inflicted {damage}% damage.",
+        "Abduction raiders from {fleet} were driven off at {star}, losing {damage}% integrity.",
+    ]
+
+    def __init__(
+        self,
+        game,
+        player,
+        fleet,
+        star,
+        owner_name,
+        damage,
+        perspective='attacker',
+        resource_desc=None,
+        message=None,
+    ):
+        super().__init__(game, player, message, intensity=-0.3)
+        self.fleet = fleet
+        self.star = star
+        self.owner_name = owner_name
+        self.damage = int(damage)
+        self.perspective = perspective
+
+    def format_message(self):
+        templates = self.templates_attacker if self.perspective == 'attacker' else self.templates_defender
+        return random.choice(templates).format(
+            fleet=format_map_object_reference(self.fleet),
+            star=format_map_object(self.star),
+            owner=self.owner_name,
+            damage=self.damage,
+        )
+
+
+class TransferColonistRaidMessageFactory(MessageFactory):
+    """Messages for non-allied colonist raids with heavy pickup losses."""
+    category = 'COMBAT'
+    priority = True
+    templates_attacker = [
+        "{fleet} raided {star} for colonists from {owner}: {taken}k taken, {lost}k lost during pickup resistance, {damage}% integrity damage.",
+        "Colonist raid at {star}: {fleet} took {taken}k, lost {lost}k to resistance, and suffered {damage}% damage.",
+        "{fleet} extracted {taken}k colonists from {owner} at {star}, but pickup losses were {lost}k and integrity loss reached {damage}%.",
+    ]
+    templates_defender = [
+        "{fleet} raided colonists at {star}: {taken}k were taken and {lost}k were lost during pickup resistance.",
+        "Raiders from {fleet} seized {taken}k colonists at {star}; pickup losses were {lost}k.",
+        "A colonist raid at {star} by {fleet} resulted in {taken}k taken and {lost}k lost amid resistance.",
+    ]
+
+    def __init__(self, game, player, fleet, star, owner_name, taken_kt, lost_kt, damage, perspective='attacker', message=None):
+        super().__init__(game, player, message, intensity=-0.3)
+        self.fleet = fleet
+        self.star = star
+        self.owner_name = owner_name
+        self.taken_kt = int(taken_kt or 0)
+        self.lost_kt = int(lost_kt or 0)
+        self.damage = int(damage or 0)
+        self.perspective = perspective
+
+    def format_message(self):
+        templates = self.templates_attacker if self.perspective == 'attacker' else self.templates_defender
+        return random.choice(templates).format(
+            fleet=format_map_object_reference(self.fleet),
+            star=format_map_object(self.star),
+            owner=self.owner_name,
+            taken=self.taken_kt,
+            lost=self.lost_kt,
+            damage=self.damage,
+        )
+
+
+class TransferAbductionSuccessMessageFactory(MessageFactory):
+    """Messages for successful parasitic colonist abduction."""
+    category = 'COMBAT'
+    priority = True
+    templates_attacker = [
+        "{fleet} abducted {abducted}k colonists from {owner} at {star}. Fleet integrity loss: {damage}%.",
+        "Successful abduction at {star}: {fleet} abducted {abducted}k colonists from {owner} ({damage}% integrity loss).",
+        "{fleet} completed an abduction run at {star}, taking {abducted}k colonists from {owner}.",
+    ]
+    templates_defender = [
+        "{fleet} abducted {abducted}k colonists from {star}. Defenses inflicted {damage}% integrity damage on the raiders.",
+        "Abduction raid at {star}: {fleet} escaped with {abducted}k colonists.",
+        "{fleet} carried out a colonist abduction at {star}, taking {abducted}k.",
+    ]
+
+    def __init__(self, game, player, fleet, star, owner_name, abducted_kt, damage, perspective='attacker', message=None):
+        super().__init__(game, player, message, intensity=-0.3)
+        self.fleet = fleet
+        self.star = star
+        self.owner_name = owner_name
+        self.abducted_kt = int(abducted_kt or 0)
+        self.damage = int(damage or 0)
+        self.perspective = perspective
+
+    def format_message(self):
+        templates = self.templates_attacker if self.perspective == 'attacker' else self.templates_defender
+        return random.choice(templates).format(
+            fleet=format_map_object_reference(self.fleet),
+            star=format_map_object(self.star),
+            owner=self.owner_name,
+            abducted=self.abducted_kt,
+            damage=self.damage,
+        )
+
+
 class SalvageCollectedMessageFactory(MessageFactory):
     """Messages for salvage collection via Transfer."""
     category = 'GENERAL'

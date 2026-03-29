@@ -1,0 +1,114 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Special Race Effects</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index single-panel-page">
+        <div class="title-bar">
+            <span class="title">Special Race Effects</span>
+            <span class="tagline">Parasitic &amp; Mechanical</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_index' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-special-race-effects">
+                    <h2><span>Special Race Effects</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                            <p>
+                                This page covers two strategy-critical race flags: <strong>Parasitic</strong> and
+                                <strong>Mechanical</strong>. It focuses on how they play on the map and what that
+                                means for your decisions each turn.
+                            </p>
+
+                            <h4>Parasitic (is_parasitic)</h4>
+                            <p>
+                                Parasitic races are uniquely suited to hostile colonist raids. If you load colonists
+                                from a non-allied enemy colony, the encounter messaging uses <em>abduction</em>
+                                wording and your raid faces lighter resistance than normal races.
+                            </p>
+                            <p>
+                                For non-parasitic races, hostile colonist raids are much harsher: high pickup losses
+                                and guaranteed integrity damage are expected outcomes.
+                            </p>
+                            <p>
+                                Parasitic defenders also have a special invasion interaction. If another race invades
+                                and fails, the invader colonist losses are absorbed into the parasitic colony
+                                population instead of being extinguished.
+                            </p>
+                            <p>
+                                Allied transfers are treated as normal logistics, not raids. In practice, this means
+                                abduction is a wartime tool, while alliances remain the safer route for deliberate
+                                population movement.
+                            </p>
+
+                            <h4>Mechanical (is_mechanical)</h4>
+                            <p>
+                                Mechanical races do not rely on natural population growth the same way organic races do.
+                                Instead, they get dedicated production orders to manufacture colonists directly.
+                            </p>
+                            <ul class="rich-text-list">
+                                <li><strong>Produce 1k Colonists</strong>: low mineral cost, uses existing colonists as workforce.</li>
+                                <li><strong>Produce 1m Colonists</strong>: high mineral cost, also requires existing colonists.</li>
+                            </ul>
+                            <p>
+                                These production orders only appear for mechanical races. If you are mechanical, your
+                                growth planning should treat colonist production as a core economy task, not an
+                                optional late-game extra.
+                            </p>
+
+                            <h4>Practical Strategy</h4>
+                            <ul class="rich-text-list">
+                                <li>Parasitic: keep fast raid fleets active and look for vulnerable non-allied colonies.</li>
+                                <li>Parasitic: use diplomacy intentionally, because allied states disable raid pressure.</li>
+                                <li>Mechanical: reserve minerals and production slots for colonist manufacturing, especially when employment is tight.</li>
+                                <li>Mechanical: avoid assuming natural growth will bail out a stalled colony plan.</li>
+                            </ul>
+                        </section>
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+        {% include 'dj4xol/_site_footer.html' %}
+    </body>
+</html>

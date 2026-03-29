@@ -1168,6 +1168,60 @@ class AdministrationAutomationTest(TestCase):
         )
         self.assertEqual(order.quantity, 20)
 
+    def test_deactivated_administration_demotes_progressed_auto_orders_and_deletes_unstarted(self):
+        self.star.has_administration = False
+        self.star.save(update_fields=['has_administration'])
+        progressed = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            position=1,
+            quantity=2,
+            spent_bp=1,
+            added_by_micromanager=True,
+        )
+        unstarted = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_LAB',
+            position=2,
+            quantity=2,
+            added_by_micromanager=True,
+        )
+
+        GameTurn(self.game)._refresh_administration_production_queue(self.star)
+
+        progressed.refresh_from_db()
+        self.assertFalse(progressed.added_by_micromanager)
+        self.assertFalse(
+            ProductionOrder.objects.filter(id=unstarted.id).exists()
+        )
+        self.assertEqual(
+            self.star.production_orders.filter(added_by_micromanager=True).count(),
+            0,
+        )
+
+    def test_ai_micromanager_without_administration_keeps_progressed_auto_orders(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.save(update_fields=['has_administration'])
+        order = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            position=1,
+            quantity=2,
+            spent_bp=1,
+            added_by_micromanager=True,
+        )
+
+        GameTurn(self.game)._refresh_administration_production_queue(self.star)
+
+        order.refresh_from_db()
+        self.assertTrue(order.added_by_micromanager)
+
     def test_level_two_queues_deeper_and_adds_support_when_jobs_are_critical(self):
         self._create_administration_tech(2, 2)
         self.player.race_type.population_growth_multiplier = 0

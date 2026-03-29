@@ -1340,6 +1340,8 @@ class ScannerReportTest(TestCase):
             has_wormhole_drive=True,
         )
         shared_star = self.player2.homeworld
+        shared_star.has_administration = True
+        shared_star.save(update_fields=['has_administration'])
 
         PlayerDiplomaticStance.objects.create(
             player=self.player2,
@@ -1378,6 +1380,7 @@ class ScannerReportTest(TestCase):
         self.assertEqual(star_data.get('player_name'), self.player2.name)
         self.assertIn('mines', star_data)
         self.assertIn('shipyards', star_data)
+        self.assertTrue(star_data.get('has_administration'))
 
     def test_allied_intel_sharing_honors_backend_report_level_policy(self):
         shared_fleet = Fleet.objects.create(
@@ -1852,6 +1855,7 @@ class ScannerReportTest(TestCase):
         self.enemy_star.labs = 2
         self.enemy_star.defenses = 1
         self.enemy_star.shipyards = 1
+        self.enemy_star.has_administration = True
         self.enemy_star.save()
 
         Fleet.objects.create(
@@ -1906,6 +1910,17 @@ class ScannerReportTest(TestCase):
         self.assertEqual(star_data.get('labs'), 2)
         self.assertEqual(star_data.get('defenses'), 1)
         self.assertEqual(star_data.get('shipyards'), 1)
+        self.assertTrue(star_data.get('has_administration'))
+
+        star_detail = DetailBuilder(
+            self.game,
+            selected=self.enemy_star.short_id,
+            player=self.player1,
+        ).build_detail()
+        self.assertEqual(
+            star_detail.get('infrastructure', {}).get('Administration'),
+            'Installed',
+        )
 
         fleet_report = Report.objects.get(
             game=self.game,

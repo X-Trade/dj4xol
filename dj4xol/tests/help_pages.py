@@ -33,6 +33,7 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'Space Combat')
         self.assertContains(response, 'Diplomacy')
         self.assertContains(response, 'Invasion')
+        self.assertContains(response, 'Special Race Effects')
         self.assertContains(response, 'class="game-entry-title"', html=False)
         self.assertContains(response, 'class="game-meta"', html=False)
 
@@ -169,6 +170,16 @@ class HelpPagesTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Invasion')
         self.assertContains(response, 'Stage 1: Planetary Defence Fire')
+
+    def test_help_special_race_effects_renders(self):
+        response = self.client.get(reverse('dj4xol:help_special_race_effects'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Special Race Effects')
+        self.assertContains(response, 'Parasitic')
+        self.assertContains(response, 'Mechanical')
+        self.assertContains(response, 'abduction')
+        self.assertContains(response, 'Produce 1k Colonists')
+        self.assertContains(response, 'Produce 1m Colonists')
 
     def test_help_fleet_composition_renders(self):
         response = self.client.get(reverse('dj4xol:help_fleet_composition'))

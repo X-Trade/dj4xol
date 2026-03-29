@@ -346,16 +346,16 @@
   fields:
     code: 'PARA'
     name: 'Parasites'
-    description: 'Parasitic races are not very good at research or manufacturing, but they are very good at stealing from and trading with other races.'
+    description: 'Parasitic races are weak at research, manufacturing, and natural growth, but excel at theft and can abduct colonists from non-allied races.'
     has_no_stealth: False
     starting_economy: 1
     is_parasitic: True
-    population_growth_multiplier: 0.8
+    population_growth_multiplier: 0.6
     defence_multiplier: 0.9
     trade_multiplier: 1.2
     scan_multiplier: 1.2
     initiative_multiplier: 1.5
-    luck_multiplier: 1.5
+    luck_multiplier: 1.8
     research_multiplier: 0.5
     combat_multiplier: 0.9
     shield_multiplier: 0.9

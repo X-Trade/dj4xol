@@ -8971,6 +8971,83 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(fleet.orders.filter(order_type='REFUEL').exists())
 
+    def test_add_fleet_order_allows_transfer_to_mutually_allied_fleet(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        source_fleet = player.fleets.first()
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        other_user = User.objects.create_user('transfer_allied', 'transfer_allied@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='TFA')
+        ally_player = GameFactory(game).join_player(other_account, get_default_race())
+        target_fleet = ally_player.fleets.first()
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=player,
+            target_player=ally_player,
+            defaults={'stance': 'ALLIED'},
+        )
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=ally_player,
+            target_player=player,
+            defaults={'stance': 'ALLIED'},
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': source_fleet.short_id,
+                'order_type': 'TRANSFER',
+                'transfer_target': 'fleet:%s' % target_fleet.short_id,
+                'transfer_type': 'LOAD',
+                'transfer_ironium': '12',
+                'transfer_colonists': '3',
+                'x': source_fleet.x,
+                'y': source_fleet.y,
+                'sel': source_fleet.short_id,
+            }
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order = source_fleet.orders.get(order_type='TRANSFER')
+        self.assertEqual(order.target_fleet_id, target_fleet.id)
+        self.assertEqual(order.transfer_ironium, 12)
+        self.assertEqual(order.transfer_colonists, 3)
+
+    def test_add_fleet_order_rejects_transfer_to_non_allied_fleet(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        source_fleet = player.fleets.first()
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        other_user = User.objects.create_user('transfer_non_allied', 'transfer_non_allied@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='TFN')
+        other_player = GameFactory(game).join_player(other_account, get_default_race())
+        target_fleet = other_player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': source_fleet.short_id,
+                'order_type': 'TRANSFER',
+                'transfer_target': 'fleet:%s' % target_fleet.short_id,
+                'transfer_type': 'LOAD',
+                'transfer_ironium': '12',
+                'transfer_colonists': '3',
+                'x': source_fleet.x,
+                'y': source_fleet.y,
+                'sel': source_fleet.short_id,
+            }
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(source_fleet.orders.filter(order_type='TRANSFER').exists())
+
     def test_add_fleet_order_does_not_edit_move_orders(self):
         game = default_game(stars=5, fleets=2)
         player = game.players.first()
