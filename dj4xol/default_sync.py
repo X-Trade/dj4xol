@@ -127,6 +127,19 @@ def _upsert_technology(Technology, pk, fields):
 
     insert_fields = {pk_column: target_id}
     insert_fields.update(persisted_fields)
+    for field in Technology._meta.concrete_fields:
+        if field.primary_key:
+            continue
+        if field.column not in table_columns:
+            continue
+        if field.column in insert_fields:
+            continue
+        if field.has_default():
+            default = field.get_default()
+            insert_fields[field.column] = default() if callable(default) else default
+            continue
+        if getattr(field, 'null', False):
+            insert_fields[field.column] = None
     _insert_row_with_available_columns(table_name, insert_fields)
 
 
