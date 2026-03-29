@@ -312,7 +312,7 @@ class DefaultSyncTest(TestCase):
         )
         self.assertEqual(
             json.loads(prototype_cloak.params_json).get('race_type'),
-            'has has_no_stealth == False',
+            'has has_no_stealth == False, and is not WAR, and is not SCI',
         )
 
         advanced_cloak = Technology.objects.get(

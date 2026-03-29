@@ -149,6 +149,22 @@ def describe_race_type_requirement(expression):
     """Return a human-readable description of a requirement expression."""
     clauses = _split_requirement_clauses(expression)
     if clauses:
+        parsed_clauses = []
+        all_positive_codes = True
+        for clause in clauses:
+            parsed = parse_race_type_requirement(clause['expression'])
+            parsed_clauses.append(parsed)
+            if not parsed or parsed.get('kind') != 'code' or parsed.get('negate'):
+                all_positive_codes = False
+
+        if all_positive_codes and parsed_clauses:
+            text = 'Is %s' % parsed_clauses[0]['code']
+            for idx in range(1, len(parsed_clauses)):
+                operator = clauses[idx]['operator']
+                joiner = 'and' if operator == 'and' else 'or'
+                text += ' %s %s' % (joiner, parsed_clauses[idx]['code'])
+            return text
+
         described = []
         for idx, clause in enumerate(clauses):
             text = describe_race_type_requirement(clause['expression'])

@@ -2018,7 +2018,7 @@
     name: 'Prototype Cloak'
     description: 'Early cloak generators only conceal a fleet while holding still.'
     tech_type: 'SPECIAL'
-    params_json: '{"max_cloaked_warp": 0, "advanced_cloak": false, "defense_level": -3.90, "race_type": "has has_no_stealth == False"}'
+    params_json: '{"max_cloaked_warp": 0, "advanced_cloak": false, "defense_level": -3.90, "race_type": "has has_no_stealth == False, and is not WAR, and is not SCI"}'
     display_order: 420
     enabled: True
 

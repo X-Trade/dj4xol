@@ -105,6 +105,18 @@ class TechnologyGateRulesTest(TestCase):
                 self.basic_race,
             )
         )
+        self.assertTrue(
+            race_type_requirement_matches(
+                'has has_advanced_hulls, and is not BASC',
+                self.stealth_race,
+            )
+        )
+        self.assertFalse(
+            race_type_requirement_matches(
+                'has has_advanced_hulls, and is not STLH',
+                self.stealth_race,
+            )
+        )
 
     def test_viewer_status_matches_supported_requirement_forms(self):
         self.assertEqual(
@@ -175,13 +187,13 @@ class TechnologyGateRulesTest(TestCase):
         )
         self.assertEqual(
             describe_race_type_requirement(['SCI', 'WAR']),
-            'Is SCI or Is WAR',
+            'Is SCI or WAR',
         )
         self.assertEqual(
             describe_race_type_requirement('is SCI, is WAR'),
-            'Is SCI or Is WAR',
+            'Is SCI or WAR',
         )
         self.assertEqual(
             describe_race_type_requirement('is SCI, and is WAR'),
-            'Is SCI and Is WAR',
+            'Is SCI and WAR',
         )
