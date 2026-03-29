@@ -2492,9 +2492,14 @@ class GameTurn():
             if report_tier == 'encounter':
                 scanner_basic = 0
                 scanner_advanced = 0
+                administration_level = 0
                 if obj.player:
                     scanner_basic, scanner_advanced = (
                         self._get_player_colony_scanner_ranges_cached(obj.player)
+                    )
+                    administration_level = int(
+                        self._get_player_administration_profile_cached(obj.player).get('level', 0)
+                        or 0
                     )
                 jobs = calculate_total_jobs(obj)
                 employment = calculate_employment_percent(obj)
@@ -2511,6 +2516,7 @@ class GameTurn():
                     'defenses_tooltip': None,
                     'shipyards': obj.shipyards,
                     'has_administration': bool(getattr(obj, 'has_administration', False)),
+                    'administration_level': administration_level,
                     'has_dyson_sphere': bool(getattr(obj, 'has_dyson_sphere', False)),
                     'jobs_count': jobs,
                     'jobs_employment': employment,

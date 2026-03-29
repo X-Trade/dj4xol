@@ -586,7 +586,13 @@ class DetailBuilder():
                     'Defenses': data.get('defenses'),
                     'DefensesTooltip': data.get('defenses_tooltip'),
                     'Shipyards': data.get('shipyards'),
-                    'Administration': 'Installed' if data.get('has_administration') else None,
+                    'Administration': (
+                        'Level %s' % int(data.get('administration_level', 0) or 0)
+                        if data.get('has_administration') and int(data.get('administration_level', 0) or 0) > 0
+                        else 'Installed'
+                        if data.get('has_administration')
+                        else None
+                    ),
                     'DysonSphere': 'Online' if data.get('has_dyson_sphere') else None,
                     'Jobs': {
                         'count': data.get('jobs_count', 0),
@@ -1648,12 +1654,14 @@ class DetailBuilder():
             defenses_tooltip = None
             scanner_display = None
             administration_level = 0
-            if is_owned:
-                colony_defense_level = get_player_colony_defense_level(self.player)
+            owner = getattr(self.selected_obj, 'player', None)
+            if owner:
                 administration_level = int(
-                    get_player_administration_profile(self.player).get('level', 0)
+                    get_player_administration_profile(owner).get('level', 0)
                     or 0
                 )
+            if is_owned:
+                colony_defense_level = get_player_colony_defense_level(self.player)
                 defense_multiplier = 2.0 ** max(0.0, colony_defense_level)
                 effective_base_defenses = calculate_effective_defenses(
                     self.selected_obj

@@ -1321,6 +1321,9 @@ class ScannerReportTest(TestCase):
         )
 
     def test_allied_intel_sharing_creates_encounter_fleet_and_encounter_colony_reports(self):
+        from ..models import ResearchCategory, Technology
+        from ..research import ensure_player_research_rows
+
         shared_fleet = Fleet.objects.create(
             game=self.game,
             player=self.player2,
@@ -1340,6 +1343,24 @@ class ScannerReportTest(TestCase):
             has_wormhole_drive=True,
         )
         shared_star = self.player2.homeworld
+        category = ResearchCategory.objects.create(
+            code='ALLY_ADMIN_2',
+            name='Allied Administration',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=category,
+            level=2,
+            name='Administration 2',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"administration_level": 2}',
+            enabled=True,
+        )
+        for row in ensure_player_research_rows(self.player2):
+            if row.category_id == category.id:
+                row.current_level = 2.0
+                row.save(update_fields=['current_level'])
+                break
         shared_star.has_administration = True
         shared_star.save(update_fields=['has_administration'])
 
@@ -1381,6 +1402,7 @@ class ScannerReportTest(TestCase):
         self.assertIn('mines', star_data)
         self.assertIn('shipyards', star_data)
         self.assertTrue(star_data.get('has_administration'))
+        self.assertEqual(star_data.get('administration_level'), 2)
 
     def test_allied_intel_sharing_honors_backend_report_level_policy(self):
         shared_fleet = Fleet.objects.create(
@@ -1847,6 +1869,9 @@ class ScannerReportTest(TestCase):
         self.assertNotIn('stability', anomaly_data)
 
     def test_encounter_reports_include_infrastructure_and_capabilities(self):
+        from ..models import ResearchCategory, Technology
+        from ..research import ensure_player_research_rows
+
         x, y = self._find_empty_coord(exclude_star=self.enemy_star)
         self.enemy_star.x = x
         self.enemy_star.y = y
@@ -1855,6 +1880,24 @@ class ScannerReportTest(TestCase):
         self.enemy_star.labs = 2
         self.enemy_star.defenses = 1
         self.enemy_star.shipyards = 1
+        category = ResearchCategory.objects.create(
+            code='ENC_ADMIN_2',
+            name='Encounter Administration',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=category,
+            level=2,
+            name='Administration 2',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"administration_level": 2}',
+            enabled=True,
+        )
+        for row in ensure_player_research_rows(self.player2):
+            if row.category_id == category.id:
+                row.current_level = 2.0
+                row.save(update_fields=['current_level'])
+                break
         self.enemy_star.has_administration = True
         self.enemy_star.save()
 
@@ -1911,6 +1954,7 @@ class ScannerReportTest(TestCase):
         self.assertEqual(star_data.get('defenses'), 1)
         self.assertEqual(star_data.get('shipyards'), 1)
         self.assertTrue(star_data.get('has_administration'))
+        self.assertEqual(star_data.get('administration_level'), 2)
 
         star_detail = DetailBuilder(
             self.game,
@@ -1919,7 +1963,7 @@ class ScannerReportTest(TestCase):
         ).build_detail()
         self.assertEqual(
             star_detail.get('infrastructure', {}).get('Administration'),
-            'Installed',
+            'Level 2',
         )
 
         fleet_report = Report.objects.get(
