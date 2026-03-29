@@ -1273,28 +1273,85 @@ def _retarget_singular_focus_after_unlocks(player, rows, unlocked_category_ids):
     return True
 
 
-def get_player_unlocked_technologies(player):
-    """Return all enabled technologies unlocked by player state."""
+@transaction.atomic
+def sync_player_technology_unlocks_from_research(player, category_ids=None, year=None):
+    """Persist research-derived unlocks into PlayerTechnologyGrant records."""
+    if not player:
+        return []
     rows = ensure_player_research_rows(player)
+    if not rows:
+        return []
+    if year is None:
+        year = int(getattr(getattr(player, 'game', None), 'year', 0) or 0)
+
     level_by_cat = {
-        row.category_id: row.current_level for row in rows
+        int(row.category_id): int(row.current_level or 0)
+        for row in rows
     }
-    granted_ids = set()
-    if player:
-        granted_ids = set(
-            PlayerTechnologyGrant.objects.filter(player=player)
-            .values_list('technology_id', flat=True)
-        )
-    unlocked = []
-    for tech in Technology.objects.select_related('category').filter(enabled=True):
-        if (
-            tech.id in granted_ids or (
-                level_by_cat.get(tech.category_id, 0.0) >= tech.level and
-                technology_is_available_for_player(tech, player)
+    if category_ids is not None:
+        target_categories = {
+            int(category_id)
+            for category_id in (category_ids or [])
+            if category_id is not None
+        }
+    else:
+        target_categories = set(level_by_cat.keys())
+    if not target_categories:
+        return []
+
+    existing_ids = set(
+        PlayerTechnologyGrant.objects.filter(player=player)
+        .values_list('technology_id', flat=True)
+    )
+    created_tech_ids = []
+    new_rows = []
+    for tech in Technology.objects.select_related('category').filter(
+        enabled=True,
+        category_id__in=target_categories,
+    ):
+        current_level = int(level_by_cat.get(int(tech.category_id), 0) or 0)
+        if int(tech.level or 0) > current_level:
+            continue
+        if not technology_is_available_for_player(tech, player):
+            continue
+        if tech.id in existing_ids:
+            continue
+        created_tech_ids.append(tech.id)
+        existing_ids.add(tech.id)
+        new_rows.append(
+            PlayerTechnologyGrant(
+                player=player,
+                technology=tech,
+                obtained_via_diplomacy=False,
+                granted_year=int(year or 0),
             )
-        ):
-            unlocked.append(tech)
-    return unlocked
+        )
+    if new_rows:
+        PlayerTechnologyGrant.objects.bulk_create(new_rows)
+    return created_tech_ids
+
+
+def get_player_unlocked_technologies(player):
+    """Return technologies from player's canonical unlock records."""
+    if not player:
+        return []
+    technology_ids = list(
+        PlayerTechnologyGrant.objects.filter(player=player)
+        .values_list('technology_id', flat=True)
+    )
+    if not technology_ids:
+        return []
+    return list(
+        Technology.objects.select_related('category').filter(
+            id__in=technology_ids,
+        ).order_by(
+            'category__display_order',
+            'category__name',
+            'level',
+            'display_order',
+            'name',
+        )
+    )
 
 
 def _select_scanner_ranges(unlocked, tech_type):
@@ -1709,6 +1766,12 @@ def process_player_research_for_year(player):
             'resource_y_paid',
             'resource_z_paid',
         ])
+    if unlocked_category_ids:
+        sync_player_technology_unlocks_from_research(
+            player,
+            category_ids=unlocked_category_ids,
+            year=getattr(player.game, 'year', 0),
+        )
     _retarget_singular_focus_after_unlocks(player, rows, unlocked_category_ids)
     if budget.get('leftover_bonus_rp', 0) > 0 and player.spend_leftover_points_on_research:
         player.leftover_points = 0.0
@@ -1751,6 +1814,11 @@ def apply_research_bonus_rp(player, category_id, bonus_rp):
         'resource_z_paid',
     ])
     if int(new_level) > int(old_level):
+        sync_player_technology_unlocks_from_research(
+            player,
+            category_ids=[row.category_id],
+            year=getattr(player.game, 'year', 0),
+        )
         _retarget_singular_focus_after_unlocks(player, rows, [row.category_id])
     return {
         'category': row.category,

@@ -81,6 +81,30 @@ class TechnologyGateRulesTest(TestCase):
         self.assertFalse(
             race_type_requirement_matches('has economy_offset >= 1', self.basic_race)
         )
+        self.assertTrue(
+            race_type_requirement_matches(['SCI', 'STLH'], self.stealth_race)
+        )
+        self.assertFalse(
+            race_type_requirement_matches(['SCI', 'WAR'], self.basic_race)
+        )
+        self.assertTrue(
+            race_type_requirement_matches('is STLH, is SCI', self.stealth_race)
+        )
+        self.assertFalse(
+            race_type_requirement_matches('is SCI, is WAR', self.basic_race)
+        )
+        self.assertTrue(
+            race_type_requirement_matches(
+                'is STLH, and has has_advanced_hulls',
+                self.stealth_race,
+            )
+        )
+        self.assertFalse(
+            race_type_requirement_matches(
+                'is BASC, and has has_advanced_hulls',
+                self.basic_race,
+            )
+        )
 
     def test_viewer_status_matches_supported_requirement_forms(self):
         self.assertEqual(
@@ -115,6 +139,25 @@ class TechnologyGateRulesTest(TestCase):
             ),
             'excluded',
         )
+        self.assertEqual(
+            race_type_requirement_viewer_status(['SCI', 'STLH'], self.stealth_race),
+            'included',
+        )
+        self.assertEqual(
+            race_type_requirement_viewer_status(['not BASC', 'not STLH'], self.basic_race),
+            'excluded',
+        )
+        self.assertIsNone(
+            race_type_requirement_viewer_status(['SCI', 'WAR'], self.basic_race)
+        )
+        self.assertEqual(
+            race_type_requirement_viewer_status('is STLH, is SCI', self.stealth_race),
+            'included',
+        )
+        self.assertEqual(
+            race_type_requirement_viewer_status('not BASC, is SCI', self.basic_race),
+            'excluded',
+        )
 
     def test_describe_humanises_requirement_forms(self):
         self.assertEqual(describe_race_type_requirement('not WAR'), 'Is not WAR')
@@ -129,4 +172,16 @@ class TechnologyGateRulesTest(TestCase):
         self.assertEqual(
             describe_race_type_requirement('has has_no_stealth != False'),
             'Has no stealth systems is not False',
+        )
+        self.assertEqual(
+            describe_race_type_requirement(['SCI', 'WAR']),
+            'Is SCI or Is WAR',
+        )
+        self.assertEqual(
+            describe_race_type_requirement('is SCI, is WAR'),
+            'Is SCI or Is WAR',
+        )
+        self.assertEqual(
+            describe_race_type_requirement('is SCI, and is WAR'),
+            'Is SCI and Is WAR',
         )

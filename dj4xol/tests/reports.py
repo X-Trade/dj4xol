@@ -1322,7 +1322,10 @@ class ScannerReportTest(TestCase):
 
     def test_allied_intel_sharing_creates_encounter_fleet_and_encounter_colony_reports(self):
         from ..models import ResearchCategory, Technology
-        from ..research import ensure_player_research_rows
+        from ..research import (
+            ensure_player_research_rows,
+            sync_player_technology_unlocks_from_research,
+        )
 
         shared_fleet = Fleet.objects.create(
             game=self.game,
@@ -1361,6 +1364,11 @@ class ScannerReportTest(TestCase):
                 row.current_level = 2.0
                 row.save(update_fields=['current_level'])
                 break
+        sync_player_technology_unlocks_from_research(
+            self.player2,
+            category_ids=[category.id],
+            year=getattr(self.game, 'year', 0),
+        )
         shared_star.has_administration = True
         shared_star.save(update_fields=['has_administration'])
 
@@ -1870,7 +1878,10 @@ class ScannerReportTest(TestCase):
 
     def test_encounter_reports_include_infrastructure_and_capabilities(self):
         from ..models import ResearchCategory, Technology
-        from ..research import ensure_player_research_rows
+        from ..research import (
+            ensure_player_research_rows,
+            sync_player_technology_unlocks_from_research,
+        )
 
         x, y = self._find_empty_coord(exclude_star=self.enemy_star)
         self.enemy_star.x = x
@@ -1898,6 +1909,11 @@ class ScannerReportTest(TestCase):
                 row.current_level = 2.0
                 row.save(update_fields=['current_level'])
                 break
+        sync_player_technology_unlocks_from_research(
+            self.player2,
+            category_ids=[category.id],
+            year=getattr(self.game, 'year', 0),
+        )
         self.enemy_star.has_administration = True
         self.enemy_star.save()
 

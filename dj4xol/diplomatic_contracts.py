@@ -586,6 +586,7 @@ def grant_player_technology(player, technology, source_contract=None, granted_by
     defaults = {
         'source_contract': source_contract,
         'granted_by_player': granted_by_player,
+        'obtained_via_diplomacy': True,
         'granted_year': int(year or 0),
     }
     grant, _created = PlayerTechnologyGrant.objects.get_or_create(
@@ -616,7 +617,12 @@ def _create_reverse_engineering_message(player, year, text):
 def _apply_reverse_engineering_reward(player, technology, year=None):
     if not player or technology is None or technology.category_id is None:
         return
-    from .research import ensure_player_research_rows, apply_research_bonus_rp, get_level_requirement
+    from .research import (
+        ensure_player_research_rows,
+        apply_research_bonus_rp,
+        get_level_requirement,
+        sync_player_technology_unlocks_from_research,
+    )
 
     rows = ensure_player_research_rows(player)
     row = None
@@ -677,6 +683,11 @@ def _apply_reverse_engineering_reward(player, technology, year=None):
         return
     row.current_level = int(target_level)
     row.save(update_fields=['current_level'])
+    sync_player_technology_unlocks_from_research(
+        player,
+        category_ids=[row.category_id],
+        year=year,
+    )
     _create_reverse_engineering_message(
         player,
         year,

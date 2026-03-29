@@ -1,7 +1,11 @@
 from django.test import TestCase
 
 from ..models import ResearchCategory, Technology
-from ..research import ensure_player_research_rows, get_player_unlocked_technologies
+from ..research import (
+    ensure_player_research_rows,
+    get_player_unlocked_technologies,
+    sync_player_technology_unlocks_from_research,
+)
 from ._util import default_game
 
 
@@ -39,6 +43,10 @@ class ResearchModelsTest(TestCase):
             if row.category_id == self.energy.id:
                 row.current_level = 1.0
                 row.save()
+        sync_player_technology_unlocks_from_research(
+            self.player,
+            year=getattr(self.game, 'year', 0),
+        )
 
         unlocked = list(get_player_unlocked_technologies(self.player))
         self.assertTrue(any(item.name == 'Warp 6' for item in unlocked))

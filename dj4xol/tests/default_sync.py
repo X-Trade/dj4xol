@@ -295,10 +295,10 @@ class DefaultSyncTest(TestCase):
         self.assertEqual(
             json.loads(mini_cloak.params_json),
             {
-                'max_cloaked_warp': 1,
+                'max_cloaked_warp': 3,
                 'advanced_cloak': False,
                 'defense_level': -0.5,
-                'race_type': 'SCI',
+                'race_type': 'is SCI, is WAR',
             },
         )
 

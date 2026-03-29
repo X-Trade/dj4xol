@@ -1815,6 +1815,7 @@ class PlayerTechnologyGrant(models.Model):
         related_name='technology_grants_given',
         on_delete=models.SET_NULL,
     )
+    obtained_via_diplomacy = models.BooleanField(default=False)
     granted_year = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 

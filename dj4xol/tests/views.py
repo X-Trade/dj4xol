@@ -38,6 +38,7 @@ from ..research import (
     ensure_player_research_rows,
     get_player_tech_effects,
     get_player_unlocked_technologies,
+    sync_player_technology_unlocks_from_research,
 )
 from ..ai_players import AI_SLOT_RANDOM_RACE, AI_SLOT_RANDOM_STANCE
 from ..diplomacy import (
@@ -332,6 +333,11 @@ class TestProductionOrders(TestCase):
                 row.current_level = float(tech_level)
                 row.save(update_fields=['current_level'])
                 break
+        sync_player_technology_unlocks_from_research(
+            player,
+            category_ids=[category.id],
+            year=getattr(getattr(player, 'game', None), 'year', 0),
+        )
 
     def test_blank_production_order_not_created(self):
         """Submitting blank order_type should not create a production order."""
@@ -1680,6 +1686,7 @@ class TestRaceTypeHelpView(TestCase):
         self.assertEqual(response.status_code, 200)
         rows = response.context['special_technology_rows']
         names = [row['name'] for row in rows]
+        self.assertIn('Mini Cloak', names)
         self.assertIn('Chameleon Cloak', names)
         self.assertIn('Advanced Cloak', names)
         self.assertIn('Tactical Cloak', names)
@@ -5191,6 +5198,7 @@ class TestDiplomacyView(TestCase):
         target_row = next(row for row in other_rows if row.category_id == tech.category_id)
         target_row.current_level = tech.level
         target_row.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(other_player, year=game.year)
         tech = get_player_unlocked_technologies(other_player)[0]
 
         user, _ = get_default_user()
@@ -5472,10 +5480,12 @@ class TestDiplomacyView(TestCase):
         for row in player_rows:
             row.current_level = float(player_tech.level) if row.category_id == player_tech.category_id else 0.0
             row.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(player, year=game.year)
         other_rows = ensure_player_research_rows(other_player)
         for row in other_rows:
             row.current_level = float(other_tech.level) if row.category_id == other_tech.category_id else 0.0
             row.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(other_player, year=game.year)
 
         self.assertIn(player_tech.id, {item.id for item in get_player_unlocked_technologies(player)})
         self.assertNotIn(player_tech.id, {item.id for item in get_player_unlocked_technologies(other_player)})
@@ -6772,6 +6782,7 @@ class TestDiplomacyView(TestCase):
         target_row = next(row for row in other_rows if row.category_id == player_tech.category_id)
         target_row.current_level = player_tech.level
         target_row.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(other_player, year=game.year)
         other_tech = get_player_unlocked_technologies(other_player)[0]
 
         user, _ = get_default_user()

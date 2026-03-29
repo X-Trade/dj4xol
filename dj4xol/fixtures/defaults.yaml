@@ -1571,7 +1571,7 @@
   pk: "00000000-0000-0000-0000-000000000605"
   fields:
     short_id: "tech00000605"
-    category: 4
+    category: 1
     level: 21
     name: 'Nova Bombs'
     description: 'Unstable stellar-devastation weapons with catastrophic potential.'
@@ -1584,7 +1584,7 @@
   pk: "00000000-0000-0000-0000-000000000606"
   fields:
     short_id: "tech00000606"
-    category: 4
+    category: 1
     level: 26
     name: 'Supernova Bombs'
     description: 'System-shattering stellar weapons that annihilate every star in a coordinate.'
@@ -1953,7 +1953,7 @@
     name: 'Mini Cloak'
     description: 'Compact field shrouding hides slow-moving fleets from ordinary scans.'
     tech_type: 'SPECIAL'
-    params_json: '{"max_cloaked_warp": 1, "advanced_cloak": false, "defense_level": -0.50, "race_type": "SCI"}'
+    params_json: '{"max_cloaked_warp": 3, "advanced_cloak": false, "defense_level": -0.50, "race_type": "is SCI, is WAR"}'
     display_order: 395
     enabled: True
 

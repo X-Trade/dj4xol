@@ -12,6 +12,44 @@ FIELD_LABEL_OVERRIDES = {
 }
 
 
+def _split_requirement_clauses(expression):
+    """Return top-level requirement clauses with connectors.
+
+    Supported forms:
+    - list/tuple: implicit OR across items
+    - comma-separated text: implicit OR, with optional "and"/"or" prefixes
+      on subsequent clauses (e.g. ``"is SCI, and has has_no_stealth == False"``)
+    """
+    if isinstance(expression, (list, tuple)):
+        clauses = []
+        for item in expression:
+            clauses.append({'operator': 'or', 'expression': item})
+        return clauses
+
+    text = str(expression or '').strip()
+    if not text or ',' not in text:
+        return None
+
+    parts = [part.strip() for part in text.split(',') if str(part or '').strip()]
+    if len(parts) <= 1:
+        return None
+
+    clauses = []
+    for part in parts:
+        operator = 'or'
+        clause = part
+        lower = part.lower()
+        if lower.startswith('and '):
+            operator = 'and'
+            clause = part[4:].strip()
+        elif lower.startswith('or '):
+            operator = 'or'
+            clause = part[3:].strip()
+        if clause:
+            clauses.append({'operator': operator, 'expression': clause})
+    return clauses or None
+
+
 def _tokenise(expression):
     text = str(expression or '').strip()
     if not text:
@@ -109,6 +147,20 @@ def _humanise_field_name(field):
 
 def describe_race_type_requirement(expression):
     """Return a human-readable description of a requirement expression."""
+    clauses = _split_requirement_clauses(expression)
+    if clauses:
+        described = []
+        for idx, clause in enumerate(clauses):
+            text = describe_race_type_requirement(clause['expression'])
+            if not text:
+                continue
+            if idx == 0 or not described:
+                described.append(text)
+                continue
+            joiner = ' and ' if clause['operator'] == 'and' else ' or '
+            described.append(joiner + text)
+        return ''.join(described)
+
     parsed = parse_race_type_requirement(expression)
     if parsed is None:
         return str(expression or '').strip()
@@ -136,6 +188,20 @@ def describe_race_type_requirement(expression):
 
 def race_type_requirement_matches(expression, race_type):
     """Return True when the race type satisfies the expression."""
+    clauses = _split_requirement_clauses(expression)
+    if clauses:
+        matched = None
+        for idx, clause in enumerate(clauses):
+            clause_match = race_type_requirement_matches(clause['expression'], race_type)
+            if idx == 0 or matched is None:
+                matched = clause_match
+                continue
+            if clause['operator'] == 'and':
+                matched = bool(matched) and bool(clause_match)
+            else:
+                matched = bool(matched) or bool(clause_match)
+        return bool(matched)
+
     parsed = parse_race_type_requirement(expression)
     if parsed is None:
         return False
@@ -202,6 +268,33 @@ def race_type_requirement_viewer_status(expression, race_type):
     - ``'excluded'`` when the selected race type is the one specifically blocked
     - ``None`` when the technology is not exceptional for the selected race type
     """
+    clauses = _split_requirement_clauses(expression)
+    if clauses:
+        status = None
+        for idx, clause in enumerate(clauses):
+            clause_status = race_type_requirement_viewer_status(
+                clause['expression'],
+                race_type,
+            )
+            if idx == 0:
+                status = clause_status
+                continue
+            if clause['operator'] == 'and':
+                if status == 'excluded' or clause_status == 'excluded':
+                    status = 'excluded'
+                elif status == 'included' and clause_status == 'included':
+                    status = 'included'
+                else:
+                    status = None
+            else:
+                if status == 'included' or clause_status == 'included':
+                    status = 'included'
+                elif status == 'excluded' or clause_status == 'excluded':
+                    status = 'excluded'
+                else:
+                    status = None
+        return status
+
     parsed = parse_race_type_requirement(expression)
     if parsed is None or race_type is None:
         return None

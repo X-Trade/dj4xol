@@ -1240,13 +1240,20 @@ class GameFactory():
         return effective_level, refunded_points
 
     def _apply_starting_research_level(self, player):
-        from .research import ensure_player_research_rows
+        from .research import (
+            ensure_player_research_rows,
+            sync_player_technology_unlocks_from_research,
+        )
         start_level = max(0, int(getattr(player, 'starting_tech_level', 0) or 0))
         rows = ensure_player_research_rows(player)
         for row in rows:
             row.current_level = float(start_level)
             row.stored_rp = 0.0
             row.save(update_fields=['current_level', 'stored_rp'])
+        sync_player_technology_unlocks_from_research(
+            player,
+            year=getattr(self.game, 'year', 0),
+        )
 
     def join_player(
         self,

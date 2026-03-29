@@ -21,6 +21,7 @@ from ..research import (
     get_player_colony_defense_level,
     get_player_colony_scanner_ranges,
     get_level_requirement,
+    sync_player_technology_unlocks_from_research,
 )
 from ..diplomatic_contracts import grant_player_technology
 from ..turn import (
@@ -49,6 +50,17 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = level
             row.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(
+            player,
+            year=getattr(player.game, 'year', 0),
+        )
+
+    def _sync_player_unlocks(self, player=None):
+        player = player or self.player
+        sync_player_technology_unlocks_from_research(
+            player,
+            year=getattr(player.game, 'year', 0),
+        )
 
     def test_build_lab_production_order(self):
         self.star.labs = 0
@@ -197,6 +209,7 @@ class ResearchTurnTest(TestCase):
 
         self.player.race_type = ServerRaceType.objects.get(code='MECH')
         self.player.save(update_fields=['race_type'])
+        self._sync_player_unlocks()
 
         effects = get_player_tech_effects(self.player)
         self.assertEqual(effects['has_miners'], 'LARGE')
@@ -466,6 +479,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 6.0
             row.save()
+        self._sync_player_unlocks()
 
         existing_ids = set(Fleet.objects.filter(player=self.player).values_list('id', flat=True))
         self.star.mines = 0
@@ -566,6 +580,94 @@ class ResearchTurnTest(TestCase):
         self.assertEqual(effects['max_cargo_capacity'], 500)
         self.assertEqual(effects['max_fuel'], 220)
         self.assertEqual(effects['hull_thumbnail_class'], 'freighter')
+
+    def test_research_unlocks_are_persisted_in_player_technology_records(self):
+        self._reset_research_catalog()
+        category = ResearchCategory.objects.create(
+            code='PERSIST_UNLOCK',
+            name='Persistent Unlocks',
+            enabled=True,
+        )
+        unlocked_tech = Technology.objects.create(
+            category=category,
+            level=1,
+            name='Persistent Warp',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 4}',
+            enabled=True,
+        )
+        rows = ensure_player_research_rows(self.player)
+        row = next(item for item in rows if item.category_id == category.id)
+        row.current_level = 0.0
+        row.stored_rp = 0.0
+        row.save(update_fields=['current_level', 'stored_rp'])
+
+        result = apply_research_bonus_rp(self.player, category.id, 1000)
+        self.assertIsNotNone(result)
+        row.refresh_from_db()
+        self.assertGreaterEqual(int(row.current_level or 0), 1)
+        grant = PlayerTechnologyGrant.objects.get(
+            player=self.player,
+            technology=unlocked_tech,
+        )
+        self.assertFalse(grant.obtained_via_diplomacy)
+
+    def test_player_retains_unlocked_technology_after_research_level_changes(self):
+        self._reset_research_catalog()
+        category = ResearchCategory.objects.create(
+            code='PERSIST_KEEP',
+            name='Persistent Keep',
+            enabled=True,
+        )
+        unlocked_tech = Technology.objects.create(
+            category=category,
+            level=1,
+            name='Persistent Scanner',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 3}',
+            enabled=True,
+        )
+        rows = ensure_player_research_rows(self.player)
+        row = next(item for item in rows if item.category_id == category.id)
+        row.current_level = 1.0
+        row.stored_rp = 0.0
+        row.save(update_fields=['current_level', 'stored_rp'])
+        self._sync_player_unlocks()
+
+        first_unlocked_ids = {
+            tech.id for tech in get_player_unlocked_technologies(self.player)
+        }
+        self.assertIn(unlocked_tech.id, first_unlocked_ids)
+
+        row.current_level = 0.0
+        row.save(update_fields=['current_level'])
+        second_unlocked_ids = {
+            tech.id for tech in get_player_unlocked_technologies(self.player)
+        }
+        self.assertIn(unlocked_tech.id, second_unlocked_ids)
+
+    def test_diplomatic_grant_records_diplomatic_source_flag(self):
+        self._reset_research_catalog()
+        category = ResearchCategory.objects.create(
+            code='PERSIST_DIPLO',
+            name='Persistent Diplomacy',
+            enabled=True,
+        )
+        gifted_tech = Technology.objects.create(
+            category=category,
+            level=3,
+            name='Gifted Beam',
+            tech_type='ENERGY_WEAPON',
+            params_json='{"offense_level": 0.2}',
+            enabled=True,
+        )
+
+        grant_player_technology(self.player, gifted_tech, year=self.game.year)
+        grant = PlayerTechnologyGrant.objects.get(
+            player=self.player,
+            technology=gifted_tech,
+        )
+        self.assertTrue(grant.obtained_via_diplomacy)
 
     def test_new_fleet_uses_granted_technology(self):
         self._reset_research_catalog()
@@ -701,6 +803,64 @@ class ResearchTurnTest(TestCase):
         ).values_list('message', flat=True))
         self.assertTrue(any('advanced' in str(message).lower() for message in messages))
 
+    def test_reverse_engineering_level_jump_syncs_research_grants_immediately(self):
+        self._reset_research_catalog()
+        category = ResearchCategory.objects.create(
+            code='RE_SYNC',
+            name='Reverse Sync',
+            enabled=True,
+        )
+        level1 = Technology.objects.create(
+            category=category,
+            level=1,
+            name='Reverse Level 1',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 3}',
+            enabled=True,
+        )
+        level2 = Technology.objects.create(
+            category=category,
+            level=2,
+            name='Reverse Level 2',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 4}',
+            enabled=True,
+        )
+        gifted = Technology.objects.create(
+            category=category,
+            level=3,
+            name='Reverse Gifted',
+            tech_type='PROPULSION',
+            params_json='{"max_warp_speed": 5}',
+            enabled=True,
+        )
+        rows = ensure_player_research_rows(self.player)
+        row = next(item for item in rows if item.category_id == category.id)
+        row.current_level = 0
+        row.stored_rp = 0
+        row.save(update_fields=['current_level', 'stored_rp'])
+
+        with patch('dj4xol.diplomatic_contracts.random.randint', side_effect=[2, 2]):
+            grant_player_technology(self.player, gifted, year=self.game.year)
+
+        row.refresh_from_db()
+        self.assertEqual(int(row.current_level or 0), 2)
+        self.assertTrue(PlayerTechnologyGrant.objects.filter(
+            player=self.player,
+            technology=gifted,
+            obtained_via_diplomacy=True,
+        ).exists())
+        self.assertTrue(PlayerTechnologyGrant.objects.filter(
+            player=self.player,
+            technology=level1,
+            obtained_via_diplomacy=False,
+        ).exists())
+        self.assertTrue(PlayerTechnologyGrant.objects.filter(
+            player=self.player,
+            technology=level2,
+            obtained_via_diplomacy=False,
+        ).exists())
+
     def test_merge_preserves_proportional_combat_with_tradeoff(self):
         fleet_a = Fleet.objects.create(
             game=self.game,
@@ -802,6 +962,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 2.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
 
         effects = get_player_tech_effects(self.player)
         # offense: 2^0.5 * 2^1 => 2^1.5, represented back as level 1.5
@@ -847,6 +1008,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 99.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
 
         effects = get_player_tech_effects(self.player)
         self.assertAlmostEqual(effects['offense_level'], 1.75, places=4)
@@ -882,6 +1044,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 4.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
 
         effects = get_player_tech_effects(self.player)
         self.assertAlmostEqual(effects['warp_advantage'], 0.6, places=4)
@@ -915,6 +1078,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 99.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
 
         effects = get_player_tech_effects(self.player)
         self.assertAlmostEqual(effects['offense_level'], 1.0, places=4)
@@ -941,6 +1105,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 1.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
 
         effects = get_player_tech_effects(self.player)
         self.assertEqual(effects['basic_scanner_range'], 9)
@@ -967,6 +1132,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 1.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
 
         basic, advanced = get_player_colony_scanner_ranges(self.player)
         self.assertEqual(basic, 2)
@@ -997,6 +1163,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 6.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
         effects = get_player_tech_effects(self.player)
         self.assertEqual(effects['basic_scanner_range'], 25)
         self.assertEqual(effects['advanced_scanner_range'], 5)
@@ -1026,6 +1193,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 8.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
         basic, advanced = get_player_colony_scanner_ranges(self.player)
         self.assertEqual(basic, 70)
         self.assertEqual(advanced, 18)
@@ -1055,6 +1223,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 2.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
 
         unlocked = get_player_unlocked_technologies(self.player)
         self.assertNotIn('War Warp', [tech.name for tech in unlocked])
@@ -1087,6 +1256,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 2.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
 
         basic, advanced = get_player_colony_scanner_ranges(self.player)
         self.assertEqual(basic, 20)
@@ -1131,6 +1301,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 3.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
 
         self.assertAlmostEqual(
             get_player_colony_defense_level(self.player), 0.7, places=4
@@ -1205,6 +1376,7 @@ class ResearchTurnTest(TestCase):
         for row in rows:
             row.current_level = 26.0
             row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
 
         effects = get_player_tech_effects(self.player)
         self.assertEqual(effects['has_bombs'], 'SUPERNOVA')

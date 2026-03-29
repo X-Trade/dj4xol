@@ -139,6 +139,7 @@ from .research import (
     apply_research_bonus_rp,
     ensure_player_research_rows,
     get_global_research_max_level,
+    sync_player_technology_unlocks_from_research,
     get_player_dyson_sphere_profile,
     get_player_production_costs,
     get_player_terraforming_profile,
@@ -564,6 +565,7 @@ class GameTurn():
             raise Exception("Turn generation already in progress")
         if not self.game.players.exists():
             raise Exception("cannot generate turn for game with no players")
+        self._sync_player_technology_grants_from_research()
         self._update_ai_checkin_state(auto_turn_in=False)
 
         started_at = time.perf_counter()
@@ -581,6 +583,14 @@ class GameTurn():
         self._reset_turn_ins()
         self.game.is_generating = False
         self.game.save()
+
+    def _sync_player_technology_grants_from_research(self):
+        """Reconcile canonical technology grants from current research levels."""
+        for player in self.game.players.select_related('game', 'race_type').all():
+            sync_player_technology_unlocks_from_research(
+                player,
+                year=getattr(self.game, 'year', 0),
+            )
 
     def _process_year(self):
         """Process a single year of game time."""
@@ -672,6 +682,11 @@ class GameTurn():
         old_level = int(row.current_level or 0)
         row.current_level = max_level
         row.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(
+            player,
+            category_ids=[row.category_id],
+            year=getattr(self.game, 'year', 0),
+        )
         self._create_research_unlock_messages(player, [{
             'category': row.category,
             'old_level': old_level,

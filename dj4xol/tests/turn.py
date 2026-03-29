@@ -35,13 +35,14 @@ from ..colony_rules import (
     COLONISTS_PER_JOB,
     BUILDPOINTS_PER_FACTORY,
 )
-from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, Report, ServerRaceType, DiplomaticContract
+from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, PlayerTechnologyGrant, Report, ServerRaceType, DiplomaticContract
 from ..factory import GameFactory
 from ..research import (
     ensure_player_research_rows,
     get_global_research_max_level,
     get_player_available_production_orders,
     get_player_production_costs,
+    sync_player_technology_unlocks_from_research,
 )
 from ..chance_rules import transfer_raid_success_chance
 from ..hazard_rules import DANGER_HIGH, DANGER_LOW, DANGER_MEDIUM, DANGER_NONE
@@ -761,6 +762,11 @@ class TestTerraforming(TestCase):
         )
         construction.current_level = 7
         construction.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(
+            player,
+            category_ids=[construction.category_id],
+            year=getattr(game, 'year', 0),
+        )
         # Set gravity away from player's ideal
         player_ideal = player.gravity_center
         if player_ideal >= 0.3:
@@ -791,6 +797,11 @@ class TestTerraforming(TestCase):
         )
         construction.current_level = 7
         construction.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(
+            player,
+            category_ids=[construction.category_id],
+            year=getattr(game, 'year', 0),
+        )
         gravity_ideal = player.gravity_center
         temp_ideal = player.temperature_center
         homeworld.gravity = max(0.0, gravity_ideal - 0.3)
@@ -819,6 +830,11 @@ class TestTerraforming(TestCase):
         )
         construction.current_level = 7
         construction.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(
+            player,
+            category_ids=[construction.category_id],
+            year=getattr(game, 'year', 0),
+        )
         player_ideal = player.gravity_center
         homeworld.gravity = max(0.0, player_ideal - 0.3)
         homeworld.save(update_fields=['gravity'])
@@ -1914,6 +1930,13 @@ class TestAnomalyInteractions(TestCase):
         row.refresh_from_db()
         self.assertGreater(int(row.current_level or 0), old_level)
         self.assertEqual(int(row.current_level or 0), max_level)
+        self.assertTrue(
+            PlayerTechnologyGrant.objects.filter(
+                player=player,
+                technology__category_id=row.category_id,
+                obtained_via_diplomacy=False,
+            ).exists()
+        )
         self.assertTrue(GameMessage.objects.filter(
             game=game,
             player=player,
@@ -6892,7 +6915,10 @@ class TestFleetTransferOrders(TestCase):
     def test_transfer_invasion_uses_colony_defense_technology(self):
         """Latest unlocked colony defense tech should strengthen defenses."""
         from ..models import FleetOrders, ResearchCategory, Technology
-        from ..research import ensure_player_research_rows
+        from ..research import (
+            ensure_player_research_rows,
+            sync_player_technology_unlocks_from_research,
+        )
 
         def _run_invasion(with_colony_tech):
             game = default_game(stars=2)
@@ -6933,6 +6959,11 @@ class TestFleetTransferOrders(TestCase):
                 for row in ensure_player_research_rows(defender):
                     row.current_level = 2.0
                     row.save(update_fields=['current_level'])
+                sync_player_technology_unlocks_from_research(
+                    defender,
+                    category_ids=[category.id],
+                    year=getattr(game, 'year', 0),
+                )
 
             fleet = Fleet.objects.create(
                 game=game,
@@ -7488,7 +7519,10 @@ class TestFleetTransferOrders(TestCase):
 
     def test_hostile_orbit_hazard_uses_colony_defense_technology(self):
         from ..models import ResearchCategory, Technology
-        from ..research import ensure_player_research_rows
+        from ..research import (
+            ensure_player_research_rows,
+            sync_player_technology_unlocks_from_research,
+        )
 
         def _run_hazard(with_colony_tech):
             game = default_game(stars=2)
@@ -7534,6 +7568,11 @@ class TestFleetTransferOrders(TestCase):
                 for row in ensure_player_research_rows(defender):
                     row.current_level = 2.0
                     row.save(update_fields=['current_level'])
+                sync_player_technology_unlocks_from_research(
+                    defender,
+                    category_ids=[category.id],
+                    year=getattr(game, 'year', 0),
+                )
 
             fleet = Fleet.objects.create(
                 game=game,
@@ -7556,7 +7595,10 @@ class TestFleetTransferOrders(TestCase):
 
     def test_owned_star_defenses_tooltip_shows_effective_and_modifier(self):
         from ..models import ResearchCategory, Technology
-        from ..research import ensure_player_research_rows
+        from ..research import (
+            ensure_player_research_rows,
+            sync_player_technology_unlocks_from_research,
+        )
         from ..objectdetails import DetailBuilder
 
         game = default_game(stars=2)
@@ -7587,6 +7629,11 @@ class TestFleetTransferOrders(TestCase):
         for row in ensure_player_research_rows(player):
             row.current_level = 2.0
             row.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(
+            player,
+            category_ids=[category.id],
+            year=getattr(game, 'year', 0),
+        )
 
         detail = DetailBuilder(
             game, x=star.x, y=star.y, selected=star.short_id, player=player
@@ -7662,7 +7709,10 @@ class TestFleetTransferOrders(TestCase):
     def test_owned_star_scanners_show_race_scan_multiplier_suffix(self):
         from ..objectdetails import DetailBuilder
         from ..models import ResearchCategory, Technology
-        from ..research import ensure_player_research_rows
+        from ..research import (
+            ensure_player_research_rows,
+            sync_player_technology_unlocks_from_research,
+        )
 
         game = default_game(stars=2)
         player = game.players.first()
@@ -7688,6 +7738,11 @@ class TestFleetTransferOrders(TestCase):
         for row in ensure_player_research_rows(player):
             row.current_level = 1.0
             row.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(
+            player,
+            category_ids=[category.id],
+            year=getattr(game, 'year', 0),
+        )
 
         detail = DetailBuilder(
             game, x=star.x, y=star.y, selected=star.short_id, player=player
@@ -7697,7 +7752,10 @@ class TestFleetTransferOrders(TestCase):
     def test_foreign_star_encounter_report_shows_scanners_without_trait_suffix(self):
         from ..objectdetails import DetailBuilder
         from ..models import Report, ResearchCategory, Technology
-        from ..research import ensure_player_research_rows
+        from ..research import (
+            ensure_player_research_rows,
+            sync_player_technology_unlocks_from_research,
+        )
 
         game = default_game(stars=2)
         player = game.players.first()
@@ -7729,6 +7787,11 @@ class TestFleetTransferOrders(TestCase):
         for row in ensure_player_research_rows(other_player):
             row.current_level = 1.0
             row.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(
+            other_player,
+            category_ids=[category.id],
+            year=getattr(game, 'year', 0),
+        )
 
         star = game.stars.exclude(pk=player.homeworld.pk).first()
         star.player = other_player
