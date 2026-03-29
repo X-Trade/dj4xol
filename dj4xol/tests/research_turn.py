@@ -199,6 +199,17 @@ class ResearchTurnTest(TestCase):
 
         self.assertIn('Prototype Wormhole Drive', unlocked_names)
 
+    def test_scientists_do_not_unlock_prototype_cloak(self):
+        from ..models import ServerRaceType
+
+        self.player.race_type = ServerRaceType.objects.get(code='SCI')
+        self.player.save(update_fields=['race_type'])
+        self._unlock_all_research_for_player()
+
+        unlocked_names = {tech.name for tech in get_player_unlocked_technologies(self.player)}
+
+        self.assertNotIn('Prototype Cloak', unlocked_names)
+
     def test_advanced_remote_miners_require_race_trait(self):
         from ..models import ServerRaceType
 
