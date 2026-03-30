@@ -2449,3 +2449,54 @@ class ReportTierMergeTest(TestCase):
         )
         report.refresh_from_db()
         self.assertEqual(report.get_report_data().get('report_tier'), 'encounter')
+
+    def test_equal_tier_fleet_refresh_preserves_richer_cargo_snapshot(self):
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Cargo Witness',
+            x=12,
+            y=12,
+            ship_count=3,
+            integrity=85,
+            cargo_capacity=200,
+            ironium_inventory=40,
+            fuel=33.0,
+            max_fuel=60.0,
+            max_safe_warp=7,
+            basic_scanner_range=6,
+            advanced_scanner_range=2,
+        )
+        turn = GameTurn(self.game)
+
+        # First write a full encounter+cargo fleet report.
+        turn._create_or_update_report(
+            self.player,
+            'fleet',
+            fleet,
+            self.game.year,
+            report_tier='encounter',
+            include_cargo=True,
+        )
+        # Then refresh same-tier encounter without cargo payload.
+        turn._create_or_update_report(
+            self.player,
+            'fleet',
+            fleet,
+            self.game.year + 1,
+            report_tier='encounter',
+            include_cargo=False,
+        )
+
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player,
+            target_type='fleet',
+            target_id=fleet.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'encounter')
+        self.assertEqual(data.get('cargo_capacity'), 200)
+        self.assertEqual(data.get('ironium_inventory'), 40)
+        self.assertEqual(data.get('max_safe_warp'), 7)
+        self.assertEqual(data.get('advanced_scanner_range'), 2)

@@ -372,3 +372,55 @@
         height: clamp(160px, 42vw, 210px);
     }
 }
+
+.help-version-history .version-history-content > p:first-child {
+    margin-bottom: 12px;
+}
+
+.help-version-history .version-history-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.help-version-history .version-history-section {
+    margin: 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--panel-content-border, rgba(128, 128, 128, 0.45));
+}
+
+.help-version-history .version-history-section:last-child {
+    border-bottom: none;
+}
+
+.help-version-history .collapsible-header {
+    margin: 0;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.help-version-history .collapse-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    text-align: center;
+    font-weight: bold;
+    color: inherit;
+    opacity: 0.85;
+}
+
+.help-version-history .collapsible-content {
+    padding-left: 1.35em;
+}
+
+.help-version-history .version-history-section.collapsed .collapsible-content {
+    display: none;
+}
+
+.help-version-history .version-history-section .game-list {
+    margin-top: 6px;
+}

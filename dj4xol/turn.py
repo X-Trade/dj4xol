@@ -2184,6 +2184,8 @@ class GameTurn():
             existing_data = report.get_report_data()
             existing_owner_known = bool(existing_data.get('player_name'))
             existing_tier = existing_data.get('report_tier') or 'advanced'
+            existing_rank = self._report_tier_rank(existing_tier)
+            incoming_rank = self._report_tier_rank(report_tier)
             report.year = year
             report.game = self.game
             fresh_data = self._build_report_data(
@@ -2199,7 +2201,14 @@ class GameTurn():
                     target_type,
                     fresh_data,
                 )
-            if self._report_tier_rank(existing_tier) > self._report_tier_rank(report_tier):
+            should_merge_refresh = existing_rank > incoming_rank
+            if (
+                not should_merge_refresh and
+                existing_rank == incoming_rank and
+                self._should_merge_equal_tier_refresh(target_type, existing_data, fresh_data)
+            ):
+                should_merge_refresh = True
+            if should_merge_refresh:
                 report_data = self._merge_report_refresh(
                     target_type,
                     existing_data,
@@ -2301,6 +2310,45 @@ class GameTurn():
                 merged['salvage_type'] = existing_data.get('salvage_type')
 
         return merged
+
+    @staticmethod
+    def _fleet_report_has_cargo_snapshot(data):
+        if not isinstance(data, dict):
+            return False
+        # A richer fleet snapshot includes cargo plus encounter capability fields.
+        keys = (
+            'cargo_capacity',
+            'cargo_used',
+            'cargo_remaining',
+            'fuel',
+            'max_fuel',
+            'ironium_inventory',
+            'boranium_inventory',
+            'germanium_inventory',
+            'resource_x_inventory',
+            'resource_y_inventory',
+            'resource_z_inventory',
+            'colonists',
+            'max_safe_warp',
+            'offense_modifier',
+            'defense_modifier',
+            'has_bombs',
+            'has_miners',
+            'basic_scanner_range',
+            'advanced_scanner_range',
+        )
+        for key in keys:
+            if key in data and data.get(key) is not None:
+                return True
+        return False
+
+    def _should_merge_equal_tier_refresh(self, target_type, existing_data, fresh_data):
+        if target_type != 'fleet':
+            return False
+        return (
+            self._fleet_report_has_cargo_snapshot(existing_data) and
+            not self._fleet_report_has_cargo_snapshot(fresh_data)
+        )
 
     def _queue_scanner_habitable_star(
         self,

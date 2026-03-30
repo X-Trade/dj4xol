@@ -10,7 +10,7 @@
         {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
         <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
     </head>
-    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index single-panel-page">
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index help-version-history single-panel-page">
         <div class="title-bar">
             <span class="title">Version History</span>
             <span class="tagline">Recent Development Log</span>
@@ -21,10 +21,16 @@
                 <div class="panel no-transition open" data-panel="help-version-history">
                     <h2><span>Recent Developments</span><span class="panel-toggle"></span></h2>
                     <div class="panel-content panel-stack">
-                        <section class="panel-scrollable-text">
+                        <section class="panel-scrollable-text version-history-content" id="version-history-content">
                         <p>
                             This is a user-facing summary of recent developments.
                         </p>
+
+                        <h4><span class="env-label">v0.21.10</span></h4>
+                        <ul class="game-list">
+                            <li>Preserve richer fleet cargo/capability snapshots across same-tier refreshes.</li>
+                            <li>Prevent same-tier fleet report refresh from dropping encounter cargo/capability fields.</li>
+                        </ul>
 
                         <h4><span class="env-label">v0.21.9</span></h4>
                         <ul class="game-list">
@@ -817,6 +823,105 @@
         </div>
         <script>
             (function() {
+                function initVersionHistoryCollapsibles() {
+                    var historyRoot = document.getElementById('version-history-content');
+                    if (!historyRoot) return;
+
+                    var children = Array.prototype.slice.call(historyRoot.children);
+                    var firstVersionIndex = -1;
+                    for (var i = 0; i < children.length; i += 1) {
+                        if ((children[i].tagName || '').toUpperCase() === 'H4') {
+                            firstVersionIndex = i;
+                            break;
+                        }
+                    }
+                    if (firstVersionIndex === -1) return;
+
+                    var entries = [];
+                    var currentHeader = null;
+                    var currentNodes = [];
+                    for (var j = firstVersionIndex; j < children.length; j += 1) {
+                        var node = children[j];
+                        if ((node.tagName || '').toUpperCase() === 'H4') {
+                            if (currentHeader) {
+                                entries.push({
+                                    header: currentHeader,
+                                    nodes: currentNodes
+                                });
+                            }
+                            currentHeader = node;
+                            currentNodes = [];
+                            continue;
+                        }
+                        if (currentHeader) {
+                            currentNodes.push(node);
+                        }
+                    }
+                    if (currentHeader) {
+                        entries.push({
+                            header: currentHeader,
+                            nodes: currentNodes
+                        });
+                    }
+                    if (!entries.length) return;
+
+                    while (historyRoot.children.length > firstVersionIndex) {
+                        historyRoot.removeChild(historyRoot.lastElementChild);
+                    }
+
+                    var sectionsRoot = document.createElement('div');
+                    sectionsRoot.className = 'version-history-sections';
+
+                    entries.forEach(function(entry, index) {
+                        var section = document.createElement('div');
+                        section.className = 'collapsible-section version-history-section';
+                        var labelText = (entry.header.textContent || '').trim().toLowerCase();
+                        var slug = labelText.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+                        section.setAttribute('data-section', slug || ('version-' + (index + 1)));
+
+                        var header = document.createElement('h4');
+                        header.className = 'collapsible-header';
+
+                        var toggle = document.createElement('span');
+                        toggle.className = 'collapse-toggle';
+                        var isOpenByDefault = index < 5;
+                        toggle.textContent = isOpenByDefault ? '−' : '+';
+                        header.appendChild(toggle);
+                        header.appendChild(document.createTextNode(' '));
+
+                        var envLabel = entry.header.querySelector('.env-label');
+                        if (envLabel) {
+                            header.appendChild(envLabel.cloneNode(true));
+                        } else {
+                            header.appendChild(document.createTextNode((entry.header.textContent || '').trim()));
+                        }
+
+                        var content = document.createElement('div');
+                        content.className = 'collapsible-content';
+                        entry.nodes.forEach(function(contentNode) {
+                            content.appendChild(contentNode);
+                        });
+
+                        if (!isOpenByDefault) {
+                            section.classList.add('collapsed');
+                        }
+
+                        header.addEventListener('click', function() {
+                            section.classList.toggle('collapsed');
+                            var isCollapsed = section.classList.contains('collapsed');
+                            toggle.textContent = isCollapsed ? '+' : '−';
+                        });
+
+                        section.appendChild(header);
+                        section.appendChild(content);
+                        sectionsRoot.appendChild(section);
+                    });
+
+                    historyRoot.appendChild(sectionsRoot);
+                }
+
+                initVersionHistoryCollapsibles();
+
                 var panels = document.querySelectorAll('.panel');
                 panels.forEach(function(panel) {
                     var header = panel.querySelector('h2');
