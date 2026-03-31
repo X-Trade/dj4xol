@@ -11,6 +11,7 @@ from ..messages import (
     MineralGiftMessageFactory,
     FleetTransferredMessageFactory,
     FleetReceivedMessageFactory,
+    FleetRefueledMessageFactory,
     OrbitalDefenseHitMessageFactory,
     TransferRaidThwartedMessageFactory,
 )
@@ -103,6 +104,7 @@ class TestFleetReferenceMessageFactories(TestCase):
             MineralGiftMessageFactory(game, player, fleet, star, {'ironium': 25}),
             FleetTransferredMessageFactory(game, player, fleet, recipient_name='Someone'),
             FleetReceivedMessageFactory(game, player, fleet, 'Someone'),
+            FleetRefueledMessageFactory(game, player, fleet, fleet, 12.0),
             OrbitalDefenseHitMessageFactory(game, player, star, fleet, 12),
             TransferRaidThwartedMessageFactory(
                 game, player, fleet, star, 'Aliens', 'Ironium', 7

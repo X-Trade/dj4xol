@@ -8953,6 +8953,14 @@ class TestFleetOrderExecution(TestCase):
         self.assertAlmostEqual(source.fuel, 20.0, places=4)
         self.assertAlmostEqual(target.fuel, 15.0, places=4)
         self.assertFalse(source.orders.filter(order_type='REFUEL').exists())
+        recipient_msg = GameMessage.objects.filter(
+            game=game,
+            player=other_player,
+            message__icontains='was given 10mg fuel by',
+        ).order_by('-id').first()
+        self.assertIsNotNone(recipient_msg)
+        self.assertIn(source.short_id, recipient_msg.message)
+        self.assertIn(target.short_id, recipient_msg.message)
 
     def test_transfer_orders_execute_once_per_turn(self):
         """Test that repeating transfer orders only execute once per turn."""

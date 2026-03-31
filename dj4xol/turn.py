@@ -36,6 +36,7 @@ from .messages import (
     FleetMergedMessageFactory,
     FleetTransferredMessageFactory,
     FleetReceivedMessageFactory,
+    FleetRefueledMessageFactory,
     FleetOrdersCompletedMessageFactory,
     FleetBuildBlockedNoShipyardMessageFactory,
     FleetRepairedMessageFactory,
@@ -5004,6 +5005,23 @@ class GameTurn():
         )
         source_fleet.save(update_fields=['fuel'])
         target_fleet.save(update_fields=['fuel'])
+
+        source_player = getattr(source_fleet, 'player', None)
+        target_player = getattr(target_fleet, 'player', None)
+        if (
+            source_player is not None and
+            target_player is not None and
+            getattr(source_player, 'id', None) != getattr(target_player, 'id', None)
+        ):
+            msg = FleetRefueledMessageFactory(
+                self.game,
+                target_player,
+                target_fleet,
+                source_fleet,
+                transfer_amount,
+            ).new_message()
+            msg.year = self.game.year
+            msg.save()
         return 'executed'
 
     def _transfer_with_space(self, fleet, order, target_x, target_y):

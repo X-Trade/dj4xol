@@ -1421,6 +1421,39 @@ class FleetReceivedMessageFactory(MessageFactory):
         )
 
 
+class FleetRefueledMessageFactory(MessageFactory):
+    """Messages for cross-player fuel transfers."""
+    category = 'DIPLOMATIC'
+    priority = True
+    templates = [
+        "{target_fleet} was given {fuel_amount}mg fuel by {source_fleet}.",
+    ]
+
+    def __init__(self, game, player, target_fleet, source_fleet, fuel_amount, message=None):
+        super().__init__(game, player, message, intensity=0.1)
+        self.target_fleet = target_fleet
+        self.source_fleet = source_fleet
+        self.fuel_amount = fuel_amount
+
+    @staticmethod
+    def _format_fuel_amount(amount):
+        try:
+            value = float(amount or 0.0)
+        except (TypeError, ValueError):
+            value = 0.0
+        rounded = round(value, 3)
+        if int(rounded) == rounded:
+            return str(int(rounded))
+        return ('%.3f' % rounded).rstrip('0').rstrip('.')
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            target_fleet=format_map_object_reference(self.target_fleet),
+            fuel_amount=self._format_fuel_amount(self.fuel_amount),
+            source_fleet=format_map_object_reference(self.source_fleet),
+        )
+
+
 class ColonyTransferredMessageFactory(MessageFactory):
     """Messages for colony ownership transfers initiated by the current owner."""
     category = 'GENERAL'
