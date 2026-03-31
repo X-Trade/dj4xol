@@ -1501,6 +1501,163 @@ class ScannerReportTest(TestCase):
             ).exists()
         )
 
+    def test_cloaked_fleet_hidden_from_shared_intel_but_still_detectable_by_advanced_scanners(self):
+        from ..scanners import fleet_visible_to_player, get_scanner_sources_for_player
+
+        scanner = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Deep Scan',
+            x=60,
+            y=60,
+            basic_scanner_range=0,
+            advanced_scanner_range=8,
+        )
+        shared_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Cloaked Contact',
+            x=64,
+            y=60,
+            ship_count=3,
+            integrity=77,
+            max_cloaked_warp=5,
+            travel_warp=3,
+            advanced_cloak=False,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player2,
+            target_player=self.player1,
+            stance='ALLIED',
+            reveal_cloaked_fleets=False,
+        )
+
+        turn = GameTurn(self.game)
+        turn.generate_shared_intel_reports()
+        self.assertFalse(
+            Report.objects.filter(
+                game=self.game,
+                player=self.player1,
+                target_type='fleet',
+                target_id=shared_fleet.id,
+            ).exists()
+        )
+
+        turn.generate_scanner_reports()
+        report = Report.objects.filter(
+            game=self.game,
+            player=self.player1,
+            target_type='fleet',
+            target_id=shared_fleet.id,
+        ).first()
+        self.assertIsNotNone(report)
+        self.assertEqual(report.get_report_data().get('report_tier'), 'advanced')
+        sources = get_scanner_sources_for_player(self.game, self.player1)
+        self.assertTrue(fleet_visible_to_player(shared_fleet, self.player1, sources=sources))
+        self.assertEqual((scanner.x, scanner.y), (60, 60))
+
+    def test_allied_intel_and_scanners_are_not_transitive(self):
+        from ..scanners import get_scanner_sources_for_player
+
+        user3 = User.objects.create_user('scanner_p3_chain', 'sp3_chain@test.com', 'pass')
+        account3 = Account.objects.create(django_user=user3)
+        player3 = GameFactory(self.game).join_player(account3, get_default_race())
+
+        # A owns scanner sources and target fleet.
+        a_scanner = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='A Scanner',
+            x=20,
+            y=20,
+            basic_scanner_range=0,
+            advanced_scanner_range=15,
+        )
+        a_target = Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='A Target',
+            x=30,
+            y=20,
+            ship_count=3,
+            integrity=88,
+        )
+        self.player1.homeworld.x = 18
+        self.player1.homeworld.y = 20
+        self.player1.homeworld.save(update_fields=['x', 'y'])
+
+        # B has no useful scanners/reports of A target, but is allied with both A and C.
+        self.player2.homeworld.x = 80
+        self.player2.homeworld.y = 80
+        self.player2.homeworld.save(update_fields=['x', 'y'])
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='B Local',
+            x=80,
+            y=80,
+            basic_scanner_range=6,
+            advanced_scanner_range=0,
+        )
+        player3.homeworld.x = 82
+        player3.homeworld.y = 80
+        player3.homeworld.save(update_fields=['x', 'y'])
+
+        # A <-> B allied, B <-> C allied, A and C are not allied.
+        PlayerDiplomaticStance.objects.create(
+            player=self.player1,
+            target_player=self.player2,
+            stance='ALLIED',
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player2,
+            target_player=self.player1,
+            stance='ALLIED',
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player2,
+            target_player=player3,
+            stance='ALLIED',
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=player3,
+            target_player=self.player2,
+            stance='ALLIED',
+        )
+
+        turn = GameTurn(self.game)
+        turn.generate_shared_intel_reports()
+        turn.generate_scanner_reports()
+
+        # C should not receive A's fleet report through B.
+        self.assertFalse(
+            Report.objects.filter(
+                game=self.game,
+                player=player3,
+                target_type='fleet',
+                target_id=a_target.id,
+            ).exists()
+        )
+        # C should not receive A's colony report through B.
+        self.assertFalse(
+            Report.objects.filter(
+                game=self.game,
+                player=player3,
+                target_type='star',
+                target_id=self.player1.homeworld.id,
+            ).exists()
+        )
+
+        # Scanner sharing to C should include only C and direct grantors (B), not A.
+        owners = {
+            int(src.get('owner_id'))
+            for src in get_scanner_sources_for_player(self.game, player3)
+            if src.get('owner_id') is not None
+        }
+        self.assertNotIn(int(self.player1.id), owners)
+        self.assertIn(int(self.player2.id), owners)
+        self.assertEqual((a_scanner.x, a_scanner.y), (20, 20))
+
     def test_allied_intel_keeps_secret_resource_unknown_and_sends_warning(self):
         shared_star = self.player2.homeworld
         shared_star.resource_x_yield = 9

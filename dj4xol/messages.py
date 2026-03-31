@@ -1423,7 +1423,7 @@ class FleetReceivedMessageFactory(MessageFactory):
 
 class FleetRefueledMessageFactory(MessageFactory):
     """Messages for cross-player fuel transfers."""
-    category = 'DIPLOMATIC'
+    category = 'GENERAL'
     priority = True
     templates = [
         "{target_fleet} was given {fuel_amount}mg fuel by {source_fleet}.",
