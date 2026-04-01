@@ -1334,6 +1334,14 @@ class ResearchTurnTest(TestCase):
             enabled=True,
         )
         Technology.objects.create(
+            category=materials,
+            level=10,
+            name='Neutron Bombs',
+            tech_type='BOMB',
+            params_json='{"has_bombs":"NEUTRON"}',
+            enabled=True,
+        )
+        Technology.objects.create(
             category=electronics,
             level=10,
             name='Smart Bombs',
@@ -1347,6 +1355,14 @@ class ResearchTurnTest(TestCase):
             name='Nova Bombs',
             tech_type='BOMB',
             params_json='{"has_bombs":"NOVA"}',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=materials,
+            level=20,
+            name='Graviton Bombs',
+            tech_type='BOMB',
+            params_json='{"has_bombs":"GRAVITON"}',
             enabled=True,
         )
         Technology.objects.create(

@@ -188,7 +188,14 @@ from .chance_rules import (
     anomaly_spawn_chance,
 )
 from .bombardment_rules import (
+    apply_dyson_bombardment_damping,
+    apply_graviton_bomb_environment_shift,
+    apply_neutron_bomb_environment_shift,
+    apply_nova_family_environment_shift,
     bombardment_damage_k,
+    graviton_bombs_apply_gravity_shift,
+    neutron_bomb_collateral_damage_k,
+    neutron_bombs_target_population_shipyards_and_cities,
     normalize_bomb_type,
     normalize_miner_type,
     smart_bombs_only_target_defenses_and_population,
@@ -6235,8 +6242,20 @@ class GameTurn():
             bomb_type,
         )
         damage_k = max(0, int(round(damage_k * bombardment_multiplier)))
+        damage_k = apply_dyson_bombardment_damping(
+            damage_k,
+            pre['has_dyson_sphere'],
+        )
 
-        defenses_lost = min(pre['defenses'], damage_k)
+        is_smart = smart_bombs_only_target_defenses_and_population(bomb_type)
+        is_neutron = neutron_bombs_target_population_shipyards_and_cities(bomb_type)
+        is_graviton = graviton_bombs_apply_gravity_shift(bomb_type)
+        neutron_collateral_k = neutron_bomb_collateral_damage_k(damage_k) if is_neutron else 0
+
+        defenses_lost = min(
+            pre['defenses'],
+            neutron_collateral_k if is_neutron else damage_k,
+        )
         colonists_lost = min(pre['colonists'], damage_k * 1000)
         star.defenses = max(0, pre['defenses'] - defenses_lost)
         star.colonists = max(0, pre['colonists'] - colonists_lost)
@@ -6249,7 +6268,27 @@ class GameTurn():
         megacities_lost = 0
         administration_lost = 0
         dyson_sphere_lost = 0
-        if not smart_bombs_only_target_defenses_and_population(bomb_type):
+        if is_neutron:
+            mines_lost = min(pre['mines'], neutron_collateral_k)
+            factories_lost = min(pre['factories'], neutron_collateral_k)
+            labs_lost = min(pre['labs'], neutron_collateral_k)
+            shipyards_lost = min(pre['shipyards'], damage_k)
+            cities_lost = min(pre['cities'], damage_k)
+            megacities_lost = min(pre['megacities'], damage_k)
+            star.mines = max(0, pre['mines'] - mines_lost)
+            star.factories = max(0, pre['factories'] - factories_lost)
+            star.labs = max(0, pre['labs'] - labs_lost)
+            star.shipyards = max(0, pre['shipyards'] - shipyards_lost)
+            star.cities = max(0, pre['cities'] - cities_lost)
+            star.megacities = max(0, pre['megacities'] - megacities_lost)
+            (
+                star.temperature,
+                star.radiation,
+            ) = apply_neutron_bomb_environment_shift(
+                getattr(star, 'temperature', 0.0),
+                getattr(star, 'radiation', 0.0),
+            )
+        elif not is_smart:
             mines_lost = min(pre['mines'], damage_k)
             factories_lost = min(pre['factories'], damage_k)
             labs_lost = min(pre['labs'], damage_k)
@@ -6258,7 +6297,11 @@ class GameTurn():
             megacities_lost = min(pre['megacities'], damage_k)
             if pre['has_administration'] and damage_k > 0:
                 administration_lost = 1
-            if pre['has_dyson_sphere'] and damage_k > 0:
+            if (
+                pre['has_dyson_sphere'] and
+                damage_k > 0 and
+                bomb_type in {'NOVA', 'SUPERNOVA'}
+            ):
                 dyson_sphere_lost = 1
             star.mines = max(0, pre['mines'] - mines_lost)
             star.factories = max(0, pre['factories'] - factories_lost)
@@ -6270,6 +6313,11 @@ class GameTurn():
                 star.has_administration = False
             if dyson_sphere_lost:
                 star.has_dyson_sphere = False
+
+        if is_graviton:
+            star.gravity = apply_graviton_bomb_environment_shift(
+                getattr(star, 'gravity', 0.0),
+            )
 
         star_destroyed = False
         destroyed_star_name = star.name
@@ -6299,8 +6347,15 @@ class GameTurn():
             star_snapshot = self._destroy_star_for_bombardment(star, order, fleet)
             self._create_nova_star_remnant(star_snapshot)
         else:
+            if bomb_type in {'NOVA', 'SUPERNOVA'}:
+                star.gravity, star.radiation = apply_nova_family_environment_shift(
+                    getattr(star, 'gravity', 0.0),
+                    getattr(star, 'radiation', 0.0),
+                    bomb_type,
+                )
             star.save(update_fields=[
-                'defenses', 'colonists', 'mines', 'factories', 'labs',
+                'gravity', 'defenses', 'colonists', 'temperature', 'radiation',
+                'mines', 'factories', 'labs',
                 'shipyards', 'cities', 'megacities',
                 'has_administration', 'has_dyson_sphere',
             ])
@@ -7324,7 +7379,14 @@ class GameTurn():
         target_fleet.integrity = avg_integrity
         source_bomb = normalize_bomb_type(source_fleet.has_bombs)
         target_bomb = normalize_bomb_type(target_fleet.has_bombs)
-        bomb_priority = {'CONVENTIONAL': 1, 'SMART': 2, 'NOVA': 3, 'SUPERNOVA': 4}
+        bomb_priority = {
+            'CONVENTIONAL': 1,
+            'NEUTRON': 2,
+            'SMART': 3,
+            'GRAVITON': 4,
+            'NOVA': 5,
+            'SUPERNOVA': 6,
+        }
         if bomb_priority.get(source_bomb, 0) > bomb_priority.get(target_bomb, 0):
             target_fleet.has_bombs = source_bomb
 

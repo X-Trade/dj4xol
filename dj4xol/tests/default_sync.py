@@ -130,6 +130,22 @@ class DefaultSyncTest(TestCase):
         self.assertEqual(
             json.loads(smart_bombs.params_json).get('race_type'), 'not WAR'
         )
+        neutron_bombs = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000607'
+        )
+        self.assertEqual(neutron_bombs.level, 10)
+        self.assertEqual(
+            json.loads(neutron_bombs.params_json).get('has_bombs'),
+            'NEUTRON',
+        )
+        graviton_bombs = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000608'
+        )
+        self.assertEqual(graviton_bombs.level, 20)
+        self.assertEqual(
+            json.loads(graviton_bombs.params_json).get('has_bombs'),
+            'GRAVITON',
+        )
         nova_bombs = Technology.objects.get(
             id='00000000-0000-0000-0000-000000000605'
         )

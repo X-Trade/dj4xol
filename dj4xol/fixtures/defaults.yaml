@@ -1592,6 +1592,19 @@
     description: 'Guided bombardment payloads focused on defenses and population centers.'
     tech_type: 'BOMB'
     params_json: '{"has_bombs": "SMART", "race_type": "not WAR"}'
+    display_order: 250
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000607"
+  fields:
+    short_id: "tech00000607"
+    category: 3
+    level: 10
+    name: 'Neutron Bombs'
+    description: 'Intense radiation bombardment payloads that devastate populations and major urban infrastructure.'
+    tech_type: 'BOMB'
+    params_json: '{"has_bombs": "NEUTRON"}'
     display_order: 249
     enabled: True
 
@@ -1605,7 +1618,20 @@
     description: 'Unstable stellar-devastation weapons with catastrophic potential.'
     tech_type: 'BOMB'
     params_json: '{"has_bombs": "NOVA"}'
-    display_order: 250
+    display_order: 252
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000608"
+  fields:
+    short_id: "tech00000608"
+    category: 3
+    level: 20
+    name: 'Graviton Bombs'
+    description: 'Crushing gravity-wave warheads that devastate colonies and permanently increase local gravity.'
+    tech_type: 'BOMB'
+    params_json: '{"has_bombs": "GRAVITON"}'
+    display_order: 251
     enabled: True
 
 - model: dj4xol.Technology
@@ -1618,7 +1644,7 @@
     description: 'System-shattering stellar weapons that annihilate every star in a coordinate.'
     tech_type: 'BOMB'
     params_json: '{"has_bombs": "SUPERNOVA", "defense_level": -1.5}'
-    display_order: 251
+    display_order: 253
     enabled: True
 
 - model: dj4xol.Technology

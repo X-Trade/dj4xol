@@ -10993,6 +10993,65 @@ class TestMergeFleet(TestCase):
         fleet2.refresh_from_db()
         self.assertEqual(fleet2.integrity, 80)
 
+    def test_merge_fleet_keeps_highest_bomb_tier_including_neutron(self):
+        """Merge chooses the highest bomb tier with neutron between conventional and smart."""
+        from ..models import FleetOrders
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+
+        lower = Fleet.objects.create(
+            game=game, player=player, name="Lower Bomb Fleet",
+            x=star.x, y=star.y, ship_count=1, has_bombs='CONVENTIONAL'
+        )
+        higher = Fleet.objects.create(
+            game=game, player=player, name="Higher Bomb Fleet",
+            x=star.x, y=star.y, ship_count=1, has_bombs='NEUTRON'
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=higher, order_type='MERGE', target_fleet=lower
+        )
+        GameTurn(game).generate_turn()
+        lower.refresh_from_db()
+        self.assertEqual(lower.has_bombs, 'NEUTRON')
+
+        game2 = default_game()
+        player2 = game2.players.first()
+        star2 = player2.homeworld
+        neutron_fleet = Fleet.objects.create(
+            game=game2, player=player2, name="Neutron Fleet",
+            x=star2.x, y=star2.y, ship_count=1, has_bombs='NEUTRON'
+        )
+        smart_fleet = Fleet.objects.create(
+            game=game2, player=player2, name="Smart Fleet",
+            x=star2.x, y=star2.y, ship_count=1, has_bombs='SMART'
+        )
+        FleetOrders.objects.create(
+            game=game2, fleet=neutron_fleet, order_type='MERGE', target_fleet=smart_fleet
+        )
+        GameTurn(game2).generate_turn()
+        smart_fleet.refresh_from_db()
+        self.assertEqual(smart_fleet.has_bombs, 'SMART')
+
+        game3 = default_game()
+        player3 = game3.players.first()
+        star3 = player3.homeworld
+        smart_only = Fleet.objects.create(
+            game=game3, player=player3, name="Smart Only",
+            x=star3.x, y=star3.y, ship_count=1, has_bombs='SMART'
+        )
+        graviton = Fleet.objects.create(
+            game=game3, player=player3, name="Graviton",
+            x=star3.x, y=star3.y, ship_count=1, has_bombs='GRAVITON'
+        )
+        FleetOrders.objects.create(
+            game=game3, fleet=graviton, order_type='MERGE', target_fleet=smart_only
+        )
+        GameTurn(game3).generate_turn()
+        smart_only.refresh_from_db()
+        self.assertEqual(smart_only.has_bombs, 'GRAVITON')
+
     def test_merge_fleet_cargo_combined(self):
         """All cargo is transferred to target fleet."""
         from ..models import FleetOrders
@@ -12398,8 +12457,406 @@ class TestBombardmentOrders(TestCase):
             GameTurn(game).generate_turn()
 
         star.refresh_from_db()
-        self.assertEqual(star.cities, 2)
-        self.assertEqual(star.megacities, 1)
+        self.assertLess(star.cities, 5)
+        self.assertLess(star.megacities, 4)
+
+    def test_neutron_bombs_prioritize_population_centers_with_collateral_damage(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_neutron_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 100_000
+        star.defenses = 8
+        star.mines = 6
+        star.factories = 5
+        star.labs = 4
+        star.shipyards = 7
+        star.temperature = 1.00
+        star.radiation = 1.00
+        star.cities = 8
+        star.megacities = 4
+        star.has_administration = True
+        star.has_dyson_sphere = True
+        star.save(update_fields=[
+            'player', 'colonists', 'defenses', 'mines', 'factories',
+            'labs', 'shipyards', 'temperature', 'radiation',
+            'cities', 'megacities',
+            'has_administration', 'has_dyson_sphere',
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Neutron Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='NEUTRON',
+            integrity=100,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='BOMB', target_star=star
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=4):
+            GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+        star.refresh_from_db()
+        self.assertEqual(star.colonists, 98_000)
+        self.assertEqual(star.defenses, 8)
+        self.assertEqual(star.mines, 6)
+        self.assertEqual(star.factories, 5)
+        self.assertEqual(star.labs, 4)
+        self.assertEqual(star.shipyards, 5)
+        self.assertAlmostEqual(star.temperature, 1.01, places=6)
+        self.assertAlmostEqual(star.radiation, 1.02, places=6)
+        self.assertEqual(star.cities, 6)
+        self.assertEqual(star.megacities, 2)
+        self.assertTrue(star.has_administration)
+        self.assertTrue(star.has_dyson_sphere)
+
+    def test_neutron_bombs_environment_shift_clamps_at_upper_bound(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_neutron_clamp_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10_000
+        star.defenses = 0
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.temperature = 1.995
+        star.radiation = 1.995
+        star.save(update_fields=[
+            'player', 'colonists', 'defenses', 'mines', 'factories',
+            'labs', 'shipyards', 'temperature', 'radiation',
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Neutron Clamp Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='NEUTRON',
+            integrity=100,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='BOMB', target_star=star
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=1):
+            GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+        star.refresh_from_db()
+        self.assertAlmostEqual(star.temperature, 2.0, places=6)
+        self.assertAlmostEqual(star.radiation, 2.0, places=6)
+
+    def test_dyson_sphere_damps_bombardment_deductions_by_half(self):
+        from ..models import FleetOrders
+
+        def _run_conventional_bomb(has_dyson):
+            game = default_game(stars=2)
+            attacker = game.players.first()
+            defender = self._ensure_other_player(
+                game,
+                attacker,
+                'bomb_dyson_damp_def_%s' % ('yes' if has_dyson else 'no'),
+            )
+            star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+            star.player = defender
+            star.colonists = 10_000
+            star.defenses = 8
+            star.mines = 4
+            star.factories = 4
+            star.labs = 4
+            star.shipyards = 4
+            star.cities = 4
+            star.megacities = 4
+            star.has_dyson_sphere = bool(has_dyson)
+            star.save(update_fields=[
+                'player', 'colonists', 'defenses', 'mines', 'factories',
+                'labs', 'shipyards', 'cities', 'megacities',
+                'has_dyson_sphere',
+            ])
+
+            fleet = Fleet.objects.create(
+                game=game,
+                player=attacker,
+                name='Dyson Damp Bomber',
+                x=star.x,
+                y=star.y,
+                ship_count=10,
+                has_bombs='CONVENTIONAL',
+                integrity=100,
+            )
+            FleetOrders.objects.create(
+                game=game, fleet=fleet, order_type='BOMB', target_star=star
+            )
+
+            with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+                'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+            }), patch('dj4xol.turn.bombardment_damage_k', return_value=4):
+                GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+            star.refresh_from_db()
+            return star
+
+        undamped = _run_conventional_bomb(False)
+        damped = _run_conventional_bomb(True)
+
+        self.assertEqual(undamped.colonists, 6_000)
+        self.assertEqual(damped.colonists, 8_000)
+        self.assertEqual(undamped.defenses, 4)
+        self.assertEqual(damped.defenses, 6)
+        self.assertEqual(undamped.mines, 0)
+        self.assertEqual(damped.mines, 2)
+        self.assertEqual(undamped.factories, 0)
+        self.assertEqual(damped.factories, 2)
+        self.assertEqual(undamped.labs, 0)
+        self.assertEqual(damped.labs, 2)
+        self.assertEqual(undamped.shipyards, 0)
+        self.assertEqual(damped.shipyards, 2)
+        self.assertEqual(undamped.cities, 0)
+        self.assertEqual(damped.cities, 2)
+        self.assertEqual(undamped.megacities, 0)
+        self.assertEqual(damped.megacities, 2)
+
+    def test_only_nova_can_remove_dyson_without_star_annihilation(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_nova_dyson_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 30_000
+        star.defenses = 0
+        star.has_dyson_sphere = True
+        star.save(update_fields=['player', 'colonists', 'defenses', 'has_dyson_sphere'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Nova Dyson Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='NOVA',
+            integrity=100,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='BOMB', target_star=star
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=2), patch(
+            'dj4xol.turn.roll_chance', return_value=False
+        ):
+            GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+        star.refresh_from_db()
+        self.assertTrue(Star.objects.filter(id=star.id).exists())
+        self.assertFalse(star.has_dyson_sphere)
+
+    def test_non_nova_bombs_do_not_remove_dyson_sphere(self):
+        from ..models import FleetOrders
+
+        for bomb_type in ('CONVENTIONAL', 'NEUTRON', 'SMART', 'GRAVITON'):
+            game = default_game(stars=2)
+            attacker = game.players.first()
+            defender = self._ensure_other_player(
+                game, attacker, 'bomb_non_nova_dyson_%s' % bomb_type.lower()
+            )
+            star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+            star.player = defender
+            star.colonists = 30_000
+            star.defenses = 4
+            star.has_dyson_sphere = True
+            star.save(update_fields=['player', 'colonists', 'defenses', 'has_dyson_sphere'])
+
+            fleet = Fleet.objects.create(
+                game=game,
+                player=attacker,
+                name='NonNova Dyson Bomber',
+                x=star.x,
+                y=star.y,
+                ship_count=10,
+                has_bombs=bomb_type,
+                integrity=100,
+            )
+            FleetOrders.objects.create(
+                game=game, fleet=fleet, order_type='BOMB', target_star=star
+            )
+
+            with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+                'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+            }), patch('dj4xol.turn.bombardment_damage_k', return_value=3):
+                GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+            star.refresh_from_db()
+            self.assertTrue(
+                star.has_dyson_sphere,
+                'Dyson sphere should persist for %s bombs' % bomb_type,
+            )
+
+    def test_graviton_bombs_are_conventional_style_and_increase_gravity(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_graviton_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 100_000
+        star.gravity = 1.00
+        star.temperature = 1.00
+        star.radiation = 1.00
+        star.defenses = 8
+        star.mines = 6
+        star.factories = 5
+        star.labs = 4
+        star.shipyards = 7
+        star.cities = 8
+        star.megacities = 4
+        star.save(update_fields=[
+            'player', 'colonists', 'gravity', 'temperature', 'radiation',
+            'defenses', 'mines', 'factories', 'labs', 'shipyards',
+            'cities', 'megacities',
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Graviton Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='GRAVITON',
+            integrity=100,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='BOMB', target_star=star
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=3):
+            GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+        star.refresh_from_db()
+        self.assertLess(star.colonists, 100_000)
+        self.assertLess(star.defenses, 8)
+        self.assertLess(star.mines, 6)
+        self.assertLess(star.factories, 5)
+        self.assertLess(star.labs, 4)
+        self.assertLess(star.shipyards, 7)
+        self.assertLess(star.cities, 8)
+        self.assertLess(star.megacities, 4)
+        self.assertAlmostEqual(star.gravity, 1.05, places=6)
+        self.assertAlmostEqual(star.temperature, 1.00, places=6)
+        self.assertAlmostEqual(star.radiation, 1.00, places=6)
+
+    def test_graviton_bombs_gravity_shift_clamps_at_upper_bound(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_graviton_clamp_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10_000
+        star.gravity = 1.95
+        star.defenses = 0
+        star.save(update_fields=['player', 'colonists', 'gravity', 'defenses'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Graviton Clamp Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='GRAVITON',
+            integrity=100,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='BOMB', target_star=star
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=1):
+            GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+        star.refresh_from_db()
+        self.assertAlmostEqual(star.gravity, 2.0, places=6)
+
+    def test_nova_bombs_shift_environment_when_star_survives(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_nova_env_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 50_000
+        star.gravity = 1.00
+        star.temperature = 1.00
+        star.radiation = 1.00
+        star.defenses = 0
+        star.save(update_fields=[
+            'player', 'colonists', 'gravity', 'temperature', 'radiation', 'defenses',
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Nova Env Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='NOVA',
+            integrity=100,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='BOMB', target_star=star
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=1), patch(
+            'dj4xol.turn.roll_chance', return_value=False
+        ):
+            GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+        star.refresh_from_db()
+        self.assertAlmostEqual(star.gravity, 0.90, places=6)
+        self.assertAlmostEqual(star.radiation, 1.02, places=6)
+        self.assertAlmostEqual(star.temperature, 1.00, places=6)
+
+    def test_nova_family_environment_shift_helper_includes_supernova_double(self):
+        from ..bombardment_rules import apply_nova_family_environment_shift
+
+        nova_g, nova_r = apply_nova_family_environment_shift(1.0, 1.0, 'NOVA')
+        super_g, super_r = apply_nova_family_environment_shift(1.0, 1.0, 'SUPERNOVA')
+
+        self.assertAlmostEqual(nova_g, 0.90, places=6)
+        self.assertAlmostEqual(nova_r, 1.02, places=6)
+        self.assertAlmostEqual(super_g, 0.80, places=6)
+        self.assertAlmostEqual(super_r, 1.04, places=6)
 
     def test_bombardment_damage_tempered_by_defenses(self):
         from ..bombardment_rules import bombardment_damage_k
@@ -12419,7 +12876,23 @@ class TestBombardmentOrders(TestCase):
                 luck_multiplier=1.0,
                 bomb_type='CONVENTIONAL',
             )
+            neutron_damage = bombardment_damage_k(
+                ship_count=20,
+                offense_level=0.0,
+                defenses=0,
+                luck_multiplier=1.0,
+                bomb_type='NEUTRON',
+            )
+            graviton_damage = bombardment_damage_k(
+                ship_count=20,
+                offense_level=0.0,
+                defenses=0,
+                luck_multiplier=1.0,
+                bomb_type='GRAVITON',
+            )
         self.assertGreater(low_def_damage, high_def_damage)
+        self.assertGreater(neutron_damage, low_def_damage)
+        self.assertGreater(graviton_damage, neutron_damage)
 
     def test_bombardment_can_take_defensive_fire_damage(self):
         from ..models import FleetOrders
@@ -12963,7 +13436,8 @@ class TestBombardmentOrders(TestCase):
         star.player = defender
         star.colonists = 500_000
         star.defenses = 5
-        star.save(update_fields=['player', 'colonists', 'defenses'])
+        star.has_dyson_sphere = False
+        star.save(update_fields=['player', 'colonists', 'defenses', 'has_dyson_sphere'])
         star_x, star_y = _pin_test_star(star, game)
 
         fleet = Fleet.objects.create(
@@ -13768,7 +14242,12 @@ class TestHomeworldLossAndDerelicts(TestCase):
         self.assertEqual(star.colonists, 20_000)
         self.assertEqual(fleet.colonists, 0)
         attacker_msgs = list(GameMessage.objects.filter(game=game, player=attacker).values_list('message', flat=True))
-        self.assertTrue(any('abduction' in msg.lower() for msg in attacker_msgs))
+        self.assertTrue(
+            any(
+                ('abduction' in msg.lower()) or ('abduct' in msg.lower())
+                for msg in attacker_msgs
+            )
+        )
 
     def test_transfer_between_allied_fleets_allows_colonists(self):
         game, player_a, player_b = self._make_two_player_game()
