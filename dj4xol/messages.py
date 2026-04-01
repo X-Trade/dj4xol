@@ -523,6 +523,8 @@ class ProductionSummaryMessageFactory(MessageFactory):
         'lab': ('lab', 'labs'),
         'defense': ('defense', 'defenses'),
         'shipyard': ('shipyard', 'shipyards'),
+        'city': ('city', 'cities'),
+        'megacity': ('megacity', 'megacities'),
         'administration': ('Administration', 'Administrations'),
         'dyson_sphere': ('Dyson Sphere', 'Dyson Spheres'),
     }
@@ -545,7 +547,8 @@ class ProductionSummaryMessageFactory(MessageFactory):
     def format_message(self):
         parts = []
         for key in [
-            'mine', 'factory', 'lab', 'defense', 'shipyard', 'administration', 'dyson_sphere'
+            'mine', 'factory', 'lab', 'defense', 'shipyard',
+            'city', 'megacity', 'administration', 'dyson_sphere'
         ]:
             count = int(self.production_counts.get(key) or 0)
             if count <= 0:
@@ -769,7 +772,8 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
     def __init__(
         self, game, player, fleet, star_name, bomb_type,
         defenses_lost, colonists_lost, mines_lost, factories_lost, labs_lost,
-        shipyards_lost, administration_lost=0, dyson_sphere_lost=0,
+        shipyards_lost, cities_lost=0, megacities_lost=0,
+        administration_lost=0, dyson_sphere_lost=0,
         integrity_lost=0, ships_lost=0, star_destroyed=False,
         perspective='attacker', attacker_fleet_name=None, star=None,
         extra_effects_text='', message=None
@@ -784,6 +788,8 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
         self.factories_lost = int(factories_lost or 0)
         self.labs_lost = int(labs_lost or 0)
         self.shipyards_lost = int(shipyards_lost or 0)
+        self.cities_lost = int(cities_lost or 0)
+        self.megacities_lost = int(megacities_lost or 0)
         self.administration_lost = int(administration_lost or 0)
         self.dyson_sphere_lost = int(dyson_sphere_lost or 0)
         self.integrity_lost = int(integrity_lost or 0)
@@ -804,6 +810,10 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
             infra.append(f"{self.labs_lost} labs")
         if self.shipyards_lost > 0:
             infra.append(f"{self.shipyards_lost} shipyards")
+        if self.cities_lost > 0:
+            infra.append(f"{self.cities_lost} cities")
+        if self.megacities_lost > 0:
+            infra.append(f"{self.megacities_lost} megacities")
         if self.administration_lost > 0:
             infra.append("Administration")
         if self.dyson_sphere_lost > 0:

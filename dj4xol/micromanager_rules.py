@@ -4,10 +4,12 @@ from math import ceil
 from types import SimpleNamespace
 
 from .colony_rules import (
+    CITY_JOBS,
     COLONISTS_PER_JOB,
     COLONISTS_PER_SHIPYARD,
     DYSON_SPHERE_JOBS,
     KT_PER_MINE,
+    MEGACITY_JOBS,
     calculate_available_buildpoints,
     calculate_growth_factor,
     calculate_productivity_multiplier,
@@ -43,6 +45,8 @@ MECHANICAL_GROWTH_EMPLOYMENT_TOP = 90.0
 ADMINISTRATION_ORDER_TYPE = 'BUILD_ADMINISTRATION'
 REMOVE_ADMINISTRATION_ORDER_TYPE = 'REMOVE_ADMINISTRATION'
 DYSON_SPHERE_ORDER_TYPE = 'BUILD_DYSON_SPHERE'
+CITY_ORDER_TYPE = 'BUILD_CITY'
+MEGACITY_ORDER_TYPE = 'BUILD_MEGACITY'
 ADMINISTRATION_ONE_OFF_ORDER_TYPES = (
     ADMINISTRATION_ORDER_TYPE,
     REMOVE_ADMINISTRATION_ORDER_TYPE,
@@ -257,17 +261,6 @@ def _balanced_lab_target(star, tier):
     ))
 
 
-def _balanced_shipyard_target(star, tier):
-    balance_factor = _mature_support_balance_factor(star, tier)
-    factory_jobs = (
-        int(getattr(star, 'factories', 0) or 0) * COLONISTS_PER_JOB
-    )
-    if factory_jobs <= 0:
-        return 0
-    target_jobs = int(ceil(float(factory_jobs) * float(balance_factor)))
-    return int(ceil(float(target_jobs) / float(COLONISTS_PER_SHIPYARD)))
-
-
 def _factory_balance_penalty(star, tier):
     balance_factor = _mature_support_balance_factor(star, tier)
     if balance_factor <= 0.5:
@@ -328,17 +321,8 @@ def _employment_job_build_tailoff(job_ratio):
 
 
 def _job_capacity_after(star, order_type):
-    extra = 0
-    if order_type in (
-        'BUILD_MINE',
-        'BUILD_FACTORY',
-        'BUILD_LAB',
-        'BUILD_DEFENSE',
-    ):
-        extra = COLONISTS_PER_JOB
-    elif order_type == 'BUILD_SHIPYARD':
-        extra = COLONISTS_PER_SHIPYARD
-    return _job_capacity(star) + extra
+    extra = int(_jobs_added_by_order(order_type) or 0)
+    return _job_capacity(star) + max(0, extra)
 
 
 def _jobs_added_by_order(order_type):
@@ -353,6 +337,10 @@ def _jobs_added_by_order(order_type):
         return COLONISTS_PER_SHIPYARD
     if order_type == DYSON_SPHERE_ORDER_TYPE:
         return DYSON_SPHERE_JOBS
+    if order_type == CITY_ORDER_TYPE:
+        return CITY_JOBS
+    if order_type == MEGACITY_ORDER_TYPE:
+        return MEGACITY_JOBS
     return 0
 
 
@@ -770,6 +758,8 @@ def _scored_micromanager_candidate_orders(
     terraform_available=False,
     terraform_used=False,
     dyson_available=False,
+    city_available=False,
+    megacity_available=False,
     cost_map=None,
     micromanager_mode=MICROMANAGER_MODE_STANDARD,
 ):
@@ -783,7 +773,6 @@ def _scored_micromanager_candidate_orders(
     shipyard_target = max(
         1,
         int(fleets_in_orbit or 0),
-        _balanced_shipyard_target(star, tier),
     )
     max_mines = int(_target_mine_count(star, micromanager_mode=micromanager_mode) or 0)
     has_yield = _total_mineral_yield(star) > 0
@@ -854,6 +843,49 @@ def _scored_micromanager_candidate_orders(
         not bool(getattr(star, 'has_dyson_sphere', False))
     ):
         append_candidate(DYSON_SPHERE_ORDER_TYPE, 180.0)
+
+    if (
+        int(tier or 0) >= TIER_SUPPORT and
+        job_ratio < JOB_TARGET_RATIO
+    ):
+        jobs_shortfall = max(0, int(thresholds['target_jobs'] - current_jobs))
+        shortfall_ratio = _clamp(
+            _safe_ratio(
+                jobs_shortfall,
+                max(1, int(thresholds['target_jobs'] or 0)),
+                default=0.0,
+            )
+        )
+        if (
+            city_available and
+            _can_add_jobs_without_breaking_limit(player, star, CITY_ORDER_TYPE) and
+            _can_add_order_without_exceeding_max_jobs(player, star, CITY_ORDER_TYPE)
+        ):
+            city_score = 70.0 + (shortfall_ratio * 120.0)
+            if current_jobs < thresholds['min_jobs']:
+                city_score += 30.0
+            if bootstrap_pressure >= 1.0:
+                city_score *= 0.85
+            elif bootstrap_pressure > 0.0:
+                city_score *= 0.92
+            append_candidate(CITY_ORDER_TYPE, city_score)
+        if (
+            megacity_available and
+            _can_add_jobs_without_breaking_limit(player, star, MEGACITY_ORDER_TYPE) and
+            _can_add_order_without_exceeding_max_jobs(player, star, MEGACITY_ORDER_TYPE)
+        ):
+            megacity_score = 52.0 + (shortfall_ratio * 105.0)
+            if jobs_shortfall >= MEGACITY_JOBS:
+                megacity_score += 35.0
+            elif jobs_shortfall <= CITY_JOBS:
+                megacity_score *= 0.55
+            if current_jobs < thresholds['min_jobs']:
+                megacity_score += 20.0
+            if bootstrap_pressure >= 1.0:
+                megacity_score *= 0.80
+            elif bootstrap_pressure > 0.0:
+                megacity_score *= 0.90
+            append_candidate(MEGACITY_ORDER_TYPE, megacity_score)
 
     if (
         current_mines <= 0 and
@@ -1039,6 +1071,8 @@ def get_micromanager_candidate_orders(
     terraform_available=False,
     terraform_used=False,
     dyson_available=False,
+    city_available=False,
+    megacity_available=False,
     cost_map=None,
     administration_active=None,
     micromanager_mode=MICROMANAGER_MODE_STANDARD,
@@ -1060,6 +1094,8 @@ def get_micromanager_candidate_orders(
             terraform_available=terraform_available,
             terraform_used=terraform_used,
             dyson_available=dyson_available,
+            city_available=city_available,
+            megacity_available=megacity_available,
             cost_map=cost_map,
             micromanager_mode=micromanager_mode,
         )
@@ -1270,6 +1306,8 @@ def _project_star_state(star, queue_requirements=None):
         labs=int(getattr(star, 'labs', 0) or 0),
         defenses=int(getattr(star, 'defenses', 0) or 0),
         shipyards=int(getattr(star, 'shipyards', 0) or 0),
+        cities=int(getattr(star, 'cities', 0) or 0),
+        megacities=int(getattr(star, 'megacities', 0) or 0),
         has_dyson_sphere=bool(getattr(star, 'has_dyson_sphere', False)),
         planned_colonist_growth_orders=0,
         buildpoints_consumed=int(
@@ -1337,6 +1375,12 @@ def apply_projected_order(
     elif order_type == 'BUILD_SHIPYARD':
         if _order_has_infrastructure_room(star_state, order_type):
             star_state.shipyards += 1
+    elif order_type == CITY_ORDER_TYPE:
+        if _order_has_infrastructure_room(star_state, order_type):
+            star_state.cities += 1
+    elif order_type == MEGACITY_ORDER_TYPE:
+        if _order_has_infrastructure_room(star_state, order_type):
+            star_state.megacities += 1
     elif order_type == ADMINISTRATION_ORDER_TYPE:
         star_state.has_administration = True
     elif order_type == DYSON_SPHERE_ORDER_TYPE:
@@ -1376,6 +1420,8 @@ def plan_micromanager_orders(
     terraform_available=False,
     terraform_rate=0.0,
     dyson_available=False,
+    city_available=False,
+    megacity_available=False,
     preplanned_orders=None,
     cost_map=None,
     queue_requirements=None,
@@ -1472,6 +1518,8 @@ def plan_micromanager_orders(
             terraform_available=terraform_available,
             terraform_used=terraform_used,
             dyson_available=dyson_available,
+            city_available=city_available,
+            megacity_available=megacity_available,
             cost_map=cost_map,
             administration_active=administration_active,
             micromanager_mode=micromanager_mode,

@@ -564,7 +564,15 @@ class DetailBuilder():
                 has_any_infrastructure = (
                     any(
                         int(data.get(field, 0) or 0) > 0
-                        for field in ('mines', 'factories', 'labs', 'defenses', 'shipyards')
+                        for field in (
+                            'mines',
+                            'factories',
+                            'labs',
+                            'defenses',
+                            'shipyards',
+                            'cities',
+                            'megacities',
+                        )
                     ) or
                     bool(data.get('has_administration')) or
                     bool(data.get('has_dyson_sphere'))
@@ -586,6 +594,8 @@ class DetailBuilder():
                     'Defenses': data.get('defenses'),
                     'DefensesTooltip': data.get('defenses_tooltip'),
                     'Shipyards': data.get('shipyards'),
+                    'Cities': int(data.get('cities', 0) or 0),
+                    'Megacities': int(data.get('megacities', 0) or 0),
                     'Administration': (
                         'Level %s' % int(data.get('administration_level', 0) or 0)
                         if data.get('has_administration') and int(data.get('administration_level', 0) or 0) > 0
@@ -1400,7 +1410,10 @@ class DetailBuilder():
     def _star_has_leftover_infrastructure(star):
         if not star:
             return False
-        infra_fields = ('mines', 'factories', 'labs', 'defenses', 'shipyards')
+        infra_fields = (
+            'mines', 'factories', 'labs', 'defenses', 'shipyards',
+            'cities', 'megacities',
+        )
         return (
             any(int(getattr(star, field, 0) or 0) > 0 for field in infra_fields) or
             bool(getattr(star, 'has_administration', False)) or
@@ -1700,6 +1713,8 @@ class DetailBuilder():
                 'Defenses': self.selected_obj.defenses,
                 'DefensesTooltip': defenses_tooltip,
                 'Shipyards': self.selected_obj.shipyards,
+                'Cities': int(getattr(self.selected_obj, 'cities', 0) or 0),
+                'Megacities': int(getattr(self.selected_obj, 'megacities', 0) or 0),
                 'Administration': (
                     'Level %s' % administration_level
                     if self.selected_obj.has_administration and administration_level > 0

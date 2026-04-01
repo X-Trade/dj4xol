@@ -27,6 +27,10 @@ HOMEWORLD_MIN_YIELD = 30  # Homeworld yields never drop below this percentage
 DYSON_PRODUCTIVITY_MULTIPLIER = 3.0  # 200% bonus (base + 200%)
 DYSON_HABITABILITY_MULTIPLIER = 1.5  # +50% habitability factor
 DYSON_SPHERE_JOBS = BILLION  # Active Dyson Sphere provides 1bn jobs
+CITY_PRODUCTIVITY_MULTIPLIER = 1.05  # +5% productivity
+MEGACITY_PRODUCTIVITY_MULTIPLIER = 1.10  # +10% productivity
+CITY_JOBS = MILLION  # Active City provides 1m jobs
+MEGACITY_JOBS = 10 * MILLION  # Active Megacity provides 10m jobs
 ENVIRONMENT_IGNORE_FIELDS = {
     'gravity': 'ignores_gravity',
     'temperature': 'ignores_temperature',
@@ -48,10 +52,63 @@ def has_active_dyson_sphere(star, player=None):
     return int(owner_id) == int(getattr(player, 'id', 0) or 0)
 
 
+def has_active_city(star, player=None):
+    """Return True when the star's City infrastructure should apply."""
+    if not star:
+        return False
+    if int(getattr(star, 'cities', 0) or 0) <= 0:
+        return False
+    owner_id = getattr(star, 'player_id', None)
+    if not owner_id:
+        return False
+    if player is None:
+        return True
+    return int(owner_id) == int(getattr(player, 'id', 0) or 0)
+
+
+def has_active_megacity(star, player=None):
+    """Return True when the star's Megacity infrastructure should apply."""
+    if not star:
+        return False
+    if int(getattr(star, 'megacities', 0) or 0) <= 0:
+        return False
+    owner_id = getattr(star, 'player_id', None)
+    if not owner_id:
+        return False
+    if player is None:
+        return True
+    return int(owner_id) == int(getattr(player, 'id', 0) or 0)
+
+
+def special_infrastructure_jobs(star, player=None):
+    """Return additional jobs from special colony infrastructure."""
+    jobs = 0
+    if has_active_city(star, player=player):
+        jobs += CITY_JOBS * int(getattr(star, 'cities', 0) or 0)
+    if has_active_megacity(star, player=player):
+        jobs += MEGACITY_JOBS * int(getattr(star, 'megacities', 0) or 0)
+    if has_active_dyson_sphere(star, player=player):
+        jobs += DYSON_SPHERE_JOBS
+    return int(max(0, jobs))
+
+
+def special_infrastructure_productivity_multiplier(star, player=None):
+    """Return productivity multiplier from active colony special infrastructure."""
+    mult = 1.0
+    if has_active_city(star, player=player):
+        mult *= CITY_PRODUCTIVITY_MULTIPLIER
+    if has_active_megacity(star, player=player):
+        mult *= MEGACITY_PRODUCTIVITY_MULTIPLIER
+    if has_active_dyson_sphere(star, player=player):
+        mult *= DYSON_PRODUCTIVITY_MULTIPLIER
+    return float(mult)
+
+
 def calculate_total_jobs(star):
     """Return total colony jobs, including Dyson Sphere staffing demand."""
     if star is None:
         return 0
+    special_jobs = special_infrastructure_jobs(star)
     return calculate_total_jobs_count(
         getattr(star, 'mines', 0),
         getattr(star, 'factories', 0),
@@ -60,8 +117,8 @@ def calculate_total_jobs(star):
         getattr(star, 'shipyards', 0),
         COLONISTS_PER_JOB,
         COLONISTS_PER_SHIPYARD,
-        include_special_jobs=has_active_dyson_sphere(star),
-        special_jobs=DYSON_SPHERE_JOBS,
+        include_special_jobs=special_jobs > 0,
+        special_jobs=special_jobs,
     )
 
 
@@ -274,8 +331,7 @@ def calculate_available_buildpoints(star):
     total = (
         float(star.factories) * BUILDPOINTS_PER_FACTORY * productivity * manufacturing_multiplier
     )
-    if has_active_dyson_sphere(star):
-        total *= DYSON_PRODUCTIVITY_MULTIPLIER
+    total *= special_infrastructure_productivity_multiplier(star)
     return int(total)
 
 
@@ -288,8 +344,7 @@ def calculate_available_researchpoints(star):
         return 0
     productivity = calculate_productivity_multiplier(employment_ratio)
     total = float(star.labs) * RESEARCHPOINTS_PER_LAB * productivity
-    if has_active_dyson_sphere(star):
-        total *= DYSON_PRODUCTIVITY_MULTIPLIER
+    total *= special_infrastructure_productivity_multiplier(star)
     return int(total)
 
 

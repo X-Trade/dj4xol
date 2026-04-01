@@ -11,7 +11,9 @@ from .colony_rules import (
 from .bombardment_rules import normalize_bomb_type, normalize_miner_type
 from .micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
+    CITY_ORDER_TYPE,
     DYSON_SPHERE_ORDER_TYPE,
+    MEGACITY_ORDER_TYPE,
     REMOVE_ADMINISTRATION_ORDER_TYPE,
     administration_level_from_params,
 )
@@ -64,6 +66,8 @@ TECH_PARAM_LABELS = {
     'advanced_cloak': 'Advanced Cloak',
     'terraforming_rate': 'Terraforming Rate',
     'administration_level': 'Administration Level',
+    'city': 'City',
+    'megacity': 'Megacity',
     'dyson_sphere': 'Dyson Sphere',
     'race_type': 'Race Type',
 }
@@ -150,6 +154,10 @@ def _format_param_value(key, value):
         except (TypeError, ValueError):
             return value
     if key == 'dyson_sphere':
+        return 'Unlocked' if bool(value) else 'No'
+    if key == 'city':
+        return 'Unlocked' if bool(value) else 'No'
+    if key == 'megacity':
         return 'Unlocked' if bool(value) else 'No'
     if key == 'race_type':
         return describe_race_type_requirement(value)
@@ -296,6 +304,44 @@ def _select_dyson_sphere_tech(unlocked):
     return selected
 
 
+def _select_city_tech(unlocked):
+    selected = None
+    selected_sort_key = None
+    for tech in unlocked:
+        if str(tech.tech_type or '') != 'INFRASTRUCTURE':
+            continue
+        params = _safe_params(tech)
+        overrides = _production_cost_overrides_from_tech(tech)
+        has_unlock_flag = bool(params.get('city'))
+        has_cost_override = CITY_ORDER_TYPE in overrides
+        if not has_unlock_flag and not has_cost_override:
+            continue
+        sort_key = (int(tech.level), int(tech.display_order or 0), str(tech.name or ''))
+        if selected is None or sort_key > selected_sort_key:
+            selected = tech
+            selected_sort_key = sort_key
+    return selected
+
+
+def _select_megacity_tech(unlocked):
+    selected = None
+    selected_sort_key = None
+    for tech in unlocked:
+        if str(tech.tech_type or '') != 'INFRASTRUCTURE':
+            continue
+        params = _safe_params(tech)
+        overrides = _production_cost_overrides_from_tech(tech)
+        has_unlock_flag = bool(params.get('megacity'))
+        has_cost_override = MEGACITY_ORDER_TYPE in overrides
+        if not has_unlock_flag and not has_cost_override:
+            continue
+        sort_key = (int(tech.level), int(tech.display_order or 0), str(tech.name or ''))
+        if selected is None or sort_key > selected_sort_key:
+            selected = tech
+            selected_sort_key = sort_key
+    return selected
+
+
 def get_player_terraforming_profile(player):
     """Return terraforming rate/costs for a player based on INFRASTRUCTURE tech."""
     if not player or not getattr(player, 'race_type', None):
@@ -353,6 +399,40 @@ def get_player_dyson_sphere_profile(player):
     return {'unlocked': True, 'tech': selected, 'costs': costs}
 
 
+def get_player_city_profile(player):
+    """Return City infrastructure unlock profile from INFRASTRUCTURE tech."""
+    if not player or not getattr(player, 'race_type', None):
+        return {'unlocked': False, 'tech': None, 'costs': {}}
+    unlocked = list(get_player_unlocked_technologies(player))
+    if not unlocked:
+        return {'unlocked': False, 'tech': None, 'costs': {}}
+    selected = _select_city_tech(unlocked)
+    if selected is None:
+        return {'unlocked': False, 'tech': None, 'costs': {}}
+    overrides = _production_cost_overrides_from_tech(selected)
+    costs = {}
+    if CITY_ORDER_TYPE in overrides:
+        costs[CITY_ORDER_TYPE] = overrides[CITY_ORDER_TYPE]
+    return {'unlocked': True, 'tech': selected, 'costs': costs}
+
+
+def get_player_megacity_profile(player):
+    """Return Megacity infrastructure unlock profile from INFRASTRUCTURE tech."""
+    if not player or not getattr(player, 'race_type', None):
+        return {'unlocked': False, 'tech': None, 'costs': {}}
+    unlocked = list(get_player_unlocked_technologies(player))
+    if not unlocked:
+        return {'unlocked': False, 'tech': None, 'costs': {}}
+    selected = _select_megacity_tech(unlocked)
+    if selected is None:
+        return {'unlocked': False, 'tech': None, 'costs': {}}
+    overrides = _production_cost_overrides_from_tech(selected)
+    costs = {}
+    if MEGACITY_ORDER_TYPE in overrides:
+        costs[MEGACITY_ORDER_TYPE] = overrides[MEGACITY_ORDER_TYPE]
+    return {'unlocked': True, 'tech': selected, 'costs': costs}
+
+
 def get_player_production_costs(player):
     """Return production costs for the player, including tech overrides."""
     from .models import PRODUCTION_COSTS
@@ -361,10 +441,14 @@ def get_player_production_costs(player):
         costs[key] = _normalise_cost_dict(value)
     terraform_profile = get_player_terraforming_profile(player)
     administration_profile = get_player_administration_profile(player)
+    city_profile = get_player_city_profile(player)
+    megacity_profile = get_player_megacity_profile(player)
     dyson_profile = get_player_dyson_sphere_profile(player)
     override_sets = [
         terraform_profile.get('costs', {}),
         _production_cost_overrides_from_tech(administration_profile.get('tech')),
+        city_profile.get('costs', {}),
+        megacity_profile.get('costs', {}),
         dyson_profile.get('costs', {}),
     ]
     for override_set in override_sets:
@@ -387,6 +471,8 @@ def get_player_available_production_orders(player, star):
         return []
     orders = []
     administration_profile = get_player_administration_profile(player)
+    city_profile = get_player_city_profile(player)
+    megacity_profile = get_player_megacity_profile(player)
     dyson_profile = get_player_dyson_sphere_profile(player)
     profile = get_player_terraforming_profile(player)
     rate = profile.get('rate', 0.0)
@@ -479,6 +565,24 @@ def get_player_available_production_orders(player, star):
             'value': REMOVE_ADMINISTRATION_ORDER_TYPE,
             'label': 'Remove Administration',
             'repeat_allowed': False,
+        })
+    if (
+        bool(city_profile.get('unlocked')) and
+        capped_order_quantity_for_star(star, CITY_ORDER_TYPE, 1) > 0
+    ):
+        orders.append({
+            'value': CITY_ORDER_TYPE,
+            'label': 'Build City',
+            'repeat_allowed': True,
+        })
+    if (
+        bool(megacity_profile.get('unlocked')) and
+        capped_order_quantity_for_star(star, MEGACITY_ORDER_TYPE, 1) > 0
+    ):
+        orders.append({
+            'value': MEGACITY_ORDER_TYPE,
+            'label': 'Build Megacity',
+            'repeat_allowed': True,
         })
     if (
         bool(dyson_profile.get('unlocked')) and

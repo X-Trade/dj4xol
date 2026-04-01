@@ -6,9 +6,12 @@ from ..research import (
     ensure_player_research_rows,
     get_player_administration_profile,
     get_player_available_production_orders,
+    get_player_city_profile,
     get_player_dyson_sphere_profile,
+    get_player_megacity_profile,
     get_player_production_costs,
     get_player_terraforming_profile,
+    sync_player_technology_unlocks_from_research,
 )
 from ..objectdetails import DetailBuilder
 from ..turn import GameTurn
@@ -40,6 +43,11 @@ class AdministrationAutomationTest(TestCase):
             raise AssertionError('Research row not created for category %s' % category.id)
         target.current_level = float(level)
         target.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(
+            self.player,
+            category_ids=[category.id],
+            year=getattr(self.game, 'year', 0),
+        )
         return target
 
     def _create_administration_tech(self, tech_level, administration_level):
@@ -106,6 +114,46 @@ class AdministrationAutomationTest(TestCase):
                 '{"BUILD_DYSON_SPHERE": {"bp": 2000, "ironium": 1000, '
                 '"boranium": 500, "germanium": 600, "resource_x": 200, '
                 '"resource_y": 0, "resource_z": 100, "colonists": 0}}}'
+            ),
+        )
+        self._unlock_category_level(category, tech_level)
+        return category
+
+    def _create_city_tech(self, tech_level=1):
+        category = ResearchCategory.objects.create(
+            code='CITY%s' % tech_level,
+            name='City %s' % tech_level,
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=category,
+            level=tech_level,
+            name='City',
+            tech_type='INFRASTRUCTURE',
+            params_json=(
+                '{"city": true, "production_cost_overrides": '
+                '{"BUILD_CITY": {"bp": 0, "ironium": 200, "boranium": 60000, '
+                '"germanium": 40000, "colonists": 0}}}'
+            ),
+        )
+        self._unlock_category_level(category, tech_level)
+        return category
+
+    def _create_megacity_tech(self, tech_level=9):
+        category = ResearchCategory.objects.create(
+            code='MEGACITY%s' % tech_level,
+            name='Megacity %s' % tech_level,
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=category,
+            level=tech_level,
+            name='Megacity',
+            tech_type='INFRASTRUCTURE',
+            params_json=(
+                '{"megacity": true, "production_cost_overrides": '
+                '{"BUILD_MEGACITY": {"bp": 0, "ironium": 600000, '
+                '"boranium": 150000, "germanium": 120000, "colonists": 0}}}'
             ),
         )
         self._unlock_category_level(category, tech_level)
@@ -401,6 +449,67 @@ class AdministrationAutomationTest(TestCase):
             self.star.production_orders.filter(order_type='BUILD_DYSON_SPHERE').exists()
         )
 
+    def test_city_orders_repeat_and_build_multiple_counts(self):
+        options = get_player_available_production_orders(self.player, self.star)
+        self.assertNotIn('BUILD_CITY', [item['value'] for item in options])
+
+        self._create_city_tech(tech_level=1)
+        profile = get_player_city_profile(self.player)
+        self.assertTrue(profile.get('unlocked'))
+
+        options = get_player_available_production_orders(self.player, self.star)
+        city = next(item for item in options if item['value'] == 'BUILD_CITY')
+        self.assertTrue(city['repeat_allowed'])
+
+        self.star.ironium_inventory = 1000
+        self.star.boranium_inventory = 300000
+        self.star.germanium_inventory = 200000
+        self.star.save(update_fields=[
+            'ironium_inventory',
+            'boranium_inventory',
+            'germanium_inventory',
+        ])
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_CITY',
+            quantity=3,
+            repeat=False,
+        )
+
+        GameTurn(self.game).production()
+        self.star.refresh_from_db()
+
+        self.assertEqual(self.star.cities, 3)
+        self.assertFalse(
+            self.star.production_orders.filter(order_type='BUILD_CITY').exists()
+        )
+
+    def test_city_and_megacity_orders_hidden_at_infrastructure_cap(self):
+        self._create_city_tech(tech_level=1)
+        self._create_megacity_tech(tech_level=9)
+
+        city_profile = get_player_city_profile(self.player)
+        megacity_profile = get_player_megacity_profile(self.player)
+        self.assertTrue(city_profile.get('unlocked'))
+        self.assertTrue(megacity_profile.get('unlocked'))
+
+        self.star.cities = 9999
+        self.star.megacities = 10000
+        self.star.save(update_fields=['cities', 'megacities'])
+
+        options = get_player_available_production_orders(self.player, self.star)
+        values = [item['value'] for item in options]
+        self.assertIn('BUILD_CITY', values)
+        self.assertNotIn('BUILD_MEGACITY', values)
+
+        self.star.cities = 10000
+        self.star.save(update_fields=['cities'])
+        options = get_player_available_production_orders(self.player, self.star)
+        values = [item['value'] for item in options]
+        self.assertNotIn('BUILD_CITY', values)
+
     def test_higher_administration_levels_reduce_build_cost(self):
         self._create_administration_tech(1, 1)
         level_one_costs = get_player_production_costs(self.player)
@@ -631,6 +740,97 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertNotIn('BUILD_LAB', candidates)
         self.assertNotIn('BUILD_SHIPYARD', candidates)
+
+    def test_level_two_shipyard_target_uses_fleets_in_orbit_only(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 10_000_000
+        self.star.mines = 100
+        self.star.factories = 8_000
+        self.star.labs = 4_000
+        self.star.defenses = 4_000
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 50_000
+        self.star.boranium_inventory = 50_000
+        self.star.germanium_inventory = 50_000
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertNotIn('BUILD_SHIPYARD', candidates)
+
+    def test_level_two_jobs_deficit_can_plan_city_when_shipyard_target_met(self):
+        self._create_administration_tech(2, 2)
+        self._create_city_tech(tech_level=1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 10_000_000
+        self.star.mines = 0
+        self.star.factories = 2_000
+        self.star.labs = 1_000
+        self.star.defenses = 1_000
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 10_000
+        self.star.boranium_inventory = 500_000
+        self.star.germanium_inventory = 500_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=1,
+            city_available=True,
+            megacity_available=False,
+            cost_map=get_player_production_costs(self.player),
+            limit=8,
+        )
+
+        self.assertIn('BUILD_CITY', planned)
+
+    def test_level_two_jobs_deficit_skips_city_and_megacity_if_over_max_jobs(self):
+        self._create_administration_tech(2, 2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 1_500_000
+        self.star.mines = 0
+        self.star.factories = 700
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 1_000_000
+        self.star.boranium_inventory = 1_000_000
+        self.star.germanium_inventory = 1_000_000
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=1,
+            city_available=True,
+            megacity_available=True,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertNotIn('BUILD_CITY', candidates)
+        self.assertNotIn('BUILD_MEGACITY', candidates)
 
     def test_level_one_ignores_safe_mine_cap_but_level_two_respects_it(self):
         self._create_administration_tech(2, 2)
@@ -1685,7 +1885,7 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertTrue(planned)
         self.assertEqual(planned[0], 'BUILD_LAB')
-        self.assertIn('BUILD_SHIPYARD', planned)
+        self.assertNotIn('BUILD_SHIPYARD', planned)
 
     def test_level_four_mature_colony_balances_into_labs_and_shipyards(self):
         self._create_administration_tech(4, 4)
@@ -1703,7 +1903,7 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertTrue(planned)
         self.assertEqual(planned[0], 'BUILD_LAB')
-        self.assertIn('BUILD_SHIPYARD', planned)
+        self.assertNotIn('BUILD_SHIPYARD', planned)
 
     def test_level_five_mature_colony_balances_into_labs_and_shipyards(self):
         self._create_administration_tech(4, 4)
@@ -1724,7 +1924,7 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertTrue(planned)
         self.assertEqual(planned[0], 'BUILD_LAB')
-        self.assertIn('BUILD_SHIPYARD', planned)
+        self.assertNotIn('BUILD_SHIPYARD', planned)
 
     def test_level_three_skips_dyson_when_over_nine_year_horizon(self):
         self._create_administration_tech(3, 3)
@@ -2444,6 +2644,199 @@ class AdministrationAutomationTest(TestCase):
                 order_type='BUILD_FLEET',
                 added_by_micromanager=True,
             ).exists()
+        )
+
+    def test_fleet_defense_score_uses_display_scale_and_warp_weight(self):
+        fleet = SimpleNamespace(
+            offense_level=1.2,
+            defense_level=0.8,
+            max_safe_warp=5,
+            ship_count=3,
+        )
+        score = GameTurn._fleet_defense_score(fleet)
+        self.assertEqual(score, (30, 3))
+
+    def test_ai_micromanager_level_five_can_queue_overcap_build_at_hard_cap(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 300_000
+        self.star.mines = 30
+        self.star.factories = 30
+        self.star.labs = 15
+        self.star.defenses = 15
+        self.star.shipyards = 3
+        self.star.ironium_inventory = 10_000
+        self.star.boranium_inventory = 10_000
+        self.star.germanium_inventory = 10_000
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+        self.player.fleets.all().delete()
+        self.star.production_orders.all().delete()
+
+        for idx in range(20):
+            Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Cap Fleet %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=1,
+                offense_level=1,
+                defense_level=1,
+                max_safe_warp=6,
+            )
+
+        turn = GameTurn(self.game)
+        with patch.object(
+            GameTurn,
+            '_should_allow_orbit_overcap_build',
+            return_value=True,
+        ):
+            turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertTrue(
+            self.star.production_orders.filter(
+                order_type='BUILD_FLEET',
+                added_by_micromanager=True,
+            ).exists()
+        )
+
+    def test_ai_micromanager_level_five_consolidates_over_cap_to_ten_with_merges(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 300_000
+        self.star.mines = 30
+        self.star.factories = 30
+        self.star.labs = 15
+        self.star.defenses = 15
+        self.star.shipyards = 3
+        self.star.ironium_inventory = 10_000
+        self.star.boranium_inventory = 10_000
+        self.star.germanium_inventory = 10_000
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+        self.player.fleets.all().delete()
+        self.star.production_orders.all().delete()
+
+        for idx in range(21):
+            Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Merge Fleet %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=1 + (idx % 3),
+                offense_level=1 + idx,
+                defense_level=1 + idx,
+                max_safe_warp=6,
+            )
+
+        turn = GameTurn(self.game)
+        with patch.object(
+            GameTurn,
+            '_best_colonise_target_for_colony',
+            return_value=None,
+        ):
+            turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertEqual(
+            FleetOrders.objects.filter(
+                game=self.game,
+                fleet__player=self.player,
+                order_type='MERGE',
+                added_by_micromanager=True,
+            ).count(),
+            11,
+        )
+        self.assertEqual(
+            FleetOrders.objects.filter(
+                game=self.game,
+                fleet__player=self.player,
+                order_type='SCUTTLE',
+                added_by_micromanager=True,
+            ).count(),
+            0,
+        )
+
+    def test_ai_micromanager_level_five_scuttles_slow_over_cap_fleets(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = False
+        self.star.colonists = 300_000
+        self.star.mines = 30
+        self.star.factories = 30
+        self.star.labs = 15
+        self.star.defenses = 15
+        self.star.shipyards = 3
+        self.star.ironium_inventory = 10_000
+        self.star.boranium_inventory = 10_000
+        self.star.germanium_inventory = 10_000
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+        self.player.fleets.all().delete()
+        self.star.production_orders.all().delete()
+
+        for idx in range(10):
+            Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Fast Fleet %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=2,
+                offense_level=20 + idx,
+                defense_level=20 + idx,
+                max_safe_warp=7,
+            )
+        for idx in range(11):
+            Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Slow Fleet %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=1,
+                offense_level=1,
+                defense_level=1,
+                max_safe_warp=4,
+            )
+
+        turn = GameTurn(self.game)
+        with patch.object(
+            GameTurn,
+            '_best_colonise_target_for_colony',
+            return_value=None,
+        ):
+            turn._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertEqual(
+            FleetOrders.objects.filter(
+                game=self.game,
+                fleet__player=self.player,
+                order_type='SCUTTLE',
+                added_by_micromanager=True,
+            ).count(),
+            11,
+        )
+        self.assertEqual(
+            FleetOrders.objects.filter(
+                game=self.game,
+                fleet__player=self.player,
+                order_type='MERGE',
+                added_by_micromanager=True,
+            ).count(),
+            0,
         )
 
     def test_ai_micromanager_locked_terraform_order_is_not_executed(self):

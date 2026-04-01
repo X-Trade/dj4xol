@@ -1,5 +1,6 @@
 from datetime import timedelta
 from math import atan2, atanh, ceil, cos, degrees, log2, pi, sin, sqrt, tanh
+import hashlib
 import time
 from numpy import array as nparray, linalg
 from django.db import models
@@ -127,6 +128,7 @@ from .colony_rules import (
     calculate_growth_factor,
     calculate_effective_defenses,
     has_active_dyson_sphere,
+    special_infrastructure_productivity_multiplier,
     limit_population_growth_by_surface_resources,
     population_growth_uses_surface_resources,
     OVERMINING_DEPLETION_MULTIPLIER,
@@ -134,12 +136,14 @@ from .colony_rules import (
 from .research import (
     process_player_research_for_year,
     get_player_administration_profile,
+    get_player_city_profile,
     get_player_colony_scanner_ranges,
     get_player_tech_effects,
     get_player_colony_defense_level,
     apply_research_bonus_rp,
     ensure_player_research_rows,
     get_global_research_max_level,
+    get_player_megacity_profile,
     sync_player_technology_unlocks_from_research,
     get_player_dyson_sphere_profile,
     get_player_production_costs,
@@ -147,7 +151,10 @@ from .research import (
 )
 from .micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
+    ADMINISTRATION_ONE_OFF_ORDER_TYPES,
+    CITY_ORDER_TYPE,
     DYSON_SPHERE_ORDER_TYPE,
+    MEGACITY_ORDER_TYPE,
     REMOVE_ADMINISTRATION_ORDER_TYPE,
     collapse_micromanager_order_totals,
     get_micromanager_managed_order_types,
@@ -343,6 +350,8 @@ MICROMANAGER_DEFENSE_FLEET_RATIO = 0.50
 MICROMANAGER_DEFENSE_SHIP_RATIO = 0.50
 MICROMANAGER_ASTEROID_SEARCH_RADIUS = 18.0
 MICROMANAGER_MAX_ORBIT_FLEETS = 20
+MICROMANAGER_OVER_CAP_CONSOLIDATE_TARGET = 10
+MICROMANAGER_OVER_CAP_BUILD_CHANCE = 0.08
 MICROMANAGER_FLEET_BUILD_MAX_YEARS = 3
 EXPANSIONIST_FLEET_BUILD_MAX_YEARS = 4
 MICROMANAGER_COLONISE_DISPATCHES_PER_COLONY = 1
@@ -555,6 +564,8 @@ class GameTurn():
         self._player_colony_scanner_ranges_by_player_id = {}
         self._player_terraform_profile_by_id = {}
         self._player_administration_profile_by_id = {}
+        self._player_city_profile_by_id = {}
+        self._player_megacity_profile_by_id = {}
         self._player_dyson_profile_by_id = {}
         self._player_production_costs_by_id = {}
         self._player_tech_effects_by_id = {}
@@ -603,6 +614,8 @@ class GameTurn():
         self._player_colony_scanner_ranges_by_player_id = {}
         self._player_terraform_profile_by_id = {}
         self._player_administration_profile_by_id = {}
+        self._player_city_profile_by_id = {}
+        self._player_megacity_profile_by_id = {}
         self._player_dyson_profile_by_id = {}
         self._player_production_costs_by_id = {}
         self._player_tech_effects_by_id = {}
@@ -2583,6 +2596,8 @@ class GameTurn():
                     'defenses': obj.defenses,
                     'defenses_tooltip': None,
                     'shipyards': obj.shipyards,
+                    'cities': int(getattr(obj, 'cities', 0) or 0),
+                    'megacities': int(getattr(obj, 'megacities', 0) or 0),
                     'has_administration': bool(getattr(obj, 'has_administration', False)),
                     'administration_level': administration_level,
                     'has_dyson_sphere': bool(getattr(obj, 'has_dyson_sphere', False)),
@@ -2813,6 +2828,32 @@ class GameTurn():
         self._player_dyson_profile_by_id[player_id] = profile
         return profile
 
+    def _get_player_city_profile_cached(self, player):
+        if not player:
+            return {'unlocked': False, 'tech': None, 'costs': {}}
+        player_id = getattr(player, 'id', None)
+        if player_id is None:
+            return get_player_city_profile(player)
+        cached = self._player_city_profile_by_id.get(player_id)
+        if cached is not None:
+            return cached
+        profile = get_player_city_profile(player)
+        self._player_city_profile_by_id[player_id] = profile
+        return profile
+
+    def _get_player_megacity_profile_cached(self, player):
+        if not player:
+            return {'unlocked': False, 'tech': None, 'costs': {}}
+        player_id = getattr(player, 'id', None)
+        if player_id is None:
+            return get_player_megacity_profile(player)
+        cached = self._player_megacity_profile_by_id.get(player_id)
+        if cached is not None:
+            return cached
+        profile = get_player_megacity_profile(player)
+        self._player_megacity_profile_by_id[player_id] = profile
+        return profile
+
     def _get_player_production_costs_cached(self, player):
         if not player:
             return {}
@@ -2861,6 +2902,8 @@ class GameTurn():
         star,
         terraform_profile=None,
         administration_profile=None,
+        city_profile=None,
+        megacity_profile=None,
         dyson_profile=None,
     ):
         """Return currently unlocked production order types for this colony."""
@@ -2901,6 +2944,22 @@ class GameTurn():
             unlocked.add(ADMINISTRATION_ORDER_TYPE)
         if bool(getattr(star, 'has_administration', False)):
             unlocked.add(REMOVE_ADMINISTRATION_ORDER_TYPE)
+
+        if city_profile is None:
+            city_profile = self._get_player_city_profile_cached(player)
+        if (
+            bool(city_profile.get('unlocked')) and
+            production_infrastructure_room(star, CITY_ORDER_TYPE) > 0
+        ):
+            unlocked.add(CITY_ORDER_TYPE)
+
+        if megacity_profile is None:
+            megacity_profile = self._get_player_megacity_profile_cached(player)
+        if (
+            bool(megacity_profile.get('unlocked')) and
+            production_infrastructure_room(star, MEGACITY_ORDER_TYPE) > 0
+        ):
+            unlocked.add(MEGACITY_ORDER_TYPE)
 
         if dyson_profile is None:
             dyson_profile = self._get_player_dyson_sphere_profile_cached(player)
@@ -6152,6 +6211,8 @@ class GameTurn():
             'factories': int(star.factories or 0),
             'labs': int(star.labs or 0),
             'shipyards': int(star.shipyards or 0),
+            'cities': int(getattr(star, 'cities', 0) or 0),
+            'megacities': int(getattr(star, 'megacities', 0) or 0),
             'has_administration': bool(getattr(star, 'has_administration', False)),
             'has_dyson_sphere': bool(getattr(star, 'has_dyson_sphere', False)),
         }
@@ -6184,6 +6245,8 @@ class GameTurn():
         factories_lost = 0
         labs_lost = 0
         shipyards_lost = 0
+        cities_lost = 0
+        megacities_lost = 0
         administration_lost = 0
         dyson_sphere_lost = 0
         if not smart_bombs_only_target_defenses_and_population(bomb_type):
@@ -6191,6 +6254,8 @@ class GameTurn():
             factories_lost = min(pre['factories'], damage_k)
             labs_lost = min(pre['labs'], damage_k)
             shipyards_lost = min(pre['shipyards'], damage_k)
+            cities_lost = min(pre['cities'], damage_k)
+            megacities_lost = min(pre['megacities'], damage_k)
             if pre['has_administration'] and damage_k > 0:
                 administration_lost = 1
             if pre['has_dyson_sphere'] and damage_k > 0:
@@ -6199,6 +6264,8 @@ class GameTurn():
             star.factories = max(0, pre['factories'] - factories_lost)
             star.labs = max(0, pre['labs'] - labs_lost)
             star.shipyards = max(0, pre['shipyards'] - shipyards_lost)
+            star.cities = max(0, pre['cities'] - cities_lost)
+            star.megacities = max(0, pre['megacities'] - megacities_lost)
             if administration_lost:
                 star.has_administration = False
             if dyson_sphere_lost:
@@ -6234,7 +6301,8 @@ class GameTurn():
         else:
             star.save(update_fields=[
                 'defenses', 'colonists', 'mines', 'factories', 'labs',
-                'shipyards', 'has_administration', 'has_dyson_sphere',
+                'shipyards', 'cities', 'megacities',
+                'has_administration', 'has_dyson_sphere',
             ])
 
         factory = FleetBombardmentReportMessageFactory(
@@ -6249,6 +6317,8 @@ class GameTurn():
             factories_lost=factories_lost,
             labs_lost=labs_lost,
             shipyards_lost=shipyards_lost,
+            cities_lost=cities_lost,
+            megacities_lost=megacities_lost,
             administration_lost=administration_lost,
             dyson_sphere_lost=dyson_sphere_lost,
             integrity_lost=defense_fire.get('integrity_lost', 0),
@@ -6283,6 +6353,8 @@ class GameTurn():
                     factories_lost=factories_lost,
                     labs_lost=labs_lost,
                     shipyards_lost=shipyards_lost,
+                    cities_lost=cities_lost,
+                    megacities_lost=megacities_lost,
                     administration_lost=administration_lost,
                     dyson_sphere_lost=dyson_sphere_lost,
                     integrity_lost=defense_fire.get('integrity_lost', 0),
@@ -7861,9 +7933,10 @@ class GameTurn():
                 continue
             productivity = calculate_productivity_multiplier(staffing_ratio)
             base_extraction = star.mines * KT_PER_MINE * productivity
-            total_extraction = base_extraction
-            if has_active_dyson_sphere(star):
-                total_extraction *= 3.0
+            total_extraction = (
+                base_extraction *
+                special_infrastructure_productivity_multiplier(star)
+            )
 
             produced = self._extract_minerals_with_standard_rules(
                 star,
@@ -7908,6 +7981,8 @@ class GameTurn():
             administration_profile = self._get_player_administration_profile_cached(
                 star.player
             )
+            city_profile = self._get_player_city_profile_cached(star.player)
+            megacity_profile = self._get_player_megacity_profile_cached(star.player)
             dyson_profile = self._get_player_dyson_sphere_profile_cached(star.player)
             _tier, ai_tier = self._effective_administration_tier(
                 star.player,
@@ -7924,6 +7999,7 @@ class GameTurn():
             production_counts = {
                 'mine': 0, 'factory': 0, 'lab': 0, 'defense': 0,
                 'shipyard': 0, 'administration': 0, 'dyson_sphere': 0,
+                'city': 0, 'megacity': 0,
             }
 
             for order in list(star.production_orders.order_by('position')):
@@ -7942,6 +8018,8 @@ class GameTurn():
                         star,
                         terraform_profile=terraform_profile,
                         administration_profile=administration_profile,
+                        city_profile=city_profile,
+                        megacity_profile=megacity_profile,
                         dyson_profile=dyson_profile,
                     )
                     if order.order_type not in unlocked_order_types:
@@ -8185,6 +8263,12 @@ class GameTurn():
         elif order_type == DYSON_SPHERE_ORDER_TYPE:
             self._build_dyson_sphere(star)
             production_counts['dyson_sphere'] += 1
+        elif order_type == CITY_ORDER_TYPE:
+            self._build_city(star)
+            production_counts['city'] += 1
+        elif order_type == MEGACITY_ORDER_TYPE:
+            self._build_megacity(star)
+            production_counts['megacity'] += 1
         elif str(order_type).startswith('TERRAFORM_'):
             self._apply_terraform_effect(
                 star, order_type, terraform_rate=terraform_rate
@@ -8294,6 +8378,18 @@ class GameTurn():
         """Build a Dyson Sphere at the given star."""
         star.has_dyson_sphere = True
 
+    def _build_city(self, star):
+        """Build one City infrastructure at the given star."""
+        room = production_infrastructure_room(star, CITY_ORDER_TYPE)
+        if room is None or room > 0:
+            star.cities = int(getattr(star, 'cities', 0) or 0) + 1
+
+    def _build_megacity(self, star):
+        """Build one Megacity infrastructure at the given star."""
+        room = production_infrastructure_room(star, MEGACITY_ORDER_TYPE)
+        if room is None or room > 0:
+            star.megacities = int(getattr(star, 'megacities', 0) or 0) + 1
+
     def _apply_negative_production_refunds(self, star, cost):
         """Apply any negative production costs as inventory refunds."""
         for resource in ALL_RESOURCE_KEYS:
@@ -8337,7 +8433,7 @@ class GameTurn():
             key: int(production_counts.get(key) or 0)
             for key in (
                 'mine', 'factory', 'lab', 'defense', 'shipyard',
-                'administration', 'dyson_sphere',
+                'administration', 'dyson_sphere', 'city', 'megacity',
             )
             if int(production_counts.get(key) or 0) > 0
         }
@@ -8499,6 +8595,8 @@ class GameTurn():
         from .models import ProductionOrder
 
         profile = self._get_player_administration_profile_cached(star.player)
+        city_profile = self._get_player_city_profile_cached(star.player)
+        megacity_profile = self._get_player_megacity_profile_cached(star.player)
         dyson_profile = self._get_player_dyson_sphere_profile_cached(star.player)
         tier, ai_tier = self._effective_administration_tier(
             star.player,
@@ -8509,6 +8607,8 @@ class GameTurn():
             star.player,
             star,
             administration_profile=profile,
+            city_profile=city_profile,
+            megacity_profile=megacity_profile,
             dyson_profile=dyson_profile,
         )
         micromanager_orders = list(star.production_orders.filter(
@@ -8579,6 +8679,8 @@ class GameTurn():
             terraform_available=(terraform_rate > 0),
             terraform_rate=terraform_rate,
             dyson_available=bool(dyson_profile.get('unlocked')),
+            city_available=bool(city_profile.get('unlocked')),
+            megacity_available=bool(megacity_profile.get('unlocked')),
             preplanned_orders=existing_types + player_projected_types,
             cost_map=cost_map,
             queue_requirements=remaining_queue_requirements(
@@ -8703,10 +8805,116 @@ class GameTurn():
     @staticmethod
     def _fleet_defense_score(fleet):
         """Score a fleet for colony defense retention."""
-        offense = float(getattr(fleet, 'offense_level', 0.0) or 0.0)
-        defense = float(getattr(fleet, 'defense_level', 0.0) or 0.0)
+        offense = int(round(float(getattr(fleet, 'offense_level', 0.0) or 0.0) * 10.0))
+        defense = int(round(float(getattr(fleet, 'defense_level', 0.0) or 0.0) * 10.0))
+        try:
+            max_safe_warp = int(getattr(fleet, 'max_safe_warp', 0) or 0)
+        except (TypeError, ValueError):
+            max_safe_warp = 0
         ships = int(getattr(fleet, 'ship_count', 0) or 0)
-        return (offense + defense, ships)
+        return (offense + defense + (max_safe_warp * 2), ships)
+
+    def _deterministic_roll(self, *parts):
+        """Return deterministic pseudo-random float in [0, 1)."""
+        seed = '|'.join(str(part or '') for part in parts)
+        digest = hashlib.sha1(seed.encode('utf-8')).digest()
+        value = int.from_bytes(digest[:8], byteorder='big', signed=False)
+        return float(value) / float(2 ** 64)
+
+    def _should_allow_orbit_overcap_build(self, star):
+        """Allow rare over-cap fleet production at the hard cap."""
+        roll = self._deterministic_roll(
+            'micromanager-over-cap-build',
+            getattr(self.game, 'id', ''),
+            getattr(self.game, 'year', 0),
+            getattr(star, 'id', ''),
+            getattr(star, 'short_id', ''),
+        )
+        return roll < float(MICROMANAGER_OVER_CAP_BUILD_CHANCE)
+
+    def _queue_auto_orbit_fleet_consolidation(self, star, orbit_fleets):
+        """Tier-5: when over cap, consolidate down toward a low steady-state count."""
+        from .models import FleetOrders
+
+        orbit = list(orbit_fleets or [])
+        orbit_count = len(orbit)
+        if orbit_count <= MICROMANAGER_MAX_ORBIT_FLEETS:
+            return
+
+        target_count = max(
+            1,
+            min(
+                int(MICROMANAGER_MAX_ORBIT_FLEETS),
+                int(MICROMANAGER_OVER_CAP_CONSOLIDATE_TARGET),
+            ),
+        )
+        candidates = self._available_patrol_candidate_fleets_for_colony(orbit)
+        if len(candidates) <= target_count:
+            return
+
+        ranked = sorted(
+            candidates,
+            key=lambda fleet: (
+                self._fleet_defense_score(fleet)[0],
+                self._fleet_defense_score(fleet)[1],
+                int(fleet.id or 0),
+            ),
+            reverse=True,
+        )
+        survivor_fleets = ranked[:target_count]
+        if not survivor_fleets:
+            return
+        strongest_survivor = survivor_fleets[0]
+
+        for fleet in ranked[target_count:]:
+            fleet_id = int(getattr(fleet, 'id', 0) or 0)
+            if fleet_id in self._micromanager_auto_fleet_ids_for_year:
+                continue
+            if self._fleet_has_only_repeat_micromanager_patrol_orders(fleet):
+                fleet.orders.filter(
+                    order_type='PATROL',
+                    repeat=True,
+                    added_by_micromanager=True,
+                ).delete()
+            if fleet.orders.exists():
+                continue
+            next_position = (
+                fleet.orders.aggregate(max_pos=models.Max('position'))['max_pos'] or 0
+            ) + 1
+
+            try:
+                source_warp = int(getattr(fleet, 'max_safe_warp', 0) or 0)
+            except (TypeError, ValueError):
+                source_warp = 0
+            try:
+                target_warp = int(getattr(strongest_survivor, 'max_safe_warp', 0) or 0)
+            except (TypeError, ValueError):
+                target_warp = 0
+
+            if (target_warp - source_warp) > 1:
+                FleetOrders.objects.create(
+                    game=self.game,
+                    fleet=fleet,
+                    order_type='SCUTTLE',
+                    repeat=False,
+                    position=int(next_position),
+                    added_by_micromanager=True,
+                )
+            else:
+                FleetOrders.objects.create(
+                    game=self.game,
+                    fleet=fleet,
+                    order_type='MERGE',
+                    repeat=False,
+                    position=int(next_position),
+                    target_fleet=strongest_survivor,
+                    target_kind='OBJECT',
+                    target_short_id=strongest_survivor.short_id,
+                    x=int(strongest_survivor.x),
+                    y=int(strongest_survivor.y),
+                    added_by_micromanager=True,
+                )
+            self._micromanager_auto_fleet_ids_for_year.add(fleet_id)
 
     @staticmethod
     def _is_expansionist_micromanager_mode(micromanager_mode):
@@ -8899,12 +9107,20 @@ class GameTurn():
             order_type='BUILD_FLEET',
             added_by_micromanager=True,
         )
+        allow_over_cap_build = False
         if orbit_count >= MICROMANAGER_MAX_ORBIT_FLEETS:
+            had_existing_auto_build_order = existing_auto_build_orders.exists()
             for order in existing_auto_build_orders:
                 if self._order_has_progress(order):
                     continue
                 order.delete()
-            return
+            if had_existing_auto_build_order:
+                return
+            if orbit_count > MICROMANAGER_MAX_ORBIT_FLEETS:
+                return
+            if not self._should_allow_orbit_overcap_build(star):
+                return
+            allow_over_cap_build = True
         if int(getattr(star, 'shipyards', 0) or 0) <= 0:
             return
         if star.production_orders.filter(order_type='BUILD_FLEET').exists():
@@ -8917,7 +9133,10 @@ class GameTurn():
             idle_fleets,
             micromanager_mode=micromanager_mode,
         )
-        if len(dispatchable_idle) > (1 if expansionist_mode else 0):
+        if (
+            not allow_over_cap_build and
+            len(dispatchable_idle) > (1 if expansionist_mode else 0)
+        ):
             return
         patrol_fleets = self._reassignable_patrol_fleets_for_colony(orbit_fleets)
         dispatchable_patrol = self._dispatchable_idle_fleets_for_colony(
@@ -8925,7 +9144,10 @@ class GameTurn():
             patrol_fleets,
             micromanager_mode=micromanager_mode,
         )
-        if len(dispatchable_patrol) > (1 if expansionist_mode else 0):
+        if (
+            not allow_over_cap_build and
+            len(dispatchable_patrol) > (1 if expansionist_mode else 0)
+        ):
             return
         budget = self._one_year_planning_budget(star, cost_map)
         income = self._one_year_income(star)
@@ -9729,6 +9951,10 @@ class GameTurn():
             y=star.y,
         ).order_by('id'))
         if int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER:
+            self._queue_auto_orbit_fleet_consolidation(
+                star,
+                orbit_fleets,
+            )
             self._queue_auto_build_fleet_order_for_colony(
                 star,
                 orbit_fleets,

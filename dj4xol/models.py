@@ -939,6 +939,8 @@ class Star(AbstractMapObject):
     labs = models.IntegerField(default=0)
     defenses = models.IntegerField(default=0)
     shipyards = models.IntegerField(default=0)
+    cities = models.IntegerField(default=0)
+    megacities = models.IntegerField(default=0)
     has_administration = models.BooleanField(default=False)
     has_dyson_sphere = models.BooleanField(default=False)
     buildpoints_consumed = models.IntegerField(default=0)  # Reset each turn
@@ -2122,6 +2124,20 @@ PRODUCTION_COSTS = {
         'resource_z': 100,
         'colonists': 0,
     },
+    'BUILD_CITY': {
+        'bp': 0,
+        'ironium': 200,
+        'boranium': 60000,
+        'germanium': 40000,
+        'colonists': 0,
+    },
+    'BUILD_MEGACITY': {
+        'bp': 0,
+        'ironium': 600000,
+        'boranium': 150000,
+        'germanium': 120000,
+        'colonists': 0,
+    },
     'BUILD_FLEET': {'bp': 50, 'ironium': 100, 'boranium': 200, 'germanium': 200, 'colonists': 0},
     'TERRAFORM_GRAVITY': {'bp': 50, 'ironium': 375, 'boranium': 75, 'germanium': 50, 'colonists': 0},
     'TERRAFORM_TEMPERATURE': {'bp': 50, 'ironium': 100, 'boranium': 330, 'germanium': 70, 'colonists': 0},
@@ -2146,6 +2162,8 @@ class ProductionOrder(AbstractGameObject):
         ('BUILD_ADMINISTRATION', 'Build Administration'),
         ('REMOVE_ADMINISTRATION', 'Remove Administration'),
         ('BUILD_DYSON_SPHERE', 'Build Dyson Sphere'),
+        ('BUILD_CITY', 'Build City'),
+        ('BUILD_MEGACITY', 'Build Megacity'),
     ]
 
     star = models.ForeignKey(Star, related_name='production_orders',
