@@ -14,11 +14,13 @@ from ..objectdetails import DetailBuilder
 from ..turn import GameTurn
 from ..micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
+    apply_projected_order,
     get_micromanager_candidate_orders,
     plan_micromanager_orders,
 )
 from ._util import default_game
 from unittest.mock import patch
+from types import SimpleNamespace
 
 
 class AdministrationAutomationTest(TestCase):
@@ -667,6 +669,123 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertIn('BUILD_MINE', level_one_candidates)
         self.assertNotIn('BUILD_MINE', level_two_candidates)
+
+    def test_level_one_respects_absolute_mine_cap(self):
+        self._create_administration_tech(1, 1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 2_000
+        self.star.factories = 10
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 10_000
+        self.star.boranium_inventory = 10_000
+        self.star.germanium_inventory = 10_000
+        self.star.ironium_yield = 500
+        self.star.boranium_yield = 500
+        self.star.germanium_yield = 500
+        self.star.resource_x_yield = 0
+        self.star.resource_y_yield = 0
+        self.star.resource_z_yield = 0
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            1,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertNotIn('BUILD_MINE', candidates)
+
+    def test_level_one_does_not_queue_mines_when_all_yields_are_zero(self):
+        self._create_administration_tech(1, 1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 10_000
+        self.star.boranium_inventory = 10_000
+        self.star.germanium_inventory = 10_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.resource_x_yield = 0
+        self.star.resource_y_yield = 0
+        self.star.resource_z_yield = 0
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            1,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertNotIn('BUILD_MINE', candidates)
+
+    def test_projected_orders_respect_hard_infrastructure_caps(self):
+        projected = SimpleNamespace(
+            mines=2000,
+            factories=10000,
+            labs=10000,
+            defenses=10000,
+            shipyards=10000,
+            has_administration=False,
+            has_dyson_sphere=False,
+            colonists=100000,
+            planned_colonist_growth_orders=0,
+            gravity=1.0,
+            temperature=1.0,
+            radiation=1.0,
+        )
+
+        apply_projected_order(self.player, projected, 'BUILD_MINE')
+        apply_projected_order(self.player, projected, 'BUILD_FACTORY')
+        apply_projected_order(self.player, projected, 'BUILD_LAB')
+        apply_projected_order(self.player, projected, 'BUILD_DEFENSE')
+        apply_projected_order(self.player, projected, 'BUILD_SHIPYARD')
+
+        self.assertEqual(projected.mines, 2000)
+        self.assertEqual(projected.factories, 10000)
+        self.assertEqual(projected.labs, 10000)
+        self.assertEqual(projected.defenses, 10000)
+        self.assertEqual(projected.shipyards, 10000)
+
+    def test_micromanager_does_not_queue_shipyards_at_hard_cap(self):
+        self._create_administration_tech(2, 2)
+        self.star.has_administration = True
+        self.star.colonists = 500_000
+        self.star.mines = 200
+        self.star.factories = 400
+        self.star.labs = 120
+        self.star.defenses = 120
+        self.star.shipyards = 10_000
+        self.star.ironium_inventory = 100_000
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.ironium_yield = 150
+        self.star.boranium_yield = 150
+        self.star.germanium_yield = 150
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=20,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertNotIn('BUILD_SHIPYARD', planned)
 
     def test_level_two_prioritises_factory_when_queue_bp_exceeds_one_year(self):
         self._create_administration_tech(2, 2)

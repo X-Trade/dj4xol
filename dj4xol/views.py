@@ -116,6 +116,7 @@ from .forms import (
 )
 from .name_rules import validate_safe_public_text
 from .player_labels import player_name_with_bracket
+from .production_rules import capped_order_quantity_for_star
 from .scanners import get_scanner_sources_for_player
 
 
@@ -1440,6 +1441,15 @@ def add_production_order(request, game_short_id):
                 return _redirect_preserving_selection(request, game)
             quantity = 1
             repeat = False
+        else:
+            capped_quantity = capped_order_quantity_for_star(
+                star,
+                order_type,
+                quantity,
+            )
+            if capped_quantity <= 0:
+                return _redirect_preserving_selection(request, game)
+            quantity = int(capped_quantity)
 
         micromanager_orders = list(star.production_orders.filter(
             added_by_micromanager=True

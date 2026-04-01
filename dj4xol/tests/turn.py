@@ -594,6 +594,64 @@ class TestPopulationGrowth(TestCase):
         self.assertIn('BUILD_COLONISTS_1K', mechanical_orders)
         self.assertIn('BUILD_COLONISTS_1M', mechanical_orders)
 
+    def test_available_production_orders_hide_infrastructure_at_hard_cap(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        homeworld.factories = 10000
+        homeworld.save(update_fields=['factories'])
+
+        orders = {
+            entry['value']
+            for entry in get_player_available_production_orders(player, homeworld)
+        }
+        self.assertNotIn('BUILD_FACTORY', orders)
+
+    def test_available_production_orders_hide_shipyard_at_hard_cap(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        homeworld.shipyards = 10000
+        homeworld.save(update_fields=['shipyards'])
+
+        orders = {
+            entry['value']
+            for entry in get_player_available_production_orders(player, homeworld)
+        }
+        self.assertNotIn('BUILD_SHIPYARD', orders)
+
+    def test_repeat_infrastructure_order_stops_requeueing_at_hard_cap(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        homeworld.factories = 10000
+        homeworld.ironium_inventory = 100000
+        homeworld.boranium_inventory = 100000
+        homeworld.germanium_inventory = 100000
+        homeworld.save(
+            update_fields=[
+                'factories',
+                'ironium_inventory',
+                'boranium_inventory',
+                'germanium_inventory',
+            ]
+        )
+        ProductionOrder.objects.create(
+            game=game,
+            star=homeworld,
+            order_type='BUILD_FACTORY',
+            quantity=3,
+            repeat=True,
+            position=1,
+        )
+
+        GameTurn(game).production()
+        homeworld.refresh_from_db()
+        self.assertEqual(homeworld.factories, 10000)
+        self.assertFalse(
+            homeworld.production_orders.filter(order_type='BUILD_FACTORY').exists()
+        )
+
     def test_mechanical_population_orders_build_colonists(self):
         game = default_game(stars=5)
         player = game.players.first()

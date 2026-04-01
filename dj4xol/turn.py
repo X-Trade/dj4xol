@@ -165,6 +165,10 @@ from .ai_players import (
     player_ai_administration_tier,
 )
 from .fleet_thumbnails import choose_fleet_thumbnail
+from .production_rules import (
+    production_infrastructure_cap,
+    production_infrastructure_room,
+)
 from .chance_rules import (
     apply_roll_bend,
     clamp_percent,
@@ -7976,6 +7980,12 @@ class GameTurn():
                     if changed:
                         order.save(update_fields=changed)
 
+                if self._is_infrastructure_order_capped(star, order.order_type):
+                    if self._order_has_progress(order):
+                        self._refund_order_progress_resources(star, order)
+                    order.delete()
+                    continue
+
                 cost = cost_map.get(order.order_type, {})
 
                 if order.order_type.startswith('TERRAFORM_') and terraform_rate <= 0:
@@ -7999,6 +8009,27 @@ class GameTurn():
 
                 # Build items until we've completed the quantity or get blocked
                 while order.completed < order.quantity and not blocked:
+                    if self._is_infrastructure_order_capped(star, order.order_type):
+                        changed = []
+                        if self._refund_order_progress_resources(star, order):
+                            changed.extend([
+                                'spent_ironium',
+                                'spent_boranium',
+                                'spent_germanium',
+                                'spent_resource_x',
+                                'spent_resource_y',
+                                'spent_resource_z',
+                            ])
+                        if int(order.quantity or 0) != int(order.completed or 0):
+                            order.quantity = int(order.completed or 0)
+                            changed.append('quantity')
+                        if bool(order.repeat):
+                            order.repeat = False
+                            changed.append('repeat')
+                        if changed:
+                            order.save(update_fields=changed)
+                        break
+
                     colonist_cost = int(cost.get('colonists', 0) or 0)
 
                     # Phase 1: Consume resources (must complete before labor)
@@ -8085,17 +8116,22 @@ class GameTurn():
                 # After while loop, check if order is fully complete
                 if order.completed >= order.quantity:
                     if order.repeat:
+                        requeue_quantity = int(order.quantity or 0)
+                        room = production_infrastructure_room(star, order.order_type)
+                        if room is not None:
+                            requeue_quantity = min(requeue_quantity, int(room))
                         # Requeue at bottom with fresh quantity
-                        max_pos = star.production_orders.aggregate(
-                            max_pos=models.Max('position'))['max_pos'] or 0
-                        ProductionOrder.objects.create(
-                            game=self.game,
-                            star=star,
-                            order_type=order.order_type,
-                            position=max_pos + 1,
-                            repeat=True,
-                            quantity=order.quantity,
-                        )
+                        if requeue_quantity > 0:
+                            max_pos = star.production_orders.aggregate(
+                                max_pos=models.Max('position'))['max_pos'] or 0
+                            ProductionOrder.objects.create(
+                                game=self.game,
+                                star=star,
+                                order_type=order.order_type,
+                                position=max_pos + 1,
+                                repeat=True,
+                                quantity=requeue_quantity,
+                            )
                     order.delete()
                 elif not blocked:
                     order.save()
@@ -8214,11 +8250,15 @@ class GameTurn():
 
     def _build_mine(self, star):
         """Build a mine at the given star."""
-        star.mines += 1
+        room = production_infrastructure_room(star, 'BUILD_MINE')
+        if room is None or room > 0:
+            star.mines += 1
 
     def _build_factory(self, star):
         """Build a factory at the given star."""
-        star.factories += 1
+        room = production_infrastructure_room(star, 'BUILD_FACTORY')
+        if room is None or room > 0:
+            star.factories += 1
 
     def _build_colonists(self, star, amount):
         """Add produced colonists to a mechanical colony."""
@@ -8226,15 +8266,21 @@ class GameTurn():
 
     def _build_lab(self, star):
         """Build a lab at the given star."""
-        star.labs += 1
+        room = production_infrastructure_room(star, 'BUILD_LAB')
+        if room is None or room > 0:
+            star.labs += 1
 
     def _build_defense(self, star):
         """Build a defense at the given star."""
-        star.defenses += 1
+        room = production_infrastructure_room(star, 'BUILD_DEFENSE')
+        if room is None or room > 0:
+            star.defenses += 1
 
     def _build_shipyard(self, star):
         """Build a shipyard at the given star."""
-        star.shipyards += 1
+        room = production_infrastructure_room(star, 'BUILD_SHIPYARD')
+        if room is None or room > 0:
+            star.shipyards += 1
 
     def _build_administration(self, star):
         """Build Administration at the given star."""
@@ -8257,6 +8303,32 @@ class GameTurn():
             inventory_field = '%s_inventory' % resource
             current = int(getattr(star, inventory_field, 0) or 0)
             setattr(star, inventory_field, current + abs(refund))
+
+    @staticmethod
+    def _is_infrastructure_order_capped(star, order_type):
+        cap = production_infrastructure_cap(order_type)
+        if cap is None:
+            return False
+        room = production_infrastructure_room(star, order_type)
+        return room is not None and int(room) <= 0
+
+    @staticmethod
+    def _refund_order_progress_resources(star, order):
+        refunded = False
+        for resource in ALL_RESOURCE_KEYS:
+            spent_field = 'spent_%s' % resource
+            spent = int(getattr(order, spent_field, 0) or 0)
+            if spent <= 0:
+                continue
+            inventory_field = '%s_inventory' % resource
+            setattr(
+                star,
+                inventory_field,
+                int(getattr(star, inventory_field, 0) or 0) + spent,
+            )
+            setattr(order, spent_field, 0)
+            refunded = True
+        return refunded
 
     def _send_production_summary_messages(self, star, production_counts):
         """Send one construction rollup message per star per year."""

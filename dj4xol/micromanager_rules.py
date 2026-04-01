@@ -17,6 +17,11 @@ from .colony_rules import (
     population_growth_uses_surface_resources,
 )
 from .mineral_rules import ALL_RESOURCE_KEYS
+from .production_rules import (
+    MINE_BUILD_CAP,
+    production_infrastructure_cap,
+    production_infrastructure_count,
+)
 
 
 JOB_MIN_RATIO = 0.25
@@ -164,6 +169,13 @@ def _projected_job_thresholds(player, star):
     }
 
 
+def _total_mineral_yield(star):
+    total_yield = 0
+    for key in ALL_RESOURCE_KEYS:
+        total_yield += int(getattr(star, '%s_yield' % key, 0) or 0)
+    return int(total_yield)
+
+
 def _safe_ratio(numerator, denominator, default=0.0):
     denominator = float(denominator or 0.0)
     if denominator <= 0.0:
@@ -195,11 +207,12 @@ def _target_mine_count(star, micromanager_mode=MICROMANAGER_MODE_STANDARD):
     if safe_count <= 0:
         return 0
     if micromanager_mode != MICROMANAGER_MODE_EXPANSIONIST:
-        return safe_count
-    return max(
+        return min(MINE_BUILD_CAP, safe_count)
+    target = max(
         safe_count,
         int(ceil(float(safe_count) * EXPANSIONIST_MINE_TARGET_MULTIPLIER)),
     )
+    return min(MINE_BUILD_CAP, target)
 
 
 def _target_mine_fill_ratio(star, micromanager_mode=MICROMANAGER_MODE_STANDARD):
@@ -368,10 +381,18 @@ def _can_add_jobs_without_breaking_limit(player, star, order_type):
     return next_jobs <= thresholds['max_jobs']
 
 
+def _order_has_infrastructure_room(star, order_type):
+    cap = production_infrastructure_cap(order_type)
+    if cap is None:
+        return True
+    count = production_infrastructure_count(star, order_type)
+    if count is None:
+        return True
+    return int(count) < int(cap)
+
+
 def safe_mine_count(star):
-    total_yield = 0
-    for key in ALL_RESOURCE_KEYS:
-        total_yield += int(getattr(star, '%s_yield' % key, 0) or 0)
+    total_yield = _total_mineral_yield(star)
     if total_yield <= 0:
         return 0
     staffing_ratio = calculate_staffing_ratio(star)
@@ -381,15 +402,13 @@ def safe_mine_count(star):
     sustainable = float(total_yield) / float(KT_PER_MINE * productivity)
     if sustainable <= 0:
         return 0
-    return int(sustainable)
+    return min(MINE_BUILD_CAP, int(sustainable))
 
 
 def projected_mining_output(star):
     """Estimate one year of mining output for a real or projected colony."""
     rates = {}
-    total_yield = 0
-    for key in ALL_RESOURCE_KEYS:
-        total_yield += int(getattr(star, '%s_yield' % key, 0) or 0)
+    total_yield = _total_mineral_yield(star)
     if total_yield <= 0 or int(getattr(star, 'mines', 0) or 0) <= 0:
         for key in ALL_RESOURCE_KEYS:
             rates[key] = 0
@@ -767,7 +786,12 @@ def _scored_micromanager_candidate_orders(
         _balanced_shipyard_target(star, tier),
     )
     max_mines = int(_target_mine_count(star, micromanager_mode=micromanager_mode) or 0)
-    mine_room = current_mines < max_mines
+    has_yield = _total_mineral_yield(star) > 0
+    mine_room = (
+        has_yield and
+        current_mines < max_mines and
+        current_mines < MINE_BUILD_CAP
+    )
     queue_pressure = _queue_throughput_pressure(star)
     support_gap_scores = _support_gap_scores_for_tier(star, tier)
     job_ratio = _job_fill_ratio(player, star)
@@ -786,6 +810,8 @@ def _scored_micromanager_candidate_orders(
     def append_candidate(order_type, score):
         score = float(score or 0.0)
         if score <= 0.0:
+            return
+        if not _order_has_infrastructure_room(star, order_type):
             return
         if order_type not in first_seen:
             first_seen[order_type] = len(first_seen)
@@ -1042,16 +1068,27 @@ def get_micromanager_candidate_orders(
     candidates = []
 
     def append_candidate(order_type):
+        if not _order_has_infrastructure_room(star, order_type):
+            return
         candidates.append(order_type)
     current_mines = int(getattr(star, 'mines', 0) or 0)
     current_factories = int(getattr(star, 'factories', 0) or 0)
     current_shipyards = int(getattr(star, 'shipyards', 0) or 0)
     shipyard_target = max(1, int(fleets_in_orbit or 0))
     max_mines = _target_mine_count(star, micromanager_mode=micromanager_mode)
+    has_yield = _total_mineral_yield(star) > 0
     if int(tier or 0) == TIER_BASIC:
-        mine_room = max_mines > 0
+        mine_room = (
+            has_yield and
+            max_mines > 0 and
+            current_mines < MINE_BUILD_CAP
+        )
     else:
-        mine_room = current_mines < max_mines
+        mine_room = (
+            has_yield and
+            current_mines < max_mines and
+            current_mines < MINE_BUILD_CAP
+        )
     needs_jobs = current_jobs < thresholds['target_jobs']
     queue_pressure = {'mines': False, 'factories': False}
     filler_order_types = LEVEL_ONE_FILLER_ORDER_TYPES
@@ -1286,15 +1323,20 @@ def apply_projected_order(
     if add_queue_cost and cost_map is not None:
         _add_queue_cost(star_state, cost_map.get(order_type, {}))
     if order_type == 'BUILD_MINE':
-        star_state.mines += 1
+        if _order_has_infrastructure_room(star_state, order_type):
+            star_state.mines += 1
     elif order_type == 'BUILD_FACTORY':
-        star_state.factories += 1
+        if _order_has_infrastructure_room(star_state, order_type):
+            star_state.factories += 1
     elif order_type == 'BUILD_LAB':
-        star_state.labs += 1
+        if _order_has_infrastructure_room(star_state, order_type):
+            star_state.labs += 1
     elif order_type == 'BUILD_DEFENSE':
-        star_state.defenses += 1
+        if _order_has_infrastructure_room(star_state, order_type):
+            star_state.defenses += 1
     elif order_type == 'BUILD_SHIPYARD':
-        star_state.shipyards += 1
+        if _order_has_infrastructure_room(star_state, order_type):
+            star_state.shipyards += 1
     elif order_type == ADMINISTRATION_ORDER_TYPE:
         star_state.has_administration = True
     elif order_type == DYSON_SPHERE_ORDER_TYPE:

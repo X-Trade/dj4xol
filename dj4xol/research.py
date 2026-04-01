@@ -36,6 +36,7 @@ from .technology_thumbnails import (
     get_technology_thumbnail_path,
     get_technology_thumbnail_paths,
 )
+from .production_rules import capped_order_quantity_for_star
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
 from .technology_gate_rules import (
     describe_race_type_requirement,
@@ -416,7 +417,7 @@ def get_player_available_production_orders(player, star):
                 'repeat_allowed': True,
             },
         ])
-    orders.extend([
+    infrastructure_orders = [
         {
             'value': 'BUILD_MINE',
             'label': 'Build Mine',
@@ -442,7 +443,15 @@ def get_player_available_production_orders(player, star):
             'label': 'Build Shipyard',
             'repeat_allowed': True,
         },
-    ])
+    ]
+    for option in infrastructure_orders:
+        if capped_order_quantity_for_star(
+            star,
+            option.get('value'),
+            1,
+        ) <= 0:
+            continue
+        orders.append(option)
     has_admin_order = star.production_orders.filter(
         order_type=ADMINISTRATION_ORDER_TYPE
     ).exists()

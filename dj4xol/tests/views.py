@@ -384,6 +384,72 @@ class TestProductionOrders(TestCase):
         order = ProductionOrder.objects.filter(star=homeworld).first()
         self.assertEqual(order.order_type, 'BUILD_MINE')
 
+    def test_production_order_add_clamps_quantity_to_infrastructure_cap(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        homeworld.factories = 9999
+        homeworld.save(update_fields=['factories'])
+        user, _account = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_production', args=[game.short_id]),
+            {
+                'star': homeworld.short_id,
+                'order_type': 'BUILD_FACTORY',
+                'quantity': 50,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        order = ProductionOrder.objects.get(star=homeworld, order_type='BUILD_FACTORY')
+        self.assertEqual(order.quantity, 1)
+
+    def test_production_order_add_rejects_when_infrastructure_at_cap(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        homeworld.factories = 10000
+        homeworld.save(update_fields=['factories'])
+        user, _account = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_production', args=[game.short_id]),
+            {
+                'star': homeworld.short_id,
+                'order_type': 'BUILD_FACTORY',
+                'quantity': 1,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            ProductionOrder.objects.filter(star=homeworld, order_type='BUILD_FACTORY').exists()
+        )
+
+    def test_production_panel_hides_capped_factory_option(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        homeworld = player.homeworld
+        homeworld.factories = 10000
+        homeworld.save(update_fields=['factories'])
+        user, _account = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {
+                'x': homeworld.x,
+                'y': homeworld.y,
+                'sel': homeworld.short_id,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'value="BUILD_FACTORY"', html=False)
+
     def test_production_costs_panel_starts_hidden_with_costs_label(self):
         game = default_game(stars=5)
         player = game.players.first()
