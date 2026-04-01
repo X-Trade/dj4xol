@@ -6338,6 +6338,7 @@ class GameTurn():
             total_losses = (
                 defenses_lost + colonists_lost +
                 mines_lost + factories_lost + labs_lost + shipyards_lost +
+                cities_lost + megacities_lost +
                 administration_lost + dyson_sphere_lost
             )
             if total_losses > 0 or star_destroyed:

@@ -1395,12 +1395,12 @@
   fields:
     short_id: "tech00000418"
     category: 5
-    level: 1
+    level: 2
     name: 'City'
     description: 'Dense urban development expands colony labour capacity and boosts local productivity.'
     tech_type: 'INFRASTRUCTURE'
-    thumbnail_class: 'star/city'
-    params_json: '{"city": true, "production_cost_overrides": {"BUILD_CITY": {"bp": 0, "ironium": 200, "boranium": 60000, "germanium": 40000, "colonists": 0}}}'
+    thumbnail_class: ''
+    params_json: '{"city": true, "production_cost_overrides": {"BUILD_CITY": {"bp": 60, "ironium": 200, "boranium": 60, "germanium": 40, "colonists": 0}}}'
     display_order: 215
     enabled: True
 
@@ -1409,12 +1409,12 @@
   fields:
     short_id: "tech00000419"
     category: 5
-    level: 9
+    level: 11
     name: 'Megacity'
     description: 'Megacity planning delivers major labour expansion and improved industrial coordination.'
     tech_type: 'INFRASTRUCTURE'
     thumbnail_class: 'star/city'
-    params_json: '{"megacity": true, "production_cost_overrides": {"BUILD_MEGACITY": {"bp": 0, "ironium": 600000, "boranium": 150000, "germanium": 120000, "colonists": 0}}}'
+    params_json: '{"megacity": true, "production_cost_overrides": {"BUILD_MEGACITY": {"bp": 180, "ironium": 600, "boranium": 150, "germanium": 120, "colonists": 0}}}'
     display_order: 216
     enabled: True
 

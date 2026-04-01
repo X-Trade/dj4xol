@@ -13,7 +13,7 @@ from .fleet_thumbnails import (
     is_valid_fleet_thumbnail,
 )
 from .star_thumbnails import (
-    CITY_THUMB_POPULATION_THRESHOLD,
+    CITY_THUMB_MEGACITY_THRESHOLD,
     choose_special_star_thumbnail,
     choose_star_thumbnail,
     is_city_star_thumbnail,
@@ -952,11 +952,11 @@ class Star(AbstractMapObject):
             self.thumbnail_path = choose_star_thumbnail(self.id or self.short_id or self.name)
             thumbnail_changed = True
         try:
-            colonists = int(getattr(self, 'colonists', 0) or 0)
+            megacities = int(getattr(self, 'megacities', 0) or 0)
         except (TypeError, ValueError):
-            colonists = 0
+            megacities = 0
         if (
-            colonists > CITY_THUMB_POPULATION_THRESHOLD and
+            megacities > CITY_THUMB_MEGACITY_THRESHOLD and
             not is_city_star_thumbnail(self.thumbnail_path)
         ):
             self.thumbnail_path = choose_star_thumbnail(
@@ -2125,17 +2125,17 @@ PRODUCTION_COSTS = {
         'colonists': 0,
     },
     'BUILD_CITY': {
-        'bp': 0,
+        'bp': 60,
         'ironium': 200,
-        'boranium': 60000,
-        'germanium': 40000,
+        'boranium': 60,
+        'germanium': 40,
         'colonists': 0,
     },
     'BUILD_MEGACITY': {
-        'bp': 0,
-        'ironium': 600000,
-        'boranium': 150000,
-        'germanium': 120000,
+        'bp': 180,
+        'ironium': 600,
+        'boranium': 150,
+        'germanium': 120,
         'colonists': 0,
     },
     'BUILD_FLEET': {'bp': 50, 'ironium': 100, 'boranium': 200, 'germanium': 200, 'colonists': 0},

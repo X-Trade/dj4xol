@@ -5519,17 +5519,18 @@ class TestFleetCargo(TestCase):
         self.assertIn('star_thumbnail', details)
         self.assertTrue(details['star_thumbnail'].startswith('dj4xol/images/thumbs/star/all/'))
 
-    def test_object_details_uses_city_star_thumbnail_over_9bn(self):
+    def test_object_details_uses_city_star_thumbnail_over_100_megacities(self):
         from ..objectdetails import DetailBuilder
 
         game = default_game()
         player = game.players.first()
         star = player.homeworld
-        star.colonists = 9000000001
+        star.colonists = 1_000_000
+        star.megacities = 101
         star.has_dyson_sphere = False
-        star.save(update_fields=['colonists', 'has_dyson_sphere'])
+        star.save(update_fields=['colonists', 'megacities', 'has_dyson_sphere'])
         star.refresh_from_db()
-        self.assertEqual(star.colonists, 9000000001)
+        self.assertEqual(star.megacities, 101)
 
         detail_builder = DetailBuilder(
             game,
@@ -5542,22 +5543,23 @@ class TestFleetCargo(TestCase):
 
         self.assertIsNotNone(details)
         self.assertTrue(details['is_star'])
-        self.assertEqual(details['population'], 9000000001)
+        self.assertEqual(details['population'], 1_000_000)
         self.assertIn('star_thumbnail', details)
         self.assertTrue(
             details['star_thumbnail'].startswith('dj4xol/images/thumbs/star/city/'),
             details['star_thumbnail'],
         )
 
-    def test_object_details_does_not_use_city_thumbnail_at_one_million(self):
+    def test_object_details_does_not_use_city_thumbnail_at_or_below_100_megacities(self):
         from ..objectdetails import DetailBuilder
 
         game = default_game()
         player = game.players.first()
         star = player.homeworld
         star.colonists = 1000000
+        star.megacities = 100
         star.has_dyson_sphere = False
-        star.save(update_fields=['colonists', 'has_dyson_sphere'])
+        star.save(update_fields=['colonists', 'megacities', 'has_dyson_sphere'])
 
         detail_builder = DetailBuilder(
             game,
@@ -5604,25 +5606,27 @@ class TestFleetCargo(TestCase):
         game = default_game()
         player = game.players.first()
         star = player.homeworld
-        star.colonists = 9_500_000_000
+        star.colonists = 100_000
+        star.megacities = 150
         star.has_dyson_sphere = True
-        star.save(update_fields=['colonists', 'has_dyson_sphere'])
+        star.save(update_fields=['colonists', 'megacities', 'has_dyson_sphere'])
 
         self.assertTrue(star.effective_thumbnail_path.startswith('dj4xol/images/thumbs/star/dyson/'))
 
-    def test_city_thumbnail_persists_after_population_drop(self):
+    def test_city_thumbnail_persists_after_megacity_drop(self):
         game = default_game()
         player = game.players.first()
         star = player.homeworld
         star.has_dyson_sphere = False
-        star.colonists = 9_500_000_000
-        star.save(update_fields=['has_dyson_sphere', 'colonists'])
+        star.colonists = 100_000
+        star.megacities = 150
+        star.save(update_fields=['has_dyson_sphere', 'colonists', 'megacities'])
         star.refresh_from_db()
         self.assertTrue(star.thumbnail_path.startswith('dj4xol/images/thumbs/star/city/'))
         self.assertTrue(star.effective_thumbnail_path.startswith('dj4xol/images/thumbs/star/city/'))
 
-        star.colonists = 500_000
-        star.save(update_fields=['colonists'])
+        star.megacities = 0
+        star.save(update_fields=['megacities'])
         star.refresh_from_db()
 
         self.assertTrue(star.thumbnail_path.startswith('dj4xol/images/thumbs/star/city/'))
@@ -12317,7 +12321,12 @@ class TestBombardmentOrders(TestCase):
         star.factories = 30
         star.labs = 12
         star.shipyards = 4
-        star.save(update_fields=['player', 'colonists', 'defenses', 'mines', 'factories', 'labs', 'shipyards'])
+        star.cities = 7
+        star.megacities = 3
+        star.save(update_fields=[
+            'player', 'colonists', 'defenses', 'mines', 'factories',
+            'labs', 'shipyards', 'cities', 'megacities',
+        ])
 
         fleet = Fleet.objects.create(
             game=game,
@@ -12345,6 +12354,52 @@ class TestBombardmentOrders(TestCase):
         self.assertEqual(star.factories, 30)
         self.assertEqual(star.labs, 12)
         self.assertEqual(star.shipyards, 4)
+        self.assertEqual(star.cities, 7)
+        self.assertEqual(star.megacities, 3)
+
+    def test_conventional_bombs_can_destroy_cities_and_megacities(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_city_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 100_000
+        star.defenses = 0
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.cities = 5
+        star.megacities = 4
+        star.save(update_fields=[
+            'player', 'colonists', 'defenses', 'mines', 'factories',
+            'labs', 'shipyards', 'cities', 'megacities',
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Conventional Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='CONVENTIONAL',
+            integrity=100,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='BOMB', target_star=star
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=3):
+            GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        self.assertEqual(star.cities, 2)
+        self.assertEqual(star.megacities, 1)
 
     def test_bombardment_damage_tempered_by_defenses(self):
         from ..bombardment_rules import bombardment_damage_k

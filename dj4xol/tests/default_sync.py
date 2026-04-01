@@ -211,6 +211,16 @@ class DefaultSyncTest(TestCase):
             ).exists()
         )
         self.assertIsNotNone(city_hull.hull_design)
+        city_infra = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000418'
+        )
+        self.assertEqual(city_infra.level, 2)
+        self.assertEqual(city_infra.thumbnail_class, '')
+        megacity_infra = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000419'
+        )
+        self.assertEqual(megacity_infra.level, 11)
+        self.assertEqual(megacity_infra.thumbnail_class, 'star/city')
         planetary_disruptor_gate = ResearchLevelPrerequisite.objects.get(
             category__code='CONSTRUCTION',
             level=6,

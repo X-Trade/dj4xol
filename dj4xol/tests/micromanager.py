@@ -119,7 +119,7 @@ class AdministrationAutomationTest(TestCase):
         self._unlock_category_level(category, tech_level)
         return category
 
-    def _create_city_tech(self, tech_level=1):
+    def _create_city_tech(self, tech_level=2):
         category = ResearchCategory.objects.create(
             code='CITY%s' % tech_level,
             name='City %s' % tech_level,
@@ -132,14 +132,14 @@ class AdministrationAutomationTest(TestCase):
             tech_type='INFRASTRUCTURE',
             params_json=(
                 '{"city": true, "production_cost_overrides": '
-                '{"BUILD_CITY": {"bp": 0, "ironium": 200, "boranium": 60000, '
-                '"germanium": 40000, "colonists": 0}}}'
+                '{"BUILD_CITY": {"bp": 60, "ironium": 200, "boranium": 60, '
+                '"germanium": 40, "colonists": 0}}}'
             ),
         )
         self._unlock_category_level(category, tech_level)
         return category
 
-    def _create_megacity_tech(self, tech_level=9):
+    def _create_megacity_tech(self, tech_level=11):
         category = ResearchCategory.objects.create(
             code='MEGACITY%s' % tech_level,
             name='Megacity %s' % tech_level,
@@ -152,8 +152,8 @@ class AdministrationAutomationTest(TestCase):
             tech_type='INFRASTRUCTURE',
             params_json=(
                 '{"megacity": true, "production_cost_overrides": '
-                '{"BUILD_MEGACITY": {"bp": 0, "ironium": 600000, '
-                '"boranium": 150000, "germanium": 120000, "colonists": 0}}}'
+                '{"BUILD_MEGACITY": {"bp": 180, "ironium": 600, '
+                '"boranium": 150, "germanium": 120, "colonists": 0}}}'
             ),
         )
         self._unlock_category_level(category, tech_level)
@@ -453,7 +453,7 @@ class AdministrationAutomationTest(TestCase):
         options = get_player_available_production_orders(self.player, self.star)
         self.assertNotIn('BUILD_CITY', [item['value'] for item in options])
 
-        self._create_city_tech(tech_level=1)
+        self._create_city_tech(tech_level=2)
         profile = get_player_city_profile(self.player)
         self.assertTrue(profile.get('unlocked'))
 
@@ -464,10 +464,14 @@ class AdministrationAutomationTest(TestCase):
         self.star.ironium_inventory = 1000
         self.star.boranium_inventory = 300000
         self.star.germanium_inventory = 200000
+        self.star.factories = 1000
+        self.star.colonists = max(int(getattr(self.star, 'colonists', 0) or 0), 2_000_000)
         self.star.save(update_fields=[
             'ironium_inventory',
             'boranium_inventory',
             'germanium_inventory',
+            'factories',
+            'colonists',
         ])
 
         ProductionOrder.objects.create(
@@ -487,8 +491,8 @@ class AdministrationAutomationTest(TestCase):
         )
 
     def test_city_and_megacity_orders_hidden_at_infrastructure_cap(self):
-        self._create_city_tech(tech_level=1)
-        self._create_megacity_tech(tech_level=9)
+        self._create_city_tech(tech_level=2)
+        self._create_megacity_tech(tech_level=11)
 
         city_profile = get_player_city_profile(self.player)
         megacity_profile = get_player_megacity_profile(self.player)
@@ -772,7 +776,7 @@ class AdministrationAutomationTest(TestCase):
 
     def test_level_two_jobs_deficit_can_plan_city_when_shipyard_target_met(self):
         self._create_administration_tech(2, 2)
-        self._create_city_tech(tech_level=1)
+        self._create_city_tech(tech_level=2)
         self.player.race_type.population_growth_multiplier = 0
         self.player.race_type.save(update_fields=['population_growth_multiplier'])
         self.star.has_administration = True
