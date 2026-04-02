@@ -1,6 +1,7 @@
 from django.test import TestCase
 
 from ..models import (
+    DefaultResearchLevelRequirement,
     ProductionOrder,
     ResearchCategory,
     ResearchLevelRequirement,
@@ -8,6 +9,7 @@ from ..models import (
     Technology,
 )
 from ..research import copy_default_requirements_to_category, ensure_player_research_rows
+from ..research import get_level_requirement
 from ..turn import GameTurn
 from ._util import default_game
 
@@ -33,6 +35,40 @@ class ResearchRequirementsTest(TestCase):
             ResearchLevelRequirement.objects.filter(category=category).count(),
             26
         )
+
+    def test_default_endgame_rp_costs_are_data_backed(self):
+        level_18 = DefaultResearchLevelRequirement.objects.get(level=18)
+        level_26 = DefaultResearchLevelRequirement.objects.get(level=26)
+        self.assertEqual(level_18.rp_cost, 177110)
+        self.assertEqual(level_26.rp_cost, 2000000)
+
+    def test_get_level_requirement_uses_defaults_when_category_has_no_custom_rows(self):
+        category = ResearchCategory.objects.create(
+            code='REQ_FALLBACK_A',
+            name='Req Fallback A',
+            enabled=True,
+        )
+        requirement = get_level_requirement(category.id, 1, player=self.player)
+        self.assertIsNotNone(requirement)
+        self.assertEqual(requirement['rp_cost'], 50)
+
+    def test_get_level_requirement_does_not_fallback_past_custom_category_rows(self):
+        category = ResearchCategory.objects.create(
+            code='REQ_FALLBACK_B',
+            name='Req Fallback B',
+            enabled=True,
+        )
+        copy_default_requirements_to_category(category)
+        ResearchLevelRequirement.objects.filter(
+            category=category,
+            level__gte=2,
+        ).delete()
+
+        level_one = get_level_requirement(category.id, 1, player=self.player)
+        level_two = get_level_requirement(category.id, 2, player=self.player)
+
+        self.assertIsNotNone(level_one)
+        self.assertIsNone(level_two)
 
     def test_research_level_blocked_when_minerals_missing(self):
         category, _ = ResearchCategory.objects.get_or_create(

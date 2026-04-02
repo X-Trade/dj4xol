@@ -1,4 +1,5 @@
 from ..turn import (
+    COLONY_VANISHED_EVENT_WEIGHT,
     GameTurn,
     KT_PER_MINE,
     HOMEWORLD_MIN_YIELD,
@@ -1016,6 +1017,9 @@ class TestRandomEvents(TestCase):
             'abandoned' in msg_lower or 'contact' in msg_lower,
             f"Expected colony vanished message, got: {msg.message}"
         )
+
+    def test_colony_vanished_event_weight_is_extremely_low(self):
+        self.assertLessEqual(COLONY_VANISHED_EVENT_WEIGHT, 0.001)
 
     def test_planetoid_event_moves_toward_ideal_when_positive(self):
         """Positive planetoid event should move environment toward player's ideal."""

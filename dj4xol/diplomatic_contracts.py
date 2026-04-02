@@ -657,7 +657,8 @@ def _apply_reverse_engineering_reward(player, technology, year=None):
         current_req = get_level_requirement(technology.category_id, current_req_level, player=player)
         rp_gap = max(
             1,
-            int(gifted_req.get('rp_cost', 0) or 0) - int(current_req.get('rp_cost', 0) or 0),
+            int((gifted_req or {}).get('rp_cost', 0) or 0) -
+            int((current_req or {}).get('rp_cost', 0) or 0),
         )
         fraction = random.uniform(0.20, 0.50)
         bonus_rp = max(1, int(round(float(rp_gap) * float(fraction))))

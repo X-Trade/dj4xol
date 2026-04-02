@@ -15,6 +15,7 @@ class ResearchRulesTest(TestCase):
         self.assertEqual(rp_cost_for_level(3), 130)
         self.assertEqual(rp_cost_for_level(4), 210)
         self.assertEqual(rp_cost_for_level(5), 340)
+        self.assertEqual(rp_cost_for_level(18), 177110)
 
     def test_normalise_percentages_handles_invalid_totals(self):
         result = normalise_percentages([100, 100, 0, -5])

@@ -26,7 +26,7 @@ from ..models import (
     Report,
     Salvage,
 )
-from ..research import ensure_player_research_rows
+from ..research import copy_default_requirements_to_category, ensure_player_research_rows
 from ..turn import GameTurn
 from ._util import get_default_race, get_default_race_type
 
@@ -1687,6 +1687,7 @@ class PlayCommandTest(TestCase):
     def test_research_category_detail_includes_secret_resource_requirements(self):
         category = ResearchCategory.objects.filter(code='ENERGY').first()
         self.assertIsNotNone(category)
+        copy_default_requirements_to_category(category)
         rows = ensure_player_research_rows(self.player1)
         energy_row = next(row for row in rows if row.category_id == category.id)
         energy_row.current_level = 0

@@ -816,6 +816,9 @@ def get_level_requirement(category_id, level, player=None, game=None):
     except ResearchLevelRequirement.DoesNotExist:
         pass
 
+    if ResearchLevelRequirement.objects.filter(category_id=category_id).exists():
+        return None
+
     default = DefaultResearchLevelRequirement.objects.filter(level=level).first()
     if default:
         base = {
@@ -832,20 +835,7 @@ def get_level_requirement(category_id, level, player=None, game=None):
                 base, getattr(game, 'research_cost_multiplier', 1.0)
             )
         return base
-    base = {
-        'rp_cost': int(rp_cost_for_level(level)),
-        'ironium_cost': 0,
-        'boranium_cost': 0,
-        'germanium_cost': 0,
-        'resource_x_cost': 0,
-        'resource_y_cost': 0,
-        'resource_z_cost': 0,
-    }
-    if game is not None:
-        return _apply_research_cost_multiplier(
-            base, getattr(game, 'research_cost_multiplier', 1.0)
-        )
-    return base
+    return None
 
 
 def get_level_prerequisites(category_id, level):
@@ -980,6 +970,8 @@ def _allocate_mineral_progress(rows, eligible_stars, max_level_by_category):
             continue
         next_level = int(row.current_level) + 1
         requirement = get_level_requirement(row.category_id, next_level, player=row.player)
+        if not requirement:
+            continue
         paid = _clamp_paid_to_requirement({
             f'{key}_paid': getattr(row, f'{key}_paid', 0) for key in RESEARCH_RESOURCE_KEYS
         }, requirement)
@@ -1103,23 +1095,29 @@ def _max_level_by_category(category_ids):
         max_level=models.Max('level')
     )
     result = {row['category_id']: int(row['max_level']) for row in rows}
+    explicit_categories = set(result.keys())
     default_max = DefaultResearchLevelRequirement.objects.aggregate(
         models.Max('level')
     ).get('level__max') or 0
     for category_id in category_ids:
-        result.setdefault(category_id, int(default_max))
+        if category_id not in explicit_categories:
+            result.setdefault(category_id, int(default_max))
     return result
 
 
 def get_global_research_max_level():
     """Return the highest configured research level."""
-    ensure_default_level_requirements()
-    max_level = (
+    default_max = (
         DefaultResearchLevelRequirement.objects.aggregate(
             models.Max('level')
         ).get('level__max') or 0
     )
-    return int(max_level)
+    category_max = (
+        ResearchLevelRequirement.objects.aggregate(
+            models.Max('level')
+        ).get('level__max') or 0
+    )
+    return int(max(default_max, category_max))
 
 
 def get_starting_tech_balance_costs(max_level=None, rp_per_point=10.0):
@@ -1173,6 +1171,8 @@ def _advance_research_row_with_requirements(
     while int(level) < int(max_level):
         next_level = int(level) + 1
         requirement = get_level_requirement(row.category_id, next_level, player=row.player)
+        if not requirement:
+            break
         if not _prerequisites_met(row.category_id, next_level, level_map):
             break
         rp_cost = int(requirement['rp_cost'])
@@ -1214,9 +1214,6 @@ def _advance_research_row_with_requirements(
 def ensure_player_research_rows(player):
     """Ensure a player has per-category research rows."""
     categories = list(ResearchCategory.objects.filter(enabled=True))
-    ensure_default_level_requirements()
-    for category in categories:
-        copy_default_requirements_to_category(category, ensure_defaults=False)
     existing = {
         pr.category_id: pr for pr in PlayerResearch.objects.filter(player=player)
     }
@@ -1997,20 +1994,25 @@ def build_research_screen_data(player, selected_category_id=None):
         else:
             next_level_number = next_level
             next_level_req = get_level_requirement(selected.id, next_level, player=player)
-            level_cost = int(next_level_req['rp_cost'])
-            prereqs = get_level_prerequisites(selected.id, next_level)
-            for prereq in prereqs:
-                current = int(level_map.get(prereq.requires_category_id, 0) or 0)
-                required = int(prereq.min_level or 0)
-                met = current >= required
-                if not met:
-                    next_level_blocked = True
-                next_level_prerequisites.append({
-                    'name': prereq.requires_category.name,
-                    'current': current,
-                    'required': required,
-                    'met': met,
-                })
+            if next_level_req:
+                level_cost = int(next_level_req['rp_cost'])
+                prereqs = get_level_prerequisites(selected.id, next_level)
+                for prereq in prereqs:
+                    current = int(level_map.get(prereq.requires_category_id, 0) or 0)
+                    required = int(prereq.min_level or 0)
+                    met = current >= required
+                    if not met:
+                        next_level_blocked = True
+                    next_level_prerequisites.append({
+                        'name': prereq.requires_category.name,
+                        'current': current,
+                        'required': required,
+                        'met': met,
+                    })
+            else:
+                selected_is_maxed = True
+                next_level_number = None
+                progress_percent = 100
         if selected_research and not selected_is_maxed:
             allocations = allocate_rp_integer(
                 budget['generated_rp'],
@@ -2095,15 +2097,20 @@ def build_research_screen_data(player, selected_category_id=None):
             row.next_level_cost = 0
             row.progress_percent = 100
         else:
-            row_next_cost = int(get_level_requirement(
+            next_requirement = get_level_requirement(
                 row.category_id, row_next_level, player=player
-            )['rp_cost'])
-            row.next_level_cost = row_next_cost
-            if row_next_cost > 0:
-                pct = int((float(row.stored_rp) / float(row_next_cost)) * 100.0)
-                row.progress_percent = max(0, min(100, pct))
+            )
+            if not next_requirement:
+                row.next_level_cost = 0
+                row.progress_percent = 100
             else:
-                row.progress_percent = 0
+                row_next_cost = int(next_requirement['rp_cost'])
+                row.next_level_cost = row_next_cost
+                if row_next_cost > 0:
+                    pct = int((float(row.stored_rp) / float(row_next_cost)) * 100.0)
+                    row.progress_percent = max(0, min(100, pct))
+                else:
+                    row.progress_percent = 0
 
     return {
         'budget': budget,

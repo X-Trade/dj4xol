@@ -6,11 +6,14 @@ import uuid
 from django.core.management import call_command
 from ..default_sync import sync_factory_defaults
 from ..models import (
+    DefaultResearchLevelRequirement,
     ResearchCategory,
+    ResearchLevelRequirement,
     ResearchLevelPrerequisite,
     ServerRaceType,
     Technology,
 )
+from ..research import copy_default_requirements_to_category
 
 
 class DefaultSyncTest(TestCase):
@@ -497,6 +500,30 @@ class DefaultSyncTest(TestCase):
         self.assertTrue(race.has_no_stealth)
         self.assertEqual(technology.level, 12)
         self.assertIn('Synced fixture-backed defaults', stdout.getvalue())
+
+    def test_sync_restores_default_endgame_research_rp_curve(self):
+        sync_factory_defaults(force=True)
+
+        default_row = DefaultResearchLevelRequirement.objects.get(level=26)
+        default_row.rp_cost = 9999999
+        default_row.save(update_fields=['rp_cost'])
+
+        category = ResearchCategory.objects.get(code='ENERGY')
+        copy_default_requirements_to_category(
+            category,
+            ensure_defaults=False,
+            overwrite_existing=False,
+        )
+        category_row = ResearchLevelRequirement.objects.get(category=category, level=26)
+        category_row.rp_cost = 9999999
+        category_row.save(update_fields=['rp_cost'])
+
+        sync_factory_defaults(force=True)
+
+        default_row.refresh_from_db()
+        category_row.refresh_from_db()
+        self.assertEqual(default_row.rp_cost, 2000000)
+        self.assertEqual(category_row.rp_cost, 2000000)
 
     def test_sync_tech_tree_command_refreshes_server_race_type_defaults_too(self):
         sync_factory_defaults(force=True)

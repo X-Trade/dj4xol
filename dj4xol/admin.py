@@ -179,8 +179,10 @@ class ResearchCategoryAdmin(admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         super(ResearchCategoryAdmin, self).save_model(request, obj, form, change)
-        ensure_default_level_requirements()
-        copy_default_requirements_to_category(obj)
+        if (not change or
+                not ResearchLevelRequirement.objects.filter(category=obj).exists()):
+            ensure_default_level_requirements()
+            copy_default_requirements_to_category(obj)
 
     def sync_requirements_from_defaults(self, request, queryset):
         ensure_default_level_requirements()

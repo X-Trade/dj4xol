@@ -234,6 +234,7 @@ def format_basic_hidden_salvage_name(salvage):
 
 # Random event probability per colonized star per turn
 RANDOM_EVENT_CHANCE = 0.01  # 1%
+COLONY_VANISHED_EVENT_WEIGHT = 0.0005  # Extreme outlier; should be very rare even in very long games.
 RESEARCH_BREAKTHROUGH_CHANCE = 0.08  # 8% per player-year with active labs
 
 # Mining constants
@@ -10422,7 +10423,7 @@ class GameTurn():
             ('mining_discovery', 0.2 * luck, 0),
             ('mining_accident_deaths', 0, 0.15 / luck),
             ('mining_accident_resources', 0, 0.1 / luck),
-            ('colony_vanished', 0, 0.02 / luck),  # Rare extreme
+            ('colony_vanished', 0, COLONY_VANISHED_EVENT_WEIGHT / luck),  # Rare extreme
         ]
 
         # Calculate total weights and select

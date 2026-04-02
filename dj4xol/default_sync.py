@@ -9,6 +9,16 @@ from django.db import connection, models, transaction
 
 _SYNC_DONE_PATHS = set()
 _DEFAULTS_CACHE = {}
+_DEFAULT_RESEARCH_RP_COSTS = {
+    19: 300000,
+    20: 480000,
+    21: 720000,
+    22: 1000000,
+    23: 1300000,
+    24: 1600000,
+    25: 1825000,
+    26: 2000000,
+}
 
 
 def _default_fixture_path():
@@ -273,6 +283,19 @@ def _insert_row_with_available_columns(table_name, values):
         cursor.execute(sql, params)
 
 
+def _sync_default_research_rp_curve(
+        DefaultResearchLevelRequirement, ResearchLevelRequirement):
+    """Force canonical late-game RP requirements into default/category rows."""
+    for level, rp_cost in sorted(_DEFAULT_RESEARCH_RP_COSTS.items()):
+        DefaultResearchLevelRequirement.objects.update_or_create(
+            level=level,
+            defaults={'rp_cost': int(rp_cost)},
+        )
+        ResearchLevelRequirement.objects.filter(level=level).update(
+            rp_cost=int(rp_cost)
+        )
+
+
 def _legacy_server_race_type_defaults():
     return {
         'gravity_center': 1.0,
@@ -413,8 +436,10 @@ def sync_factory_defaults(force=False, fixture_path=None):
         return
 
     from .models import (
+        DefaultResearchLevelRequirement,
         HullDesign,
         ResearchCategory,
+        ResearchLevelRequirement,
         ResearchLevelPrerequisite,
         ServerRace,
         ServerRaceType,
@@ -481,5 +506,10 @@ def sync_factory_defaults(force=False, fixture_path=None):
             requires_category_id=requires_category_id,
             defaults=fields,
         )
+
+    _sync_default_research_rp_curve(
+        DefaultResearchLevelRequirement,
+        ResearchLevelRequirement,
+    )
 
     _SYNC_DONE_PATHS.add(fixture_key)
