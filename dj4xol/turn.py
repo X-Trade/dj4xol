@@ -8629,6 +8629,46 @@ class GameTurn():
                 return True
         return False
 
+    def _trim_preserved_shipyard_orders_to_target(
+        self,
+        star,
+        preserved_orders,
+        fleets_in_orbit,
+    ):
+        """Trim stale in-flight Micromanager shipyard queues back to target."""
+        shipyard_target = max(1, int(fleets_in_orbit or 0))
+        shipyards_now = max(0, int(getattr(star, 'shipyards', 0) or 0))
+        remaining_target = max(0, shipyard_target - shipyards_now)
+        for order in list(preserved_orders or []):
+            if str(getattr(order, 'order_type', '')) != 'BUILD_SHIPYARD':
+                continue
+            completed = max(0, int(getattr(order, 'completed', 0) or 0))
+            quantity = max(completed, int(getattr(order, 'quantity', 0) or 0))
+            remaining = max(0, quantity - completed)
+            in_progress = bool(int(getattr(order, 'spent_bp', 0) or 0))
+            if not in_progress:
+                for key in ALL_RESOURCE_KEYS:
+                    if int(getattr(order, 'spent_%s' % key, 0) or 0) > 0:
+                        in_progress = True
+                        break
+            minimum_remaining = 1 if in_progress else 0
+            allowed_remaining = minimum_remaining + remaining_target
+            if remaining <= allowed_remaining:
+                remaining_target = max(
+                    0,
+                    remaining_target - max(0, remaining - minimum_remaining),
+                )
+                continue
+            new_remaining = max(minimum_remaining, allowed_remaining)
+            new_quantity = completed + new_remaining
+            if new_quantity != quantity:
+                order.quantity = new_quantity
+                order.save(update_fields=['quantity'])
+            remaining_target = max(
+                0,
+                remaining_target - max(0, new_remaining - minimum_remaining),
+            )
+
     def _resequence_production_orders(self, star):
         """Ensure player orders are before Micromanager orders."""
         orders = list(star.production_orders.order_by(
@@ -8710,6 +8750,10 @@ class GameTurn():
             megacity_profile=megacity_profile,
             dyson_profile=dyson_profile,
         )
+        fleets_in_orbit = star.player.fleets.filter(
+            x=star.x,
+            y=star.y,
+        ).count()
         micromanager_orders = list(star.production_orders.filter(
             added_by_micromanager=True
         ).order_by('position', 'id'))
@@ -8748,6 +8792,12 @@ class GameTurn():
                 continue
             editable.append(order)
 
+        self._trim_preserved_shipyard_orders_to_target(
+            star,
+            preserved,
+            fleets_in_orbit,
+        )
+
         self._resequence_production_orders(star)
 
         existing_types = []
@@ -8774,7 +8824,7 @@ class GameTurn():
             star.player,
             star,
             tier,
-            fleets_in_orbit=star.player.fleets.filter(x=star.x, y=star.y).count(),
+            fleets_in_orbit=fleets_in_orbit,
             terraform_available=(terraform_rate > 0),
             terraform_rate=terraform_rate,
             dyson_available=bool(dyson_profile.get('unlocked')),

@@ -83,6 +83,8 @@ LEVEL_TWO_DEFENSE_FLOOR = 12
 LEVEL_TWO_LAB_FLOOR = 8
 SHIPYARD_COMPLETION_MAX_YEARS = 5
 DYSON_COMPLETION_MAX_YEARS = 9
+CITY_COMPLETION_MAX_YEARS = 5
+MEGACITY_COMPLETION_MAX_YEARS = 5
 
 
 def _normalize_micromanager_mode(micromanager_mode):
@@ -346,6 +348,18 @@ def _jobs_added_by_order(order_type):
 
 def _can_queue_job_expansion(player, star, order_type):
     if int(_jobs_added_by_order(order_type) or 0) <= 0:
+        return True
+    if (
+        str(order_type or '').strip().upper() == 'BUILD_FACTORY' and
+        _job_fill_ratio(player, star) >= JOB_MAX_RATIO and
+        _target_mine_fill_ratio(star) < 0.75
+    ):
+        return True
+    if (
+        str(order_type or '').strip().upper() == 'BUILD_MINE' and
+        _target_mine_fill_ratio(star) < 0.50
+    ):
+        # Keep extraction catch-up available even when jobs are otherwise high.
         return True
     return _can_add_jobs_without_breaking_limit(player, star, order_type)
 
@@ -740,9 +754,12 @@ def _mechanical_growth_candidate_orders(player, star, tier):
     race_type = getattr(player, 'race_type', None)
     if race_type is None or not bool(getattr(race_type, 'is_mechanical', False)):
         return 'none', []
-    if int(getattr(star, 'planned_colonist_growth_orders', 0) or 0) > 0:
-        return 'none', []
     employment_pct = float(calculate_staffing_ratio(star) * 100.0)
+    if (
+        int(getattr(star, 'planned_colonist_growth_orders', 0) or 0) > 0 and
+        employment_pct < MECHANICAL_GROWTH_EMPLOYMENT_TOP
+    ):
+        return 'none', []
     if employment_pct >= MECHANICAL_GROWTH_EMPLOYMENT_TOP:
         return 'top', ['BUILD_COLONISTS_1M', 'BUILD_COLONISTS_1K']
     if employment_pct >= MECHANICAL_GROWTH_EMPLOYMENT_MIN:
@@ -795,6 +812,8 @@ def _scored_micromanager_candidate_orders(
     factory_balance_penalty = _factory_balance_penalty(star, tier)
     candidates = {}
     first_seen = {}
+    city_candidate_ready = False
+    megacity_candidate_ready = False
 
     def append_candidate(order_type, score):
         score = float(score or 0.0)
@@ -842,7 +861,12 @@ def _scored_micromanager_candidate_orders(
         ) and
         not bool(getattr(star, 'has_dyson_sphere', False))
     ):
-        append_candidate(DYSON_SPHERE_ORDER_TYPE, 180.0)
+        dyson_score = 220.0 + (max(0.0, JOB_TARGET_RATIO - job_ratio) * 500.0)
+        if current_jobs < thresholds['min_jobs']:
+            dyson_score += 220.0
+        if bootstrap_pressure >= 1.0:
+            dyson_score *= 0.85
+        append_candidate(DYSON_SPHERE_ORDER_TYPE, dyson_score)
 
     if (
         int(tier or 0) >= TIER_SUPPORT and
@@ -869,6 +893,7 @@ def _scored_micromanager_candidate_orders(
             elif bootstrap_pressure > 0.0:
                 city_score *= 0.92
             append_candidate(CITY_ORDER_TYPE, city_score)
+            city_candidate_ready = True
         if (
             megacity_available and
             _can_add_jobs_without_breaking_limit(player, star, MEGACITY_ORDER_TYPE) and
@@ -886,6 +911,7 @@ def _scored_micromanager_candidate_orders(
             elif bootstrap_pressure > 0.0:
                 megacity_score *= 0.90
             append_candidate(MEGACITY_ORDER_TYPE, megacity_score)
+            megacity_candidate_ready = True
 
     if (
         current_mines <= 0 and
@@ -905,7 +931,12 @@ def _scored_micromanager_candidate_orders(
             max(25.0, 280.0 * job_build_tailoff),
         )
 
-    if mine_room and _can_queue_job_expansion(player, star, 'BUILD_MINE'):
+    if (
+        growth_priority != 'top' and
+        int(getattr(star, 'planned_colonist_growth_orders', 0) or 0) <= 0 and
+        mine_room and
+        _can_queue_job_expansion(player, star, 'BUILD_MINE')
+    ):
         mine_score = 0.0
         if mine_ratio < 0.50:
             mine_score += 260.0 + ((0.50 - mine_ratio) * 220.0)
@@ -915,7 +946,14 @@ def _scored_micromanager_candidate_orders(
             mine_score += 40.0 + ((1.00 - mine_ratio) * 55.0)
         if queue_pressure.get('mines'):
             mine_score += 90.0
+        if queue_pressure.get('factories') and job_ratio >= JOB_TARGET_RATIO:
+            mine_score *= 0.35
         if mine_score > 0.0:
+            mine_tailoff = job_build_tailoff
+            if mine_ratio < 0.50:
+                mine_tailoff = max(mine_tailoff, 0.55)
+            elif mine_ratio < 0.75 and queue_pressure.get('mines'):
+                mine_tailoff = max(mine_tailoff, 0.35)
             if expansionist_mode:
                 if mine_ratio < 0.50:
                     mine_score *= 1.75
@@ -923,7 +961,7 @@ def _scored_micromanager_candidate_orders(
                     mine_score *= 1.45
                 else:
                     mine_score *= 1.20
-            append_candidate('BUILD_MINE', mine_score * job_build_tailoff)
+            append_candidate('BUILD_MINE', mine_score * mine_tailoff)
 
     if (
         _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
@@ -970,7 +1008,9 @@ def _scored_micromanager_candidate_orders(
     ):
         append_candidate(
             'BUILD_FACTORY',
-            90.0 * job_build_tailoff * factory_balance_penalty,
+            (
+                120.0 if job_ratio >= JOB_TARGET_RATIO else 90.0
+            ) * max(0.65, job_build_tailoff) * factory_balance_penalty,
         )
     elif (
         _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
@@ -981,6 +1021,14 @@ def _scored_micromanager_candidate_orders(
             (
                 12.0 + (extraction_ready * 10.0)
             ) * job_build_tailoff * factory_balance_penalty,
+        )
+    elif (
+        _can_queue_job_expansion(player, star, 'BUILD_FACTORY') and
+        job_ratio >= JOB_MAX_RATIO
+    ):
+        append_candidate(
+            'BUILD_FACTORY',
+            (34.0 + (extraction_ready * 16.0)) * factory_balance_penalty,
         )
 
     if int(tier or 0) >= TIER_SUPPORT:
@@ -1023,6 +1071,13 @@ def _scored_micromanager_candidate_orders(
             )
         ):
             shipyard_score = 15.0 + (shipyard_deficit * 16.0)
+            if current_shipyards <= 0:
+                if current_factories >= max(LEVEL_TWO_DEFENSE_FLOOR, 12):
+                    shipyard_score += 225.0
+                elif support_gap_scores:
+                    shipyard_score += 20.0
+                else:
+                    shipyard_score += 85.0
             if job_ratio < JOB_MIN_RATIO:
                 shipyard_score += 40.0
             elif job_ratio < 0.40:
@@ -1035,6 +1090,13 @@ def _scored_micromanager_candidate_orders(
                 shipyard_score *= 0.35
             elif bootstrap_pressure > 0.0:
                 shipyard_score *= 0.60
+            if (
+                job_ratio < JOB_TARGET_RATIO and
+                (city_candidate_ready or megacity_candidate_ready)
+            ):
+                # Once city-line upgrades are viable, they should take over as
+                # primary jobs catch-up while shipyards become supporting picks.
+                shipyard_score *= 0.45
             if expansionist_mode and current_shipyards > 0:
                 shipyard_score *= 0.70
             append_candidate('BUILD_SHIPYARD', shipyard_score)
@@ -1502,6 +1564,28 @@ def plan_micromanager_orders(
                         one_year_income,
                         candidate,
                         DYSON_COMPLETION_MAX_YEARS,
+                    )
+                ):
+                    return candidate
+                if (
+                    candidate == CITY_ORDER_TYPE and
+                    _can_complete_within_years(
+                        cost_map,
+                        planning_budget,
+                        one_year_income,
+                        candidate,
+                        CITY_COMPLETION_MAX_YEARS,
+                    )
+                ):
+                    return candidate
+                if (
+                    candidate == MEGACITY_ORDER_TYPE and
+                    _can_complete_within_years(
+                        cost_map,
+                        planning_budget,
+                        one_year_income,
+                        candidate,
+                        MEGACITY_COMPLETION_MAX_YEARS,
                     )
                 ):
                     return candidate

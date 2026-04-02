@@ -836,6 +836,78 @@ class AdministrationAutomationTest(TestCase):
         self.assertNotIn('BUILD_CITY', candidates)
         self.assertNotIn('BUILD_MEGACITY', candidates)
 
+    def test_level_two_city_prioritised_over_shipyard_when_city_is_viable(self):
+        self._create_administration_tech(2, 2)
+        self._create_city_tech(tech_level=2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 3_000_000
+        self.star.mines = 0
+        self.star.factories = 420
+        self.star.labs = 120
+        self.star.defenses = 120
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 50_000
+        self.star.boranium_inventory = 50_000
+        self.star.germanium_inventory = 50_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=1,
+            city_available=True,
+            megacity_available=False,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertGreaterEqual(len(candidates), 1)
+        self.assertIn('BUILD_CITY', candidates)
+        self.assertIn('BUILD_SHIPYARD', candidates)
+        self.assertLess(
+            candidates.index('BUILD_CITY'),
+            candidates.index('BUILD_SHIPYARD'),
+        )
+
+    def test_level_two_shipyard_steps_in_when_city_is_excluded_by_job_cap(self):
+        self._create_administration_tech(2, 2)
+        self._create_city_tech(tech_level=2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 1_500_000
+        self.star.mines = 0
+        self.star.factories = 740
+        self.star.labs = 120
+        self.star.defenses = 120
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 50_000
+        self.star.boranium_inventory = 50_000
+        self.star.germanium_inventory = 50_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=1,
+            city_available=True,
+            megacity_available=False,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertNotIn('BUILD_CITY', candidates)
+        self.assertGreaterEqual(len(candidates), 1)
+        self.assertIn('BUILD_SHIPYARD', candidates)
+
     def test_level_one_ignores_safe_mine_cap_but_level_two_respects_it(self):
         self._create_administration_tech(2, 2)
         self.player.race_type.population_growth_multiplier = 0
