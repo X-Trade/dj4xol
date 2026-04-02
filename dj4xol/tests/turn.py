@@ -10604,6 +10604,7 @@ class TestFleetFuel(TestCase):
         # Keep this test deterministic: avoid random salvage hazards and map-edge deletion.
         game.salvages.all().delete()
         start_messages = player.messages.count()
+        existing_message_ids = set(player.messages.values_list('id', flat=True))
         start_x = 10
         start_y = 10
 
@@ -10635,7 +10636,15 @@ class TestFleetFuel(TestCase):
         self.assertEqual(fleet.travel_warp, expected_warp)
         self.assertLess(fleet.fuel, projected_fuel)
         self.assertGreater(player.messages.count(), start_messages)
-        msg = player.messages.order_by('-id').first()
+        bussard_msgs = list(
+            player.messages.exclude(
+                id__in=existing_message_ids
+            ).filter(
+                message__icontains='ordered warp 6'
+            ).order_by('-id')
+        )
+        self.assertTrue(bussard_msgs)
+        msg = bussard_msgs[0]
         self.assertEqual(msg.category, 'EXCEPTION')
         self.assertIn('ordered warp 6', msg.message)
         self.assertIn('warp %s' % expected_warp, msg.message)
