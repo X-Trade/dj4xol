@@ -12655,8 +12655,9 @@ class TestBombardmentOrders(TestCase):
         star.player = defender
         star.colonists = 30_000
         star.defenses = 0
+        star.gravity = 1.0
         star.has_dyson_sphere = True
-        star.save(update_fields=['player', 'colonists', 'defenses', 'has_dyson_sphere'])
+        star.save(update_fields=['player', 'colonists', 'defenses', 'gravity', 'has_dyson_sphere'])
 
         fleet = Fleet.objects.create(
             game=game,

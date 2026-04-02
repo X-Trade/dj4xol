@@ -372,6 +372,135 @@ class ResearchTurnTest(TestCase):
         self.assertEqual(alpha_row.ironium_paid, 38)
         self.assertEqual(beta_row.ironium_paid, 12)
 
+    def test_yearly_research_rp_is_discarded_when_category_is_resource_blocked(self):
+        self._reset_research_catalog()
+        category = ResearchCategory.objects.create(
+            code='RT_BLOCKED_RP', name='Blocked RP', enabled=True
+        )
+        Technology.objects.create(
+            category=category,
+            level=1,
+            name='Blocked Tech',
+            tech_type='OTHER',
+            params_json='{}',
+        )
+        ResearchLevelRequirement.objects.create(
+            category=category,
+            level=1,
+            rp_cost=50,
+            ironium_cost=0,
+            boranium_cost=0,
+            germanium_cost=0,
+            resource_x_cost=10,
+            resource_y_cost=0,
+            resource_z_cost=0,
+        )
+
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.labs = 10
+        self.star.colonists = 10000
+        self.star.resource_x_inventory = 0
+        self.star.save()
+
+        rows = ensure_player_research_rows(self.player)
+        row = next(item for item in rows if item.category_id == category.id)
+        for item in rows:
+            item.allocation_percent = 100.0 if item.id == row.id else 0.0
+            item.save(update_fields=['allocation_percent'])
+
+        GameTurn(self.game).research()
+        row.refresh_from_db()
+        self.assertEqual(row.current_level, 0.0)
+        self.assertEqual(int(row.stored_rp or 0), 0)
+
+    def test_bonus_research_rp_still_carries_when_category_is_resource_blocked(self):
+        self._reset_research_catalog()
+        category = ResearchCategory.objects.create(
+            code='RT_BLOCKED_BONUS', name='Blocked Bonus', enabled=True
+        )
+        Technology.objects.create(
+            category=category,
+            level=1,
+            name='Blocked Bonus Tech',
+            tech_type='OTHER',
+            params_json='{}',
+        )
+        ResearchLevelRequirement.objects.create(
+            category=category,
+            level=1,
+            rp_cost=50,
+            ironium_cost=0,
+            boranium_cost=0,
+            germanium_cost=0,
+            resource_x_cost=10,
+            resource_y_cost=0,
+            resource_z_cost=0,
+        )
+
+        self.star.resource_x_inventory = 0
+        self.star.save(update_fields=['resource_x_inventory'])
+
+        rows = ensure_player_research_rows(self.player)
+        row = next(item for item in rows if item.category_id == category.id)
+        row.current_level = 0.0
+        row.stored_rp = 0.0
+        row.save(update_fields=['current_level', 'stored_rp'])
+
+        result = apply_research_bonus_rp(self.player, category.id, 50)
+        self.assertIsNotNone(result)
+        row.refresh_from_db()
+        self.assertEqual(row.current_level, 0.0)
+        self.assertEqual(int(row.stored_rp or 0), 50)
+
+    def test_yearly_research_rp_is_discarded_when_category_is_at_max_level(self):
+        self._reset_research_catalog()
+        category = ResearchCategory.objects.create(
+            code='RT_MAXED_RP', name='Maxed RP', enabled=True
+        )
+        Technology.objects.create(
+            category=category,
+            level=1,
+            name='Maxed Tech',
+            tech_type='OTHER',
+            params_json='{}',
+        )
+        ResearchLevelRequirement.objects.create(
+            category=category,
+            level=1,
+            rp_cost=50,
+            ironium_cost=0,
+            boranium_cost=0,
+            germanium_cost=0,
+        )
+
+        self.player.convert_unused_buildpoints_to_research = True
+        self.player.save(update_fields=['convert_unused_buildpoints_to_research'])
+        self.star.mines = 0
+        self.star.factories = 10
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.labs = 0
+        self.star.colonists = 10000
+        self.star.buildpoints_consumed = 0
+        self.star.save()
+
+        rows = ensure_player_research_rows(self.player)
+        row = next(item for item in rows if item.category_id == category.id)
+        row.current_level = 1.0
+        row.stored_rp = 12.0
+        row.save(update_fields=['current_level', 'stored_rp'])
+        for item in rows:
+            item.allocation_percent = 100.0 if item.id == row.id else 0.0
+            item.save(update_fields=['allocation_percent'])
+
+        GameTurn(self.game).research()
+        row.refresh_from_db()
+        self.assertEqual(int(row.current_level or 0), 1)
+        self.assertEqual(int(row.stored_rp or 0), 0)
+
     def test_research_budget_can_include_unused_buildpoints(self):
         self.player.convert_unused_buildpoints_to_research = True
         self.player.save(update_fields=['convert_unused_buildpoints_to_research'])

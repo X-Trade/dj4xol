@@ -1160,20 +1160,26 @@ def _advance_research_row_with_requirements(
     eligible_stars,
     allow_mineral_payment=True,
     level_map=None,
+    discard_stored_rp_when_blocked=False,
 ):
     """Apply RP and advance one research row, consuming required minerals."""
     old_level = float(row.current_level or 0.0)
     level = old_level
     stored_rp = int(row.stored_rp) + int(added_rp or 0)
+    blocked_by_requirement = False
     paid_by_key = {
         key: int(getattr(row, f'{key}_paid', 0) or 0) for key in RESEARCH_RESOURCE_KEYS
     }
+    if int(level) >= int(max_level):
+        blocked_by_requirement = True
     while int(level) < int(max_level):
         next_level = int(level) + 1
         requirement = get_level_requirement(row.category_id, next_level, player=row.player)
         if not requirement:
+            blocked_by_requirement = True
             break
         if not _prerequisites_met(row.category_id, next_level, level_map):
+            blocked_by_requirement = True
             break
         rp_cost = int(requirement['rp_cost'])
         paid = _clamp_paid_to_requirement({
@@ -1197,6 +1203,7 @@ def _advance_research_row_with_requirements(
             int(paid_by_key.get(key, 0) or 0) < int(requirement.get(f'{key}_cost', 0) or 0)
             for key in RESEARCH_RESOURCE_KEYS
         ):
+            blocked_by_requirement = True
             break
         if stored_rp < rp_cost:
             break
@@ -1204,6 +1211,8 @@ def _advance_research_row_with_requirements(
         level += 1.0
         for key in RESEARCH_RESOURCE_KEYS:
             paid_by_key[key] = 0
+    if discard_stored_rp_when_blocked and blocked_by_requirement:
+        stored_rp = 0
     row.current_level = level
     row.stored_rp = stored_rp
     for key in RESEARCH_RESOURCE_KEYS:
@@ -1855,6 +1864,7 @@ def process_player_research_for_year(player):
             eligible_stars=eligible_stars,
             allow_mineral_payment=False,
             level_map=level_map,
+            discard_stored_rp_when_blocked=True,
         )
         if int(new_level) > int(old_level):
             unlocks.append({

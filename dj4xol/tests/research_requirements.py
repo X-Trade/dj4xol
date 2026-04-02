@@ -116,7 +116,7 @@ class ResearchRequirementsTest(TestCase):
         row.refresh_from_db()
         self.star.refresh_from_db()
         self.assertEqual(row.current_level, 0.0)
-        self.assertGreater(int(row.stored_rp), 0)
+        self.assertEqual(int(row.stored_rp), 0)
         self.assertEqual(row.ironium_paid, 90)
         self.assertEqual(self.star.ironium_inventory, 0)
 
@@ -233,7 +233,7 @@ class ResearchRequirementsTest(TestCase):
         GameTurn(self.game).research()
         primary_row.refresh_from_db()
         self.assertEqual(primary_row.current_level, 0.0)
-        self.assertGreater(primary_row.stored_rp, 0)
+        self.assertEqual(primary_row.stored_rp, 0.0)
 
         secondary_row.current_level = 1
         secondary_row.save(update_fields=['current_level'])
