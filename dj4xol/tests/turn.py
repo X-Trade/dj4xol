@@ -5,7 +5,6 @@ from ..turn import (
     NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION,
     NOVA_ASTEROID_FIELD_SPAWN_CHANCE,
     NOVA_BLACK_HOLE_SPAWN_CHANCE,
-    NOVA_STAR_DESTRUCTION_CHANCE,
     SUPERNOVA_BLACK_HOLE_SPAWN_CHANCE,
     SUPERNOVA_BOMBER_DESTRUCTION_CHANCE,
     SUPERNOVA_COLLATERAL_FLEET_DESTRUCTION_CHANCE,
@@ -12837,13 +12836,11 @@ class TestBombardmentOrders(TestCase):
 
         with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
             'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
-        }), patch('dj4xol.turn.bombardment_damage_k', return_value=1), patch(
-            'dj4xol.turn.roll_chance', return_value=False
-        ):
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=1):
             GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
 
         star.refresh_from_db()
-        self.assertAlmostEqual(star.gravity, 0.90, places=6)
+        self.assertAlmostEqual(star.gravity, 0.80, places=6)
         self.assertAlmostEqual(star.radiation, 1.02, places=6)
         self.assertAlmostEqual(star.temperature, 1.00, places=6)
 
@@ -12853,9 +12850,9 @@ class TestBombardmentOrders(TestCase):
         nova_g, nova_r = apply_nova_family_environment_shift(1.0, 1.0, 'NOVA')
         super_g, super_r = apply_nova_family_environment_shift(1.0, 1.0, 'SUPERNOVA')
 
-        self.assertAlmostEqual(nova_g, 0.90, places=6)
+        self.assertAlmostEqual(nova_g, 0.80, places=6)
         self.assertAlmostEqual(nova_r, 1.02, places=6)
-        self.assertAlmostEqual(super_g, 0.80, places=6)
+        self.assertAlmostEqual(super_g, 0.45, places=6)
         self.assertAlmostEqual(super_r, 1.04, places=6)
 
     def test_bombardment_damage_tempered_by_defenses(self):
@@ -12939,8 +12936,9 @@ class TestBombardmentOrders(TestCase):
         star = game.stars.exclude(pk=attacker.homeworld.pk).first()
         star.player = defender
         star.colonists = 10_000
+        star.gravity = 0.20
         star.defenses = 0
-        star.save(update_fields=['player', 'colonists', 'defenses'])
+        star.save(update_fields=['player', 'colonists', 'gravity', 'defenses'])
         star_name = star.name
 
         fleet = Fleet.objects.create(
@@ -13026,6 +13024,7 @@ class TestBombardmentOrders(TestCase):
         star = game.stars.exclude(pk=attacker.homeworld.pk).first()
         star.player = defender
         star.colonists = 10_000
+        star.gravity = 0.20
         star.defenses = 0
         star.ironium_inventory = 1200
         star.boranium_inventory = 300
@@ -13038,7 +13037,7 @@ class TestBombardmentOrders(TestCase):
         star.resource_y_yield = 0
         star.resource_z_yield = 0
         star.save(update_fields=[
-            'player', 'colonists', 'defenses',
+            'player', 'colonists', 'gravity', 'defenses',
             'ironium_inventory', 'boranium_inventory', 'germanium_inventory',
             'resource_x_inventory', 'resource_y_inventory', 'resource_z_inventory',
             'ironium_yield', 'boranium_yield', 'germanium_yield',
@@ -13057,8 +13056,6 @@ class TestBombardmentOrders(TestCase):
         FleetOrders.objects.create(game=game, fleet=fleet, order_type='BOMB', target_star=star)
 
         def nova_roll(threshold):
-            if threshold == NOVA_STAR_DESTRUCTION_CHANCE:
-                return True
             if threshold == NOVA_BLACK_HOLE_SPAWN_CHANCE:
                 return False
             if threshold == NOVA_ASTEROID_FIELD_SPAWN_CHANCE:
@@ -13100,11 +13097,12 @@ class TestBombardmentOrders(TestCase):
         star = game.stars.exclude(pk=attacker.homeworld.pk).first()
         star.player = defender
         star.colonists = 10_000
+        star.gravity = 0.20
         star.defenses = 0
         star.ironium_inventory = 500
         star.ironium_yield = 80
         star.save(update_fields=[
-            'player', 'colonists', 'defenses',
+            'player', 'colonists', 'gravity', 'defenses',
             'ironium_inventory', 'ironium_yield',
         ])
 
@@ -13150,6 +13148,7 @@ class TestBombardmentOrders(TestCase):
         star = game.stars.exclude(pk=attacker.homeworld.pk).first()
         star.player = defender
         star.colonists = 10_000
+        star.gravity = 0.60
         star.defenses = 0
         star.ironium_inventory = 700
         star.boranium_inventory = 0
@@ -13164,7 +13163,7 @@ class TestBombardmentOrders(TestCase):
         star.resource_y_yield = 0
         star.resource_z_yield = 0
         star.save(update_fields=[
-            'player', 'colonists', 'defenses',
+            'player', 'colonists', 'gravity', 'defenses',
             'ironium_inventory', 'boranium_inventory', 'germanium_inventory',
             'resource_x_inventory', 'resource_y_inventory', 'resource_z_inventory',
             'ironium_yield', 'boranium_yield', 'germanium_yield',
@@ -13178,6 +13177,7 @@ class TestBombardmentOrders(TestCase):
             y=star.y,
             player=defender,
             colonists=8_000,
+            gravity=0.60,
             defenses=0,
             ironium_inventory=0,
             boranium_inventory=300,
@@ -13242,8 +13242,9 @@ class TestBombardmentOrders(TestCase):
         star = game.stars.exclude(pk=attacker.homeworld.pk).first()
         star.player = defender
         star.colonists = 10_000
+        star.gravity = 0.60
         star.defenses = 0
-        star.save(update_fields=['player', 'colonists', 'defenses'])
+        star.save(update_fields=['player', 'colonists', 'gravity', 'defenses'])
 
         sibling = Star.objects.create(
             game=game,
@@ -13252,6 +13253,7 @@ class TestBombardmentOrders(TestCase):
             y=star.y,
             player=defender,
             colonists=5_000,
+            gravity=0.60,
             defenses=0,
         )
 
@@ -13334,8 +13336,9 @@ class TestBombardmentOrders(TestCase):
         star = game.stars.exclude(pk=attacker.homeworld.pk).first()
         star.player = defender
         star.colonists = 10_000
+        star.gravity = 0.20
         star.defenses = 0
-        star.save(update_fields=['player', 'colonists', 'defenses'])
+        star.save(update_fields=['player', 'colonists', 'gravity', 'defenses'])
         target_x, target_y = _pin_test_star(star, game)
 
         bomber = Fleet.objects.create(

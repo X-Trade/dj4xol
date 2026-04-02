@@ -1386,7 +1386,7 @@
     description: 'Megastructure engineering enables one Dyson Sphere per colony, vastly accelerating local industry and research.'
     tech_type: 'INFRASTRUCTURE'
     thumbnail_class: 'star/dyson'
-    params_json: '{"dyson_sphere": true, "production_cost_overrides": {"BUILD_DYSON_SPHERE": {"bp": 2000, "ironium": 1000, "boranium": 500, "germanium": 600, "resource_x": 200, "resource_y": 0, "resource_z": 100, "colonists": 0}}}'
+    params_json: '{"dyson_sphere": true, "production_cost_overrides": {"BUILD_DYSON_SPHERE": {"bp": 2400, "ironium": 2500, "boranium": 450, "germanium": 900, "resource_x": 220, "resource_y": 0, "resource_z": 120, "colonists": 0}}}'
     display_order: 214
     enabled: True
 
@@ -1400,7 +1400,7 @@
     description: 'Dense urban development expands colony labour capacity and boosts local productivity.'
     tech_type: 'INFRASTRUCTURE'
     thumbnail_class: ''
-    params_json: '{"city": true, "production_cost_overrides": {"BUILD_CITY": {"bp": 60, "ironium": 200, "boranium": 60, "germanium": 40, "colonists": 0}}}'
+    params_json: '{"city": true, "production_cost_overrides": {"BUILD_CITY": {"bp": 90, "ironium": 230, "boranium": 60, "germanium": 0, "colonists": 0}}}'
     display_order: 215
     enabled: True
 
@@ -1414,7 +1414,7 @@
     description: 'Megacity planning delivers major labour expansion and improved industrial coordination.'
     tech_type: 'INFRASTRUCTURE'
     thumbnail_class: 'star/city'
-    params_json: '{"megacity": true, "production_cost_overrides": {"BUILD_MEGACITY": {"bp": 180, "ironium": 600, "boranium": 150, "germanium": 120, "colonists": 0}}}'
+    params_json: '{"megacity": true, "production_cost_overrides": {"BUILD_MEGACITY": {"bp": 280, "ironium": 700, "boranium": 300, "germanium": 80, "colonists": 0}}}'
     display_order: 216
     enabled: True
 

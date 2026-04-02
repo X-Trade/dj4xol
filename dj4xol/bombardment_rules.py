@@ -25,9 +25,12 @@ NEUTRON_BOMB_RADIATION_DELTA = 0.02
 GRAVITON_BOMB_GRAVITY_DELTA = 0.05
 NEUTRON_BOMB_COLLATERAL_INFRA_SCALE = 0.25
 DYSON_BOMBARDMENT_DAMPING_MULTIPLIER = 0.50
-NOVA_BOMB_GRAVITY_DELTA = -0.10
+NOVA_BOMB_GRAVITY_DELTA = -0.20
 NOVA_BOMB_RADIATION_DELTA = 0.02
-SUPERNOVA_BOMB_ENV_MULTIPLIER = 2.0
+SUPERNOVA_BOMB_GRAVITY_DELTA = -0.55
+SUPERNOVA_BOMB_RADIATION_DELTA = NOVA_BOMB_RADIATION_DELTA * 2.0
+NOVA_COLLAPSE_GRAVITY_THRESHOLD = 0.09
+SUPERNOVA_COLLAPSE_GRAVITY_THRESHOLD = 0.15
 
 
 def normalize_bomb_type(value):
@@ -147,9 +150,11 @@ def apply_nova_family_environment_shift(gravity, radiation, bomb_type):
             max(0.0, min(2.0, current_radiation)),
         )
 
-    multiplier = 1.0
+    gravity_delta = NOVA_BOMB_GRAVITY_DELTA
+    radiation_delta = NOVA_BOMB_RADIATION_DELTA
     if normalized == BOMB_TYPE_SUPERNOVA:
-        multiplier = SUPERNOVA_BOMB_ENV_MULTIPLIER
+        gravity_delta = SUPERNOVA_BOMB_GRAVITY_DELTA
+        radiation_delta = SUPERNOVA_BOMB_RADIATION_DELTA
 
     try:
         current_gravity = float(gravity)
@@ -162,11 +167,11 @@ def apply_nova_family_environment_shift(gravity, radiation, bomb_type):
 
     new_gravity = max(
         0.0,
-        min(2.0, current_gravity + (NOVA_BOMB_GRAVITY_DELTA * multiplier)),
+        min(2.0, current_gravity + gravity_delta),
     )
     new_radiation = max(
         0.0,
-        min(2.0, current_radiation + (NOVA_BOMB_RADIATION_DELTA * multiplier)),
+        min(2.0, current_radiation + radiation_delta),
     )
     return new_gravity, new_radiation
 

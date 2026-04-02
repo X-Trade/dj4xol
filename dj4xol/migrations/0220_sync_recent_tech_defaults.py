@@ -8,7 +8,7 @@ def sync_recent_tech_defaults(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('dj4xol', '0217_auto_20260401_1935'),
+        ('dj4xol', '0219_sync_recent_tech_defaults'),
     ]
 
     operations = [

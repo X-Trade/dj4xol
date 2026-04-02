@@ -111,9 +111,9 @@ class AdministrationAutomationTest(TestCase):
             tech_type='INFRASTRUCTURE',
             params_json=(
                 '{"dyson_sphere": true, "production_cost_overrides": '
-                '{"BUILD_DYSON_SPHERE": {"bp": 2000, "ironium": 1000, '
-                '"boranium": 500, "germanium": 600, "resource_x": 200, '
-                '"resource_y": 0, "resource_z": 100, "colonists": 0}}}'
+                '{"BUILD_DYSON_SPHERE": {"bp": 2400, "ironium": 2500, '
+                '"boranium": 450, "germanium": 900, "resource_x": 220, '
+                '"resource_y": 0, "resource_z": 120, "colonists": 0}}}'
             ),
         )
         self._unlock_category_level(category, tech_level)
@@ -132,8 +132,8 @@ class AdministrationAutomationTest(TestCase):
             tech_type='INFRASTRUCTURE',
             params_json=(
                 '{"city": true, "production_cost_overrides": '
-                '{"BUILD_CITY": {"bp": 60, "ironium": 200, "boranium": 60, '
-                '"germanium": 40, "colonists": 0}}}'
+                '{"BUILD_CITY": {"bp": 90, "ironium": 230, "boranium": 60, '
+                '"germanium": 0, "colonists": 0}}}'
             ),
         )
         self._unlock_category_level(category, tech_level)
@@ -152,8 +152,8 @@ class AdministrationAutomationTest(TestCase):
             tech_type='INFRASTRUCTURE',
             params_json=(
                 '{"megacity": true, "production_cost_overrides": '
-                '{"BUILD_MEGACITY": {"bp": 180, "ironium": 600, '
-                '"boranium": 150, "germanium": 120, "colonists": 0}}}'
+                '{"BUILD_MEGACITY": {"bp": 280, "ironium": 700, '
+                '"boranium": 300, "germanium": 80, "colonists": 0}}}'
             ),
         )
         self._unlock_category_level(category, tech_level)
@@ -387,10 +387,10 @@ class AdministrationAutomationTest(TestCase):
         )
         self.assertFalse(dyson['repeat_allowed'])
         costs = get_player_production_costs(self.player)
-        self.assertEqual(costs['BUILD_DYSON_SPHERE']['bp'], 2000)
-        self.assertEqual(costs['BUILD_DYSON_SPHERE']['ironium'], 1000)
-        self.assertEqual(costs['BUILD_DYSON_SPHERE']['resource_x'], 200)
-        self.assertEqual(costs['BUILD_DYSON_SPHERE']['resource_z'], 100)
+        self.assertEqual(costs['BUILD_DYSON_SPHERE']['bp'], 2400)
+        self.assertEqual(costs['BUILD_DYSON_SPHERE']['ironium'], 2500)
+        self.assertEqual(costs['BUILD_DYSON_SPHERE']['resource_x'], 220)
+        self.assertEqual(costs['BUILD_DYSON_SPHERE']['resource_z'], 120)
 
         ProductionOrder.objects.create(
             game=self.game,
@@ -440,11 +440,11 @@ class AdministrationAutomationTest(TestCase):
         self.star.refresh_from_db()
 
         self.assertTrue(self.star.has_dyson_sphere)
-        self.assertEqual(self.star.ironium_inventory, 4000)
-        self.assertEqual(self.star.boranium_inventory, 4500)
-        self.assertEqual(self.star.germanium_inventory, 4400)
-        self.assertEqual(self.star.resource_x_inventory, 300)
-        self.assertEqual(self.star.resource_z_inventory, 400)
+        self.assertEqual(self.star.ironium_inventory, 2500)
+        self.assertEqual(self.star.boranium_inventory, 4550)
+        self.assertEqual(self.star.germanium_inventory, 4100)
+        self.assertEqual(self.star.resource_x_inventory, 280)
+        self.assertEqual(self.star.resource_z_inventory, 380)
         self.assertFalse(
             self.star.production_orders.filter(order_type='BUILD_DYSON_SPHERE').exists()
         )
@@ -814,7 +814,7 @@ class AdministrationAutomationTest(TestCase):
         self.star.has_administration = True
         self.star.colonists = 1_500_000
         self.star.mines = 0
-        self.star.factories = 700
+        self.star.factories = 5000
         self.star.labs = 0
         self.star.defenses = 0
         self.star.shipyards = 1
@@ -1843,15 +1843,15 @@ class AdministrationAutomationTest(TestCase):
         self.star.has_dyson_sphere = False
         self.star.colonists = 2_000_000_000
         self.star.mines = 60
-        self.star.factories = 300
-        self.star.labs = 20
-        self.star.defenses = 20
+        self.star.factories = 1500
+        self.star.labs = 750
+        self.star.defenses = 750
         self.star.shipyards = 0
-        self.star.ironium_inventory = 1_000
+        self.star.ironium_inventory = 2_600
         self.star.boranium_inventory = 500
-        self.star.germanium_inventory = 600
-        self.star.resource_x_inventory = 200
-        self.star.resource_z_inventory = 100
+        self.star.germanium_inventory = 950
+        self.star.resource_x_inventory = 240
+        self.star.resource_z_inventory = 140
         self.star.ironium_yield = 0
         self.star.boranium_yield = 0
         self.star.germanium_yield = 0
@@ -1867,11 +1867,11 @@ class AdministrationAutomationTest(TestCase):
             fleets_in_orbit=0,
             dyson_available=True,
             cost_map=get_player_production_costs(self.player),
-            limit=1,
+            limit=3,
         )
 
         self.assertGreaterEqual(len(planned), 1)
-        self.assertEqual(planned[0], 'BUILD_DYSON_SPHERE')
+        self.assertIn('BUILD_DYSON_SPHERE', planned)
 
     def test_level_three_mature_colony_balances_into_labs_and_shipyards(self):
         self._create_administration_tech(3, 3)

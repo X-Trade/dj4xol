@@ -194,11 +194,13 @@ from .bombardment_rules import (
     apply_nova_family_environment_shift,
     bombardment_damage_k,
     graviton_bombs_apply_gravity_shift,
+    NOVA_COLLAPSE_GRAVITY_THRESHOLD,
     neutron_bomb_collateral_damage_k,
     neutron_bombs_target_population_shipyards_and_cities,
     normalize_bomb_type,
     normalize_miner_type,
     smart_bombs_only_target_defenses_and_population,
+    SUPERNOVA_COLLAPSE_GRAVITY_THRESHOLD,
 )
 from .scanners import (
     fleet_is_cloaked,
@@ -283,7 +285,6 @@ BUSSARD_RECOVERY_CHANCE = 0.5
 BUSSARD_RECOVERY_MIN_MG = 1
 BUSSARD_RECOVERY_MAX_MG = 5
 FUEL_CONSUMPTION_MULTIPLIER = 2.0
-NOVA_STAR_DESTRUCTION_CHANCE = 0.40
 NOVA_BLACK_HOLE_SPAWN_CHANCE = 0.10
 NOVA_ASTEROID_FIELD_SPAWN_CHANCE = 0.40
 NOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION = 0.05
@@ -6323,36 +6324,71 @@ class GameTurn():
         destroyed_star_name = star.name
         blast_summary = None
         if bomb_type == 'SUPERNOVA':
-            star_destroyed = True
-            blast_x = star.x
-            blast_y = star.y
-            star_snapshots = []
-            doomed_stars = list(
-                Star.objects.filter(game=self.game, x=star.x, y=star.y).order_by('id')
-            )
-            for doomed_star in doomed_stars:
-                star_snapshot = self._destroy_star_for_bombardment(doomed_star, order, fleet)
-                if star_snapshot is not None:
-                    star_snapshots.append(star_snapshot)
-            self._create_supernova_star_remnant(
-                self._merge_star_remnant_snapshots(star_snapshots)
-            )
-            blast_summary = self._apply_supernova_fleet_blast(
-                fleet,
-                blast_x,
-                blast_y,
-            )
-        elif bomb_type == 'NOVA' and roll_chance(NOVA_STAR_DESTRUCTION_CHANCE):
-            star_destroyed = True
-            star_snapshot = self._destroy_star_for_bombardment(star, order, fleet)
-            self._create_nova_star_remnant(star_snapshot)
-        else:
-            if bomb_type in {'NOVA', 'SUPERNOVA'}:
-                star.gravity, star.radiation = apply_nova_family_environment_shift(
-                    getattr(star, 'gravity', 0.0),
-                    getattr(star, 'radiation', 0.0),
-                    bomb_type,
+            stars_at_location = []
+            for location_star in Star.objects.filter(
+                game=self.game,
+                x=star.x,
+                y=star.y,
+            ).order_by('id'):
+                active_star = star if location_star.id == star.id else location_star
+                active_star.gravity, active_star.radiation = apply_nova_family_environment_shift(
+                    getattr(active_star, 'gravity', 0.0),
+                    getattr(active_star, 'radiation', 0.0),
+                    'SUPERNOVA',
                 )
+                stars_at_location.append(active_star)
+
+            collapse_triggered = any(
+                float(getattr(location_star, 'gravity', 0.0) or 0.0) <
+                SUPERNOVA_COLLAPSE_GRAVITY_THRESHOLD
+                for location_star in stars_at_location
+            )
+            if collapse_triggered:
+                star_destroyed = True
+                blast_x = star.x
+                blast_y = star.y
+                star_snapshots = []
+                for doomed_star in stars_at_location:
+                    star_snapshot = self._destroy_star_for_bombardment(doomed_star, order, fleet)
+                    if star_snapshot is not None:
+                        star_snapshots.append(star_snapshot)
+                self._create_supernova_star_remnant(
+                    self._merge_star_remnant_snapshots(star_snapshots)
+                )
+                blast_summary = self._apply_supernova_fleet_blast(
+                    fleet,
+                    blast_x,
+                    blast_y,
+                )
+            else:
+                for location_star in stars_at_location:
+                    if location_star.id == star.id:
+                        location_star.save(update_fields=[
+                            'gravity', 'defenses', 'colonists', 'temperature', 'radiation',
+                            'mines', 'factories', 'labs',
+                            'shipyards', 'cities', 'megacities',
+                            'has_administration', 'has_dyson_sphere',
+                        ])
+                    else:
+                        location_star.save(update_fields=['gravity', 'radiation'])
+        elif bomb_type == 'NOVA':
+            star.gravity, star.radiation = apply_nova_family_environment_shift(
+                getattr(star, 'gravity', 0.0),
+                getattr(star, 'radiation', 0.0),
+                'NOVA',
+            )
+            if float(getattr(star, 'gravity', 0.0) or 0.0) < NOVA_COLLAPSE_GRAVITY_THRESHOLD:
+                star_destroyed = True
+                star_snapshot = self._destroy_star_for_bombardment(star, order, fleet)
+                self._create_nova_star_remnant(star_snapshot)
+            else:
+                star.save(update_fields=[
+                    'gravity', 'defenses', 'colonists', 'temperature', 'radiation',
+                    'mines', 'factories', 'labs',
+                    'shipyards', 'cities', 'megacities',
+                    'has_administration', 'has_dyson_sphere',
+                ])
+        else:
             star.save(update_fields=[
                 'gravity', 'defenses', 'colonists', 'temperature', 'radiation',
                 'mines', 'factories', 'labs',
