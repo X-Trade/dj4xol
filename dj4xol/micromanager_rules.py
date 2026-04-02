@@ -681,6 +681,26 @@ def _spend_budget(cost_map, budget, order_type):
         )
 
 
+def _spend_budget_unclamped(cost_map, budget, order_type):
+    """Reduce budget by one order without clamping to zero.
+
+    This is used for multi-year horizon gating so repeated horizon-selected
+    orders consume the same cumulative capacity.
+    """
+    if not cost_map:
+        return
+    cost = cost_map.get(order_type, {})
+    budget['bp'] = (
+        int(budget.get('bp', 0) or 0) -
+        max(0, int(cost.get('bp', 0) or 0))
+    )
+    for key in ALL_RESOURCE_KEYS:
+        budget[key] = (
+            int(budget.get(key, 0) or 0) -
+            max(0, int(cost.get(key, 0) or 0))
+        )
+
+
 def _one_year_income(star):
     """Return estimated one-year BP/mineral income for planning horizons."""
     income = {'bp': max(0, int(calculate_available_buildpoints(star) or 0))}
@@ -700,7 +720,7 @@ def _can_complete_within_years(cost_map, budget, income, order_type, years):
 
     bp_need = max(0, int(cost.get('bp', 0) or 0))
     bp_available = (
-        max(0, int(budget.get('bp', 0) or 0)) +
+        int(budget.get('bp', 0) or 0) +
         (max(0, int(income.get('bp', 0) or 0)) * horizon_extra_years)
     )
     if bp_need > bp_available:
@@ -709,7 +729,7 @@ def _can_complete_within_years(cost_map, budget, income, order_type, years):
     for key in ALL_RESOURCE_KEYS:
         need = max(0, int(cost.get(key, 0) or 0))
         available = (
-            max(0, int(budget.get(key, 0) or 0)) +
+            int(budget.get(key, 0) or 0) +
             (max(0, int(income.get(key, 0) or 0)) * horizon_extra_years)
         )
         if need > available:
@@ -1508,6 +1528,7 @@ def plan_micromanager_orders(
         star,
         queue_requirements=queue_requirements,
     )
+    planning_budget_unclamped = dict(planning_budget)
     terraform_used = False
     existing = list(preplanned_orders or [])
     for order_type in existing:
@@ -1530,9 +1551,11 @@ def plan_micromanager_orders(
         tier=tier,
         micromanager_mode=micromanager_mode,
     )
+    # Horizon affordability uses a fixed baseline income snapshot so queue
+    # planning does not recursively bootstrap itself from its own future jobs.
+    horizon_income = _one_year_income(projected)
 
     def pick_candidate(candidates, excluded_order_type=None):
-        one_year_income = _one_year_income(projected)
         for candidate in candidates:
             if candidate == excluded_order_type:
                 continue
@@ -1549,8 +1572,8 @@ def plan_micromanager_orders(
                     candidate == 'BUILD_SHIPYARD' and
                     _can_complete_within_years(
                         cost_map,
-                        planning_budget,
-                        one_year_income,
+                        planning_budget_unclamped,
+                        horizon_income,
                         candidate,
                         SHIPYARD_COMPLETION_MAX_YEARS,
                     )
@@ -1560,8 +1583,8 @@ def plan_micromanager_orders(
                     candidate == DYSON_SPHERE_ORDER_TYPE and
                     _can_complete_within_years(
                         cost_map,
-                        planning_budget,
-                        one_year_income,
+                        planning_budget_unclamped,
+                        horizon_income,
                         candidate,
                         DYSON_COMPLETION_MAX_YEARS,
                     )
@@ -1571,8 +1594,8 @@ def plan_micromanager_orders(
                     candidate == CITY_ORDER_TYPE and
                     _can_complete_within_years(
                         cost_map,
-                        planning_budget,
-                        one_year_income,
+                        planning_budget_unclamped,
+                        horizon_income,
                         candidate,
                         CITY_COMPLETION_MAX_YEARS,
                     )
@@ -1582,8 +1605,8 @@ def plan_micromanager_orders(
                     candidate == MEGACITY_ORDER_TYPE and
                     _can_complete_within_years(
                         cost_map,
-                        planning_budget,
-                        one_year_income,
+                        planning_budget_unclamped,
+                        horizon_income,
                         candidate,
                         MEGACITY_COMPLETION_MAX_YEARS,
                     )
@@ -1640,6 +1663,7 @@ def plan_micromanager_orders(
                 break
         planned.append(selected)
         _spend_budget(cost_map, planning_budget, selected)
+        _spend_budget_unclamped(cost_map, planning_budget_unclamped, selected)
         apply_projected_order(
             player,
             projected,

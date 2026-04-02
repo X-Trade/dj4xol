@@ -2040,6 +2040,78 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertNotIn('BUILD_DYSON_SPHERE', planned)
 
+    def test_city_horizon_budget_is_cumulative_not_per_order(self):
+        self._create_administration_tech(2, 2)
+        self._create_city_tech(tech_level=2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 5_000_000
+        self.star.mines = 0
+        self.star.factories = 20
+        self.star.labs = 10
+        self.star.defenses = 10
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 100_000
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        cost_map = get_player_production_costs(self.player)
+        # Force city orders down the horizon path and make the horizon tight:
+        # one-year budget is zeroed by queue requirements, and 5-year income
+        # supports at most one city at this custom BP cost.
+        cost_map['BUILD_CITY'] = {
+            'bp': 100,
+            'ironium': 0,
+            'boranium': 0,
+            'germanium': 0,
+            'resource_x': 0,
+            'resource_y': 0,
+            'resource_z': 0,
+            'colonists': 0,
+        }
+        # Keep fallback candidates unaffordable so city remains the chosen
+        # horizon candidate for this regression scenario.
+        for order_type in ('BUILD_FACTORY', 'BUILD_LAB', 'BUILD_DEFENSE', 'BUILD_SHIPYARD'):
+            override = cost_map.get(order_type, {}).copy()
+            override.update({
+                'bp': max(1, int(override.get('bp', 0) or 0)),
+                'ironium': 999_999,
+                'boranium': 999_999,
+                'germanium': 999_999,
+                'resource_x': 0,
+                'resource_y': 0,
+                'resource_z': 0,
+            })
+            cost_map[order_type] = override
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            fleets_in_orbit=1,
+            city_available=True,
+            megacity_available=False,
+            cost_map=cost_map,
+            queue_requirements={
+                'bp': 99_999,
+                'ironium': 0,
+                'boranium': 0,
+                'germanium': 0,
+                'resource_x': 0,
+                'resource_y': 0,
+                'resource_z': 0,
+            },
+            limit=20,
+        )
+
+        self.assertGreaterEqual(planned.count('BUILD_CITY'), 1)
+        self.assertLessEqual(planned.count('BUILD_CITY'), 2)
+
     def test_level_three_skips_dyson_when_it_would_exceed_max_jobs(self):
         self._create_administration_tech(3, 3)
         self._create_dyson_sphere_tech()
