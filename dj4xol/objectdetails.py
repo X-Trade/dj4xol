@@ -197,6 +197,10 @@ class DetailBuilder():
                 self._can_show_fleet_level_data(self.selected_obj)
                 if is_selected_fleet else False
             )
+            can_show_foreign_fleet_cargo = (
+                self._can_show_foreign_fleet_cargo(self.selected_obj)
+                if is_selected_fleet else False
+            )
             detail = {'name': self.get_object_name(),
                      'selected_id': self.selected_obj.short_id,
                      'objects_here': self.get_objects_here(),
@@ -283,12 +287,16 @@ class DetailBuilder():
                      'production_orders': self.get_production_orders(),
                      'production_order_choices': self.get_available_production_orders(),
                      'fleet_orders': self.get_fleet_orders(),
-                     'fleet_cargo': self.get_fleet_cargo(),
+                     'fleet_cargo': self.get_fleet_cargo(
+                         include_cargo=can_show_foreign_fleet_cargo,
+                     ),
                      'fleet_capabilities': self.get_fleet_capabilities(
                          include_scanners=can_show_fleet_levels,
                          allow_foreign_levels=can_show_fleet_levels,
                      ),
-                     'fleet_inventory': self.build_fleet_inventory(),
+                     'fleet_inventory': self.build_fleet_inventory(
+                         allow_foreign=can_show_foreign_fleet_cargo,
+                     ),
                      'transfer_targets': self.get_transfer_targets(),
                      'refuel_targets': self.get_refuel_targets(),
                      'transfer_recipients': self.get_transfer_recipients(),
@@ -311,8 +319,20 @@ class DetailBuilder():
                      'is_current': True,
                      'thumbnail_blurred': False,
                      }
+            if (
+                is_selected_fleet and
+                self.player and
+                getattr(self.selected_obj, 'player_id', None) != getattr(self.player, 'id', None)
+            ):
+                cached_detail = self._build_current_foreign_fleet_detail_from_report(
+                    self.selected_obj,
+                    can_show_fleet_levels=can_show_fleet_levels,
+                    can_show_foreign_fleet_cargo=can_show_foreign_fleet_cargo,
+                )
+                if cached_detail is not None:
+                    detail = cached_detail
             self._apply_fleet_motion_summary(detail)
-            if detail['effective_location']:
+            if detail.get('effective_location'):
                 effective_x, effective_y = detail['effective_location']
                 detail['effective_location_name'] = self.format_empty_space(effective_x, effective_y)
         else:
@@ -1065,6 +1085,133 @@ class DetailBuilder():
             return (int(x), int(y))
         except (TypeError, ValueError):
             return (None, None)
+
+    @staticmethod
+    def _report_tier_rank(tier):
+        return {
+            'ownership': 0,
+            'basic': 1,
+            'advanced': 2,
+            'encounter': 3,
+        }.get(str(tier or '').lower(), 0)
+
+    @staticmethod
+    def _fleet_report_has_cargo_snapshot(data):
+        if not isinstance(data, dict):
+            return False
+        keys = (
+            'cargo_capacity',
+            'cargo_used',
+            'cargo_remaining',
+            'fuel',
+            'max_fuel',
+            'ironium_inventory',
+            'boranium_inventory',
+            'germanium_inventory',
+            'resource_x_inventory',
+            'resource_y_inventory',
+            'resource_z_inventory',
+            'colonists',
+            'max_safe_warp',
+            'offense_modifier',
+            'defense_modifier',
+            'has_bombs',
+            'has_miners',
+            'basic_scanner_range',
+            'advanced_scanner_range',
+        )
+        for key in keys:
+            if key in data and data.get(key) is not None:
+                return True
+        return False
+
+    def _current_live_foreign_fleet_report_tier(self, fleet, can_show_fleet_levels=False):
+        if not fleet or not isinstance(fleet, Fleet):
+            return 'basic'
+        if self._player_has_contact_at_location(fleet.x, fleet.y):
+            return 'encounter' if can_show_fleet_levels else 'basic'
+        return 'advanced' if can_show_fleet_levels else 'basic'
+
+    def _player_has_contact_at_location(self, x, y):
+        if not self.player:
+            return False
+        if Fleet.objects.filter(
+            game=self.game,
+            player=self.player,
+            x=x,
+            y=y,
+        ).exists():
+            return True
+        return Star.objects.filter(
+            game=self.game,
+            player=self.player,
+            x=x,
+            y=y,
+        ).exists()
+
+    def _can_show_foreign_fleet_cargo(self, fleet):
+        if not fleet or not isinstance(fleet, Fleet):
+            return False
+        if self.admin_view:
+            return True
+        if not self.player:
+            return False
+        if getattr(fleet, 'player_id', None) == getattr(self.player, 'id', None):
+            return True
+        return (
+            self._player_has_contact_at_location(fleet.x, fleet.y) and
+            self._has_advanced_scanner_coverage(fleet.x, fleet.y)
+        )
+
+    def _build_current_foreign_fleet_detail_from_report(
+        self,
+        fleet,
+        can_show_fleet_levels=False,
+        can_show_foreign_fleet_cargo=False,
+    ):
+        report = Report.objects.filter(
+            player=self.player,
+            target_type='fleet',
+            target_id=fleet.id,
+        ).first()
+        if not report:
+            return None
+        try:
+            report_data = report.get_report_data()
+        except Exception:
+            return None
+
+        live_tier = self._current_live_foreign_fleet_report_tier(
+            fleet,
+            can_show_fleet_levels=can_show_fleet_levels,
+        )
+        cached_tier = str(report_data.get('report_tier') or '').lower()
+        prefer_cached = (
+            self._report_tier_rank(cached_tier) > self._report_tier_rank(live_tier) or
+            (
+                self._report_tier_rank(cached_tier) == self._report_tier_rank(live_tier) and
+                self._fleet_report_has_cargo_snapshot(report_data) and
+                not can_show_foreign_fleet_cargo
+            )
+        )
+        if not prefer_cached:
+            return None
+
+        detail = self._build_detail_from_report(report.year)
+        detail['is_current'] = True
+        detail['report_year'] = None
+        detail['report_age'] = None
+        detail['position_status'] = 'current'
+        detail['is_last_known'] = False
+        detail['last_known_position'] = None
+        detail['last_known_report_year'] = None
+        detail['x'] = fleet.x
+        detail['y'] = fleet.y
+        detail['heading'] = fleet.heading
+        detail['travel_warp'] = self._fleet_travel_warp(fleet)
+        detail['warp_advantage'] = self._fleet_warp_advantage(fleet)
+        detail['is_cloaked'] = fleet_is_cloaked(fleet)
+        return detail
 
     def _is_fleet_currently_visible(self, fleet):
         """Return True when fleet is currently visible to this viewer."""

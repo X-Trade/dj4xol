@@ -2657,3 +2657,138 @@ class ReportTierMergeTest(TestCase):
         self.assertEqual(data.get('ironium_inventory'), 40)
         self.assertEqual(data.get('max_safe_warp'), 7)
         self.assertEqual(data.get('advanced_scanner_range'), 2)
+
+
+class CurrentForeignFleetDetailTest(TestCase):
+    def setUp(self):
+        get_default_race_type()
+        self.user1 = User.objects.create_user('current_detail_p1', 'cdp1@test.com', 'pass')
+        self.account1 = Account.objects.create(django_user=self.user1)
+        self.user2 = User.objects.create_user('current_detail_p2', 'cdp2@test.com', 'pass')
+        self.account2 = Account.objects.create(django_user=self.user2)
+
+        factory = GameFactory()
+        factory.set_map_size(100, 100)
+        factory.set_owner(self.account1)
+        factory.create_stars(10)
+        self.game = factory.save()
+        self.game.joinable = True
+        self.game.save(update_fields=['joinable'])
+        self.player1 = factory.join_player(self.account1, get_default_race())
+        self.player2 = factory.join_player(self.account2, get_default_race())
+
+    def _find_empty_coord(self):
+        occupied = set(self.game.stars.values_list('x', 'y'))
+        for x in range(10, 90):
+            for y in range(10, 90):
+                if (x, y) not in occupied:
+                    return x, y
+        self.fail('No empty coordinate available for test.')
+
+    def test_current_hostile_encounter_keeps_encounter_cargo_and_capabilities(self):
+        x, y = self._find_empty_coord()
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Advanced Scout',
+            x=x,
+            y=y,
+            ship_count=1,
+            integrity=100,
+            advanced_scanner_range=6,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Enemy Cargo',
+            x=x,
+            y=y,
+            ship_count=4,
+            integrity=90,
+            cargo_capacity=220,
+            ironium_inventory=60,
+            max_safe_warp=8,
+            has_bombs='CONVENTIONAL',
+        )
+
+        GameTurn(self.game).generate_reports()
+
+        detail = DetailBuilder(
+            self.game,
+            selected=enemy_fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+
+        self.assertTrue(detail['is_current'])
+        self.assertIsNone(detail['report_year'])
+        self.assertIsNotNone(detail['fleet_inventory'])
+        self.assertEqual(detail['fleet_cargo']['capacity'], 220)
+        self.assertEqual(detail['fleet_cargo']['ironium'], 60)
+        self.assertIn(
+            {'label': 'Max Warp', 'value': '8'},
+            detail.get('fleet_capabilities') or [],
+        )
+        self.assertIn(
+            {'label': 'Bombs', 'value': 'Conventional'},
+            detail.get('fleet_capabilities') or [],
+        )
+
+    def test_current_foreign_fleet_prefers_richer_cached_report_over_live_basic_view(self):
+        x, y = self._find_empty_coord()
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Contact Fleet',
+            x=x,
+            y=y,
+            ship_count=1,
+            integrity=100,
+            advanced_scanner_range=0,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Shared Intel Target',
+            x=x,
+            y=y,
+            ship_count=3,
+            integrity=85,
+            cargo_capacity=180,
+            ironium_inventory=45,
+            max_safe_warp=7,
+        )
+
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report='{}',
+        )
+        report.set_report_data(
+            GameTurn(self.game)._build_report_data(
+                self.player1,
+                enemy_fleet,
+                'fleet',
+                report_tier='encounter',
+                include_cargo=True,
+            )
+        )
+        report.save()
+
+        detail = DetailBuilder(
+            self.game,
+            selected=enemy_fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+
+        self.assertTrue(detail['is_current'])
+        self.assertIsNone(detail['report_year'])
+        self.assertEqual(detail['report_tier'], 'encounter')
+        self.assertIsNotNone(detail['fleet_inventory'])
+        self.assertEqual(detail['fleet_inventory']['ironium']['amount'], 45)
+        self.assertIn(
+            {'label': 'Max Warp', 'value': '7'},
+            detail.get('fleet_capabilities') or [],
+        )
