@@ -42,7 +42,8 @@ HANDLED_CONTRACT_STATUSES = (
 )
 
 REPORT_TIER_ORDER = {
-    'ownership': 0,
+    'observed': 0,
+    'ownership': 4,
     'basic': 1,
     'advanced': 2,
     'encounter': 3,
@@ -1296,29 +1297,35 @@ def ensure_specific_fleet_report(contract):
         not bool(getattr(contract, 'offer_fleet_include_report', True))
     ):
         return
-    source_report = _qualifying_report_for_trade(
+    fleet = getattr(contract, 'offer_fleet', None)
+    if (
+        fleet is None or
+        fleet.game_id != getattr(contract.game, 'id', None) or
+        fleet.player_id != getattr(contract.sender, 'id', None)
+    ):
+        return
+    from .turn import GameTurn
+
+    report_data = GameTurn(contract.game)._build_report_data(
         contract.sender,
+        fleet,
         'fleet',
-        contract.offer_fleet.id,
+        report_tier='ownership',
+        include_cargo=True,
     )
-    if source_report is None:
-        return
-    shared = _shared_report_data(source_report, recipient=contract.recipient)
-    if shared is None:
-        return
     report, _created = Report.objects.get_or_create(
         game=contract.game,
         player=contract.recipient,
         target_type='fleet',
-        target_id=contract.offer_fleet.id,
+        target_id=fleet.id,
         defaults={
-            'year': source_report.year,
+            'year': contract.game.year,
             'cached_report': '{}',
         },
     )
-    report.year = source_report.year
+    report.year = contract.game.year
     report.game = contract.game
-    report.set_report_data(shared)
+    report.set_report_data(report_data)
     report.save()
 
 

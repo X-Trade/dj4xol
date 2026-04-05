@@ -2547,7 +2547,7 @@ class GameTurn():
                 'report_tier': report_tier,
                 'unknown_secret_resources': unknown_secret_resources,
             }
-            if report_tier == 'ownership':
+            if report_tier == 'observed':
                 base['player_name'] = obj.player.name if obj.player else None
                 return base
             base.update({
@@ -2579,7 +2579,7 @@ class GameTurn():
                 'resource_y_inventory': obj.resource_y_inventory,
                 'resource_z_inventory': obj.resource_z_inventory,
             })
-            if report_tier == 'encounter':
+            if report_tier in ('ownership', 'encounter'):
                 scanner_basic = 0
                 scanner_advanced = 0
                 administration_level = 0
@@ -2629,7 +2629,7 @@ class GameTurn():
                 'heading': heading,
                 'is_cloaked': fleet_is_cloaked(obj),
             }
-            if report_tier == 'ownership':
+            if report_tier == 'observed':
                 data['player_name'] = obj.player.name if obj.player else 'Abandoned'
                 return data
             if report_tier == 'basic':
@@ -2639,7 +2639,7 @@ class GameTurn():
                 'ship_count': obj.ship_count,
                 'integrity': obj.integrity,
             })
-            if include_cargo:
+            if include_cargo or report_tier == 'ownership':
                 data.update({
                     'cargo_capacity': getattr(obj, 'cargo_capacity', None),
                     'cargo_used': getattr(obj, 'cargo_used', None),
@@ -2654,7 +2654,7 @@ class GameTurn():
                     'resource_z_inventory': getattr(obj, 'resource_z_inventory', None),
                     'colonists': getattr(obj, 'colonists', None),
                 })
-            if report_tier == 'encounter' and include_cargo:
+            if report_tier in ('ownership', 'encounter') and (include_cargo or report_tier == 'ownership'):
                 offense_mod = int(round(float(obj.offense_level) * 10.0))
                 defense_mod = int(round(float(obj.defense_level) * 10.0))
                 data.update({
@@ -2678,7 +2678,7 @@ class GameTurn():
                 })
             return data
         elif target_type == 'salvage':
-            if report_tier == 'ownership':
+            if report_tier in ('observed', 'ownership'):
                 data = {
                     'name': obj.name,
                     'x': obj.x,
@@ -2717,7 +2717,7 @@ class GameTurn():
                 'report_tier': report_tier,
             }
         elif target_type == 'anomaly':
-            if report_tier in ('ownership', 'basic'):
+            if report_tier in ('observed', 'ownership', 'basic'):
                 data = {
                     'name': obj.name,
                     'x': obj.x,
@@ -2761,12 +2761,13 @@ class GameTurn():
             return 'advanced'
         if basic > 0:
             return 'basic'
-        return 'ownership'
+        return 'observed'
 
     def _report_tier_rank(self, tier):
         """Higher numbers mean more detailed reports."""
         order = {
-            'ownership': 0,
+            'observed': 0,
+            'ownership': 4,
             'basic': 1,
             'advanced': 2,
             'encounter': 3,
@@ -5315,19 +5316,31 @@ class GameTurn():
             defender_msg.year = self.game.year
             defender_msg.save()
 
-        # Surviving invasion fleets grant encounter-grade reports to both sides.
+        # Successful invasions preserve colony-state knowledge for both sides.
         if Fleet.objects.filter(id=fleet.id).exists():
+            attacker_report_tier = 'ownership' if attacker_won else 'encounter'
             self._create_or_update_report(
-                attacker, 'star', star, self.game.year, report_tier='encounter'
+                attacker, 'star', star, self.game.year, report_tier=attacker_report_tier
             )
             if defender:
+                if attacker_won:
+                    self._create_or_update_report(
+                        defender,
+                        'star',
+                        star,
+                        self.game.year,
+                        report_tier='ownership',
+                    )
+                defender_report_tier = 'encounter'
                 self._create_or_update_report(
                     defender,
                     'fleet',
                     fleet,
                     self.game.year,
-                    report_tier='encounter',
-                    include_cargo=self._player_has_advanced_scanner_at(defender, star.x, star.y),
+                    report_tier=defender_report_tier,
+                    include_cargo=(
+                        self._player_has_advanced_scanner_at(defender, star.x, star.y)
+                    ),
                 )
 
     def resolve_orbital_defense_hazards(self):

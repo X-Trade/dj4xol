@@ -6670,8 +6670,24 @@ class TestFleetTransferOrders(TestCase):
             target_id=star.id,
         ).first()
         self.assertIsNotNone(attacker_report)
-        self.assertEqual(attacker_report.get_report_data().get('report_tier'), 'encounter')
+        attacker_data = attacker_report.get_report_data()
+        self.assertEqual(attacker_data.get('report_tier'), 'ownership')
+        self.assertEqual(attacker_data.get('colonists'), 8000)
+        self.assertIn('gravity', attacker_data)
+        self.assertIn('mines', attacker_data)
         if defender:
+            defender_star_report = Report.objects.filter(
+                game=game,
+                player=defender,
+                target_type='star',
+                target_id=star.id,
+            ).first()
+            self.assertIsNotNone(defender_star_report)
+            defender_star_data = defender_star_report.get_report_data()
+            self.assertEqual(defender_star_data.get('report_tier'), 'ownership')
+            self.assertEqual(defender_star_data.get('colonists'), 8000)
+            self.assertIn('gravity', defender_star_data)
+
             defender_report = Report.objects.filter(
                 game=game,
                 player=defender,
@@ -6679,7 +6695,9 @@ class TestFleetTransferOrders(TestCase):
                 target_id=fleet.id,
             ).first()
             self.assertIsNotNone(defender_report)
-            self.assertEqual(defender_report.get_report_data().get('report_tier'), 'encounter')
+            defender_data = defender_report.get_report_data()
+            self.assertEqual(defender_data.get('report_tier'), 'encounter')
+            self.assertEqual(defender_data.get('ship_count'), 1)
 
     def test_transfer_invasion_destroyed_attacker_creates_no_reports(self):
         """If defenses destroy the attacker, no encounter reports should be created."""

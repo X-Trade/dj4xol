@@ -489,7 +489,7 @@ class DetailBuilder():
         data = report.get_report_data()
         report_tier = data.get('report_tier')
         report_owner_name = self._format_report_owner_display(data.get('player_name'))
-        if target_type == 'fleet' and report_tier in ('ownership', 'advanced', 'encounter'):
+        if target_type == 'fleet' and report_tier in ('observed', 'ownership', 'advanced', 'encounter'):
             report_owner_name = report_owner_name or 'Abandoned'
 
         # Base detail fields
@@ -684,7 +684,7 @@ class DetailBuilder():
                     ),
                     'has_wormhole_drive': data.get('has_wormhole_drive'),
                 }
-                if data.get('report_tier') == 'encounter':
+                if data.get('report_tier') in ('ownership', 'encounter'):
                     detail['fleet_capabilities'] = self._build_fleet_capabilities(
                         data.get('max_safe_warp'),
                         data.get('warp_advantage'),
@@ -1115,7 +1115,8 @@ class DetailBuilder():
     @staticmethod
     def _report_tier_rank(tier):
         return {
-            'ownership': 0,
+            'observed': 0,
+            'ownership': 4,
             'basic': 1,
             'advanced': 2,
             'encounter': 3,

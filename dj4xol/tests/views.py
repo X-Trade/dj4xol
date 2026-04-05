@@ -7064,6 +7064,12 @@ class TestDiplomacyView(TestCase):
             ship_count=2,
             integrity=100,
             ironium_inventory=12,
+            cargo_capacity=80,
+            max_safe_warp=7,
+            has_bombs='CONVENTIONAL',
+            basic_scanner_range=3,
+            advanced_scanner_range=2,
+            max_cloaked_warp=4,
         )
 
         user, _ = get_default_user()
@@ -7102,7 +7108,83 @@ class TestDiplomacyView(TestCase):
         cached = json.loads(preview_report.cached_report)
         self.assertEqual(cached.get('report_tier'), 'ownership')
         self.assertEqual(cached.get('name'), offered_fleet.name)
-        self.assertNotIn('ironium_inventory', cached)
+        self.assertEqual(cached.get('ironium_inventory'), 12)
+        self.assertEqual(cached.get('cargo_capacity'), 80)
+        self.assertEqual(cached.get('max_safe_warp'), 7)
+        self.assertEqual(cached.get('has_bombs'), 'CONVENTIONAL')
+        self.assertEqual(cached.get('basic_scanner_range'), 3)
+        self.assertEqual(cached.get('advanced_scanner_range'), 2)
+
+    def test_diplomacy_specific_fleet_offer_preview_refreshes_while_offer_active(self):
+        game = default_game(stars=5, fleets=0)
+        sender = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_fleet_refresh', 'diplo_fleet_refresh@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DFR')
+        recipient = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Refresh Race',
+            plural_name='Refresh Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=sender.homeworld_id).order_by('id').first()
+        self._create_contact_star_report(game, sender, recipient, contact_star)
+        offered_fleet = Fleet.objects.create(
+            game=game,
+            player=sender,
+            name='Refresh Preview',
+            x=sender.homeworld.x,
+            y=sender.homeworld.y,
+            ship_count=2,
+            integrity=100,
+            ironium_inventory=12,
+            cargo_capacity=90,
+            max_safe_warp=6,
+            max_cloaked_warp=3,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=sender,
+            recipient=recipient,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='SPECIFIC_FLEET',
+            offer_fleet=offered_fleet,
+            offer_fleet_include_report=True,
+        )
+
+        from ..diplomatic_contracts import ensure_specific_fleet_report
+        ensure_specific_fleet_report(contract)
+
+        offered_fleet.ironium_inventory = 33
+        offered_fleet.max_safe_warp = 8
+        offered_fleet.has_bombs = 'CONVENTIONAL'
+        offered_fleet.save(update_fields=['ironium_inventory', 'max_safe_warp', 'has_bombs'])
+
+        other_client = Client()
+        other_client.force_login(other_user)
+        response = other_client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': sender.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        preview_report = Report.objects.get(
+            game=game,
+            player=recipient,
+            target_type='fleet',
+            target_id=offered_fleet.id,
+        )
+        cached = json.loads(preview_report.cached_report)
+        self.assertEqual(cached.get('report_tier'), 'ownership')
+        self.assertEqual(cached.get('ironium_inventory'), 33)
+        self.assertEqual(cached.get('max_safe_warp'), 8)
+        self.assertEqual(cached.get('has_bombs'), 'CONVENTIONAL')
 
     def test_diplomacy_specific_fleet_offer_can_skip_preview_report(self):
         game = default_game(stars=5, fleets=0)

@@ -2280,13 +2280,15 @@ class NoScannerReportTierTest(TestCase):
         )
         return report.get_report_data()
 
-    def test_visit_without_scanners_only_reports_ownership(self):
+    def test_visit_without_scanners_only_reports_observed(self):
         data = self._visit_enemy_star(basic=0, advanced=0)
-        self.assertEqual(data.get('report_tier'), 'ownership')
+        self.assertEqual(data.get('report_tier'), 'observed')
         self.assertNotIn('gravity', data)
+        self.assertNotIn('ironium_yield', data)
+        self.assertNotIn('mines', data)
         self.assertIn('player_name', data)
 
-    def test_no_scanners_ownership_fleet_report_includes_heading_and_travel_warp(self):
+    def test_no_scanners_observed_fleet_report_includes_heading_and_travel_warp(self):
         x = self.enemy_star.x
         y = self.enemy_star.y
         Fleet.objects.create(
@@ -2305,8 +2307,12 @@ class NoScannerReportTierTest(TestCase):
             x=x,
             y=y,
             ship_count=2,
+            integrity=85,
             heading=278.3,
             travel_warp=6,
+            cargo_capacity=120,
+            ironium_inventory=9,
+            max_safe_warp=7,
         )
 
         GameTurn(self.game).generate_reports()
@@ -2317,10 +2323,14 @@ class NoScannerReportTierTest(TestCase):
             target_id=enemy_fleet.id,
         ).get_report_data()
 
-        self.assertEqual(data.get('report_tier'), 'ownership')
+        self.assertEqual(data.get('report_tier'), 'observed')
         self.assertIn('player_name', data)
         self.assertEqual(data.get('travel_warp'), 6)
         self.assertAlmostEqual(float(data.get('heading')), 278.3, places=1)
+        self.assertNotIn('ship_count', data)
+        self.assertNotIn('integrity', data)
+        self.assertNotIn('ironium_inventory', data)
+        self.assertNotIn('max_safe_warp', data)
 
     def test_visit_with_basic_scanners_reports_environment_only(self):
         data = self._visit_enemy_star(basic=5, advanced=0)
@@ -2853,3 +2863,56 @@ class CurrentForeignFleetDetailTest(TestCase):
         self.assertEqual(detail['report_tier'], 'advanced')
         self.assertIsNotNone(detail['fleet_inventory'])
         self.assertEqual(detail['fleet_inventory']['ironium']['amount'], 45)
+
+    def test_ownership_fleet_report_shows_cargo_and_capabilities_in_detail(self):
+        x, y = self._find_empty_coord()
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Owned Snapshot',
+            x=x,
+            y=y,
+            ship_count=4,
+            integrity=88,
+            cargo_capacity=200,
+            ironium_inventory=41,
+            max_safe_warp=8,
+            has_bombs='CONVENTIONAL',
+            advanced_scanner_range=5,
+        )
+
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report='{}',
+        )
+        report.set_report_data(
+            GameTurn(self.game)._build_report_data(
+                self.player1,
+                enemy_fleet,
+                'fleet',
+                report_tier='ownership',
+            )
+        )
+        report.save()
+
+        detail = DetailBuilder(
+            self.game,
+            selected=enemy_fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+
+        self.assertEqual(detail['report_tier'], 'ownership')
+        self.assertIsNotNone(detail['fleet_inventory'])
+        self.assertEqual(detail['fleet_inventory']['ironium']['amount'], 41)
+        self.assertIn(
+            {'label': 'Max Warp', 'value': '8'},
+            detail.get('fleet_capabilities') or [],
+        )
+        self.assertIn(
+            {'label': 'Bombs', 'value': 'Conventional'},
+            detail.get('fleet_capabilities') or [],
+        )

@@ -598,7 +598,7 @@ class StarMap():
         if self._is_allied_owner(fleet.player):
             return fleet.name
         tier = self.fleet_report_tiers.get(fleet.id)
-        if tier in ('advanced', 'encounter'):
+        if tier in ('ownership', 'advanced', 'encounter'):
             return fleet.name
         if position_in_scanner_range(
             fleet.x, fleet.y, self._scanner_sources, range_key='advanced'
