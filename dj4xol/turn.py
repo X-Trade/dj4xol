@@ -3989,6 +3989,16 @@ class GameTurn():
             if int(order.warpfactor or 0) == WORMHOLE_WARPFACTOR:
                 order.warpfactor = 13
                 order.save(update_fields=['warpfactor'])
+        if (
+            not is_intercept and
+            int(warp_speed or 0) == WORMHOLE_WARPFACTOR and
+            bool(getattr(fleet, 'has_wormhole_drive', False)) and
+            self._wormhole_move_can_finish_normally(fleet, distance)
+        ):
+            try:
+                warp_speed = max(0, int(getattr(fleet, 'max_safe_warp', 0) or 0))
+            except (TypeError, ValueError):
+                warp_speed = 0
         if distance > 0:
             if warp_speed == WORMHOLE_WARPFACTOR and bool(fleet.has_wormhole_drive):
                 if not self._consume_wormhole_jump_fuel(fleet, distance):
@@ -4101,6 +4111,18 @@ class GameTurn():
                 if self._intercept_target_matched(order, fleet):
                     return True
             return False
+
+    def _wormhole_move_can_finish_normally(self, fleet, distance):
+        """Return True when a wormhole MOVE can be completed this year at safe warp."""
+        if not fleet:
+            return False
+        try:
+            max_safe_warp = max(0, int(getattr(fleet, 'max_safe_warp', 0) or 0))
+        except (TypeError, ValueError):
+            max_safe_warp = 0
+        if max_safe_warp <= 0:
+            return False
+        return int(distance or 0) <= self._effective_movement_speed(fleet, max_safe_warp)
 
     def _execute_wormhole_jump(self, fleet, order, target_x, target_y, distance):
         """Resolve one wormhole jump attempt.

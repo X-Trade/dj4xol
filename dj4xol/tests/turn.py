@@ -10325,6 +10325,60 @@ class TestWormholeDriveMovement(TestCase):
         self.assertEqual((fleet.x, fleet.y), (40, 40))
         self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
 
+    def test_wormhole_near_miss_finishes_with_safe_warp_instead_of_second_jump(self):
+        game = default_game(stars=2)
+        game.random_events = False
+        game.save(update_fields=['random_events'])
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Wormhole Followthrough',
+            x=0,
+            y=0,
+            has_wormhole_drive=True,
+            fuel=999.0,
+            max_fuel=999.0,
+            max_safe_warp=5,
+        )
+        order = FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='MOVE', x=50, y=0, warpfactor=14
+        )
+        destruction_chance = float(fleet.wormhole_destruction_chance or 0.0)
+        deviation_calls = {'count': 0}
+
+        def roll_map(chance):
+            if abs(chance - destruction_chance) < 1e-9:
+                return False
+            if abs(chance - 0.20) < 1e-9:
+                return False
+            if abs(chance - 0.60) < 1e-9:
+                return False
+            if abs(chance - 0.75) < 1e-9:
+                deviation_calls['count'] += 1
+                return deviation_calls['count'] == 1
+            return False
+
+        with patch('dj4xol.turn.roll_chance', side_effect=roll_map), \
+             patch('dj4xol.turn.random.uniform', side_effect=[0.0, 5.0]):
+            GameTurn(game).generate_turn()
+            fleet.refresh_from_db()
+            self.assertEqual((fleet.x, fleet.y), (55, 0))
+            self.assertTrue(FleetOrders.objects.filter(id=order.id).exists())
+
+            GameTurn(game).generate_turn()
+
+        fleet.refresh_from_db()
+        self.assertEqual((fleet.x, fleet.y), (50, 0))
+        self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
+        self.assertEqual(
+            player.messages.filter(
+                message__icontains='successfully completed a wormhole jump'
+            ).count(),
+            1,
+        )
+
     def test_wormhole_jump_can_take_integrity_damage(self):
         game = default_game(stars=2)
         game.random_events = False
@@ -11675,10 +11729,14 @@ class TestCombat(TestCase):
             x=30, y=30, ship_count=2, integrity=100
         )
 
-        with patch('dj4xol.turn.roll_chance', return_value=True):
+        with patch.object(GameTurn, '_calculate_combat_damage', return_value={
+            player1: 15.0,
+            player2: 0.0,
+        }), patch('dj4xol.turn.roll_chance', return_value=True):
             GameTurn(game).generate_turn()
 
         fleet1.refresh_from_db()
+        self.assertEqual(fleet1.integrity, 45)
         self.assertEqual(fleet1.ship_count, 2)
 
     def test_combat_luck_jitter_scales_outcome_roll(self):

@@ -757,7 +757,33 @@ class DetailBuilder():
 
         self._apply_fleet_motion_summary(detail)
         self._apply_order_panel_state(detail)
+        self._mark_report_detail_current_if_locally_confirmed(detail, report_year)
         return detail
+
+    def _mark_report_detail_current_if_locally_confirmed(self, detail, report_year):
+        """Mark cached intel as current when the viewer is presently on-site."""
+        if not detail or not self.selected_obj or not self.player:
+            return
+        if report_year != getattr(self.game, 'year', None):
+            return
+        if not self._report_is_locally_confirmed(self.selected_obj):
+            return
+
+        detail['is_current'] = True
+        detail['position_status'] = 'current'
+        detail['is_last_known'] = False
+        detail['last_known_position'] = None
+        detail['last_known_report_year'] = None
+
+    def _report_is_locally_confirmed(self, obj):
+        """Return True when cached intel is confirmed by current local presence."""
+        if not obj or not self.player:
+            return False
+        if getattr(obj, 'player_id', None) == getattr(self.player, 'id', None):
+            return True
+        if isinstance(obj, Fleet):
+            return self._is_fleet_currently_visible(obj)
+        return self._player_has_contact_at_location(obj.x, obj.y)
 
     def _get_star_marker_type(self):
         marker = self._get_star_marker()
@@ -1189,7 +1215,6 @@ class DetailBuilder():
         prefer_cached = (
             self._report_tier_rank(cached_tier) > self._report_tier_rank(live_tier) or
             (
-                self._report_tier_rank(cached_tier) == self._report_tier_rank(live_tier) and
                 self._fleet_report_has_cargo_snapshot(report_data) and
                 not can_show_foreign_fleet_cargo
             )
@@ -1639,7 +1664,7 @@ class DetailBuilder():
         """Check if player can view object details.
 
         Returns tuple: (can_view, report_year or None)
-        - can_view=True, year=None means current data (owned or fleet present)
+        - can_view=True, year=None means current data (owned or local presence, no report)
         - can_view=True, year=N means cached report from year N
         - can_view=False, year=None means unexplored
         """
@@ -1649,6 +1674,22 @@ class DetailBuilder():
         # Player owns the object
         if hasattr(obj, 'player') and obj.player == self.player:
             return (True, None)
+
+        # For foreign player-owned objects, prefer the cached report when one
+        # exists so the detail panel matches the persisted intel snapshot.
+        target_type = self._get_target_type(obj)
+        foreign_owned = bool(
+            getattr(obj, 'player_id', None) and
+            getattr(obj, 'player_id', None) != getattr(self.player, 'id', None)
+        )
+        if foreign_owned:
+            report = Report.objects.filter(
+                player=self.player,
+                target_type=target_type,
+                target_id=obj.id
+            ).first()
+            if report:
+                return (True, report.year)
 
         # Player has a fleet at the location
         player_fleets_here = Fleet.objects.filter(
@@ -1670,8 +1711,6 @@ class DetailBuilder():
         if player_star_here:
             return (True, None)
 
-        # Player has a cached report
-        target_type = self._get_target_type(obj)
         report = Report.objects.filter(
             player=self.player,
             target_type=target_type,

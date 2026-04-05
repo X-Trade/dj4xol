@@ -2685,7 +2685,7 @@ class CurrentForeignFleetDetailTest(TestCase):
                     return x, y
         self.fail('No empty coordinate available for test.')
 
-    def test_current_hostile_encounter_keeps_encounter_cargo_and_capabilities(self):
+    def test_hostile_encounter_prefers_cached_report_with_cargo_and_capabilities(self):
         x, y = self._find_empty_coord()
         Fleet.objects.create(
             game=self.game,
@@ -2720,10 +2720,10 @@ class CurrentForeignFleetDetailTest(TestCase):
         ).build_detail()
 
         self.assertTrue(detail['is_current'])
-        self.assertIsNone(detail['report_year'])
+        self.assertEqual(detail['report_year'], self.game.year)
+        self.assertEqual(detail['report_tier'], 'encounter')
         self.assertIsNotNone(detail['fleet_inventory'])
-        self.assertEqual(detail['fleet_cargo']['capacity'], 220)
-        self.assertEqual(detail['fleet_cargo']['ironium'], 60)
+        self.assertEqual(detail['fleet_inventory']['ironium']['amount'], 60)
         self.assertIn(
             {'label': 'Max Warp', 'value': '8'},
             detail.get('fleet_capabilities') or [],
@@ -2733,7 +2733,7 @@ class CurrentForeignFleetDetailTest(TestCase):
             detail.get('fleet_capabilities') or [],
         )
 
-    def test_current_foreign_fleet_prefers_richer_cached_report_over_live_basic_view(self):
+    def test_foreign_fleet_prefers_richer_cached_report_over_live_basic_view(self):
         x, y = self._find_empty_coord()
         Fleet.objects.create(
             game=self.game,
@@ -2783,8 +2783,8 @@ class CurrentForeignFleetDetailTest(TestCase):
             player=self.player1,
         ).build_detail()
 
-        self.assertTrue(detail['is_current'])
-        self.assertIsNone(detail['report_year'])
+        self.assertFalse(detail['is_current'])
+        self.assertEqual(detail['report_year'], self.game.year)
         self.assertEqual(detail['report_tier'], 'encounter')
         self.assertIsNotNone(detail['fleet_inventory'])
         self.assertEqual(detail['fleet_inventory']['ironium']['amount'], 45)
@@ -2792,3 +2792,64 @@ class CurrentForeignFleetDetailTest(TestCase):
             {'label': 'Max Warp', 'value': '7'},
             detail.get('fleet_capabilities') or [],
         )
+
+    def test_foreign_fleet_keeps_shared_cargo_when_live_view_would_lack_it(self):
+        x, y = self._find_empty_coord()
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Encounter Fleet',
+            x=x,
+            y=y,
+            ship_count=1,
+            integrity=100,
+            advanced_scanner_range=6,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Shared Cargo Target',
+            x=x,
+            y=y,
+            ship_count=3,
+            integrity=85,
+            cargo_capacity=180,
+            ironium_inventory=45,
+            max_safe_warp=7,
+        )
+
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report='{}',
+        )
+        report.set_report_data(
+            GameTurn(self.game)._build_report_data(
+                self.player1,
+                enemy_fleet,
+                'fleet',
+                report_tier='advanced',
+                include_cargo=True,
+            )
+        )
+        report.save()
+
+        with patch.object(
+            DetailBuilder,
+            '_can_show_foreign_fleet_cargo',
+            return_value=False,
+        ):
+            detail = DetailBuilder(
+                self.game,
+                selected=enemy_fleet.short_id,
+                player=self.player1,
+            ).build_detail()
+
+        self.assertTrue(detail['is_current'])
+        self.assertEqual(detail['report_year'], self.game.year)
+        self.assertEqual(detail['report_tier'], 'advanced')
+        self.assertIsNotNone(detail['fleet_inventory'])
+        self.assertEqual(detail['fleet_inventory']['ironium']['amount'], 45)
