@@ -1294,7 +1294,7 @@ def debug_create_anomaly(request, game_short_id, fleet_short_id):
 
 @player_only_view()
 def admin_generate_report(request, game_short_id, object_short_id):
-    """Admin utility: generate/update a report for selected star or fleet."""
+    """Admin utility: generate/update a full ownership-tier report."""
     if request.method != 'POST':
         return _redirect_preserving_selection(request, Game.objects.get(short_id=game_short_id))
 
@@ -1333,11 +1333,9 @@ def admin_generate_report(request, game_short_id, object_short_id):
         })
 
     turn = GameTurn(game)
-    report_kwargs = {'report_tier': 'advanced', 'include_cargo': False}
-    if target_type == 'star':
-        report_kwargs = {'report_tier': 'encounter', 'include_cargo': False}
-    elif target_type == 'fleet':
-        report_kwargs = {'report_tier': 'encounter', 'include_cargo': True}
+    report_kwargs = {'report_tier': 'ownership', 'include_cargo': False}
+    if target_type == 'fleet':
+        report_kwargs['include_cargo'] = True
     report_data = turn._build_report_data(
         player,
         target_obj,

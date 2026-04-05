@@ -261,6 +261,10 @@ class DetailBuilder():
                      ),
                      'anomaly_short_id': self.selected_obj.short_id if isinstance(self.selected_obj, Anomaly) else None,
                      'anomaly_type': self.selected_obj.anomaly_type if isinstance(self.selected_obj, Anomaly) else None,
+                     'anomaly_type_display': (
+                         self._anomaly_type_display_from_code(self.selected_obj.anomaly_type)
+                         if isinstance(self.selected_obj, Anomaly) else None
+                     ),
                      'stability': self.selected_obj.stability if isinstance(self.selected_obj, Anomaly) else None,
                      'heading': (
                          self.selected_obj.heading
@@ -489,7 +493,7 @@ class DetailBuilder():
         data = report.get_report_data()
         report_tier = data.get('report_tier')
         report_owner_name = self._format_report_owner_display(data.get('player_name'))
-        if target_type == 'fleet' and report_tier in ('observed', 'ownership', 'advanced', 'encounter'):
+        if target_type == 'fleet' and report_tier in ('ownership', 'advanced', 'encounter'):
             report_owner_name = report_owner_name or 'Abandoned'
 
         # Base detail fields
@@ -578,8 +582,7 @@ class DetailBuilder():
                 if detail['is_survivable'] is None:
                     detail['is_survivable'] = self._is_survivable_from_report(data)
             if all(k in data for k in [
-                'mines', 'factories', 'factories_bp', 'labs', 'labs_rp',
-                'defenses', 'shipyards',
+                'mines', 'factories', 'labs', 'defenses', 'shipyards',
             ]):
                 has_any_infrastructure = (
                     any(
@@ -624,10 +627,14 @@ class DetailBuilder():
                         else None
                     ),
                     'DysonSphere': 'Online' if data.get('has_dyson_sphere') else None,
-                    'Jobs': {
-                        'count': data.get('jobs_count', 0),
-                        'employment': data.get('jobs_employment', 0.0),
-                    },
+                    'Jobs': (
+                        {
+                            'count': data.get('jobs_count', 0),
+                            'employment': data.get('jobs_employment', 0.0),
+                        }
+                        if 'jobs_count' in data and 'jobs_employment' in data
+                        else None
+                    ),
                 }
             if not detail.get('player') and detail.get('infrastructure_has_any'):
                 detail['player'] = 'Abandoned'
@@ -712,7 +719,7 @@ class DetailBuilder():
                 )
             detail['danger_level'] = None
             detail['danger_level_display'] = None
-            if str(data.get('report_tier') or '').lower() in ('advanced', 'encounter'):
+            if str(data.get('report_tier') or '').lower() in ('advanced', 'encounter', 'ownership'):
                 detail['danger_level'] = data.get('danger_level') or object_danger_level(self.selected_obj)
                 detail['danger_level_display'] = (
                     danger_level_display(
@@ -743,12 +750,15 @@ class DetailBuilder():
         elif target_type == 'anomaly':
             detail['anomaly_short_id'] = self.selected_obj.short_id
             detail['anomaly_type'] = data.get('anomaly_type')
+            detail['anomaly_type_display'] = self._anomaly_type_display_from_code(
+                data.get('anomaly_type')
+            )
             detail['description'] = data.get('description')
             detail['stability'] = data.get('stability')
             detail['heading'] = data.get('heading')
             detail['danger_level'] = None
             detail['danger_level_display'] = None
-            if str(data.get('report_tier') or '').lower() in ('advanced', 'encounter'):
+            if str(data.get('report_tier') or '').lower() in ('advanced', 'encounter', 'ownership'):
                 detail['danger_level'] = data.get('danger_level') or object_danger_level(self.selected_obj)
                 detail['danger_level_display'] = (
                     danger_level_display(detail['danger_level'])
@@ -1096,6 +1106,19 @@ class DetailBuilder():
         return dict(Salvage.SALVAGE_TYPE_CHOICES).get(
             salvage_type,
             str(salvage_type).replace('_', ' ').title(),
+        )
+
+    def _anomaly_type_display_from_code(self, anomaly_type):
+        if not anomaly_type:
+            return None
+        if (
+            isinstance(self.selected_obj, Anomaly) and
+            getattr(self.selected_obj, 'anomaly_type', None) == anomaly_type
+        ):
+            return self.selected_obj.get_anomaly_type_display()
+        return dict(Anomaly.TYPE_CHOICES).get(
+            anomaly_type,
+            str(anomaly_type).replace('_', ' ').title(),
         )
 
     def _fleet_report_coordinates(self, fleet):

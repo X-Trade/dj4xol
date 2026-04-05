@@ -3187,16 +3187,11 @@ class TestDetailPanelReportTiers(TestCase):
                 'germanium_inventory': 100,
                 'mines': 3,
                 'factories': 4,
-                'factories_bp': 12,
                 'labs': 2,
-                'labs_rp': 8,
                 'basic_scanner_range': 6,
                 'advanced_scanner_range': 2,
                 'defenses': 1,
-                'defenses_tooltip': None,
                 'shipyards': 1,
-                'jobs_count': 10,
-                'jobs_employment': 0.5,
                 'report_tier': 'encounter',
             }),
         )
@@ -3204,6 +3199,9 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'data-section="infrastructure"')
         self.assertContains(response, 'Scanners')
         self.assertContains(response, '6ly/2ly')
+        self.assertNotContains(response, '12BP/Year')
+        self.assertNotContains(response, '8RP/Year')
+        self.assertNotContains(response, 'Jobs')
 
     def test_encounter_unowned_star_report_with_zero_infrastructure_shows_none(self):
         Report.objects.create(
@@ -3228,14 +3226,9 @@ class TestDetailPanelReportTiers(TestCase):
                 'germanium_inventory': 0,
                 'mines': 0,
                 'factories': 0,
-                'factories_bp': 0,
                 'labs': 0,
-                'labs_rp': 0,
                 'defenses': 0,
-                'defenses_tooltip': None,
                 'shipyards': 0,
-                'jobs_count': 0,
-                'jobs_employment': 0.0,
                 'report_tier': 'encounter',
             }),
         )
@@ -3270,6 +3263,66 @@ class TestDetailPanelReportTiers(TestCase):
                 'stability': anomaly.stability,
                 'danger_level': 'HIGH',
                 'report_tier': 'advanced',
+            }),
+        )
+        response = self._get_detail_response(anomaly)
+        self.assertContains(response, 'Danger')
+        self.assertContains(response, 'High')
+
+    def test_black_hole_anomaly_report_shows_spaced_type_label(self):
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=self.star.x + 2,
+            y=self.star.y + 2,
+            name='Void Maw',
+            anomaly_type=Anomaly.TYPE_BLACK_HOLE,
+            stability=65,
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='anomaly',
+            target_id=anomaly.id,
+            cached_report=json.dumps({
+                'name': anomaly.name,
+                'x': anomaly.x,
+                'y': anomaly.y,
+                'anomaly_type': anomaly.anomaly_type,
+                'stability': anomaly.stability,
+                'danger_level': 'HIGH',
+                'report_tier': 'advanced',
+            }),
+        )
+        response = self._get_detail_response(anomaly)
+        self.assertContains(response, 'Black Hole')
+        self.assertNotContains(response, 'Black_Hole')
+
+    def test_ownership_anomaly_report_shows_danger(self):
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=self.star.x + 3,
+            y=self.star.y + 2,
+            name='Deep Ownership Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=70,
+        )
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='anomaly',
+            target_id=anomaly.id,
+            cached_report=json.dumps({
+                'name': anomaly.name,
+                'x': anomaly.x,
+                'y': anomaly.y,
+                'anomaly_type': anomaly.anomaly_type,
+                'description': anomaly.description,
+                'heading': anomaly.heading,
+                'stability': anomaly.stability,
+                'danger_level': 'HIGH',
+                'report_tier': 'ownership',
             }),
         )
         response = self._get_detail_response(anomaly)
@@ -3366,20 +3419,62 @@ class TestDetailPanelReportTiers(TestCase):
                 'colonists': 0,
                 'mines': 1,
                 'factories': 0,
-                'factories_bp': 0,
                 'labs': 0,
-                'labs_rp': 0,
                 'defenses': 0,
-                'defenses_tooltip': None,
                 'shipyards': 0,
-                'jobs_count': 1000,
-                'jobs_employment': 0.0,
                 'report_tier': 'encounter',
             }),
         )
         response = self._get_detail_response(self.star)
         self.assertContains(response, 'Abandoned')
         self.assertNotContains(response, 'Unowned')
+
+    def test_ownership_star_report_shows_derived_infrastructure_stats(self):
+        Report.objects.create(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='star',
+            target_id=self.star.id,
+            cached_report=json.dumps({
+                'name': self.star.name,
+                'x': self.star.x,
+                'y': self.star.y,
+                'gravity': self.star.gravity,
+                'temperature': self.star.temperature,
+                'radiation': self.star.radiation,
+                'player_name': 'Enemy',
+                'colonists': 1200,
+                'ironium_yield': 50,
+                'boranium_yield': 40,
+                'germanium_yield': 30,
+                'ironium_inventory': 200,
+                'boranium_inventory': 150,
+                'germanium_inventory': 100,
+                'mines': 3,
+                'factories': 4,
+                'factories_bp': 12,
+                'labs': 2,
+                'labs_rp': 8,
+                'basic_scanner_range': 6,
+                'advanced_scanner_range': 2,
+                'defenses': 1,
+                'defenses_tooltip': '1(+0)',
+                'shipyards': 1,
+                'has_administration': True,
+                'administration_level': 2,
+                'jobs_count': 10,
+                'jobs_employment': 0.5,
+                'report_tier': 'ownership',
+            }),
+        )
+        response = self._get_detail_response(self.star)
+        self.assertContains(response, 'data-section="infrastructure"')
+        self.assertContains(response, '12BP/Year')
+        self.assertContains(response, '8RP/Year')
+        self.assertContains(response, 'Administration')
+        self.assertContains(response, 'Level 2')
+        self.assertContains(response, 'Jobs')
 
     def test_advanced_fleet_report_hides_capabilities(self):
         self.game.joinable = True
@@ -3448,6 +3543,8 @@ class TestDetailPanelReportTiers(TestCase):
                 'name': format_basic_unknown_fleet_name(enemy_fleet),
                 'x': enemy_fleet.x,
                 'y': enemy_fleet.y,
+                'ship_count': 3,
+                'integrity': 88,
                 'report_tier': 'basic',
             }),
         )
@@ -3455,6 +3552,9 @@ class TestDetailPanelReportTiers(TestCase):
         response = self._get_detail_response(enemy_fleet)
         self.assertContains(response, format_basic_unknown_fleet_name(enemy_fleet))
         self.assertNotContains(response, 'Leakable Fleet Name')
+        self.assertContains(response, 'Ships')
+        self.assertContains(response, '3')
+        self.assertContains(response, '88%')
         self.assertNotContains(response, 'Max Warp')
 
     def test_encounter_fleet_report_shows_capabilities(self):
@@ -3951,7 +4051,7 @@ class TestFleetOrderViews(TestCase):
         self.assertEqual(response.status_code, 302)
         existing_report.refresh_from_db()
         data = existing_report.get_report_data()
-        self.assertEqual(data.get('report_tier'), 'encounter')
+        self.assertEqual(data.get('report_tier'), 'ownership')
         self.assertEqual(data.get('player_name'), enemy_player.name)
         self.assertEqual(data.get('max_safe_warp'), 9)
         self.assertEqual(data.get('cargo_capacity'), 250)
@@ -5738,6 +5838,73 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(shared_data.get('report_tier'), 'ownership')
         self.assertEqual(shared_data.get('player_name'), other_player.name)
 
+    def test_diplomacy_offer_owned_colony_report_transfers_current_ownership_report(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_offer_owner_report', 'diplo_offer_owner_report@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DOR')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Owner Report Receiver',
+            plural_name='Owner Report Receivers',
+            race_type=race_type,
+        )
+        owned_star = game.stars.exclude(id=player.homeworld_id).order_by('id').first()
+        owned_star.player = player
+        owned_star.colonists = 42000
+        owned_star.mines = 5
+        owned_star.factories = 4
+        owned_star.labs = 3
+        owned_star.save(update_fields=['player', 'colonists', 'mines', 'factories', 'labs'])
+        Report.objects.create(
+            game=game,
+            player=player,
+            year=game.year - 2,
+            target_type='star',
+            target_id=owned_star.id,
+            cached_report=json.dumps({
+                'name': owned_star.name,
+                'x': owned_star.x,
+                'y': owned_star.y,
+                'player_name': player.name,
+                'colonists': 12000,
+                'report_tier': 'encounter',
+            }),
+        )
+
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=player,
+            recipient=other_player,
+            temperature='PROPOSE',
+            status='SENT',
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type='NOTHING',
+            offer_condition_type='EXCHANGE',
+            offer_clause_type='REPORT',
+            offer_report_target_type='star',
+            offer_report_target_id=owned_star.id,
+        )
+
+        other_client = Client()
+        other_client.force_login(other_user)
+        response = other_client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': player.short_id, 'action': 'accept_contract', 'contract_id': contract.short_id},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        shared_report = Report.objects.get(player=other_player, target_type='star', target_id=owned_star.id)
+        shared_data = shared_report.get_report_data()
+        self.assertEqual(shared_report.year, game.year)
+        self.assertEqual(shared_data.get('report_tier'), 'ownership')
+        self.assertEqual(shared_data.get('player_name'), player.name)
+        self.assertEqual(shared_data.get('colonists'), 42000)
+        self.assertEqual(shared_data.get('mines'), 5)
+
     def test_diplomacy_shared_ancient_debris_report_keeps_real_type_for_receiver(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
@@ -5874,8 +6041,8 @@ class TestDiplomacyView(TestCase):
         shared_data = shared_report.get_report_data()
         other_player.refresh_from_db()
         self.assertFalse(other_player.discovered_resource_x)
-        self.assertEqual(shared_data.get('report_tier'), 'advanced')
-        self.assertEqual(shared_data.get('unknown_secret_resources'), ['resource_x'])
+        self.assertEqual(shared_data.get('report_tier'), 'ownership')
+        self.assertIn('resource_x', shared_data.get('unknown_secret_resources') or [])
         self.assertEqual(shared_data.get('resource_x_yield'), 7)
         self.assertEqual(shared_data.get('resource_x_inventory'), 22)
         self.assertTrue(
@@ -7111,9 +7278,65 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(cached.get('ironium_inventory'), 12)
         self.assertEqual(cached.get('cargo_capacity'), 80)
         self.assertEqual(cached.get('max_safe_warp'), 7)
-        self.assertEqual(cached.get('has_bombs'), 'CONVENTIONAL')
-        self.assertEqual(cached.get('basic_scanner_range'), 3)
-        self.assertEqual(cached.get('advanced_scanner_range'), 2)
+
+    def test_diplomacy_specific_colony_offer_includes_ownership_preview_report(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_user = User.objects.create_user('diplo_colony_preview', 'diplo_colony_preview@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_user, alias='DCP')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Colony Preview Race',
+            plural_name='Colony Preview Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).order_by('id').first()
+        self._create_contact_star_report(game, player, other_player, contact_star)
+        offered_colony = game.stars.exclude(id__in=[player.homeworld_id, contact_star.id]).order_by('id').first()
+        offered_colony.player = player
+        offered_colony.colonists = 55000
+        offered_colony.mines = 4
+        offered_colony.factories = 3
+        offered_colony.labs = 2
+        offered_colony.shipyards = 1
+        offered_colony.save(update_fields=['player', 'colonists', 'mines', 'factories', 'labs', 'shipyards'])
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        response = client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'send_contract',
+                'temperature': 'PROPOSE',
+                'deadline_years': '24',
+                'extend_on_accept_years': '0',
+                'request_clause_type': 'NOTHING',
+                'offer_condition_type': 'EXCHANGE',
+                'offer_clause_type': 'SPECIFIC_COLONY',
+                'offer_star': str(offered_colony.id),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        preview_report = Report.objects.get(
+            game=game,
+            player=other_player,
+            target_type='star',
+            target_id=offered_colony.id,
+        )
+        cached = json.loads(preview_report.cached_report)
+        self.assertEqual(preview_report.year, game.year)
+        self.assertEqual(cached.get('report_tier'), 'ownership')
+        self.assertEqual(cached.get('player_name'), player.name)
+        self.assertEqual(cached.get('colonists'), 55000)
+        self.assertEqual(cached.get('mines'), 4)
+        self.assertIn('factories_bp', cached)
+        self.assertEqual(cached.get('shipyards'), 1)
+        self.assertIn('jobs_count', cached)
 
     def test_diplomacy_specific_fleet_offer_preview_refreshes_while_offer_active(self):
         game = default_game(stars=5, fleets=0)

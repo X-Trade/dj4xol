@@ -8122,8 +8122,11 @@ class TestFleetTransferOrders(TestCase):
             target_id=fleet.id,
         )
         data = report.get_report_data()
-        self.assertEqual(data.get('report_tier'), 'encounter')
+        self.assertEqual(data.get('report_tier'), 'ownership')
         self.assertEqual(data.get('player_name'), player2.name)
+        self.assertEqual(data.get('ironium_inventory'), 12)
+        self.assertEqual(data.get('colonists'), 4)
+        self.assertEqual(data.get('max_safe_warp'), fleet.max_safe_warp)
 
     def test_give_order_without_recipient_abandons_fleet_and_creates_report(self):
         from ..models import FleetOrders, Report
@@ -8166,8 +8169,9 @@ class TestFleetTransferOrders(TestCase):
             target_id=fleet.id,
         )
         data = report.get_report_data()
-        self.assertEqual(data.get('report_tier'), 'encounter')
+        self.assertEqual(data.get('report_tier'), 'ownership')
         self.assertEqual(data.get('player_name'), 'Abandoned')
+        self.assertEqual(data.get('boranium_inventory'), 9)
 
     def test_load_transfer_from_star(self):
         """Test loading resources from star to fleet."""

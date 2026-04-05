@@ -747,36 +747,35 @@ def _resolve_report_target(game, target_type, target_id):
 def _qualifying_report_for_trade(player, target_type, target_id):
     if not player or not target_type or not target_id:
         return None
+    normalized_target_type = str(target_type or '').lower()
+    target = _resolve_report_target(getattr(player, 'game', None), normalized_target_type, target_id)
+    if (
+        target is not None and
+        normalized_target_type in ('star', 'fleet') and
+        getattr(target, 'player_id', None) == getattr(player, 'id', None)
+    ):
+        from .turn import GameTurn
+
+        GameTurn(player.game)._create_or_update_report(
+            player,
+            normalized_target_type,
+            target,
+            player.game.year,
+            report_tier='ownership',
+        )
+        report = Report.objects.filter(
+            player=player,
+            target_type=normalized_target_type,
+            target_id=target.id,
+        ).first()
+        if report is not None:
+            return report
     report = Report.objects.filter(
         player=player,
-        target_type=target_type,
+        target_type=normalized_target_type,
         target_id=target_id,
     ).first()
     if report is None:
-        normalized_target_type = str(target_type or '').lower()
-        target = _resolve_report_target(getattr(player, 'game', None), normalized_target_type, target_id)
-        owner_field = 'player_id'
-        if (
-            target is not None and
-            getattr(target, owner_field, None) == getattr(player, 'id', None) and
-            normalized_target_type in ('star', 'fleet')
-        ):
-            from .turn import GameTurn
-
-            GameTurn(player.game)._create_or_update_report(
-                player,
-                normalized_target_type,
-                target,
-                player.game.year,
-                report_tier='ownership',
-            )
-            report = Report.objects.filter(
-                player=player,
-                target_type=normalized_target_type,
-                target_id=target.id,
-            ).first()
-            if report is not None:
-                return report
         return None
     data = report.get_report_data()
     rank = _report_tier_rank(data.get('report_tier'))
@@ -1332,13 +1331,30 @@ def ensure_specific_fleet_report(contract):
 def ensure_specific_colony_report(contract):
     if contract.offer_clause_type != DiplomaticContract.CLAUSE_SPECIFIC_COLONY or contract.offer_star is None:
         return
-    source_report = _qualifying_report_for_trade(
-        contract.sender,
-        'star',
-        contract.offer_star.id,
-    )
-    if source_report is None:
+    star = getattr(contract, 'offer_star', None)
+    if (
+        star is None or
+        star.game_id != getattr(contract.game, 'id', None) or
+        star.player_id != getattr(contract.sender, 'id', None)
+    ):
         return
+    from .turn import GameTurn
+
+    report_data = GameTurn(contract.game)._build_report_data(
+        contract.sender,
+        star,
+        'star',
+        report_tier='ownership',
+    )
+    source_report = Report(
+        game=contract.game,
+        player=contract.sender,
+        year=contract.game.year,
+        target_type='star',
+        target_id=star.id,
+        cached_report='{}',
+    )
+    source_report.set_report_data(report_data)
     shared = _shared_report_data(source_report, recipient=contract.recipient)
     if shared is None:
         return
@@ -1346,13 +1362,13 @@ def ensure_specific_colony_report(contract):
         game=contract.game,
         player=contract.recipient,
         target_type='star',
-        target_id=contract.offer_star.id,
+        target_id=star.id,
         defaults={
-            'year': source_report.year,
+            'year': contract.game.year,
             'cached_report': '{}',
         },
     )
-    report.year = source_report.year
+    report.year = contract.game.year
     report.game = contract.game
     report.set_report_data(shared)
     report.save()

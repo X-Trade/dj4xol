@@ -388,8 +388,9 @@ class ReportGenerationTest(TestCase):
         self.assertEqual(data['labs'], 7)
         self.assertEqual(data['defenses'], 3)
         self.assertEqual(data['shipyards'], 2)
-        self.assertIn('factories_bp', data)
-        self.assertIn('labs_rp', data)
+        self.assertNotIn('factories_bp', data)
+        self.assertNotIn('labs_rp', data)
+        self.assertNotIn('jobs_count', data)
 
     def test_report_overwrites_previous(self):
         """New reports overwrite previous ones for the same target."""
@@ -1060,7 +1061,7 @@ class ScannerReportTest(TestCase):
         self.assertEqual(data.get('mines'), 5)
         self.assertEqual(data.get('factories'), 3)
 
-    def test_basic_scanner_reports_fleet_presence_only(self):
+    def test_basic_scanner_reports_fleet_composition_without_identity(self):
         fleet = self._create_scanner_fleet(basic=6, advanced=0, x=10, y=10)
         enemy_fleet = Fleet.objects.create(
             game=self.game,
@@ -1089,8 +1090,9 @@ class ScannerReportTest(TestCase):
         self.assertEqual(data.get('travel_warp'), 6)
         self.assertAlmostEqual(float(data.get('warp_advantage')), 0.9, places=2)
         self.assertAlmostEqual(float(data.get('heading')), 123.4, places=1)
-        self.assertNotIn('ship_count', data)
-        self.assertNotIn('integrity', data)
+        self.assertEqual(data.get('ship_count'), 4)
+        self.assertEqual(data.get('integrity'), 77)
+        self.assertNotIn('player_name', data)
 
         enemy_fleet.name = 'Renamed Leak Attempt'
         enemy_fleet.save(update_fields=['name'])
@@ -1320,7 +1322,7 @@ class ScannerReportTest(TestCase):
             1,
         )
 
-    def test_allied_intel_sharing_creates_encounter_fleet_and_encounter_colony_reports(self):
+    def test_allied_intel_sharing_creates_ownership_fleet_and_ownership_colony_reports(self):
         from ..models import ResearchCategory, Technology
         from ..research import (
             ensure_player_research_rows,
@@ -1389,7 +1391,7 @@ class ScannerReportTest(TestCase):
         ).first()
         self.assertIsNotNone(fleet_report)
         fleet_data = fleet_report.get_report_data()
-        self.assertEqual(fleet_data.get('report_tier'), 'encounter')
+        self.assertEqual(fleet_data.get('report_tier'), 'ownership')
         self.assertEqual(fleet_data.get('player_name'), self.player2.name)
         self.assertEqual(fleet_data.get('cargo_capacity'), 120)
         self.assertEqual(fleet_data.get('ironium_inventory'), 18)
@@ -1405,12 +1407,15 @@ class ScannerReportTest(TestCase):
         ).first()
         self.assertIsNotNone(star_report)
         star_data = star_report.get_report_data()
-        self.assertEqual(star_data.get('report_tier'), 'encounter')
+        self.assertEqual(star_data.get('report_tier'), 'ownership')
         self.assertEqual(star_data.get('player_name'), self.player2.name)
         self.assertIn('mines', star_data)
         self.assertIn('shipyards', star_data)
         self.assertTrue(star_data.get('has_administration'))
         self.assertEqual(star_data.get('administration_level'), 2)
+        self.assertIn('factories_bp', star_data)
+        self.assertIn('labs_rp', star_data)
+        self.assertIn('jobs_count', star_data)
 
     def test_allied_intel_sharing_honors_backend_report_level_policy(self):
         shared_fleet = Fleet.objects.create(
@@ -2127,7 +2132,10 @@ class ScannerReportTest(TestCase):
         self.assertEqual(star_data.get('defenses'), 1)
         self.assertEqual(star_data.get('shipyards'), 1)
         self.assertTrue(star_data.get('has_administration'))
-        self.assertEqual(star_data.get('administration_level'), 2)
+        self.assertNotIn('administration_level', star_data)
+        self.assertNotIn('factories_bp', star_data)
+        self.assertNotIn('labs_rp', star_data)
+        self.assertNotIn('jobs_count', star_data)
 
         star_detail = DetailBuilder(
             self.game,
@@ -2136,7 +2144,7 @@ class ScannerReportTest(TestCase):
         ).build_detail()
         self.assertEqual(
             star_detail.get('infrastructure', {}).get('Administration'),
-            'Level 2',
+            'Installed',
         )
 
         fleet_report = Report.objects.get(
@@ -2286,7 +2294,7 @@ class NoScannerReportTierTest(TestCase):
         self.assertNotIn('gravity', data)
         self.assertNotIn('ironium_yield', data)
         self.assertNotIn('mines', data)
-        self.assertIn('player_name', data)
+        self.assertNotIn('player_name', data)
 
     def test_no_scanners_observed_fleet_report_includes_heading_and_travel_warp(self):
         x = self.enemy_star.x
@@ -2324,11 +2332,11 @@ class NoScannerReportTierTest(TestCase):
         ).get_report_data()
 
         self.assertEqual(data.get('report_tier'), 'observed')
-        self.assertIn('player_name', data)
+        self.assertIsNone(data.get('player_name'))
         self.assertEqual(data.get('travel_warp'), 6)
         self.assertAlmostEqual(float(data.get('heading')), 278.3, places=1)
-        self.assertNotIn('ship_count', data)
-        self.assertNotIn('integrity', data)
+        self.assertEqual(data.get('ship_count'), 2)
+        self.assertEqual(data.get('integrity'), 85)
         self.assertNotIn('ironium_inventory', data)
         self.assertNotIn('max_safe_warp', data)
 
@@ -2530,6 +2538,35 @@ class NoScannerReportTierTest(TestCase):
         self.assertEqual(data.get('anomaly_type'), Anomaly.TYPE_BLACK_HOLE)
         self.assertNotIn('stability', data)
 
+    def test_no_scanners_observed_visit_records_anomaly_type(self):
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=11,
+            y=13,
+            name='Observed Anomaly',
+            anomaly_type=Anomaly.TYPE_BLACK_HOLE,
+        )
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Observed Visit',
+            x=anomaly.x,
+            y=anomaly.y,
+            basic_scanner_range=0,
+            advanced_scanner_range=0,
+        )
+        GameTurn(self.game).generate_reports()
+        report = Report.objects.get(
+            game=self.game,
+            player=self.player1,
+            target_type='anomaly',
+            target_id=anomaly.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'observed')
+        self.assertEqual(data.get('anomaly_type'), Anomaly.TYPE_BLACK_HOLE)
+        self.assertNotIn('stability', data)
+
     def test_no_scanners_basic_visit_reveals_salvage_inventory(self):
         salvage = Salvage.objects.create(
             game=self.game,
@@ -2568,6 +2605,87 @@ class NoScannerReportTierTest(TestCase):
         self.assertEqual(data.get('boranium_inventory'), 30)
         self.assertEqual(data.get('germanium_inventory'), 20)
         self.assertEqual(data.get('resource_x_inventory'), 10)
+
+    def test_ownership_salvage_report_includes_inventory_and_danger(self):
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=18,
+            y=22,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            danger_level='HIGH',
+            ironium_inventory=40,
+            boranium_inventory=30,
+            germanium_inventory=20,
+        )
+
+        data = GameTurn(self.game)._build_report_data(
+            self.player1,
+            salvage,
+            'salvage',
+            report_tier='ownership',
+        )
+
+        self.assertEqual(data.get('report_tier'), 'ownership')
+        self.assertEqual(data.get('salvage_type'), Salvage.TYPE_ANCIENT_DEBRIS)
+        self.assertEqual(data.get('danger_level'), 'HIGH')
+        self.assertEqual(data.get('ironium_inventory'), 40)
+        self.assertEqual(data.get('boranium_inventory'), 30)
+        self.assertEqual(data.get('germanium_inventory'), 20)
+
+    def test_observed_salvage_report_matches_basic_visibility_shape(self):
+        salvage = Salvage.objects.create(
+            game=self.game,
+            x=19,
+            y=23,
+            salvage_type=Salvage.TYPE_ANCIENT_DEBRIS,
+            ironium_inventory=40,
+        )
+
+        turn = GameTurn(self.game)
+        observed = turn._build_report_data(
+            self.player1,
+            salvage,
+            'salvage',
+            report_tier='observed',
+        )
+        basic = turn._build_report_data(
+            self.player1,
+            salvage,
+            'salvage',
+            report_tier='basic',
+        )
+
+        self.assertEqual(observed.get('report_tier'), 'observed')
+        self.assertEqual(observed.get('name'), basic.get('name'))
+        self.assertEqual(observed.get('salvage_type'), basic.get('salvage_type'))
+        self.assertEqual(observed.get('total_minerals'), basic.get('total_minerals'))
+        self.assertEqual(
+            'ironium_inventory' in observed,
+            'ironium_inventory' in basic,
+        )
+
+    def test_ownership_anomaly_report_includes_full_detail(self):
+        anomaly = Anomaly.objects.create(
+            game=self.game,
+            x=21,
+            y=24,
+            name='Ownership Hole',
+            anomaly_type=Anomaly.TYPE_BLACK_HOLE,
+            stability=61,
+        )
+
+        data = GameTurn(self.game)._build_report_data(
+            self.player1,
+            anomaly,
+            'anomaly',
+            report_tier='ownership',
+        )
+
+        self.assertEqual(data.get('report_tier'), 'ownership')
+        self.assertEqual(data.get('anomaly_type'), Anomaly.TYPE_BLACK_HOLE)
+        self.assertIn(data.get('danger_level'), ('LOW', 'MEDIUM', 'HIGH'))
+        self.assertEqual(data.get('stability'), 61)
+        self.assertIn('description', data)
 
     def test_no_scanners_high_advanced_visit_reports_star_encounter(self):
         Fleet.objects.create(

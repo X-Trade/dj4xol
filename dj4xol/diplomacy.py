@@ -401,7 +401,7 @@ def shared_fleet_report_policy(player, other_player, stance_map=None):
     policies = {
         FLEET_REPORT_LEVEL_ADVANCED: ('advanced', False),
         FLEET_REPORT_LEVEL_CARGO: ('advanced', True),
-        FLEET_REPORT_LEVEL_FULL: ('encounter', True),
+        FLEET_REPORT_LEVEL_FULL: ('ownership', True),
     }
     return policies.get(level, policies[FLEET_REPORT_LEVEL_ADVANCED])
 
@@ -410,7 +410,7 @@ def shared_colony_report_policy(player, other_player, stance_map=None):
     level = player_shared_colony_report_level(player, other_player, stance_map=stance_map)
     policies = {
         COLONY_REPORT_LEVEL_ADVANCED: 'advanced',
-        COLONY_REPORT_LEVEL_FULL: 'encounter',
+        COLONY_REPORT_LEVEL_FULL: 'ownership',
     }
     return policies.get(level, policies[COLONY_REPORT_LEVEL_ADVANCED])
 

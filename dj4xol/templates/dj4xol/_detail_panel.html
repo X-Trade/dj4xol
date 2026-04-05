@@ -105,7 +105,7 @@
         <div class="collapsible-content">
             <div class="detail-row">
                 <span class="env-label">Type</span>
-                <span class="detail-value">{{ detail.anomaly_type|default:'Unknown'|title }}</span>
+                <span class="detail-value">{{ detail.anomaly_type_display|default:'Unknown' }}</span>
             </div>
             <div class="detail-row">
                 <span class="env-label">Stability</span>
@@ -294,21 +294,27 @@
                           data-tooltip="{{ detail.infrastructure.FactoriesTooltip }}">
                         {{ detail.infrastructure.Factories }}
                     </span>
-                    {% else %}
+                    {% elif detail.infrastructure.FactoriesBP != None %}
                     <span class="has-tooltip"
                           data-tooltip="{{ detail.infrastructure.FactoriesBP }}BP/Year">
                         {{ detail.infrastructure.Factories }}
                     </span>
+                    {% else %}
+                    {{ detail.infrastructure.Factories }}
                     {% endif %}
                 </span>
             </div>
             <div class="detail-row">
                 <span class="env-label">Labs</span>
                 <span class="detail-value">
+                    {% if detail.infrastructure.LabsRP != None %}
                     <span class="has-tooltip"
                           data-tooltip="{{ detail.infrastructure.LabsRP }}RP/Year">
                         {{ detail.infrastructure.Labs }}
                     </span>
+                    {% else %}
+                    {{ detail.infrastructure.Labs }}
+                    {% endif %}
                 </span>
             </div>
             {% if detail.infrastructure.Scanners %}
@@ -352,7 +358,7 @@
                 <span class="detail-value">{{ detail.infrastructure.DysonSphere }}</span>
             </div>
             {% endif %}
-            {% if detail.is_owned %}
+            {% if detail.infrastructure.Jobs %}
             <div class="detail-row">
                 <span class="env-label">Jobs</span>
                 <span class="detail-value">

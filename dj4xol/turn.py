@@ -2548,7 +2548,6 @@ class GameTurn():
                 'unknown_secret_resources': unknown_secret_resources,
             }
             if report_tier == 'observed':
-                base['player_name'] = obj.player.name if obj.player else None
                 return base
             base.update({
                 'gravity': obj.gravity,
@@ -2582,37 +2581,39 @@ class GameTurn():
             if report_tier in ('ownership', 'encounter'):
                 scanner_basic = 0
                 scanner_advanced = 0
-                administration_level = 0
                 if obj.player:
                     scanner_basic, scanner_advanced = (
                         self._get_player_colony_scanner_ranges_cached(obj.player)
                     )
-                    administration_level = int(
-                        self._get_player_administration_profile_cached(obj.player).get('level', 0)
-                        or 0
-                    )
-                jobs = calculate_total_jobs(obj)
-                employment = calculate_employment_percent(obj)
                 base.update({
-                    # Infrastructure snapshot (matches visible Detail panel values).
+                    # Infrastructure counts/presence visible at encounter.
                     'mines': obj.mines,
                     'factories': obj.factories,
-                    'factories_bp': calculate_available_buildpoints(obj),
                     'labs': obj.labs,
-                    'labs_rp': calculate_available_researchpoints(obj),
                     'basic_scanner_range': scanner_basic,
                     'advanced_scanner_range': scanner_advanced,
                     'defenses': obj.defenses,
-                    'defenses_tooltip': None,
                     'shipyards': obj.shipyards,
                     'cities': int(getattr(obj, 'cities', 0) or 0),
                     'megacities': int(getattr(obj, 'megacities', 0) or 0),
                     'has_administration': bool(getattr(obj, 'has_administration', False)),
-                    'administration_level': administration_level,
                     'has_dyson_sphere': bool(getattr(obj, 'has_dyson_sphere', False)),
-                    'jobs_count': jobs,
-                    'jobs_employment': employment,
                 })
+                if report_tier == 'ownership':
+                    administration_level = 0
+                    if obj.player:
+                        administration_level = int(
+                            self._get_player_administration_profile_cached(obj.player).get('level', 0)
+                            or 0
+                        )
+                    base.update({
+                        'factories_bp': calculate_available_buildpoints(obj),
+                        'labs_rp': calculate_available_researchpoints(obj),
+                        'defenses_tooltip': None,
+                        'administration_level': administration_level,
+                        'jobs_count': calculate_total_jobs(obj),
+                        'jobs_employment': calculate_employment_percent(obj),
+                    })
             return base
         elif target_type == 'fleet':
             travel_warp, warp_advantage, heading = self._fleet_motion_snapshot(obj)
@@ -2628,16 +2629,15 @@ class GameTurn():
                 'warp_advantage': warp_advantage,
                 'heading': heading,
                 'is_cloaked': fleet_is_cloaked(obj),
+                'ship_count': obj.ship_count,
+                'integrity': obj.integrity,
             }
             if report_tier == 'observed':
-                data['player_name'] = obj.player.name if obj.player else 'Abandoned'
                 return data
             if report_tier == 'basic':
                 return data
             data.update({
                 'player_name': obj.player.name if obj.player else 'Abandoned',
-                'ship_count': obj.ship_count,
-                'integrity': obj.integrity,
             })
             if include_cargo or report_tier == 'ownership':
                 data.update({
@@ -2678,22 +2678,15 @@ class GameTurn():
                 })
             return data
         elif target_type == 'salvage':
-            if report_tier in ('observed', 'ownership'):
-                data = {
-                    'name': obj.name,
-                    'x': obj.x,
-                    'y': obj.y,
-                    'salvage_type': obj.salvage_type,
-                    'total_minerals': obj.total_minerals,
-                    'report_tier': report_tier,
-                }
-                return data
-            if report_tier == 'basic' and not getattr(self.game, 'no_scanners', False):
+            if report_tier in ('observed', 'basic') and not getattr(self.game, 'no_scanners', False):
                 salvage_type = obj.salvage_type
                 if salvage_type == 'ANCIENT_DEBRIS':
                     salvage_type = None
                 data = {
-                    'name': format_basic_hidden_salvage_name(obj),
+                    'name': (
+                        format_basic_hidden_salvage_name(obj)
+                        if report_tier == 'basic' else obj.name
+                    ),
                     'x': obj.x,
                     'y': obj.y,
                     'salvage_type': salvage_type,
@@ -2717,15 +2710,14 @@ class GameTurn():
                 'report_tier': report_tier,
             }
         elif target_type == 'anomaly':
-            if report_tier in ('observed', 'ownership', 'basic'):
+            if report_tier in ('observed', 'basic'):
                 data = {
                     'name': obj.name,
                     'x': obj.x,
                     'y': obj.y,
                     'report_tier': report_tier,
+                    'anomaly_type': obj.anomaly_type,
                 }
-                if report_tier == 'basic':
-                    data['anomaly_type'] = obj.anomaly_type
                 return data
             return {
                 'name': obj.name,
@@ -7566,7 +7558,7 @@ class GameTurn():
             'fleet',
             fleet,
             self.game.year,
-            report_tier='encounter',
+            report_tier='ownership',
             include_cargo=True,
         )
 
