@@ -673,6 +673,38 @@ class PlayCommandTest(TestCase):
         self.assertIsNotNone(bomb_order)
         self.assertEqual(bomb_order.bomb_until, 'ONCE')
 
+    def test_orders_add_genesis_requires_device(self):
+        fleet = self.player1.fleets.first()
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add GENESIS' % fleet.short_id,
+                '/exit',
+            ],
+        )
+        self.assertIn('GENESIS requires a fleet with a Genesis Device.', output)
+        self.assertFalse(fleet.orders.filter(order_type='GENESIS').exists())
+
+        fleet.has_genesis_device = True
+        fleet.save(update_fields=['has_genesis_device'])
+        self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=[
+                '/orders %s add GENESIS repeat' % fleet.short_id,
+                '/exit',
+            ],
+        )
+        order = fleet.orders.filter(order_type='GENESIS').first()
+        self.assertIsNotNone(order)
+        self.assertFalse(order.repeat)
+
     def test_orders_add_remotemine_requires_miners_and_targets_star(self):
         fleet = self.player1.fleets.first()
         target_star = self.player2.homeworld
@@ -1120,6 +1152,18 @@ class PlayCommandTest(TestCase):
         )
         self.assertIn('%s:' % home.short_id, output)
         self.assertIn('name: Null Haven', output)
+
+    def test_detail_command_uses_available_actions_for_owned_fleet(self):
+        fleet = self.player1.fleets.first()
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/detail %s' % fleet.short_id, '/exit'],
+        )
+        self.assertIn('available_actions:', output)
+        self.assertNotIn('\nactions:\n', output)
 
     def test_fleet_context_marks_in_transit_when_currently_moving(self):
         fleet = self.player1.fleets.first()

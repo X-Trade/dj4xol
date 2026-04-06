@@ -991,11 +991,9 @@ $(document).ready(function() {
         $maparea.find('[data-map-object="1"]').each(function() {
             var el = this;
             var objectType = el.getAttribute('data-object-type') || 'star';
+            var anomalyType = (el.getAttribute('data-anomaly-type') || '').toUpperCase();
             var width = Math.max(1, el.offsetWidth || 5);
             var height = Math.max(1, el.offsetHeight || 5);
-            var baseRadiusUnscaled = Math.max(width, height) / 2;
-            var radiusUnscaled = baseRadiusUnscaled * getCoarseTouchScaleMultiplier();
-            var maxDistSq = radiusUnscaled * radiusUnscaled;
             var left = parseFloat(el.style.left) || 0;
             var top = parseFloat(el.style.top) || 0;
             var centerX = left + (width / 2);
@@ -1004,11 +1002,31 @@ $(document).ready(function() {
             var dx = centerX - unscaledX;
             var dy = centerY - unscaledY;
             var distSq = dx * dx + dy * dy;
+            var withinHitArea = false;
+            if (objectType === 'anomaly' && anomalyType === 'RIFT') {
+                // Rifts are already visually large; use a square based on their
+                // rendered body on coarse pointers instead of the amplified
+                // circular assist used for smaller objects.
+                var halfExtent = Math.max(width, height) / 2;
+                withinHitArea = Math.abs(dx) <= halfExtent && Math.abs(dy) <= halfExtent;
+            } else if (objectType === 'anomaly' && anomalyType === 'NEBULA') {
+                // Nebulae are also visually large enough to need only a modest
+                // touch assist on coarse pointers.
+                var nebulaBaseRadiusUnscaled = Math.max(width, height) / 2;
+                var nebulaRadiusUnscaled = nebulaBaseRadiusUnscaled * 1.5;
+                var nebulaMaxDistSq = nebulaRadiusUnscaled * nebulaRadiusUnscaled;
+                withinHitArea = distSq <= nebulaMaxDistSq;
+            } else {
+                var baseRadiusUnscaled = Math.max(width, height) / 2;
+                var radiusUnscaled = baseRadiusUnscaled * getCoarseTouchScaleMultiplier();
+                var maxDistSq = radiusUnscaled * radiusUnscaled;
+                withinHitArea = distSq <= maxDistSq;
+            }
             var priority = getObjectSelectionPriority(objectType);
             var isCloser = distSq < nearestDistSq;
             var sameDistance = Math.abs(distSq - nearestDistSq) < 0.0001;
             if (
-                distSq <= maxDistSq &&
+                withinHitArea &&
                 (isCloser || (sameDistance && priority < nearestPriority))
             ) {
                 nearestDistSq = distSq;

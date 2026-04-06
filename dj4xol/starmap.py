@@ -626,6 +626,7 @@ class StarMap():
         anomaly_type = str(getattr(anomaly, 'anomaly_type', '') or '').upper()
         heading = float(getattr(anomaly, 'heading', 0.0) or 0.0)
         render_heading = heading
+        extra_data_attrs = 'data-anomaly-type="%s"' % anomaly_type
         if anomaly_type == Anomaly.TYPE_COMET:
             type_class = 'mapanomaly-comet'
             render_heading = heading - 90.0
@@ -656,6 +657,7 @@ class StarMap():
                 offset_x=offset_x,
                 offset_y=offset_y,
                 extra_classes=type_class,
+                extra_data_attrs=extra_data_attrs,
             )
         else:
             type_class = 'mapanomaly-nebula'
@@ -677,4 +679,5 @@ class StarMap():
             offset_x=offset_x,
             offset_y=offset_y,
             extra_classes="%s%s" % (type_class, nebula_palette_class),
+            extra_data_attrs=extra_data_attrs,
         )

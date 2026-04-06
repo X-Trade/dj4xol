@@ -665,6 +665,7 @@ class testGameFactory(TestCase):
         gf = GameFactory()
         gf.set_map_size(100, 100)
         gf.set_owner(self.accounts[0])
+        gf.game.max_starting_tech_level = 26
         gf.create_stars(5)
         gf.save()
         player = gf.join_player(self.accounts[0], self.races[0])
@@ -715,6 +716,7 @@ class testGameFactory(TestCase):
         gf = GameFactory()
         gf.set_map_size(100, 100)
         gf.set_owner(self.accounts[0])
+        gf.game.max_starting_tech_level = 26
         gf.create_stars(5)
         gf.save()
         player = gf.join_player(self.accounts[0], self.races[0])
@@ -725,6 +727,36 @@ class testGameFactory(TestCase):
         self.assertAlmostEqual(effects['warp_advantage'], 0.5, places=4)
         self.assertAlmostEqual(fleet.warp_advantage, expected, places=4)
         self.assertIn('/scout/', fleet.thumbnail_path)
+
+    def test_starting_fleet_gets_genesis_device_from_unlocked_technology(self):
+        category, _ = ResearchCategory.objects.get_or_create(
+            code='TEST_GENESIS',
+            defaults={'name': 'Test Genesis', 'description': 'Test Genesis tech'},
+        )
+        Technology.objects.create(
+            category=category,
+            level=26,
+            name='Genesis Device',
+            tech_type='SPECIAL',
+            params_json='{"has_genesis_device": true}',
+            enabled=True,
+            display_order=10000,
+        )
+
+        self.races[0].starting_tech_level = 26
+        self.races[0].starting_fleets = 1
+        self.races[0].save(update_fields=['starting_tech_level', 'starting_fleets'])
+
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.game.max_starting_tech_level = 26
+        gf.create_stars(5)
+        gf.save()
+        player = gf.join_player(self.accounts[0], self.races[0])
+        fleet = player.fleets.first()
+
+        self.assertTrue(fleet.has_genesis_device)
 
     def test_initial_anomalies_have_unique_short_ids(self):
         gf = GameFactory()

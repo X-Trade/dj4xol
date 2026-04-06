@@ -35,6 +35,10 @@ from .messages import (
     FleetWarpDestroyedMessageFactory,
     FleetWormholeDestroyedMessageFactory,
     FleetMergedMessageFactory,
+    GenesisActivationFailedMessageFactory,
+    GenesisActivationSuccessMessageFactory,
+    GenesisFleetConsumedMessageFactory,
+    GenesisStarBornPublicMessageFactory,
     FleetTransferredMessageFactory,
     FleetReceivedMessageFactory,
     FleetRefueledMessageFactory,
@@ -172,6 +176,7 @@ from .ai_players import (
     player_ai_administration_tier,
 )
 from .fleet_thumbnails import choose_fleet_thumbnail
+from .starnamer import StarNamer
 from .production_rules import (
     production_infrastructure_cap,
     production_infrastructure_room,
@@ -301,6 +306,22 @@ SUPERNOVA_COLLATERAL_INTEGRITY_LOSS_MAX = 95
 SUPERNOVA_COLLATERAL_SHIP_LOSS_FRACTION_MIN = 0.25
 SUPERNOVA_COLLATERAL_SHIP_LOSS_FRACTION_MAX = 0.60
 STAR_VANISH_FLEET_MENTION_CHANCE = 0.35
+GENESIS_REQUIRED_RESOURCE_TOTALS = {
+    'ironium': 5000,
+    'boranium': 2500,
+    'germanium': 2500,
+}
+GENESIS_SECRET_REQUIREMENT_KEYS = ('resource_x', 'resource_y')
+GENESIS_SECRET_MINIMUM = 100
+GENESIS_MINERAL_MIN_YIELD = 20
+GENESIS_SECRET_RESOURCE_CHANCE = 0.01
+GENESIS_ENVIRONMENT_DELTA = 0.04
+GENESIS_COMET_ENVIRONMENT_DELTA = 0.02
+GENESIS_COMET_YIELD_BONUS = 10
+GENESIS_SALVAGE_CARRYOVER_MIN = 0.50
+GENESIS_SALVAGE_CARRYOVER_MAX = 1.00
+GENESIS_COLONISED_STAR_WEIGHT = 3
+GENESIS_UNCOLONISED_STAR_WEIGHT = 1
 REMOTE_MINER_UNITS_BY_TYPE = {
     'SMALL': 1,
     'MEDIUM': 2,
@@ -2361,6 +2382,7 @@ class GameTurn():
             'defense_modifier',
             'has_bombs',
             'has_miners',
+            'has_genesis_device',
             'basic_scanner_range',
             'advanced_scanner_range',
         )
@@ -2671,6 +2693,9 @@ class GameTurn():
                         obj, 'fuel_factory_max_warp', -1
                     ),
                     'has_wormhole_drive': bool(obj.has_wormhole_drive),
+                    'has_genesis_device': bool(
+                        getattr(obj, 'has_genesis_device', False)
+                    ),
                     'max_cloaked_warp': getattr(obj, 'max_cloaked_warp', -1),
                     'advanced_cloak': bool(getattr(obj, 'advanced_cloak', False)),
                     'basic_scanner_range': getattr(obj, 'basic_scanner_range', 0),
@@ -3899,6 +3924,13 @@ class GameTurn():
                 if scuttle_result == 'executed':
                     # Fleet deleted, return None so caller doesn't save
                     return None
+
+            elif order.order_type == 'GENESIS':
+                genesis_result = self._execute_genesis_order(fleet, order)
+                if genesis_result == 'executed':
+                    return None
+                elif genesis_result == 'blocked':
+                    break
 
             elif order.order_type == 'GIVE':
                 give_result = self._execute_give_order(fleet, order)
@@ -7323,6 +7355,431 @@ class GameTurn():
 
         return 'executed'
 
+    @staticmethod
+    def _genesis_totals_meet_requirements(resource_totals):
+        for key, required in GENESIS_REQUIRED_RESOURCE_TOTALS.items():
+            if int(resource_totals.get(key, 0) or 0) < int(required):
+                return False
+        return any(
+            int(resource_totals.get(key, 0) or 0) >= GENESIS_SECRET_MINIMUM
+            for key in GENESIS_SECRET_REQUIREMENT_KEYS
+        )
+
+    def _collect_genesis_location_state(self, x, y):
+        from .models import Anomaly, Fleet, Salvage, Star
+
+        fleets = list(
+            Fleet.objects.filter(game=self.game, x=x, y=y).select_related('player')
+        )
+        stars = list(
+            Star.objects.filter(game=self.game, x=x, y=y).select_related('player')
+        )
+        salvages = list(Salvage.objects.filter(game=self.game, x=x, y=y))
+        anomalies = list(Anomaly.objects.filter(game=self.game, x=x, y=y))
+        return {
+            'fleets': fleets,
+            'stars': stars,
+            'salvages': salvages,
+            'anomalies': anomalies,
+        }
+
+    @staticmethod
+    def _weighted_random_genesis_star(stars):
+        if not stars:
+            return None
+        weights = [
+            GENESIS_COLONISED_STAR_WEIGHT
+            if (
+                getattr(star, 'player_id', None) is not None or
+                int(getattr(star, 'colonists', 0) or 0) > 0
+            ) else
+            GENESIS_UNCOLONISED_STAR_WEIGHT
+            for star in stars
+        ]
+        return random.choices(stars, weights=weights, k=1)[0]
+
+    def _select_genesis_touched_stars(self, location_state):
+        fleets = list(location_state.get('fleets', []))
+        salvages = list(location_state.get('salvages', []))
+        remaining_stars = list(location_state.get('stars', []))
+        source_totals = {key: 0 for key in ALL_RESOURCE_KEYS}
+        yield_source_totals = {key: 0 for key in ALL_RESOURCE_KEYS}
+        touched_stars = []
+
+        for obj in fleets + salvages:
+            inventory = self._resource_inventory_map(obj)
+            for key in ALL_RESOURCE_KEYS:
+                source_totals[key] += int(inventory.get(key, 0) or 0)
+
+        for salvage in salvages:
+            inventory = self._resource_inventory_map(salvage)
+            for key in ALL_RESOURCE_KEYS:
+                yield_source_totals[key] += int(inventory.get(key, 0) or 0)
+
+        if remaining_stars:
+            selected = self._weighted_random_genesis_star(remaining_stars)
+            touched_stars.append(selected)
+            remaining_stars.remove(selected)
+            inventory = self._resource_inventory_map(selected)
+            for key in ALL_RESOURCE_KEYS:
+                amount = int(inventory.get(key, 0) or 0)
+                source_totals[key] += amount
+                yield_source_totals[key] += amount
+
+        while remaining_stars and not self._genesis_totals_meet_requirements(source_totals):
+            selected = self._weighted_random_genesis_star(remaining_stars)
+            touched_stars.append(selected)
+            remaining_stars.remove(selected)
+            inventory = self._resource_inventory_map(selected)
+            for key in ALL_RESOURCE_KEYS:
+                amount = int(inventory.get(key, 0) or 0)
+                source_totals[key] += amount
+                yield_source_totals[key] += amount
+
+        return touched_stars, source_totals, yield_source_totals
+
+    @staticmethod
+    def _choose_genesis_secret_requirement_key(resource_totals):
+        choices = [
+            key for key in GENESIS_SECRET_REQUIREMENT_KEYS
+            if int(resource_totals.get(key, 0) or 0) >= GENESIS_SECRET_MINIMUM
+        ]
+        if not choices:
+            return None
+        return max(
+            choices,
+            key=lambda key: (
+                int(resource_totals.get(key, 0) or 0),
+                1 if key == 'resource_y' else 0,
+            ),
+        )
+
+    def _consume_genesis_resources(self, fleets, salvages, touched_stars):
+        entries = []
+        for fleet in fleets:
+            entries.append({
+                'kind': 'fleet',
+                'obj': fleet,
+                'inventory': self._resource_inventory_map(fleet),
+            })
+        for salvage in salvages:
+            entries.append({
+                'kind': 'salvage',
+                'obj': salvage,
+                'inventory': self._resource_inventory_map(salvage),
+            })
+        for star in touched_stars:
+            entries.append({
+                'kind': 'star',
+                'obj': star,
+                'inventory': self._resource_inventory_map(star),
+            })
+
+        totals = {key: 0 for key in ALL_RESOURCE_KEYS}
+        for entry in entries:
+            for key in ALL_RESOURCE_KEYS:
+                totals[key] += int(entry['inventory'].get(key, 0) or 0)
+        if not self._genesis_totals_meet_requirements(totals):
+            return None, None
+
+        required = dict(GENESIS_REQUIRED_RESOURCE_TOTALS)
+        secret_key = self._choose_genesis_secret_requirement_key(totals)
+        if secret_key is None:
+            return None, None
+        required[secret_key] = GENESIS_SECRET_MINIMUM
+
+        leftovers = [
+            {
+                'kind': entry['kind'],
+                'obj': entry['obj'],
+                'inventory': dict(entry['inventory']),
+            }
+            for entry in entries
+        ]
+
+        for key, required_amount in required.items():
+            remaining = int(required_amount or 0)
+            for entry in leftovers:
+                if remaining <= 0:
+                    break
+                available = int(entry['inventory'].get(key, 0) or 0)
+                if available <= 0:
+                    continue
+                used = min(available, remaining)
+                entry['inventory'][key] = available - used
+                remaining -= used
+            if remaining > 0:
+                return None, None
+
+        carryover = {key: 0 for key in ALL_RESOURCE_KEYS}
+        for entry in leftovers:
+            if entry['kind'] == 'star':
+                for key in ALL_RESOURCE_KEYS:
+                    carryover[key] += int(entry['inventory'].get(key, 0) or 0)
+            elif entry['kind'] == 'salvage':
+                factor = random.uniform(
+                    GENESIS_SALVAGE_CARRYOVER_MIN,
+                    GENESIS_SALVAGE_CARRYOVER_MAX,
+                )
+                for key in ALL_RESOURCE_KEYS:
+                    carryover[key] += int(round(
+                        int(entry['inventory'].get(key, 0) or 0) * factor
+                    ))
+        return carryover, required
+
+    def _build_genesis_star_yields(self, resource_totals, yield_bonus=0):
+        yields = {}
+        base_keys = ('ironium', 'boranium', 'germanium')
+        base_total = sum(
+            max(0, int(resource_totals.get(key, 0) or 0))
+            for key in base_keys
+        )
+        if base_total <= 0:
+            base_total = len(base_keys)
+        for key in base_keys:
+            weight = (
+                float(max(0, int(resource_totals.get(key, 0) or 0))) /
+                float(base_total)
+            )
+            jitter = random.randint(-6, 6)
+            yields['%s_yield' % key] = max(
+                min(100, GENESIS_MINERAL_MIN_YIELD + int(yield_bonus or 0)),
+                min(
+                    100,
+                    int(round(
+                        GENESIS_MINERAL_MIN_YIELD + int(yield_bonus or 0) + (weight * 80.0) + jitter
+                    )),
+                ),
+            )
+
+        for key in SECRET_RESOURCE_KEYS:
+            yields['%s_yield' % key] = 0
+
+        if roll_chance(GENESIS_SECRET_RESOURCE_CHANCE):
+            secret_keys = [
+                key for key in SECRET_RESOURCE_KEYS
+                if int(resource_totals.get(key, 0) or 0) > 0
+            ] or list(SECRET_RESOURCE_KEYS)
+            weights = [
+                max(1, int(resource_totals.get(key, 0) or 0))
+                for key in secret_keys
+            ]
+            selected_key = random.choices(secret_keys, weights=weights, k=1)[0]
+            yields['%s_yield' % selected_key] = random.randint(20, 60)
+
+        return yields
+
+    def _create_genesis_star(
+        self,
+        player,
+        x,
+        y,
+        resource_totals,
+        carryover_resources=None,
+        environment_delta=GENESIS_ENVIRONMENT_DELTA,
+        yield_bonus=0,
+    ):
+        from .models import Star
+
+        history = list(self.game.stars.values_list('name', flat=True))
+        star_name = StarNamer(history=history).get_unique()
+        carryover_resources = carryover_resources or {}
+        star_kwargs = {
+            'game': self.game,
+            'name': star_name,
+            'x': int(x),
+            'y': int(y),
+            'gravity': max(
+                0.0,
+                min(
+                    2.0,
+                    float(getattr(player, 'gravity_center', 1.0) or 1.0) +
+                    random.uniform(-environment_delta, environment_delta),
+                ),
+            ),
+            'temperature': max(
+                0.0,
+                min(
+                    2.0,
+                    float(getattr(player, 'temperature_center', 1.0) or 1.0) +
+                    random.uniform(-environment_delta, environment_delta),
+                ),
+            ),
+            'radiation': max(
+                0.0,
+                min(
+                    2.0,
+                    float(getattr(player, 'radiation_center', 1.0) or 1.0) +
+                    random.uniform(-environment_delta, environment_delta),
+                ),
+            ),
+            'ironium_inventory': int(carryover_resources.get('ironium', 0) or 0),
+            'boranium_inventory': int(carryover_resources.get('boranium', 0) or 0),
+            'germanium_inventory': int(carryover_resources.get('germanium', 0) or 0),
+            'resource_x_inventory': int(carryover_resources.get('resource_x', 0) or 0),
+            'resource_y_inventory': int(carryover_resources.get('resource_y', 0) or 0),
+            'resource_z_inventory': int(carryover_resources.get('resource_z', 0) or 0),
+        }
+        star_kwargs.update(self._build_genesis_star_yields(resource_totals, yield_bonus=yield_bonus))
+        return Star.objects.create(**star_kwargs)
+
+    def _execute_genesis_order(self, fleet, order):
+        """Activate a Genesis Device if enough local resources are present."""
+        if not bool(getattr(fleet, 'has_genesis_device', False)):
+            order.delete()
+            return 'blocked'
+
+        from .models import Player
+        x = int(fleet.x)
+        y = int(fleet.y)
+        from django.db import transaction
+
+        owner = fleet.player
+        fleet_name = fleet.name
+        created_star = None
+        notify_consumed = []
+        destroyed_fleet_count = 0
+        consumed_resources = {}
+        blocking_anomaly = None
+        activation_failed = False
+
+        with transaction.atomic():
+            fresh_state = self._collect_genesis_location_state(x, y)
+            blocking_anomalies = [
+                anomaly for anomaly in fresh_state['anomalies']
+                if getattr(anomaly, 'anomaly_type', None) != anomaly.TYPE_COMET
+            ]
+            if blocking_anomalies:
+                blocking_anomaly = blocking_anomalies[0]
+                activation_failed = True
+                order.delete()
+                fleet.delete()
+            else:
+                comet_anomalies = [
+                    anomaly for anomaly in fresh_state['anomalies']
+                    if getattr(anomaly, 'anomaly_type', None) == anomaly.TYPE_COMET
+                ]
+                touched_stars, source_totals, yield_source_totals = self._select_genesis_touched_stars(
+                    fresh_state
+                )
+                if not self._genesis_totals_meet_requirements(source_totals):
+                    return 'blocked'
+
+                carryover_resources, consumed_resources = self._consume_genesis_resources(
+                    fresh_state['fleets'],
+                    fresh_state['salvages'],
+                    touched_stars,
+                )
+                if carryover_resources is None or consumed_resources is None:
+                    return 'blocked'
+
+                order.delete()
+                notify_consumed = [
+                    victim for victim in fresh_state['fleets']
+                    if (
+                        victim.player_id and
+                        victim.id != fleet.id and
+                        victim.player_id != getattr(owner, 'id', None)
+                    )
+                ]
+                destroyed_fleet_count = len(fresh_state['fleets'])
+
+                for anomaly in comet_anomalies:
+                    anomaly.delete()
+
+                for salvage in fresh_state['salvages']:
+                    salvage.delete()
+
+                for victim in fresh_state['fleets']:
+                    victim.delete()
+
+                for star in touched_stars:
+                    destroyed_owner_id = star.player_id
+                    destroyed_star_id = star.id
+                    destroyed_star_short_id = star.short_id
+                    destroyed_x = star.x
+                    destroyed_y = star.y
+                    star.delete()
+                    if destroyed_owner_id:
+                        lost_player = Player.objects.filter(id=destroyed_owner_id).first()
+                        if lost_player:
+                            self._handle_homeworld_loss(
+                                lost_player,
+                                lost_star_id=destroyed_star_id,
+                                location=(destroyed_x, destroyed_y),
+                            )
+                    self._retarget_or_remove_orders_for_destroyed_star(
+                        destroyed_star_id,
+                        destroyed_star_short_id,
+                        destroyed_x,
+                        destroyed_y,
+                        preserve_order_id=None,
+                    )
+
+                created_star = self._create_genesis_star(
+                    owner,
+                    x,
+                    y,
+                    yield_source_totals,
+                    carryover_resources=carryover_resources,
+                    environment_delta=(
+                        GENESIS_COMET_ENVIRONMENT_DELTA if comet_anomalies else GENESIS_ENVIRONMENT_DELTA
+                    ),
+                    yield_bonus=GENESIS_COMET_YIELD_BONUS if comet_anomalies else 0,
+                )
+
+        if blocking_anomaly is not None:
+            if owner:
+                factory = GenesisActivationFailedMessageFactory(
+                    self.game,
+                    owner,
+                    fleet_name=fleet_name,
+                    anomaly=blocking_anomaly,
+                )
+                msg = factory.new_message()
+                msg.year = self.game.year
+                msg.save()
+            return 'blocked'
+
+        for player in self.game.players.all():
+            factory = GenesisStarBornPublicMessageFactory(
+                self.game,
+                player,
+                star=created_star,
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
+        if owner:
+            success_factory = GenesisActivationSuccessMessageFactory(
+                self.game,
+                owner,
+                fleet_name=fleet_name,
+                star=created_star,
+                destroyed_fleet_count=destroyed_fleet_count,
+                consumed_resources=consumed_resources,
+            )
+            success_msg = success_factory.new_message()
+            success_msg.year = self.game.year
+            success_msg.save()
+
+        for victim in notify_consumed:
+            factory = GenesisFleetConsumedMessageFactory(
+                self.game,
+                victim.player,
+                fleet=victim,
+                star=created_star,
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
+        if owner:
+            self._discover_secret_resources_from_star(owner, created_star)
+
+        return 'executed'
+
     def _execute_merge_order(self, source_fleet, order):
         """Execute a merge order, combining source fleet into target fleet.
 
@@ -7471,6 +7928,10 @@ class GameTurn():
             target_fleet.fuel_factory_mg_per_year > 0.0
         )
         target_fleet.has_wormhole_drive = merged_has_wormhole_drive
+        target_fleet.has_genesis_device = bool(
+            getattr(target_fleet, 'has_genesis_device', False) or
+            getattr(source_fleet, 'has_genesis_device', False)
+        )
         target_fleet.max_cloaked_warp = max(
             int(getattr(target_fleet, 'max_cloaked_warp', -1) or 0),
             int(getattr(source_fleet, 'max_cloaked_warp', -1) or 0),
@@ -8446,6 +8907,7 @@ class GameTurn():
                 'fuel_factory_max_warp', -1
             ),
             has_wormhole_drive=bool(tech_effects.get('has_wormhole_drive')),
+            has_genesis_device=bool(tech_effects.get('has_genesis_device')),
             max_cloaked_warp=tech_effects.get('max_cloaked_warp', -1),
             advanced_cloak=bool(tech_effects.get('advanced_cloak')),
             basic_scanner_range=tech_effects.get('basic_scanner_range', 0),

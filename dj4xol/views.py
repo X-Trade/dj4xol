@@ -1854,6 +1854,15 @@ def add_fleet_order(request, game_short_id):
         # Scuttle orders always have repeat=False (fleet is destroyed)
         order.repeat = False
 
+    elif order_type == 'GENESIS':
+        if not bool(getattr(fleet, 'has_genesis_device', False)):
+            return _redirect_preserving_selection(
+                request,
+                game,
+                suppress_autolocate=True,
+            )
+        order.repeat = False
+
     target_obj, target_x, target_y, target_kind = order.get_actual_target()
     if target_kind in ('star', 'fleet', 'salvage', 'anomaly') and target_obj is not None:
         order.target_kind = 'OBJECT'
@@ -1904,7 +1913,7 @@ def toggle_fleet_order_repeat(request, game_short_id, order_short_id):
         return _redirect_preserving_selection(request, game)
 
     order = FleetOrders.objects.get(short_id=order_short_id, game=game, fleet__player=player)
-    if order.order_type in ['COLONISE', 'MERGE', 'SCUTTLE', 'GIVE']:
+    if order.order_type in ['COLONISE', 'MERGE', 'SCUTTLE', 'GIVE', 'GENESIS']:
         return _redirect_preserving_selection(request, game)
 
     order.repeat = not bool(order.repeat)

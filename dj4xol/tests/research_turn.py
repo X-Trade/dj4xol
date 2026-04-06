@@ -1539,6 +1539,41 @@ class ResearchTurnTest(TestCase):
         self.assertAlmostEqual(effects['defense_level'], -1.5, places=4)
         self.assertEqual(effects['has_miners'], 'LARGE')
 
+    def test_get_player_tech_effects_include_genesis_device_alongside_other_special(self):
+        self._reset_research_catalog()
+        materials = ResearchCategory.objects.create(
+            code='GENM', name='Genesis Materials', enabled=True
+        )
+        Technology.objects.create(
+            category=materials,
+            level=26,
+            name='Genesis Device',
+            tech_type='SPECIAL',
+            params_json='{"has_genesis_device": true}',
+            display_order=10,
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=materials,
+            level=26,
+            name='Advanced Cloak Projector',
+            tech_type='SPECIAL',
+            params_json='{"max_cloaked_warp": 6, "advanced_cloak": true}',
+            display_order=20,
+            enabled=True,
+        )
+
+        rows = ensure_player_research_rows(self.player)
+        for row in rows:
+            row.current_level = 26.0
+            row.save(update_fields=['current_level'])
+        self._sync_player_unlocks()
+
+        effects = get_player_tech_effects(self.player)
+        self.assertTrue(effects['has_genesis_device'])
+        self.assertEqual(effects['max_cloaked_warp'], 6)
+        self.assertTrue(effects['advanced_cloak'])
+
 
 class ResearchCostMultiplierTest(TestCase):
     def test_research_cost_multiplier_scales_requirements(self):

@@ -12404,6 +12404,220 @@ class TestInterceptPatrolOrders(TestCase):
             ).exists()
         )
 
+    def test_genesis_order_creates_star_and_consumes_local_resources_and_fleets(self):
+        from ..models import FleetOrders
+
+        game, player1, player2 = self._create_two_player_game()
+        source_star = Star.objects.create(
+            game=game,
+            name='Genesis Source',
+            x=22,
+            y=22,
+            player=player1,
+            ironium_inventory=6000,
+            boranium_inventory=3000,
+            germanium_inventory=3000,
+            resource_x_inventory=100,
+        )
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Genesis Fleet',
+            x=22,
+            y=22,
+            has_genesis_device=True,
+        )
+        collateral = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name='Collateral Fleet',
+            x=22,
+            y=22,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        GameTurn(game).generate_turn()
+
+        self.assertFalse(Fleet.objects.filter(id=activator.id).exists())
+        self.assertFalse(Fleet.objects.filter(id=collateral.id).exists())
+        self.assertFalse(Star.objects.filter(id=source_star.id).exists())
+        self.assertEqual(Star.objects.filter(game=game, x=22, y=22).count(), 1)
+        created_star = Star.objects.get(game=game, x=22, y=22)
+        self.assertIsNotNone(created_star)
+        self.assertGreaterEqual(created_star.ironium_yield, 20)
+        self.assertGreaterEqual(created_star.boranium_yield, 20)
+        self.assertGreaterEqual(created_star.germanium_yield, 20)
+        self.assertEqual(created_star.ironium_inventory, 1000)
+        self.assertEqual(created_star.boranium_inventory, 500)
+        self.assertEqual(created_star.germanium_inventory, 500)
+        self.assertEqual(created_star.resource_x_inventory, 0)
+        self.assertLessEqual(abs(created_star.gravity - player1.gravity_center), 0.04)
+        self.assertLessEqual(abs(created_star.temperature - player1.temperature_center), 0.04)
+        self.assertLessEqual(abs(created_star.radiation - player1.radiation_center), 0.04)
+        self.assertTrue(
+            player1.messages.filter(message__icontains='Genesis Device').exists()
+        )
+        self.assertTrue(
+            player2.messages.filter(message__icontains='new star').exists()
+        )
+
+    def test_genesis_order_blocks_until_local_requirements_are_met(self):
+        from ..models import FleetOrders
+
+        game, player1, _player2 = self._create_two_player_game()
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Waiting Genesis Fleet',
+            x=24,
+            y=24,
+            has_genesis_device=True,
+            ironium_inventory=100,
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        GameTurn(game).generate_turn()
+
+        self.assertTrue(Fleet.objects.filter(id=activator.id).exists())
+        self.assertTrue(FleetOrders.objects.filter(id=order.id).exists())
+        self.assertFalse(
+            Star.objects.filter(game=game, x=24, y=24).exists()
+        )
+
+    def test_genesis_consumes_asteroid_field_and_deposits_remaining_resources(self):
+        game, player1, _player2 = self._create_two_player_game()
+        asteroid = Salvage.objects.create(
+            game=game,
+            x=26,
+            y=26,
+            salvage_type=Salvage.TYPE_ASTEROID_FIELD,
+            ironium_inventory=6000,
+            boranium_inventory=3000,
+            germanium_inventory=3000,
+            resource_x_inventory=100,
+        )
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Genesis Miner',
+            x=26,
+            y=26,
+            has_genesis_device=True,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        def controlled_uniform(a, b):
+            if abs(float(a) - 0.5) < 0.0001 and abs(float(b) - 1.0) < 0.0001:
+                return 0.5
+            return 0.0
+
+        with patch('dj4xol.turn.random.uniform', side_effect=controlled_uniform):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Salvage.objects.filter(id=asteroid.id).exists())
+        created_star = Star.objects.get(game=game, x=26, y=26)
+        self.assertEqual(created_star.ironium_inventory, 500)
+        self.assertEqual(created_star.boranium_inventory, 250)
+        self.assertEqual(created_star.germanium_inventory, 250)
+
+    def test_genesis_fails_at_non_comet_anomaly_location_and_loses_fleet(self):
+        game, player1, _player2 = self._create_two_player_game()
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Doomed Genesis Fleet',
+            x=28,
+            y=28,
+            has_genesis_device=True,
+            ironium_inventory=6000,
+            boranium_inventory=3000,
+            germanium_inventory=3000,
+            resource_x_inventory=100,
+        )
+        anomaly = Anomaly.objects.create(
+            game=game,
+            name='Rift 1',
+            x=28,
+            y=28,
+            anomaly_type=Anomaly.TYPE_RIFT,
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        GameTurn(game).generate_turn()
+
+        self.assertFalse(Fleet.objects.filter(id=activator.id).exists())
+        self.assertTrue(Anomaly.objects.filter(id=anomaly.id).exists())
+        self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
+        self.assertFalse(Star.objects.filter(game=game, x=28, y=28).exists())
+        self.assertTrue(
+            player1.messages.filter(message__icontains='destabilised the process').exists()
+        )
+
+    def test_genesis_comet_bonus_removes_comet_and_improves_match_and_density(self):
+        game, player1, _player2 = self._create_two_player_game()
+        source_star = Star.objects.create(
+            game=game,
+            name='Genesis Comet Source',
+            x=30,
+            y=30,
+            ironium_inventory=3000,
+            boranium_inventory=3000,
+            germanium_inventory=3000,
+            resource_x_inventory=100,
+        )
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Comet Genesis Fleet',
+            x=30,
+            y=30,
+            has_genesis_device=True,
+            ironium_inventory=2000,
+        )
+        comet = Anomaly.objects.create(
+            game=game,
+            name='Comet 1',
+            x=30,
+            y=30,
+            anomaly_type=Anomaly.TYPE_COMET,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        with patch('dj4xol.turn.random.uniform', side_effect=lambda a, b: b), \
+             patch('dj4xol.turn.random.randint', return_value=0), \
+             patch('dj4xol.turn.roll_chance', return_value=False):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Anomaly.objects.filter(id=comet.id).exists())
+        self.assertFalse(Star.objects.filter(id=source_star.id).exists())
+        created_star = Star.objects.get(game=game, x=30, y=30)
+        self.assertAlmostEqual(created_star.gravity - player1.gravity_center, 0.02, places=4)
+        self.assertAlmostEqual(created_star.temperature - player1.temperature_center, 0.02, places=4)
+        self.assertAlmostEqual(created_star.radiation - player1.radiation_center, 0.02, places=4)
+        self.assertEqual(created_star.ironium_yield, 57)
+        self.assertEqual(created_star.boranium_yield, 57)
+        self.assertEqual(created_star.germanium_yield, 57)
+
 
 class TestBombardmentOrders(TestCase):
     def _ensure_other_player(self, game, attacker, username):

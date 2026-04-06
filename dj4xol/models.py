@@ -803,6 +803,7 @@ class Fleet(AbstractMapObject):
     fuel_factory_mg_per_year = models.FloatField(default=0.0)
     fuel_factory_max_warp = models.IntegerField(default=-1)
     has_wormhole_drive = models.BooleanField(default=False)
+    has_genesis_device = models.BooleanField(default=False)
     max_cloaked_warp = models.IntegerField(default=-1)
     advanced_cloak = models.BooleanField(default=False)
     basic_scanner_range = models.IntegerField(default=0)
@@ -1277,6 +1278,7 @@ class FleetOrders(AbstractGameObject):
         ('REMOTEMINE', 'Remote Mine'),
         ('MERGE', 'Merge'),
         ('SCUTTLE', 'Scuttle'),
+        ('GENESIS', 'Activate Genesis'),
         ('PATROL', 'Patrol'),
     ]
 
@@ -1371,6 +1373,8 @@ class FleetOrders(AbstractGameObject):
             if self.transfer_player_id:
                 return self.transfer_player.name
             return "Abandoned"
+        elif self.order_type == 'GENESIS':
+            return "Current location"
         elif kind == 'space' and x is not None and y is not None:
             return f"({self.x}, {self.y})"
         else:

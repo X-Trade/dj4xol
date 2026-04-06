@@ -1435,7 +1435,7 @@ class Command(BaseCommand):
                 entry["contacts"] = contacts
             actions = self._cli_action_hints(detail, player=player, obj=obj)
             if actions:
-                entry["actions"] = actions
+                entry["available_actions"] = actions
         return entry
 
     def _cli_detail_base_entry(self, detail, player=None, obj=None):
@@ -1718,6 +1718,7 @@ class Command(BaseCommand):
                         "syntax": "/orders <fleet_id> add MERGE <fleet_id>",
                     },
                     "SCUTTLE": {"syntax": "/orders <fleet_id> add SCUTTLE"},
+                    "GENESIS": {"syntax": "/orders <fleet_id> add GENESIS"},
                     "PATROL": {
                         "syntax": (
                             "/orders <fleet_id> add PATROL <(x,y)|target_id> "
@@ -1935,6 +1936,11 @@ class Command(BaseCommand):
             order.target_fleet = target_obj
 
         elif order_type == "SCUTTLE":
+            order.repeat = False
+
+        elif order_type == "GENESIS":
+            if not bool(getattr(fleet, "has_genesis_device", False)):
+                raise CommandError("GENESIS requires a fleet with a Genesis Device.")
             order.repeat = False
 
         elif order_type == "PATROL":

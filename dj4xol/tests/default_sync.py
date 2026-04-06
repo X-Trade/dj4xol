@@ -100,11 +100,18 @@ class DefaultSyncTest(TestCase):
             id='00000000-0000-0000-0000-000000000226'
         )
         self.assertEqual(maelstrom_torpedo.category.code, 'MATERIALS')
-        self.assertEqual(maelstrom_torpedo.level, 26)
+        self.assertEqual(maelstrom_torpedo.level, 25)
         self.assertEqual(
             json.loads(maelstrom_torpedo.params_json).get('offense_level'),
             6.40,
         )
+        genesis_device = Technology.objects.get(
+            id='00000000-0000-0000-0000-000000000813'
+        )
+        self.assertEqual(genesis_device.category.code, 'MATERIALS')
+        self.assertEqual(genesis_device.level, 26)
+        self.assertEqual(genesis_device.tech_type, 'SPECIAL')
+        self.assertTrue(json.loads(genesis_device.params_json).get('has_genesis_device'))
         scanner_v = Technology.objects.get(
             id='00000000-0000-0000-0000-000000000704'
         )

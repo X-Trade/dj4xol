@@ -1565,6 +1565,7 @@ def get_player_tech_effects(player):
         'fuel_factory_mg_per_year': 0.0,
         'fuel_factory_max_warp': -1,
         'has_wormhole_drive': False,
+        'has_genesis_device': False,
         'max_cloaked_warp': -1,
         'advanced_cloak': False,
         'basic_scanner_range': 0,
@@ -1577,6 +1578,9 @@ def get_player_tech_effects(player):
     selected_by_type = {}
     for tech in unlocked:
         key = str(tech.tech_type or '')
+        params = _safe_params(tech)
+        if key == 'SPECIAL' and bool(params.get('has_genesis_device')):
+            continue
         sort_key = (int(tech.level), int(tech.display_order or 0), str(tech.name or ''))
         current = selected_by_type.get(key)
         if current is None:
@@ -1688,6 +1692,11 @@ def get_player_tech_effects(player):
                 pass
         if bool(params.get('advanced_cloak')):
             effects['advanced_cloak'] = True
+
+    for tech in unlocked:
+        params = _safe_params(tech)
+        if bool(params.get('has_genesis_device')):
+            effects['has_genesis_device'] = True
 
     if selected_hull is not None:
         params = _safe_params(selected_hull)

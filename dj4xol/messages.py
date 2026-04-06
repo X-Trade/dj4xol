@@ -886,6 +886,115 @@ class StarVanishedOminousMessageFactory(MessageFactory):
         )
 
 
+class GenesisStarBornPublicMessageFactory(MessageFactory):
+    """Public message for a newly created star."""
+    category = 'RANDOM'
+    priority = False
+
+    def __init__(self, game, player, star, message=None):
+        super().__init__(game, player, message, intensity=0.8)
+        self.star = star
+
+    def format_message(self):
+        return (
+            f"A brilliant new star has appeared in the night sky: "
+            f"{format_map_object(self.star)}."
+        )
+
+
+class GenesisActivationSuccessMessageFactory(MessageFactory):
+    """Owner-only success message for Genesis Device activation."""
+    category = 'RANDOM'
+    priority = True
+
+    def __init__(
+        self,
+        game,
+        player,
+        fleet_name,
+        star,
+        destroyed_fleet_count,
+        consumed_resources,
+        message=None,
+    ):
+        super().__init__(game, player, message, intensity=1.0)
+        self.fleet_name = fleet_name
+        self.star = star
+        self.destroyed_fleet_count = destroyed_fleet_count
+        self.consumed_resources = consumed_resources or {}
+
+    def _resource_summary(self):
+        labels = {
+            'ironium': 'Ironium',
+            'boranium': 'Boranium',
+            'germanium': 'Germanium',
+            'resource_x': 'Uniquium',
+            'resource_y': 'Rarium',
+            'resource_z': 'Mysterium',
+        }
+        parts = []
+        for key in ('ironium', 'boranium', 'germanium', 'resource_x', 'resource_y', 'resource_z'):
+            amount = int(self.consumed_resources.get(key, 0) or 0)
+            if amount > 0:
+                parts.append(f"{amount}kt {labels[key]}")
+        if not parts:
+            return 'no local resources'
+        if len(parts) == 1:
+            return parts[0]
+        return ', '.join(parts[:-1]) + ', and ' + parts[-1]
+
+    def format_message(self):
+        extra_fleets = max(0, int(self.destroyed_fleet_count or 0) - 1)
+        fleet_text = (
+            f"{self.fleet_name} activated its Genesis Device"
+            if self.fleet_name else
+            "A fleet activated its Genesis Device"
+        )
+        if extra_fleets > 0:
+            fleet_text += f", consuming {extra_fleets} other fleet"
+            if extra_fleets != 1:
+                fleet_text += 's'
+        return (
+            f"{fleet_text} and created {format_map_object(self.star)}. "
+            f"Consumed resources: {self._resource_summary()}."
+        )
+
+
+class GenesisFleetConsumedMessageFactory(MessageFactory):
+    """Message for fleets lost to a Genesis activation by another fleet."""
+    category = 'EXCEPTION'
+    priority = True
+
+    def __init__(self, game, player, fleet, star, message=None):
+        super().__init__(game, player, message, intensity=-0.8)
+        self.fleet = fleet
+        self.star = star
+
+    def format_message(self):
+        return (
+            f"{format_map_object_reference(self.fleet)} was consumed in a Genesis activation "
+            f"that created {format_map_object(self.star)}."
+        )
+
+
+class GenesisActivationFailedMessageFactory(MessageFactory):
+    """Owner-only message for a Genesis activation lost to anomaly interference."""
+    category = 'EXCEPTION'
+    priority = True
+
+    def __init__(self, game, player, fleet_name, anomaly, message=None):
+        super().__init__(game, player, message, intensity=-1.0)
+        self.fleet_name = fleet_name
+        self.anomaly = anomaly
+
+    def format_message(self):
+        return (
+            f"{escape(self.fleet_name or 'A fleet')} attempted to activate a Genesis Device at "
+            f"{format_map_object_reference(self.anomaly)}, but the anomaly destabilised the process. "
+            f"The fleet was lost."
+        )
+
+
 class AnomalyTargetLostMessageFactory(MessageFactory):
     """Messages for fleets whose anomaly target vanished before arrival."""
     category = 'EXCEPTION'

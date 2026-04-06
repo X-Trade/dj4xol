@@ -1422,6 +1422,7 @@ class GameFactory():
                     'fuel_factory_max_warp', -1
                 ),
                 has_wormhole_drive=bool(tech_effects.get('has_wormhole_drive')),
+                has_genesis_device=bool(tech_effects.get('has_genesis_device')),
                 max_cloaked_warp=tech_effects.get('max_cloaked_warp', -1),
                 advanced_cloak=bool(tech_effects.get('advanced_cloak')),
                 basic_scanner_range=tech_effects.get('basic_scanner_range', 0),

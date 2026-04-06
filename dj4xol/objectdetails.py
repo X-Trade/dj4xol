@@ -690,6 +690,7 @@ class DetailBuilder():
                         'fuel_factory_max_warp', -1
                     ),
                     'has_wormhole_drive': data.get('has_wormhole_drive'),
+                    'has_genesis_device': data.get('has_genesis_device'),
                 }
                 if data.get('report_tier') in ('ownership', 'encounter'):
                     detail['fleet_capabilities'] = self._build_fleet_capabilities(
@@ -701,6 +702,7 @@ class DetailBuilder():
                         data.get('has_miners'),
                         data.get('fuel_factory_mg_per_year', 0.0),
                         bool(data.get('has_wormhole_drive')),
+                        bool(data.get('has_genesis_device')),
                         data.get('basic_scanner_range', 0),
                         data.get('advanced_scanner_range', 0),
                         include_scanners=True,
@@ -1167,6 +1169,7 @@ class DetailBuilder():
             'defense_modifier',
             'has_bombs',
             'has_miners',
+            'has_genesis_device',
             'basic_scanner_range',
             'advanced_scanner_range',
         )
@@ -2163,7 +2166,7 @@ class DetailBuilder():
             if o.order_type in ['MOVE', 'INTERCEPT', 'PATROL'] and x is not None and y is not None:
                 current_x = int(x)
                 current_y = int(y)
-            repeat_allowed = o.order_type not in ['COLONISE', 'MERGE', 'SCUTTLE', 'GIVE']
+            repeat_allowed = o.order_type not in ['COLONISE', 'MERGE', 'SCUTTLE', 'GIVE', 'GENESIS']
             order_data = {
                 'short_id': o.short_id,
                 'target': target,
@@ -2231,6 +2234,10 @@ class DetailBuilder():
                     order_data['bomb_tooltip'] = 'Bomb once'
                 else:
                     order_data['bomb_tooltip'] = 'Bomb until 0 colonists'
+            elif o.order_type == 'GENESIS':
+                order_data['genesis_tooltip'] = (
+                    'Consume all fleets and resources at this location to create a new star'
+                )
 
             orders.append(order_data)
         return orders
@@ -2342,6 +2349,7 @@ class DetailBuilder():
             self.selected_obj.has_miners,
             getattr(self.selected_obj, 'fuel_factory_mg_per_year', 0.0),
             bool(self.selected_obj.has_wormhole_drive),
+            bool(getattr(self.selected_obj, 'has_genesis_device', False)),
             getattr(self.selected_obj, 'basic_scanner_range', 0),
             getattr(self.selected_obj, 'advanced_scanner_range', 0),
             scanner_suffix=self._race_multiplier_percent_suffix(
@@ -2384,6 +2392,7 @@ class DetailBuilder():
                 fleet, 'fuel_factory_max_warp', -1
             ),
             'has_wormhole_drive': bool(fleet.has_wormhole_drive),
+            'has_genesis_device': bool(getattr(fleet, 'has_genesis_device', False)),
         }
 
     def _build_fleet_capabilities(
@@ -2396,6 +2405,7 @@ class DetailBuilder():
         miners,
         fuel_factory_mg_per_year,
         has_wormhole_drive,
+        has_genesis_device,
         basic_scanner_range,
         advanced_scanner_range,
         scanner_suffix='',
@@ -2448,6 +2458,11 @@ class DetailBuilder():
         if has_wormhole_drive:
             capabilities.append({
                 'label': 'Wormhole Drive',
+                'value': 'Yes',
+            })
+        if has_genesis_device:
+            capabilities.append({
+                'label': 'Genesis Device',
                 'value': 'Yes',
             })
         if include_scanners:

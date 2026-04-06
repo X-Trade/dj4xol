@@ -892,12 +892,26 @@
   fields:
     short_id: "tech00000226"
     category: 3
-    level: 26
+    level: 25
     name: 'Maelstrom Torpedo'
     description: 'Violently self-correcting warheads overwhelm interception with relentless pressure.'
     tech_type: 'TORPEDO'
     params_json: '{"offense_level": 6.40}'
     display_order: 112
+    enabled: True
+
+- model: dj4xol.Technology
+  pk: "00000000-0000-0000-0000-000000000813"
+  fields:
+    short_id: "tech00000813"
+    category: 3
+    level: 26
+    name: 'Genesis Device'
+    description: 'A singular fabrication core that can seed a new star from overwhelming local matter reserves.'
+    tech_type: 'SPECIAL'
+    thumbnail_class: ''
+    params_json: '{"has_genesis_device": true}'
+    display_order: 455
     enabled: True
 
 - model: dj4xol.Technology

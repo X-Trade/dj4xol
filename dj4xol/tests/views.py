@@ -3626,6 +3626,7 @@ class TestDetailPanelReportTiers(TestCase):
             max_safe_warp=8,
             has_bombs='CONVENTIONAL',
             has_wormhole_drive=True,
+            has_genesis_device=True,
         )
         Report.objects.create(
             game=self.game,
@@ -3642,6 +3643,7 @@ class TestDetailPanelReportTiers(TestCase):
                 'max_safe_warp': 8,
                 'has_bombs': 'CONVENTIONAL',
                 'has_wormhole_drive': True,
+                'has_genesis_device': True,
                 'report_tier': 'encounter',
             }),
         )
@@ -3649,6 +3651,7 @@ class TestDetailPanelReportTiers(TestCase):
         self.assertContains(response, 'Max Warp')
         self.assertContains(response, 'Bombs')
         self.assertContains(response, 'Wormhole Drive')
+        self.assertContains(response, 'Genesis Device')
 
     def test_encounter_fleet_report_without_level_fields_hides_capabilities(self):
         self.game.joinable = True
@@ -9601,6 +9604,60 @@ class TestDiplomacyView(TestCase):
         self.assertEqual(response.status_code, 302)
         order.refresh_from_db()
         self.assertTrue(order.repeat)
+
+    def test_genesis_order_creation_requires_genesis_device(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'GENESIS',
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(fleet.orders.filter(order_type='GENESIS').exists())
+
+        fleet.has_genesis_device = True
+        fleet.save(update_fields=['has_genesis_device'])
+        response = client.post(
+            reverse('dj4xol:add_fleet_order', args=[game.short_id]),
+            {
+                'fleet': fleet.short_id,
+                'order_type': 'GENESIS',
+                'repeat': 'on',
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        order = fleet.orders.filter(order_type='GENESIS').first()
+        self.assertIsNotNone(order)
+        self.assertFalse(order.repeat)
+
+    def test_toggle_repeat_disallowed_for_genesis_orders(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='GENESIS',
+            repeat=False,
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:toggle_fleet_order_repeat', args=[game.short_id, order.short_id])
+        )
+        self.assertEqual(response.status_code, 302)
+        order.refresh_from_db()
+        self.assertFalse(order.repeat)
 
     def test_remotemine_order_creation_requires_miners(self):
         game = default_game(stars=5, fleets=1)

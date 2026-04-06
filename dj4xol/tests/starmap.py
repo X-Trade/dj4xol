@@ -62,6 +62,23 @@ class TestStarMap(TestCase):
         self.assertIn('data-object-type="star"', html)
         self.assertIn('data-object-type="fleet"', html)
 
+    def test_rift_map_object_includes_anomaly_type_data_attribute(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        rift = Anomaly.objects.create(
+            game=game,
+            x=20,
+            y=20,
+            name='Tall Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+        )
+
+        starmap = StarMap(game, player, dest_mode=True)
+        html = starmap.render_anomaly(rift)
+
+        self.assertIn('data-object-type="anomaly"', html)
+        self.assertIn('data-anomaly-type="RIFT"', html)
+
     def test_star_marker_renders_circle_class_on_map(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
