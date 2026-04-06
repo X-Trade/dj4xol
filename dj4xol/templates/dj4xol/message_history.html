@@ -55,6 +55,12 @@
                     <div class="panel-content panel-stack research-panel-body">
                         <form class="panel-scrollable-text message-filters" method="get" id="message-filters-form">
                             <div class="detail-row">
+                                <span class="env-label">Search</span>
+                                <span class="detail-value">
+                                    <input type="text" name="q" value="{{ search_query }}" autocomplete="off" placeholder="Search messages">
+                                </span>
+                            </div>
+                            <div class="detail-row">
                                 <span class="env-label">Year</span>
                                 <span class="detail-value">
                                     <select name="year" id="year-filter">
@@ -85,11 +91,12 @@
                                     </label>
                                 </span>
                             </div>
-                            {% if current_year or current_category or priority_only %}
                             <div class="message-filter-actions">
+                                <button type="submit">Apply</button>
+                                {% if current_year or current_category or priority_only or search_query %}
                                 <a class="action-link" href="{% url 'dj4xol:message_history' game.short_id %}">Clear</a>
+                                {% endif %}
                             </div>
-                            {% endif %}
                         </form>
                     </div>
                 </div>
@@ -126,13 +133,13 @@
                             {% if page_obj.has_previous %}
                             <a
                                 class="panel-header-button"
-                                href="?page=1{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
+                                href="?page=1{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
                                 onclick="event.stopPropagation();"
                                 title="First page"
                             >&vert;&lt;</a>
                             <a
                                 class="panel-header-button"
-                                href="?page={{ page_obj.previous_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
+                                href="?page={{ page_obj.previous_page_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
                                 onclick="event.stopPropagation();"
                                 title="Previous page"
                             >&lt;</a>
@@ -144,13 +151,13 @@
                             {% if page_obj.has_next %}
                             <a
                                 class="panel-header-button"
-                                href="?page={{ page_obj.next_page_number }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
+                                href="?page={{ page_obj.next_page_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
                                 onclick="event.stopPropagation();"
                                 title="Next page"
                             >&gt;</a>
                             <a
                                 class="panel-header-button"
-                                href="?page={{ page_obj.paginator.num_pages }}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
+                                href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if current_year %}&year={{ current_year }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if priority_only %}&priority=1{% endif %}"
                                 onclick="event.stopPropagation();"
                                 title="Last page"
                             >&gt;&vert;</a>

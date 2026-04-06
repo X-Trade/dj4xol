@@ -671,39 +671,40 @@ class Command(BaseCommand):
         return data
 
     def _stars_summary(self, game, player):
-        explored_star_ids = set(
-            Report.objects.filter(
-                game=game, player=player, target_type="star"
-            ).values_list("target_id", flat=True)
-        )
         stars = Star.objects.filter(game=game).order_by("x", "y", "name")
         data = {}
         for star in stars:
-            explored = star.player_id == player.id or star.id in explored_star_ids
-            owner_player = None
-            if not explored:
-                status = "unknown"
-                habitable = None
-            elif star.player_id == player.id:
-                status = "colonised_owned"
-                habitable = calculate_habitability_factor(player, star) >= 0
-            elif star.player_id:
-                status = "colonised_other"
-                habitable = calculate_habitability_factor(player, star) >= 0
-                owner_player = star.player.name if star.player else None
-            else:
-                status = "known_uncolonised"
-                habitable = calculate_habitability_factor(player, star) >= 0
-
-            if habitable is True:
-                status = "%s, habitable" % status
-            data[star.short_id] = {
-                "name": star.name,
-                "position": "(%s, %s)" % (star.x, star.y),
-                "status": status,
-                "explored": bool(explored),
-                "owner_player": owner_player,
-            }
+            detail = DetailBuilder(
+                player.game, selected=star.short_id, player=player
+            ).build_detail()
+            if not detail:
+                continue
+            status, explored = self._star_status(player, star, detail)
+            owner = self._report_owner_name(star, detail)
+            entry = self._build_map_object_summary_entry(detail, player=player, obj=star)
+            entry["status"] = status
+            entry["explored"] = explored
+            if owner is not None:
+                entry["owner"] = owner
+            self._append_relation_context(entry, player, star, detail)
+            if detail.get("population") is not None:
+                entry["population_kt"] = detail.get("population")
+            if detail.get("capacity") is not None:
+                entry["capacity"] = detail.get("capacity")
+            if detail.get("environmentals"):
+                entry["environment"] = self._cli_environment_summary(
+                    detail.get("environmentals")
+                )
+            if detail.get("resources"):
+                entry["resources"] = self._cli_resource_summary(
+                    detail.get("resources")
+                )
+            if detail.get("infrastructure_has_any"):
+                entry["infrastructure"] = self._cli_infrastructure_summary(
+                    detail.get("infrastructure") or {}
+                )
+            self._attach_cli_signal_blocks(entry, detail, player=player, obj=star)
+            data[star.short_id] = entry
         return data
 
     def _handle_fleets_command(self, raw, player):
@@ -733,6 +734,9 @@ class Command(BaseCommand):
         fleets = player.fleets.order_by("name", "x", "y")
         data = {}
         for fleet in fleets:
+            detail = DetailBuilder(
+                player.game, selected=fleet.short_id, player=player
+            ).build_detail()
             cargo = {
                 "ironium_kt": fleet.ironium_inventory,
                 "boranium_kt": fleet.boranium_inventory,
@@ -743,12 +747,9 @@ class Command(BaseCommand):
                 amount = int(getattr(fleet, f"{key}_inventory", 0) or 0)
                 if amount > 0:
                     cargo[f"{key}_kt"] = amount
-            data[fleet.short_id] = {
-                "name": fleet.name,
+            entry = self._build_map_object_summary_entry(detail or {}, player=player, obj=fleet)
+            entry.update({
                 "owner": fleet.player.name if fleet.player_id else None,
-                "is_owned": True,
-                "visibility": "current",
-                "position": "(%s, %s)" % (fleet.x, fleet.y),
                 "ship_count": fleet.ship_count,
                 "number_of_orders": fleet.orders.count(),
                 "integrity_pct": fleet.integrity,
@@ -756,7 +757,24 @@ class Command(BaseCommand):
                 "cargo_capacity_kt": fleet.cargo_capacity,
                 "cargo": cargo,
                 "max_safe_warp": fleet.max_safe_warp,
-            }
+            })
+            self._append_relation_context(entry, player, fleet, detail or {})
+            if detail and detail.get("fleet_motion_summary"):
+                entry["travel"] = detail.get("fleet_motion_summary")
+            if detail and detail.get("fleet_cargo"):
+                entry["composition"] = self._cli_fleet_composition_summary(
+                    detail.get("fleet_cargo") or {}
+                )
+            if detail and detail.get("fleet_inventory"):
+                entry["inventory"] = self._cli_fleet_inventory_summary(
+                    detail.get("fleet_inventory") or {}
+                )
+            if detail and detail.get("fleet_capabilities"):
+                entry["capabilities"] = self._cli_capabilities_summary(
+                    detail.get("fleet_capabilities") or []
+                )
+            self._attach_cli_signal_blocks(entry, detail or {}, player=player, obj=fleet)
+            data[fleet.short_id] = entry
         return data
 
     def _known_fleets_summary(self, player, scope):
@@ -772,12 +790,29 @@ class Command(BaseCommand):
             if scope == "other" and is_owned:
                 continue
 
-            entry = self._build_map_object_summary_entry(detail)
+            entry = self._build_map_object_summary_entry(detail, player=player, obj=fleet)
             entry["owner"] = self._report_owner_name(fleet, detail)
-            entry["is_owned"] = is_owned
+            self._append_relation_context(entry, player, fleet, detail)
             ship_count = self._fleet_ship_count_from_detail(fleet, detail)
             if ship_count is not None:
                 entry["ship_count"] = ship_count
+            fleet_cargo = detail.get("fleet_cargo") or {}
+            if fleet_cargo:
+                integrity = fleet_cargo.get("integrity")
+                if integrity is not None:
+                    entry["integrity_pct"] = integrity
+                entry["composition"] = self._cli_fleet_composition_summary(fleet_cargo)
+            if detail.get("fleet_motion_summary"):
+                entry["travel"] = detail.get("fleet_motion_summary")
+            if detail.get("fleet_inventory"):
+                entry["inventory"] = self._cli_fleet_inventory_summary(
+                    detail.get("fleet_inventory") or {}
+                )
+            if detail.get("fleet_capabilities"):
+                entry["capabilities"] = self._cli_capabilities_summary(
+                    detail.get("fleet_capabilities") or []
+                )
+            self._attach_cli_signal_blocks(entry, detail, player=player, obj=fleet)
             data[fleet.short_id] = entry
         return data
 
@@ -802,15 +837,21 @@ class Command(BaseCommand):
             ).build_detail()
             if not detail:
                 continue
-            entry = self._build_map_object_summary_entry(detail)
+            entry = self._build_map_object_summary_entry(detail, player=player, obj=anomaly)
+            anomaly_type = detail.get("anomaly_type_display") or detail.get("anomaly_type")
+            if anomaly_type:
+                entry["anomaly_type"] = anomaly_type
             if detail.get("anomaly_type"):
-                entry["anomaly_type"] = detail.get("anomaly_type")
+                entry["anomaly_type_code"] = detail.get("anomaly_type")
             if detail.get("stability") is not None:
                 entry["stability_pct"] = detail.get("stability")
             if detail.get("danger_level_display"):
                 entry["danger"] = detail.get("danger_level_display")
             if detail.get("heading") is not None:
                 entry["heading"] = round(float(detail.get("heading")), 1)
+            if detail.get("description"):
+                entry["description"] = detail.get("description")
+            self._attach_cli_signal_blocks(entry, detail, player=player, obj=anomaly)
             data[anomaly.short_id] = entry
         return data
 
@@ -878,13 +919,22 @@ class Command(BaseCommand):
                 continue
             if detail.get("unexplored") and not getattr(player.game, "no_scanners", False):
                 continue
-            entry = self._build_map_object_summary_entry(detail)
+            entry = self._build_map_object_summary_entry(detail, player=player, obj=salvage)
+            if detail.get("salvage_type_display"):
+                entry["salvage_type"] = detail.get("salvage_type_display")
+            if detail.get("salvage_type"):
+                entry["salvage_type_code"] = detail.get("salvage_type")
             salvage_inventory = detail.get("salvage_inventory") or {}
             total = salvage_inventory.get("total")
             if total is not None:
                 entry["total_minerals_kt"] = total
+            if salvage_inventory:
+                entry["inventory"] = self._cli_salvage_inventory_summary(
+                    salvage_inventory
+                )
             if detail.get("danger_level_display"):
                 entry["danger"] = detail.get("danger_level_display")
+            self._attach_cli_signal_blocks(entry, detail, player=player, obj=salvage)
             data[salvage.short_id] = entry
         return data
 
@@ -1021,22 +1071,478 @@ class Command(BaseCommand):
         current_max = player.notes.aggregate(max_note_id=Max("note_id")).get("max_note_id")
         return int(current_max or 0) + 1
 
-    def _build_map_object_summary_entry(self, detail):
+    def _build_map_object_summary_entry(self, detail, player=None, obj=None):
         if detail.get("unexplored"):
             visibility = "visible"
         elif detail.get("is_fleet") and detail.get("position_status") == "last_known":
             visibility = "last_known"
         else:
             visibility = "current" if detail.get("is_current") else "report"
+        x = detail.get("x")
+        y = detail.get("y")
         entry = {
             "name": detail.get("name"),
-            "position": "(%s, %s)" % (detail.get("x"), detail.get("y")),
+            "x": x,
+            "y": y,
             "visibility": visibility,
         }
+        if detail.get("is_star") or detail.get("is_fleet"):
+            entry["owner_known"] = bool(detail.get("owner_known"))
         if detail.get("report_year") is not None:
             entry["report_year"] = detail.get("report_year")
         if detail.get("report_tier"):
             entry["report_tier"] = detail.get("report_tier")
+        return entry
+
+    def _append_relation_context(self, entry, player, obj, detail):
+        relation, stance = self._object_relation_context(player, obj, detail)
+        if relation:
+            entry["owner_relation"] = relation
+        if stance:
+            entry["stance"] = stance
+        return entry
+
+    def _star_status(self, player, star, detail):
+        explored = not bool(detail.get("unexplored"))
+        owner = self._report_owner_name(star, detail)
+        if not explored:
+            status = "unknown"
+            habitable = None
+        elif star.player_id == player.id:
+            status = "colonised_owned"
+            habitable = calculate_habitability_factor(player, star) >= 0
+        elif owner:
+            status = "colonised_other"
+            habitable = calculate_habitability_factor(player, star) >= 0
+        else:
+            status = "known_uncolonised"
+            habitable = calculate_habitability_factor(player, star) >= 0
+        if habitable is True:
+            status = "%s, habitable" % status
+        return status, bool(explored)
+
+    def _object_relation_context(self, player, obj, detail):
+        if not player or not obj or not hasattr(obj, "player_id"):
+            return (None, None)
+        if getattr(obj, "player_id", None) == getattr(player, "id", None):
+            return ("own", None)
+        if not detail.get("owner_known"):
+            return ("unknown", None)
+        owner_name = detail.get("player")
+        if owner_name == "Abandoned":
+            return ("abandoned", None)
+        owner = getattr(obj, "player", None)
+        if owner is None:
+            return ("unowned", None)
+        stance_value = str(stance_towards(player, owner) or "").lower()
+        broad = {
+            STANCE_ALLIED: "ally",
+            STANCE_WARM: "ally",
+            STANCE_NEUTRAL: "neutral",
+            STANCE_COLD: "enemy",
+            STANCE_HOSTILE: "enemy",
+        }.get(stance_value, "other")
+        return (broad, stance_label(stance_value) if stance_value else None)
+
+    def _cli_key(self, label):
+        text = str(label or "").strip()
+        text = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", text)
+        text = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", text)
+        key = re.sub(r"[^a-z0-9]+", "_", text.lower())
+        return key.strip("_") or "value"
+
+    def _cli_environment_summary(self, environmentals):
+        data = {}
+        for label, item in (environmentals or {}).items():
+            data[self._cli_key(label)] = {
+                "display": item.get("display"),
+                "value": item.get("value"),
+                "percent": round(float(item.get("percent") or 0.0), 1),
+            }
+        return data
+
+    def _cli_resource_summary(self, resources):
+        data = {}
+        for key, item in (resources or {}).items():
+            label = item.get("label") or key
+            data[self._cli_key(label)] = {
+                "label": label,
+                "yield": item.get("yield"),
+                "surface": item.get("surface"),
+                "mining_rate": item.get("mining_rate"),
+            }
+        return data
+
+    def _cli_infrastructure_summary(self, infrastructure):
+        data = {}
+        for key, value in (infrastructure or {}).items():
+            if value in (None, "", False):
+                continue
+            if key == "Jobs" and isinstance(value, dict):
+                data["jobs"] = {
+                    "count": value.get("count"),
+                    "employment_pct": round(float(value.get("employment") or 0.0), 1),
+                }
+                continue
+            if key in ("DefensesTooltip", "FactoriesTooltip"):
+                continue
+            data[self._cli_key(key)] = value
+        return data
+
+    def _cli_fleet_composition_summary(self, fleet_cargo):
+        data = {}
+        ship_count = fleet_cargo.get("ship_count")
+        integrity = fleet_cargo.get("integrity")
+        if ship_count is not None:
+            data["ship_count"] = ship_count
+        if integrity is not None:
+            data["integrity_pct"] = integrity
+        for key in (
+            "offense_modifier",
+            "defense_modifier",
+            "has_bombs",
+            "has_miners",
+            "has_fuel_factory",
+            "fuel_factory_mg_per_year",
+            "fuel_factory_max_warp",
+            "has_wormhole_drive",
+        ):
+            if fleet_cargo.get(key) not in (None, "", False):
+                data[key] = fleet_cargo.get(key)
+        return data
+
+    def _cli_fleet_inventory_summary(self, inventory):
+        data = {}
+        for key, item in (inventory or {}).items():
+            label = item.get("label") or key
+            data[self._cli_key(label)] = {
+                "label": label,
+                "amount": item.get("amount"),
+                "display": item.get("display"),
+                "percent": round(float(item.get("percent") or 0.0), 1),
+            }
+        return data
+
+    def _cli_capabilities_summary(self, capabilities):
+        data = {}
+        for item in capabilities or []:
+            label = item.get("label")
+            value = item.get("value")
+            if not label or value in (None, ""):
+                continue
+            data[self._cli_key(label)] = value
+        return data
+
+    def _cli_salvage_inventory_summary(self, salvage_inventory):
+        entry = {
+            "total_kt": salvage_inventory.get("total"),
+            "composition_unknown": bool(salvage_inventory.get("composition_unknown")),
+        }
+        items = {}
+        for item in salvage_inventory.get("items") or []:
+            label = item.get("label")
+            amount = item.get("amount")
+            if not label or amount is None:
+                continue
+            items[self._cli_key(label)] = {
+                "label": label,
+                "amount": amount,
+            }
+        if items:
+            entry["items"] = items
+        return entry
+
+    def _cli_nearby_objects_summary(self, detail):
+        selected_id = detail.get("selected_id")
+        items = []
+        for item in detail.get("objects_here") or []:
+            if item.get("short_id") == selected_id:
+                continue
+            entry = {
+                "name": item.get("name"),
+                "object_type": item.get("type"),
+            }
+            if item.get("short_id"):
+                entry["short_id"] = item.get("short_id")
+            items.append(entry)
+        return items
+
+    def _cli_co_located_counts(self, detail):
+        counts = {
+            "stars": 0,
+            "fleets": 0,
+            "salvage": 0,
+            "anomalies": 0,
+        }
+        for item in self._cli_nearby_objects_summary(detail):
+            object_type = item.get("object_type")
+            if object_type == "star":
+                counts["stars"] += 1
+            elif object_type == "fleet":
+                counts["fleets"] += 1
+            elif object_type == "salvage":
+                counts["salvage"] += 1
+            elif object_type == "anomaly":
+                counts["anomalies"] += 1
+        counts["total"] = sum(counts.values())
+        return counts
+
+    def _cli_location_context(self, detail):
+        if detail.get("unexplored"):
+            return "visible_only"
+        if detail.get("is_star"):
+            return "star"
+        if detail.get("position_status") == "last_known":
+            return "last_known"
+        if detail.get("is_fleet"):
+            try:
+                speed = float(detail.get("travel_warp") or 0.0)
+            except (TypeError, ValueError):
+                speed = 0.0
+            if speed > 0.0:
+                return "in_transit"
+            if self._cli_co_located_counts(detail).get("stars", 0) > 0:
+                return "in_orbit"
+            return "stopped"
+        if self._cli_co_located_counts(detail).get("stars", 0) > 0:
+            return "at_star"
+        return "deep_space"
+
+    def _cli_context_summary(self, detail, player=None, obj=None):
+        context = {
+            "location": self._cli_location_context(detail),
+        }
+        if detail.get("position_status") == "last_known":
+            context["last_known"] = True
+        if detail.get("is_fleet"):
+            context["in_transit"] = bool(context["location"] == "in_transit")
+            if detail.get("effective_location_name"):
+                context["effective_location"] = detail.get("effective_location_name")
+            if (
+                player is not None and obj is not None and
+                getattr(obj, "player_id", None) == getattr(player, "id", None)
+            ):
+                context["idle"] = not obj.orders.exists()
+        co_located = self._cli_co_located_counts(detail)
+        if co_located.get("total", 0) > 0:
+            context["co_located"] = co_located
+        return context
+
+    def _cli_intel_summary(self, detail):
+        intel = {}
+        if detail.get("is_star") or detail.get("is_fleet"):
+            intel["owner_known"] = bool(detail.get("owner_known"))
+        if detail.get("is_star"):
+            tier = str(detail.get("report_tier") or "").lower()
+            intel.update({
+                "environment_known": bool(detail.get("environmentals")),
+                "population_known": detail.get("population") is not None,
+                "resources_known": bool(detail.get("resources")) or tier in ("advanced", "encounter", "ownership"),
+                "infrastructure_known": (
+                    bool(detail.get("infrastructure_has_any")) or
+                    tier in ("encounter", "ownership") or
+                    bool(detail.get("is_current") and detail.get("infrastructure") is not None)
+                ),
+            })
+        elif detail.get("is_fleet"):
+            name = str(detail.get("name") or "").strip()
+            intel.update({
+                "name_known": name not in ("", "Unknown Fleet"),
+                "composition_known": bool(detail.get("fleet_cargo")),
+                "cargo_known": bool(detail.get("fleet_inventory")),
+                "capabilities_known": bool(detail.get("fleet_capabilities")),
+            })
+        elif detail.get("is_salvage"):
+            inventory = detail.get("salvage_inventory") or {}
+            intel.update({
+                "type_known": detail.get("salvage_type_display") not in (None, "???"),
+                "total_known": inventory.get("total") is not None,
+                "inventory_known": bool(inventory) and not bool(inventory.get("composition_unknown")),
+                "danger_known": bool(detail.get("danger_level_display")),
+            })
+        elif detail.get("is_anomaly"):
+            intel.update({
+                "type_known": bool(detail.get("anomaly_type")),
+                "stability_known": detail.get("stability") is not None,
+                "danger_known": bool(detail.get("danger_level_display")),
+                "description_known": bool(detail.get("description")),
+            })
+        return intel
+
+    def _iter_visible_objects_at_location_for_cli(self, player, obj, x, y):
+        if not player or x is None or y is None:
+            return
+        game = player.game
+        candidates = []
+        candidates.extend(Star.objects.filter(game=game, x=x, y=y).order_by("id"))
+        candidates.extend(Fleet.objects.filter(game=game, x=x, y=y).order_by("id"))
+        candidates.extend(Salvage.objects.filter(game=game, x=x, y=y).order_by("id"))
+        candidates.extend(Anomaly.objects.filter(game=game, x=x, y=y).order_by("id"))
+        for other in candidates:
+            if obj is not None and other.__class__ == obj.__class__ and other.id == obj.id:
+                continue
+            if isinstance(other, (Fleet, Salvage)) and not self._is_cli_object_discoverable(player, other):
+                continue
+            yield other
+
+    def _cli_contact_summary(self, detail, player=None, obj=None):
+        if not player or obj is None:
+            return None
+        x = detail.get("x")
+        y = detail.get("y")
+        flags = {}
+        for other in self._iter_visible_objects_at_location_for_cli(player, obj, x, y) or []:
+            if not hasattr(other, "player_id"):
+                continue
+            other_detail = DetailBuilder(
+                player.game,
+                selected=other.short_id,
+                player=player,
+            ).build_detail()
+            if not other_detail or other_detail.get("unexplored"):
+                continue
+            relation, _stance = self._object_relation_context(player, other, other_detail)
+            if not relation or relation == "own":
+                continue
+            flags["%s_present" % relation] = True
+        return flags or None
+
+    def _cli_action_hints(self, detail, player=None, obj=None):
+        if not player or obj is None:
+            return None
+        if not isinstance(obj, Fleet):
+            return None
+        if getattr(obj, "player_id", None) != getattr(player, "id", None):
+            return None
+        actions = {
+            "idle": not obj.orders.exists(),
+            "can_transfer": bool((detail.get("transfer_targets") or {}).get("targets")),
+            "can_refuel": bool(detail.get("refuel_targets")),
+            "can_transfer_ownership": bool(detail.get("transfer_recipients")),
+            "can_colonise": bool((detail.get("colonise_targets") or {}).get("targets")),
+            "can_bomb": bool((detail.get("bomb_targets") or {}).get("targets")),
+            "can_remote_mine": bool((detail.get("remotemine_targets") or {}).get("targets")),
+            "can_patrol": bool((detail.get("patrol_targets") or {}).get("targets")),
+        }
+        return actions
+
+    def _attach_cli_signal_blocks(self, entry, detail, player=None, obj=None, include_actions=False):
+        entry["context"] = self._cli_context_summary(detail, player=player, obj=obj)
+        entry["intel"] = self._cli_intel_summary(detail)
+        if include_actions:
+            contacts = self._cli_contact_summary(detail, player=player, obj=obj)
+            if contacts:
+                entry["contacts"] = contacts
+            actions = self._cli_action_hints(detail, player=player, obj=obj)
+            if actions:
+                entry["actions"] = actions
+        return entry
+
+    def _cli_detail_base_entry(self, detail, player=None, obj=None):
+        entry = self._build_map_object_summary_entry(detail, player=player, obj=obj)
+        entry["object_type"] = self._report_object_class(detail)
+        if detail.get("unexplored"):
+            entry["unexplored"] = True
+        return entry
+
+    def _append_detail_common_context(self, entry, detail, player=None, obj=None):
+        owner = self._report_owner_name(obj, detail) if obj is not None else detail.get("player")
+        if owner is not None:
+            entry["owner"] = owner
+        self._append_relation_context(entry, player, obj, detail)
+        if detail.get("position_status") == "last_known":
+            entry["location_status"] = "last_known"
+        if detail.get("last_known_position"):
+            entry["last_known_position"] = detail.get("last_known_position")
+        if detail.get("last_known_report_year") is not None:
+            entry["last_known_report_year"] = detail.get("last_known_report_year")
+        nearby = self._cli_nearby_objects_summary(detail)
+        if nearby:
+            entry["nearby_objects"] = nearby
+        return entry
+
+    def _format_star_detail_for_cli(self, entry, detail, player=None, obj=None):
+        if player is not None and obj is not None:
+            status, explored = self._star_status(player, obj, detail)
+            entry["status"] = status
+            entry["explored"] = explored
+        if detail.get("population") is not None:
+            entry["population_kt"] = detail.get("population")
+        if detail.get("population_change") is not None:
+            entry["population_change_kt"] = detail.get("population_change")
+        if detail.get("capacity") is not None:
+            entry["capacity"] = detail.get("capacity")
+        if detail.get("is_survivable") is not None:
+            entry["survivable"] = bool(detail.get("is_survivable"))
+        if detail.get("environmentals"):
+            entry["environment"] = self._cli_environment_summary(
+                detail.get("environmentals")
+            )
+        if detail.get("resources"):
+            entry["resources"] = self._cli_resource_summary(detail.get("resources"))
+        if detail.get("infrastructure_has_any"):
+            entry["infrastructure"] = self._cli_infrastructure_summary(
+                detail.get("infrastructure") or {}
+            )
+        return entry
+
+    def _format_fleet_detail_for_cli(self, entry, detail):
+        if detail.get("fleet_motion_summary"):
+            entry["travel"] = detail.get("fleet_motion_summary")
+        if detail.get("travel_warp") is not None:
+            entry["travel_warp"] = detail.get("travel_warp")
+        if detail.get("heading") is not None:
+            entry["heading"] = detail.get("heading")
+        if detail.get("warp_advantage") is not None:
+            entry["warp_advantage"] = detail.get("warp_advantage")
+        if detail.get("is_cloaked"):
+            entry["is_cloaked"] = True
+        if detail.get("fleet_cargo"):
+            entry["composition"] = self._cli_fleet_composition_summary(
+                detail.get("fleet_cargo") or {}
+            )
+        if detail.get("fleet_inventory"):
+            entry["inventory"] = self._cli_fleet_inventory_summary(
+                detail.get("fleet_inventory") or {}
+            )
+        if detail.get("fleet_capabilities"):
+            entry["capabilities"] = self._cli_capabilities_summary(
+                detail.get("fleet_capabilities") or []
+            )
+        return entry
+
+    def _format_salvage_detail_for_cli(self, entry, detail):
+        salvage_type = detail.get("salvage_type_display")
+        if salvage_type is not None:
+            entry["salvage_type"] = salvage_type
+        if detail.get("salvage_type"):
+            entry["salvage_type_code"] = detail.get("salvage_type")
+        salvage_inventory = detail.get("salvage_inventory") or {}
+        total = salvage_inventory.get("total")
+        if total is not None:
+            entry["total_minerals_kt"] = total
+        if salvage_inventory:
+            entry["inventory"] = self._cli_salvage_inventory_summary(
+                salvage_inventory
+            )
+        if detail.get("danger_level_display"):
+            entry["danger"] = detail.get("danger_level_display")
+        return entry
+
+    def _format_anomaly_detail_for_cli(self, entry, detail):
+        anomaly_type = detail.get("anomaly_type_display") or detail.get("anomaly_type")
+        if anomaly_type:
+            entry["anomaly_type"] = anomaly_type
+        if detail.get("anomaly_type"):
+            entry["anomaly_type_code"] = detail.get("anomaly_type")
+        if detail.get("stability") is not None:
+            entry["stability_pct"] = detail.get("stability")
+        if detail.get("danger_level_display"):
+            entry["danger"] = detail.get("danger_level_display")
+        if detail.get("heading") is not None:
+            entry["heading"] = detail.get("heading")
+        if detail.get("description"):
+            entry["description"] = detail.get("description")
         return entry
 
     def _format_time_to_next_turn(self, next_generation):
@@ -1079,7 +1585,7 @@ class Command(BaseCommand):
         if detail.get("is_salvage"):
             return detail.get("salvage_type_display")
         if detail.get("is_anomaly") and detail.get("anomaly_type"):
-            return obj.get_anomaly_type_display()
+            return detail.get("anomaly_type_display") or obj.get_anomaly_type_display()
         return None
 
     def _report_fleet_count(self, obj, detail):
@@ -2222,7 +2728,7 @@ class Command(BaseCommand):
         if not detail:
             self.stdout.write("No detail available for: %s" % selected)
             return
-        detail = self._format_detail_for_cli(detail)
+        detail = self._format_detail_for_cli(detail, player=player, obj=obj)
         self._print_yaml({obj.short_id: detail})
 
     def _resolve_detail_object(self, player, selected):
@@ -2314,8 +2820,9 @@ class Command(BaseCommand):
             )
         return matches[0]
 
-    def _format_detail_for_cli(self, detail):
-        """Apply CLI-friendly numeric formatting to detail payload."""
+    def _format_detail_for_cli(self, detail, player=None, obj=None):
+        """Convert detail-panel payload into a CLI-focused report structure."""
+        detail = dict(detail or {})
         if detail.get("travel_warp") is not None:
             try:
                 travel_warp = float(detail.get("travel_warp"))
@@ -2341,18 +2848,42 @@ class Command(BaseCommand):
                 detail["last_known_report_year"] = detail.get("report_year")
 
         environmentals = detail.get("environmentals")
-        if not isinstance(environmentals, dict):
-            return detail
-        for _label, env_data in environmentals.items():
-            if not isinstance(env_data, dict):
-                continue
-            value = env_data.get("value")
-            if isinstance(value, (float, int)):
-                env_data["value"] = round(float(value), 2)
-            for key, val in list(env_data.items()):
-                if key.endswith("percent") and isinstance(val, (float, int)):
-                    env_data[key] = round(float(val), 1)
-        return detail
+        if isinstance(environmentals, dict):
+            for _label, env_data in environmentals.items():
+                if not isinstance(env_data, dict):
+                    continue
+                value = env_data.get("value")
+                if isinstance(value, (float, int)):
+                    env_data["value"] = round(float(value), 2)
+                for key, val in list(env_data.items()):
+                    if key.endswith("percent") and isinstance(val, (float, int)):
+                        env_data[key] = round(float(val), 1)
+
+        entry = self._cli_detail_base_entry(detail, player=player, obj=obj)
+        self._append_detail_common_context(
+            entry,
+            detail,
+            player=player,
+            obj=obj,
+        )
+        self._attach_cli_signal_blocks(
+            entry,
+            detail,
+            player=player,
+            obj=obj,
+            include_actions=True,
+        )
+        if detail.get("unexplored"):
+            return entry
+        if detail.get("is_star"):
+            return self._format_star_detail_for_cli(entry, detail, player=player, obj=obj)
+        if detail.get("is_fleet"):
+            return self._format_fleet_detail_for_cli(entry, detail)
+        if detail.get("is_salvage"):
+            return self._format_salvage_detail_for_cli(entry, detail)
+        if detail.get("is_anomaly"):
+            return self._format_anomaly_detail_for_cli(entry, detail)
+        return entry
 
     def _handle_messages_command(self, raw, player, game):
         try:

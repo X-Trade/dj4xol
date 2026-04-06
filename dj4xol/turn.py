@@ -2620,7 +2620,7 @@ class GameTurn():
             data = {
                 'name': (
                     format_basic_unknown_fleet_name(obj)
-                    if report_tier == 'basic' else obj.name
+                    if report_tier in ('basic', 'observed') else obj.name
                 ),
                 'x': obj.x,
                 'y': obj.y,

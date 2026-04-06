@@ -110,7 +110,7 @@ class PlayCommandTest(TestCase):
 
     def test_stars_command_shows_owner_for_explored_enemy_colony(self):
         enemy_home = self.player2.homeworld
-        Report.objects.create(
+        report = Report.objects.create(
             game=self.game,
             player=self.player1,
             year=self.game.year,
@@ -118,6 +118,14 @@ class PlayCommandTest(TestCase):
             target_id=enemy_home.id,
             cached_report='{}',
         )
+        report.set_report_data({
+            'name': enemy_home.name,
+            'x': enemy_home.x,
+            'y': enemy_home.y,
+            'player_name': self.player2.name,
+            'report_tier': 'advanced',
+        })
+        report.save()
         output = self._run_play(
             self.game.short_id,
             '--no-auth',
@@ -126,7 +134,7 @@ class PlayCommandTest(TestCase):
             input_values=['/stars', '/exit'],
         )
         self.assertIn('status: colonised_other', output)
-        self.assertIn('owner_player: %s' % self.player2.name, output)
+        self.assertIn('owner: %s' % self.player2.name, output)
 
     def test_fleets_command_outputs_fleet_summary(self):
         FleetOrders.objects.create(
@@ -149,10 +157,19 @@ class PlayCommandTest(TestCase):
         self.assertIn('number_of_orders', output)
         self.assertIn('integrity_pct', output)
         self.assertIn('max_safe_warp', output)
-        self.assertIn('position: (', output)
+        self.assertIn('x: %s' % self.player1.fleets.first().x, output)
+        self.assertIn('y: %s' % self.player1.fleets.first().y, output)
         self.assertIn('owner: %s' % self.player1.name, output)
-        self.assertIn('is_owned: true', output)
+        self.assertIn('owner_known: true', output)
+        self.assertIn('owner_relation: own', output)
         self.assertIn('visibility: current', output)
+        self.assertIn('context:', output)
+        self.assertIn('location: in_orbit', output)
+        self.assertIn('idle: false', output)
+        self.assertIn('intel:', output)
+        self.assertIn('composition_known: true', output)
+        self.assertIn('cargo_known: true', output)
+        self.assertIn('capabilities_known: true', output)
 
     def test_fleets_command_outputs_secret_resources_when_present(self):
         fleet = self.player1.fleets.first()
@@ -222,9 +239,52 @@ class PlayCommandTest(TestCase):
         )
         self.assertIn('%s:' % enemy_fleet.short_id, output)
         self.assertIn('owner: %s' % self.player2.name, output)
-        self.assertIn('is_owned: false', output)
+        self.assertIn('owner_relation: other', output)
+        self.assertIn('stance: Neutral', output)
         self.assertIn('visibility: current', output)
         self.assertIn('ship_count: 6', output)
+        self.assertIn('name_known: true', output)
+
+    def test_fleets_all_shows_unknown_relation_for_basic_fleet_contact(self):
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Silent Knife',
+            x=self.player2.homeworld.x + 9,
+            y=self.player2.homeworld.y + 9,
+            ship_count=6,
+            integrity=81,
+        )
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year - 1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report='{}',
+        )
+        report.set_report_data({
+            'name': 'Unknown Fleet',
+            'x': enemy_fleet.x,
+            'y': enemy_fleet.y,
+            'ship_count': enemy_fleet.ship_count,
+            'integrity': enemy_fleet.integrity,
+            'report_tier': 'basic',
+        })
+        report.save()
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/fleets all', '/exit'],
+        )
+        self.assertIn('%s:' % enemy_fleet.short_id, output)
+        self.assertIn('name: Unknown Fleet', output)
+        self.assertIn('owner_known: false', output)
+        self.assertIn('owner_relation: unknown', output)
+        self.assertIn('name_known: false', output)
 
     def test_fleets_other_excludes_owned_and_unknown_enemy_fleets(self):
         known_enemy = Fleet.objects.create(
@@ -840,9 +900,9 @@ class PlayCommandTest(TestCase):
             input_values=['/detail %s' % self.player1.homeworld.short_id, '/exit'],
         )
         self.assertIn('%s:' % self.player1.homeworld.short_id, output)
-        self.assertIn('selected_id: %s' % self.player1.homeworld.short_id, output)
-        self.assertIn('is_current: true', output)
-        self.assertIn('is_star: true', output)
+        self.assertIn('visibility: current', output)
+        self.assertIn('object_type: star', output)
+        self.assertIn('status: colonised_owned, habitable', output)
         self.assertIn('value: 1.23', output)
         self.assertIn('value: 0.99', output)
         self.assertIn('value: 2.0', output)
@@ -857,9 +917,11 @@ class PlayCommandTest(TestCase):
             input_values=['/detail %s' % self.player2.homeworld.short_id, '/exit'],
         )
         self.assertIn('%s:' % self.player2.homeworld.short_id, output)
-        self.assertIn('selected_id: %s' % self.player2.homeworld.short_id, output)
+        self.assertIn('visibility: visible', output)
         self.assertIn('unexplored: true', output)
-        self.assertIn('is_star: true', output)
+        self.assertIn('object_type: star', output)
+        self.assertIn('owner_known: false', output)
+        self.assertIn('owner_relation: unknown', output)
 
     def test_anomalies_command_lists_known_current_anomalies(self):
         anomaly = Anomaly.objects.create(
@@ -890,11 +952,15 @@ class PlayCommandTest(TestCase):
         self.assertIn('%s:' % anomaly.short_id, output)
         self.assertIn('name: Home Rift', output)
         self.assertIn('visibility: current', output)
-        self.assertIn('anomaly_type: RIFT', output)
+        self.assertIn('anomaly_type: Rift', output)
+        self.assertIn('x: %s' % anomaly.x, output)
+        self.assertIn('y: %s' % anomaly.y, output)
         self.assertIn('stability_pct: 77', output)
         self.assertIn('%s:' % hidden.short_id, output)
         self.assertIn('name: Hidden Nebula', output)
         self.assertIn('visibility: visible', output)
+        hidden_section = output.split('%s:' % hidden.short_id, 1)[1].split('%s:' % anomaly.short_id, 1)[0]
+        self.assertNotIn('anomaly_type:', hidden_section)
         self.assertNotIn('stability_pct: 44', output)
 
     def test_anomalies_command_shows_danger_when_known(self):
@@ -960,6 +1026,8 @@ class PlayCommandTest(TestCase):
         )
         self.assertIn('%s:' % salvage.short_id, output)
         self.assertIn('visibility: current', output)
+        self.assertIn('x: %s' % salvage.x, output)
+        self.assertIn('y: %s' % salvage.y, output)
         self.assertIn('total_minerals_kt: 23', output)
         self.assertNotIn('total_minerals_kt: 100', output)
 
@@ -1033,10 +1101,10 @@ class PlayCommandTest(TestCase):
             input_values=['/detail %s' % anomaly.short_id, '/exit'],
         )
         self.assertIn('%s:' % anomaly.short_id, output)
-        self.assertIn('selected_id: %s' % anomaly.short_id, output)
-        self.assertIn('is_anomaly: true', output)
-        self.assertIn('anomaly_type: WORMHOLE', output)
-        self.assertIn('stability: 61', output)
+        self.assertIn('object_type: anomaly', output)
+        self.assertIn('anomaly_type: Wormhole', output)
+        self.assertIn('anomaly_type_code: WORMHOLE', output)
+        self.assertIn('stability_pct: 61', output)
 
     def test_detail_command_supports_exact_quoted_name_lookup(self):
         home = self.player1.homeworld
@@ -1052,6 +1120,25 @@ class PlayCommandTest(TestCase):
         )
         self.assertIn('%s:' % home.short_id, output)
         self.assertIn('name: Null Haven', output)
+
+    def test_fleet_context_marks_in_transit_when_currently_moving(self):
+        fleet = self.player1.fleets.first()
+        fleet.x = self.player1.homeworld.x + 3
+        fleet.y = self.player1.homeworld.y + 4
+        fleet.travel_warp = 6
+        fleet.heading = 90.0
+        fleet.save(update_fields=['x', 'y', 'travel_warp', 'heading'])
+
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/fleets', '/exit'],
+        )
+        self.assertIn('%s:' % fleet.short_id, output)
+        self.assertIn('location: in_transit', output)
+        self.assertIn('in_transit: true', output)
 
     def test_detail_command_does_not_reveal_hidden_enemy_fleet_by_short_id(self):
         hidden_fleet = Fleet.objects.create(
@@ -1072,7 +1159,6 @@ class PlayCommandTest(TestCase):
         )
         self.assertIn('Object not found in this game: %s' % hidden_fleet.short_id, output)
         self.assertNotIn('Hidden Fang', output)
-        self.assertNotIn('selected_id: %s' % hidden_fleet.short_id, output)
 
     def test_detail_command_marks_last_known_position_for_stale_fleet_report(self):
         enemy_fleet = Fleet.objects.create(
@@ -1116,7 +1202,8 @@ class PlayCommandTest(TestCase):
             self.player1.short_id,
             input_values=['/detail %s' % enemy_fleet.short_id, '/exit'],
         )
-        self.assertIn('position_status: last_known', output)
+        self.assertIn('visibility: last_known', output)
+        self.assertIn('location_status: last_known', output)
         self.assertIn(
             'last_known_position: Empty Space (%s, %s)' % (
                 self.player1.homeworld.x + 9,
@@ -1126,7 +1213,7 @@ class PlayCommandTest(TestCase):
         )
         self.assertIn('last_known_report_year: %s' % (self.game.year - 1), output)
         self.assertIn(
-            "fleet_motion_summary: 'Last known position: Empty Space (%s, %s)'"
+            "travel: 'Last known position: Empty Space (%s, %s)'"
             % (
                 self.player1.homeworld.x + 9,
                 self.player1.homeworld.y + 4,
@@ -1153,7 +1240,6 @@ class PlayCommandTest(TestCase):
             input_values=['/detail %s' % hidden_salvage.short_id, '/exit'],
         )
         self.assertIn('Object not found in this game: %s' % hidden_salvage.short_id, output)
-        self.assertNotIn('selected_id: %s' % hidden_salvage.short_id, output)
 
     def test_detail_command_shows_basic_salvage_report_total_without_inventory_breakdown(self):
         salvage = Salvage.objects.create(
@@ -1181,11 +1267,10 @@ class PlayCommandTest(TestCase):
             self.player1.short_id,
             input_values=['/detail %s' % salvage.short_id, '/exit'],
         )
-        self.assertNotIn('salvage_type: ANCIENT_DEBRIS', output)
-        self.assertIn('salvage_type: null', output)
-        self.assertIn('salvage_type_display: ???', output)
-        self.assertIn('total: 20', output)
-        self.assertIn('thumbnail_blurred: true', output)
+        self.assertNotIn('salvage_type_code: ANCIENT_DEBRIS', output)
+        self.assertIn('salvage_type: ???', output)
+        self.assertIn('total_minerals_kt: 20', output)
+        self.assertIn('composition_unknown: true', output)
         self.assertNotIn('Ironium', output)
 
     def test_salvages_alias_is_removed(self):
@@ -1406,6 +1491,17 @@ class PlayCommandTest(TestCase):
         self.assertIn('name: Known Rift', output)
         self.assertIn('subclass: Rift', output)
         self.assertNotIn('%s:' % hidden_anomaly.short_id, output)
+
+    def test_stars_command_uses_readable_snake_case_infrastructure_keys(self):
+        output = self._run_play(
+            self.game.short_id,
+            '--no-auth',
+            '--player',
+            self.player1.short_id,
+            input_values=['/stars', '/exit'],
+        )
+        self.assertIn('factories_bp:', output)
+        self.assertIn('labs_rp:', output)
 
     def test_status_command_shows_quorum_progress(self):
         self.player2.turned_in = True

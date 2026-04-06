@@ -221,6 +221,57 @@ class TestMessageFiltering(TestCase):
         self.assertEqual(page_messages[1].priority, False)
         self.assertEqual(page_messages[2].id, older_priority.id)
 
+    def test_message_history_filters_by_search_query(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        matching = GameMessage.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            message="Fleet entered the wormhole corridor",
+        )
+        GameMessage.objects.create(
+            game=game,
+            player=player,
+            year=game.year,
+            message="Colony finished factory construction",
+        )
+        client = Client()
+        client.force_login(player.account.django_user)
+
+        response = client.get(reverse('dj4xol:message_history', args=[game.short_id]), {
+            'q': 'wormhole',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        page_messages = list(response.context['page_obj'].object_list)
+        self.assertEqual(len(page_messages), 1)
+        self.assertEqual(page_messages[0].id, matching.id)
+        self.assertContains(response, 'value="wormhole"', html=False)
+        self.assertContains(response, 'Fleet entered the wormhole corridor')
+        self.assertNotContains(response, 'Colony finished factory construction')
+
+    def test_message_history_pagination_preserves_search_query(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        for i in range(55):
+            GameMessage.objects.create(
+                game=game,
+                player=player,
+                year=game.year,
+                message="Searchable message %s" % i,
+            )
+        client = Client()
+        client.force_login(player.account.django_user)
+
+        response = client.get(reverse('dj4xol:message_history', args=[game.short_id]), {
+            'q': 'Searchable',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'page=2', html=False)
+        self.assertContains(response, 'q=Searchable', html=False)
+
     def test_last_seen_year_updated_on_view(self):
         """last_seen_year should be updated when viewing the game."""
         game = default_game(stars=5)

@@ -3166,6 +3166,10 @@ def message_history(request, game_short_id):
     if priority_only:
         messages_qs = messages_qs.filter(priority=True)
 
+    q = (request.GET.get('q') or '').strip()
+    if q:
+        messages_qs = messages_qs.filter(message__icontains=q)
+
     # Get available years and categories for filter dropdowns
     all_years = player.messages.values_list('year', flat=True).distinct().order_by('-year')
     categories = GameMessage.CATEGORY_CHOICES
@@ -3190,6 +3194,7 @@ def message_history(request, game_short_id):
         'current_year': year_filter,
         'current_category': category_filter,
         'priority_only': priority_only,
+        'search_query': q,
         'user_theme': account.theme if account else 'classic',
         'is_owner': account == game.owner,
     })
