@@ -1,5 +1,9 @@
 (function() {
     var HOLD_MS = 350;
+    var isCoarsePointer = !!(
+        window.matchMedia &&
+        window.matchMedia('(hover: none), (pointer: coarse)').matches
+    );
     var targets = document.querySelectorAll('.thumb-pop-target');
     if (!targets.length) return;
 
@@ -50,8 +54,15 @@
         var left = rect.left - (width - rect.width) / 2;
         var top = rect.top - (height - rect.height) / 2;
 
-        // Touch UX: position pop above the finger, not directly over thumbnail.
-        if (state.isTouch && state.point) {
+        // On coarse pointers, anchor from the thumbnail itself rather than the
+        // touch point so long-press previews remain aligned while scrolling.
+        if (state.isTouch && isCoarsePointer) {
+            left = rect.left + (rect.width / 2) - (width / 2);
+            top = rect.top - height - 12;
+            if (top < 6) {
+                top = rect.bottom + 12;
+            }
+        } else if (state.isTouch && state.point) {
             left = state.point.x - (width / 2);
             top = state.point.y - height - 16;
         }

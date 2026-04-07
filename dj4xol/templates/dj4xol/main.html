@@ -589,6 +589,10 @@
         })();
         (function floatingTooltips() {
             document.body.classList.add('floating-tooltips-enabled');
+            var isCoarsePointer = !!(
+                window.matchMedia &&
+                window.matchMedia('(hover: none), (pointer: coarse)').matches
+            );
 
             var tooltip = document.createElement('div');
             tooltip.className = 'global-floating-tooltip';
@@ -610,16 +614,35 @@
 
                 var rect = target.getBoundingClientRect();
                 var x = Number.isFinite(clientX) ? clientX : (rect.left + rect.width / 2);
-                var y = Number.isFinite(clientY) ? clientY : rect.top;
+                var left = clamp(
+                    x - (tooltip.offsetWidth / 2),
+                    margin,
+                    Math.max(margin, viewportW - tooltip.offsetWidth - margin)
+                );
+                var top;
 
-                var prefLeft = x - (tooltip.offsetWidth / 2);
-                var left = clamp(prefLeft, margin, Math.max(margin, viewportW - tooltip.offsetWidth - margin));
-
-                // Prefer above pointer/target; fall back below if no room.
-                var aboveTop = y - tooltip.offsetHeight - 12;
-                var top = aboveTop;
-                if (top < margin) {
-                    top = rect.bottom + 10;
+                if (isCoarsePointer) {
+                    left = clamp(
+                        (rect.left + (rect.width / 2)) - (tooltip.offsetWidth / 2),
+                        margin,
+                        Math.max(margin, viewportW - tooltip.offsetWidth - margin)
+                    );
+                    var coarseAboveTop = rect.top - tooltip.offsetHeight - 10;
+                    var coarseBelowTop = rect.bottom + 10;
+                    top = rect.top < (viewportH * 0.45) ? coarseBelowTop : coarseAboveTop;
+                    if (top < margin) {
+                        top = coarseBelowTop;
+                    }
+                    if ((top + tooltip.offsetHeight) > (viewportH - margin)) {
+                        top = coarseAboveTop;
+                    }
+                } else {
+                    var y = Number.isFinite(clientY) ? clientY : rect.top;
+                    var aboveTop = y - tooltip.offsetHeight - 12;
+                    top = aboveTop;
+                    if (top < margin) {
+                        top = rect.bottom + 10;
+                    }
                 }
                 top = clamp(top, margin, Math.max(margin, viewportH - tooltip.offsetHeight - margin));
 
@@ -698,8 +721,7 @@
                     hideTooltip();
                     return;
                 }
-                var touch = (e.touches && e.touches[0]) ? e.touches[0] : null;
-                showTooltip(target, touch ? touch.clientX : undefined, touch ? touch.clientY : undefined);
+                showTooltip(target);
             }, { passive: true });
 
             document.addEventListener('touchend', hideTooltip, { passive: true });

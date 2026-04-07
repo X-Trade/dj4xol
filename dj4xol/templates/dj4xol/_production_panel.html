@@ -163,8 +163,28 @@ function positionTooltip(e, item) {
     tooltip.innerHTML = sourceTooltip.innerHTML;
     tooltip.style.display = 'block';
 
-    var x = e.clientX + 12;
-    var y = e.clientY + 12;
+    var isCoarsePointer = !!(
+        window.matchMedia &&
+        window.matchMedia('(hover: none), (pointer: coarse)').matches
+    );
+    var rect = item.getBoundingClientRect();
+    var x;
+    var y;
+    if (isCoarsePointer) {
+        x = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2);
+        y = rect.top < (window.innerHeight * 0.45)
+            ? rect.bottom + 10
+            : rect.top - tooltip.offsetHeight - 10;
+        if (y < 8) {
+            y = rect.bottom + 10;
+        }
+        if ((y + tooltip.offsetHeight) > (window.innerHeight - 8)) {
+            y = rect.top - tooltip.offsetHeight - 10;
+        }
+    } else {
+        x = e.clientX + 12;
+        y = e.clientY + 12;
+    }
     var maxX = window.innerWidth - tooltip.offsetWidth - 8;
     var maxY = window.innerHeight - tooltip.offsetHeight - 8;
 
