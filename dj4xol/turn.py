@@ -237,8 +237,8 @@ def format_basic_hidden_salvage_name(salvage):
     return getattr(salvage, 'name', '') or ''
 
 
-# Random event probability per colonized star per turn
-RANDOM_EVENT_CHANCE = 0.01  # 1%
+# Random event probability per turn
+RANDOM_EVENT_CHANCE = 0.05  # 5%
 COLONY_VANISHED_EVENT_WEIGHT = 0.0005  # Extreme outlier; should be very rare even in very long games.
 RESEARCH_BREAKTHROUGH_CHANCE = 0.08  # 8% per player-year with active labs
 
@@ -10891,17 +10891,22 @@ class GameTurn():
             self._create_research_unlock_messages(player, [result])
 
     def random_events(self):
-        """Process random events for colonized planets."""
+        """Process at most one random event per turn."""
         if not self.game.random_events:
             return
-
-        for star in self.game.stars.filter(player__isnull=False, colonists__gt=0):
-            if random.random() < RANDOM_EVENT_CHANCE:
-                self._trigger_random_event(star)
+        if random.random() >= RANDOM_EVENT_CHANCE:
+            return
+        stars = list(self.game.stars.all())
+        if not stars:
+            return
+        self._trigger_random_event(random.choice(stars))
 
     def _trigger_random_event(self, star):
         """Select and apply a random event to a star."""
         player = star.player
+        if not player or int(getattr(star, 'colonists', 0) or 0) <= 0:
+            self._apply_random_event(star, 'planetoid')
+            return
         luck = player.race_type.luck_multiplier
 
         # Event pool with base weights (positive weight, negative weight)
@@ -10946,7 +10951,7 @@ class GameTurn():
     def _apply_planetoid_event(self, star):
         """Apply environmental nudge from passing planetoid."""
         player = star.player
-        luck = player.race_type.luck_multiplier
+        luck = getattr(getattr(player, 'race_type', None), 'luck_multiplier', 1.0)
         # Luck biases toward positive: range shifts from [-0.5, 0.5] toward positive
         intensity = random.uniform(-0.5, 0.5) + (luck - 1.0) * 0.3
         intensity = max(-1.0, min(1.0, intensity))
@@ -10956,20 +10961,24 @@ class GameTurn():
                              k=random.randint(1, 3))
         for env in envs:
             current = getattr(star, env)
-            ideal = getattr(player, f'{env}_center')
-            # Positive intensity moves toward player's ideal, negative moves away
-            direction = 1 if ideal > current else -1
-            if intensity < 0:
-                direction = -direction
+            if player is not None:
+                ideal = getattr(player, f'{env}_center')
+                # Positive intensity moves toward player's ideal, negative moves away
+                direction = 1 if ideal > current else -1
+                if intensity < 0:
+                    direction = -direction
+            else:
+                direction = random.choice([-1, 1])
             nudge = random.uniform(0.05, 0.15) * direction
             new_value = max(0.0, min(2.0, current + nudge))
             setattr(star, env, new_value)
         star.save()
 
-        factory = PlanetoidEventMessageFactory(self.game, star.player, star, intensity=intensity)
-        msg = factory.new_message()
-        msg.year = self.game.year
-        msg.save()
+        if star.player:
+            factory = PlanetoidEventMessageFactory(self.game, star.player, star, intensity=intensity)
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
 
     def _apply_population_boom(self, star):
         """Apply population boom - 5-15% increase."""

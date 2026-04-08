@@ -936,11 +936,48 @@ class TestRandomEvents(TestCase):
         homeworld = player.homeworld
         initial_messages = player.messages.count()
         # Force a random event to trigger
-        with patch('dj4xol.turn.random.random', return_value=0.001):  # Below 0.01 threshold
+        with patch('dj4xol.turn.random.random', return_value=0.001):  # Below 0.05 threshold
             with patch('dj4xol.turn.random.choice', side_effect=lambda x: x[0]):
                 GameTurn(game).generate_turn()
         # Should have at least one new message (could be growth + event)
         self.assertGreater(player.messages.count(), initial_messages)
+
+    def test_random_events_roll_once_per_turn_and_trigger_at_most_one_star(self):
+        game = default_game(stars=5)
+        game.random_events = True
+        game.save()
+        player = game.players.first()
+        extra_star = game.stars.exclude(pk=player.homeworld.pk).first()
+        extra_star.player = player
+        extra_star.colonists = 5000
+        extra_star.save(update_fields=['player', 'colonists'])
+
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.random', return_value=0.001):
+            with patch('dj4xol.turn.random.choice', return_value=extra_star):
+                with patch.object(turn, '_trigger_random_event') as trigger_mock:
+                    turn.random_events()
+
+        trigger_mock.assert_called_once_with(extra_star)
+
+    def test_unowned_star_random_event_only_uses_planetoid(self):
+        game = default_game(stars=5)
+        game.random_events = True
+        game.save()
+        player = game.players.first()
+        unowned_star = game.stars.exclude(pk=player.homeworld.pk).first()
+        unowned_star.player = None
+        unowned_star.colonists = 0
+        unowned_star.gravity = 1.0
+        unowned_star.save(update_fields=['player', 'colonists', 'gravity'])
+
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.random.random', return_value=0.001):
+            with patch('dj4xol.turn.random.choice', side_effect=[unowned_star, -1]):
+                with patch.object(turn, '_apply_random_event') as apply_mock:
+                    turn.random_events()
+
+        apply_mock.assert_called_once_with(unowned_star, 'planetoid')
 
     def test_population_boom_increases_colonists(self):
         """Population boom event should increase colonists."""
@@ -5435,6 +5472,49 @@ class TestFleetCargo(TestCase):
             details['fleet_capabilities'],
         )
 
+    def test_owned_fleet_scanners_show_qualitative_level_in_no_scanners_game(self):
+        game = default_game(stars=2)
+        game.no_scanners = True
+        game.save(update_fields=['no_scanners'])
+        player = game.players.first()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Scanner Fleet',
+            x=10,
+            y=10,
+            ship_count=1,
+            integrity=100,
+            max_safe_warp=5,
+            basic_scanner_range=6,
+            advanced_scanner_range=2,
+        )
+
+        detail_builder = DetailBuilder(
+            game, x=10, y=10, selected=fleet.short_id.lower(), player=player
+        )
+        details = detail_builder.build_detail()
+
+        self.assertIn(
+            {'label': 'Scanners', 'value': 'Advanced'},
+            details['fleet_capabilities'],
+        )
+
+    def test_owned_star_dyson_sphere_uses_complete_wording(self):
+        from ..objectdetails import DetailBuilder
+
+        game = default_game(stars=2)
+        player = game.players.first()
+        star = player.homeworld
+        star.has_dyson_sphere = True
+        star.save(update_fields=['has_dyson_sphere'])
+
+        detail = DetailBuilder(
+            game, x=star.x, y=star.y, selected=star.short_id, player=player
+        ).build_detail()
+        self.assertEqual(detail['infrastructure']['DysonSphere'], 'Complete')
+
     def test_object_details_fleet_composition_includes_tech_modifiers(self):
         from ..objectdetails import DetailBuilder
 
@@ -7831,6 +7911,49 @@ class TestFleetTransferOrders(TestCase):
             game, x=star.x, y=star.y, selected=star.short_id, player=player
         ).build_detail()
         self.assertEqual(detail['infrastructure']['Scanners'], '6ly/2ly (+20%)')
+
+    def test_owned_star_scanners_show_qualitative_level_in_no_scanners_game(self):
+        from ..objectdetails import DetailBuilder
+        from ..models import ResearchCategory, Technology
+        from ..research import (
+            ensure_player_research_rows,
+            sync_player_technology_unlocks_from_research,
+        )
+
+        game = default_game(stars=2)
+        game.no_scanners = True
+        game.save(update_fields=['no_scanners'])
+        player = game.players.first()
+        star = player.homeworld
+
+        Technology.objects.all().delete()
+        ResearchCategory.objects.all().delete()
+        category = ResearchCategory.objects.create(
+            code='TEST_SCAN_INFRA_NS',
+            name='No Scanners Infrastructure',
+            enabled=True,
+        )
+        Technology.objects.create(
+            category=category,
+            level=1,
+            name='Orbital Sensor Grid',
+            tech_type='INFRASTRUCTURE',
+            params_json='{"basic_scanner_range": 5, "advanced_scanner_range": 2}',
+            enabled=True,
+        )
+        for row in ensure_player_research_rows(player):
+            row.current_level = 1.0
+            row.save(update_fields=['current_level'])
+        sync_player_technology_unlocks_from_research(
+            player,
+            category_ids=[category.id],
+            year=getattr(game, 'year', 0),
+        )
+
+        detail = DetailBuilder(
+            game, x=star.x, y=star.y, selected=star.short_id, player=player
+        ).build_detail()
+        self.assertEqual(detail['infrastructure']['Scanners'], 'Advanced')
 
     def test_foreign_star_encounter_report_shows_scanners_without_trait_suffix(self):
         from ..objectdetails import DetailBuilder

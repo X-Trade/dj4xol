@@ -619,14 +619,13 @@ class DetailBuilder():
                     'Shipyards': data.get('shipyards'),
                     'Cities': int(data.get('cities', 0) or 0),
                     'Megacities': int(data.get('megacities', 0) or 0),
-                    'Administration': (
-                        'Level %s' % int(data.get('administration_level', 0) or 0)
-                        if data.get('has_administration') and int(data.get('administration_level', 0) or 0) > 0
-                        else 'Installed'
-                        if data.get('has_administration')
-                        else None
+                    'Administration': self._format_administration_status(
+                        data.get('has_administration'),
+                        data.get('administration_level', 0),
                     ),
-                    'DysonSphere': 'Online' if data.get('has_dyson_sphere') else None,
+                    'DysonSphere': self._format_dyson_sphere_status(
+                        data.get('has_dyson_sphere')
+                    ),
                     'Jobs': (
                         {
                             'count': data.get('jobs_count', 0),
@@ -1928,17 +1927,12 @@ class DetailBuilder():
                 'Shipyards': self.selected_obj.shipyards,
                 'Cities': int(getattr(self.selected_obj, 'cities', 0) or 0),
                 'Megacities': int(getattr(self.selected_obj, 'megacities', 0) or 0),
-                'Administration': (
-                    'Level %s' % administration_level
-                    if self.selected_obj.has_administration and administration_level > 0
-                    else 'Installed'
-                    if self.selected_obj.has_administration
-                    else None
+                'Administration': self._format_administration_status(
+                    self.selected_obj.has_administration,
+                    administration_level,
                 ),
-                'DysonSphere': (
-                    'Online'
-                    if bool(getattr(self.selected_obj, 'has_dyson_sphere', False))
-                    else None
+                'DysonSphere': self._format_dyson_sphere_status(
+                    bool(getattr(self.selected_obj, 'has_dyson_sphere', False))
                 ),
                 'Jobs': {'count': jobs, 'employment': employment},
             }
@@ -1962,6 +1956,22 @@ class DetailBuilder():
             return base_text
         percent = int(round((multiplier - 1.0) * 100.0))
         return f"{base_text} ({percent:+d}%)"
+
+    def _format_administration_status(self, has_administration, administration_level=0):
+        if not has_administration:
+            return None
+        try:
+            administration_level = int(administration_level or 0)
+        except (TypeError, ValueError):
+            administration_level = 0
+        if administration_level > 0:
+            return 'Level %s' % administration_level
+        return 'Installed'
+
+    def _format_dyson_sphere_status(self, has_dyson_sphere):
+        if not has_dyson_sphere:
+            return None
+        return 'Complete'
 
     def _can_view_foreign_orders_debug(self):
         if not self.allow_foreign_orders_debug:
@@ -2471,9 +2481,14 @@ class DetailBuilder():
                 advanced_scanner_range,
                 scanner_suffix,
             )
-            if scanner_display:
+            scanner_label = (
+                'Scanners'
+                if getattr(self.game, 'no_scanners', False)
+                else 'Scanner Range'
+            )
+            if scanner_display is not None:
                 capabilities.append({
-                    'label': 'Scanner Range',
+                    'label': scanner_label,
                     'value': scanner_display,
                 })
         return capabilities or None
@@ -2559,6 +2574,12 @@ class DetailBuilder():
             advanced_val = int(advanced or 0)
         except (TypeError, ValueError):
             advanced_val = 0
+        if getattr(self.game, 'no_scanners', False):
+            if advanced_val > 0:
+                return 'Advanced'
+            if basic_val > 0:
+                return 'Basic'
+            return 'None'
         if basic_val <= 0 and advanced_val <= 0:
             return None
         suffix = str(suffix or '')

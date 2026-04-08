@@ -2077,6 +2077,7 @@ class ScannerReportTest(TestCase):
             year=getattr(self.game, 'year', 0),
         )
         self.enemy_star.has_administration = True
+        self.enemy_star.has_dyson_sphere = True
         self.enemy_star.save()
 
         Fleet.objects.create(
@@ -2145,6 +2146,10 @@ class ScannerReportTest(TestCase):
         self.assertEqual(
             star_detail.get('infrastructure', {}).get('Administration'),
             'Installed',
+        )
+        self.assertEqual(
+            star_detail.get('infrastructure', {}).get('DysonSphere'),
+            'Complete',
         )
 
         fleet_report = Report.objects.get(
