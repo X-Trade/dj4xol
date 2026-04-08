@@ -13292,28 +13292,28 @@ class TestBombardmentOrders(TestCase):
         with patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
             low_def_damage = bombardment_damage_k(
                 ship_count=20,
-                offense_level=0.0,
+                defense_level=0.0,
                 defenses=0,
                 luck_multiplier=1.0,
                 bomb_type='CONVENTIONAL',
             )
             high_def_damage = bombardment_damage_k(
                 ship_count=20,
-                offense_level=0.0,
+                defense_level=0.0,
                 defenses=20,
                 luck_multiplier=1.0,
                 bomb_type='CONVENTIONAL',
             )
             neutron_damage = bombardment_damage_k(
                 ship_count=20,
-                offense_level=0.0,
+                defense_level=0.0,
                 defenses=0,
                 luck_multiplier=1.0,
                 bomb_type='NEUTRON',
             )
             graviton_damage = bombardment_damage_k(
                 ship_count=20,
-                offense_level=0.0,
+                defense_level=0.0,
                 defenses=0,
                 luck_multiplier=1.0,
                 bomb_type='GRAVITON',
@@ -13321,6 +13321,34 @@ class TestBombardmentOrders(TestCase):
         self.assertGreater(low_def_damage, high_def_damage)
         self.assertGreater(neutron_damage, low_def_damage)
         self.assertGreater(graviton_damage, neutron_damage)
+
+    def test_defense_level_mildly_modifies_bombardment_damage(self):
+        from ..bombardment_rules import bombardment_damage_k
+
+        with patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
+            low_defense_tech = bombardment_damage_k(
+                ship_count=20,
+                defense_level=-1.0,
+                defenses=0,
+                luck_multiplier=1.0,
+                bomb_type='CONVENTIONAL',
+            )
+            baseline = bombardment_damage_k(
+                ship_count=20,
+                defense_level=0.0,
+                defenses=0,
+                luck_multiplier=1.0,
+                bomb_type='CONVENTIONAL',
+            )
+            high_defense_tech = bombardment_damage_k(
+                ship_count=20,
+                defense_level=1.0,
+                defenses=0,
+                luck_multiplier=1.0,
+                bomb_type='CONVENTIONAL',
+            )
+        self.assertLess(low_defense_tech, baseline)
+        self.assertGreater(high_defense_tech, baseline)
 
     def test_bombardment_can_take_defensive_fire_damage(self):
         from ..models import FleetOrders

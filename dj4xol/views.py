@@ -2608,6 +2608,14 @@ def help_anomalies(request):
 
 
 @registration_required()
+def help_endgame_technologies(request):
+    account = request.user.dj4xol_account
+    return render(request, 'dj4xol/help_endgame_technologies.html', {
+        'user_theme': account.theme if account else 'classic',
+    })
+
+
+@registration_required()
 def help_secret_resources(request):
     account = request.user.dj4xol_account
     from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label

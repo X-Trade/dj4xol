@@ -6297,7 +6297,7 @@ class GameTurn():
             bombardment_multiplier = float(raw_bombardment_multiplier)
         damage_k = bombardment_damage_k(
             fleet.ship_count,
-            fleet.offense_level,
+            fleet.defense_level,
             effective_defenses * defense_fire.get('defense_mult', 1.0),
             luck_multiplier,
             bomb_type,
@@ -7165,7 +7165,7 @@ class GameTurn():
                 luck_multiplier = float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0)
                 conventional_damage = bombardment_damage_k(
                     fleet.ship_count,
-                    fleet.offense_level,
+                    fleet.defense_level,
                     effective_defenses * defense_fire.get('defense_mult', 1.0),
                     luck_multiplier,
                     'CONVENTIONAL',

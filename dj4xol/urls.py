@@ -48,6 +48,7 @@ urlpatterns = [
     url(r'^help/fleet-composition/$', views.help_fleet_composition, name='help_fleet_composition'),
     url(r'^help/research-labs/$', views.help_research_labs, name='help_research_labs'),
     url(r'^help/anomalies/$', views.help_anomalies, name='help_anomalies'),
+    url(r'^help/endgame-technologies/$', views.help_endgame_technologies, name='help_endgame_technologies'),
     url(r'^help/secret-resources/$', views.help_secret_resources, name='help_secret_resources'),
     url(r'^help/space-combat/$', views.help_space_combat, name='help_space_combat'),
     url(r'^help/diplomacy/$', views.help_diplomacy, name='help_diplomacy'),

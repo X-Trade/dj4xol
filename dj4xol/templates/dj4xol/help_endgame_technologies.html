@@ -1,0 +1,168 @@
+{% load static %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Endgame Technologies</title>
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/home/css/home.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/help/css/help.css' %}">
+        {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/forms.css' %}">
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }}{% else %}classic{% endif %} help-index single-panel-page">
+        <div class="title-bar">
+            <span class="title">Endgame Technologies</span>
+            <span class="tagline">High Risk, High Leverage Tools</span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='help_endgame_technologies' %}
+        </div>
+        <div class="columns single-column">
+            <div class="column">
+                <div class="panel no-transition open" data-panel="help-endgame-technologies">
+                    <h2><span>Endgame Technologies</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
+                        <section class="panel-scrollable-text">
+                        <h4>What Counts As Endgame?</h4>
+                        <p>
+                            These are the technologies that introduce genuinely new strategic rules rather than just larger numbers.
+                            They can reshape a front line, destroy whole locations, or create entirely new stars.
+                        </p>
+
+                        <h4>Wormhole Drive</h4>
+                        <p>
+                            A fleet with a <strong>Wormhole Drive</strong> can use <strong>warp 14</strong> on a normal move order to attempt a long-range jump in a single year.
+                            This is much faster than conventional travel, but it is not a guaranteed clean arrival.
+                        </p>
+                        <p>
+                            In play, a wormhole jump has three main tradeoffs:
+                        </p>
+                        <ul>
+                            <li>it consumes fuel based on distance</li>
+                            <li>it can cause integrity damage or outright destroy the fleet</li>
+                            <li>it can land off target instead of exactly where you aimed</li>
+                        </ul>
+                        <p>
+                            If the fleet is already close enough to finish the trip normally at safe warp, the order now finishes conventionally instead of making a pointless second tiny wormhole hop.
+                        </p>
+                        <p>
+                            Wormhole jump mode is mainly for <strong>MOVE</strong>. Intercept and patrol still behave like conventional movement.
+                        </p>
+                        <p>
+                            If anomalies are enabled, a destroyed wormhole fleet can rarely leave behind a nearby rift, black hole, or even a new wormhole pair.
+                        </p>
+
+                        <h4>Genesis Device</h4>
+                        <p>
+                            A <strong>Genesis Device</strong> consumes a whole location to create a brand-new star.
+                            It is not a normal colonisation tool. It is a megaproject.
+                        </p>
+                        <p>
+                            A Genesis activation waits until enough material is present at the location. That material can come from:
+                        </p>
+                        <ul>
+                            <li>fleets at the location</li>
+                            <li>salvage at the location</li>
+                            <li>existing stars at the location</li>
+                        </ul>
+                        <p>
+                            When it fires successfully, it destroys all fleets at the location, consumes the required resources, removes any stars it needed to draw on, and creates one new star in their place.
+                        </p>
+                        <p>
+                            A <strong>Comet</strong> is the one anomaly that helps rather than hinders. If Genesis fires on a comet location, the comet is consumed and the resulting star tends to come out denser and closer to the activating player's preferred environment.
+                        </p>
+                        <p>
+                            Other anomalies are bad news. Trying to activate Genesis on a non-comet anomaly location destabilises the process, destroys the activating fleet, and produces no star.
+                        </p>
+
+                        <h4>Nova Bombs</h4>
+                        <p>
+                            <strong>Nova</strong> bombs are not just bigger conventional bombs. They destabilise the target star itself.
+                        </p>
+                        <p>
+                            A surviving target world still suffers normal bombardment losses, but Nova also pushes the star's environment in a distinctive way:
+                        </p>
+                        <ul>
+                            <li>gravity drops sharply</li>
+                            <li>radiation rises</li>
+                        </ul>
+                        <p>
+                            If the gravity collapse goes far enough, the star is destroyed outright.
+                        </p>
+                        <p>
+                            When a Nova destroys a star, the remnant may become a black hole or an asteroid field. If other sibling stars still exist at the same map coordinate, remnant creation is suppressed.
+                        </p>
+
+                        <h4>Supernova Bombs</h4>
+                        <p>
+                            <strong>Supernova</strong> bombs are the more extreme version. They affect every star at the target location, not just the nominated target.
+                        </p>
+                        <p>
+                            Supernova is dangerous to use even when the bombardment succeeds:
+                        </p>
+                        <ul>
+                            <li>the attacking fleet can be destroyed or heavily damaged by the backlash</li>
+                            <li>other fleets in orbit can also be blasted</li>
+                            <li>if the location collapses, the whole system coordinate can be wiped out</li>
+                        </ul>
+                        <p>
+                            In other words, Nova is a star-killer. Supernova is a system cleaner with orbital fallout.
+                        </p>
+
+                        <h4>How To Think About Them</h4>
+                        <p>
+                            These tools are strongest when you stop thinking of them as simple weapon upgrades.
+                        </p>
+                        <ul>
+                            <li><strong>Wormhole Drive</strong> is for strategic reach and tempo.</li>
+                            <li><strong>Genesis Device</strong> is for creating value where none existed before, at enormous local cost.</li>
+                            <li><strong>Nova</strong> is for deleting a star or threatening one until the defender must react.</li>
+                            <li><strong>Supernova</strong> is for destroying a whole position even if ships are caught in the blast.</li>
+                        </ul>
+
+                        <h4>Related Reading</h4>
+                        <p>
+                            For anomaly behavior, see <a href="{% url 'dj4xol:help_anomalies' %}">Anomalies</a>.
+                            For colony staffing and late infrastructure like Dyson Sphere, Cities, and Megacities, see
+                            <a href="{% url 'dj4xol:help_colony_management' %}">Colony Management Basics</a>.
+                        </p>
+                        </section>
+                        <div class="panel-footer">
+                            <a class="action-link" href="{% url 'dj4xol:help_index' %}">&laquo; Back to Help</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var panels = document.querySelectorAll('.panel');
+                panels.forEach(function(panel) {
+                    var header = panel.querySelector('h2');
+                    if (!header) return;
+                    header.addEventListener('click', function() {
+                        panel.classList.remove('no-transition');
+                        panel.classList.toggle('open');
+                    });
+                });
+
+                var hamburger = document.getElementById('hamburger-btn');
+                var dropdown = document.getElementById('nav-dropdown');
+                if (hamburger && dropdown) {
+                    hamburger.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        dropdown.classList.toggle('open');
+                        hamburger.classList.toggle('open');
+                    });
+                    document.addEventListener('click', function(e) {
+                        if (!dropdown.contains(e.target) && !hamburger.contains(e.target)) {
+                            dropdown.classList.remove('open');
+                            hamburger.classList.remove('open');
+                        }
+                    });
+                }
+            })();
+        </script>
+        <script type="text/javascript" src="{% static 'dj4xol/js/panel_scrollbars.js' %}"></script>
+        {% include 'dj4xol/_site_footer.html' %}
+    </body>
+</html>

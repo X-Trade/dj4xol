@@ -33,6 +33,7 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'Space Combat')
         self.assertContains(response, 'Diplomacy')
         self.assertContains(response, 'Invasion')
+        self.assertContains(response, 'Endgame Technologies')
         self.assertContains(response, 'Special Race Effects')
         self.assertContains(response, 'class="game-entry-title"', html=False)
         self.assertContains(response, 'class="game-meta"', html=False)
@@ -137,6 +138,9 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'Colony Management Basics')
         self.assertContains(response, 'mines')
         self.assertContains(response, 'Colony AI Administration')
+        self.assertContains(response, 'Advanced Colony Structures')
+        self.assertContains(response, '50% employment')
+        self.assertContains(response, 'Dyson Sphere')
 
     def test_help_anomalies_renders(self):
         response = self.client.get(reverse('dj4xol:help_anomalies'))
@@ -144,6 +148,15 @@ class HelpPagesTest(TestCase):
         self.assertContains(response, 'Anomalies')
         self.assertContains(response, 'Danger &amp; Stability')
         self.assertContains(response, 'Outcome Pattern')
+
+    def test_help_endgame_technologies_renders(self):
+        response = self.client.get(reverse('dj4xol:help_endgame_technologies'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Endgame Technologies')
+        self.assertContains(response, 'Wormhole Drive')
+        self.assertContains(response, 'Genesis Device')
+        self.assertContains(response, 'Nova Bombs')
+        self.assertContains(response, 'Supernova Bombs')
 
     def test_help_mining_salvage_renders(self):
         response = self.client.get(reverse('dj4xol:help_mining_salvage'))

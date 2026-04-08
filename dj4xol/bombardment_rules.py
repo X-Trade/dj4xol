@@ -176,7 +176,7 @@ def apply_nova_family_environment_shift(gravity, radiation, bomb_type):
     return new_gravity, new_radiation
 
 
-def bombardment_damage_k(ship_count, offense_level, defenses, luck_multiplier, bomb_type):
+def bombardment_damage_k(ship_count, defense_level, defenses, luck_multiplier, bomb_type):
     """Return bombardment damage in thousands of units."""
     mult = bomb_damage_multiplier(bomb_type)
     if mult <= 0.0:
@@ -187,10 +187,10 @@ def bombardment_damage_k(ship_count, offense_level, defenses, luck_multiplier, b
         return 0
 
     try:
-        offense = float(offense_level)
+        defense_tech = float(defense_level)
     except (TypeError, ValueError):
-        offense = 0.0
-    attack_strength = 2.0 ** max(0.0, offense)
+        defense_tech = 0.0
+    bombardment_tech_factor = max(0.5, 1.0 + (defense_tech * 0.5))
 
     # Defenses temper bombardment output: 0 defenses => full damage,
     # higher defenses progressively reduce damage.
@@ -201,6 +201,6 @@ def bombardment_damage_k(ship_count, offense_level, defenses, luck_multiplier, b
         max_scale=1.0,
         bend=0.65,
     )
-    raw = float(count) * attack_strength * offense_roll * mult
+    raw = float(count) * bombardment_tech_factor * offense_roll * mult
     raw /= defense_factor
     return max(0, int(math.floor(raw)))
