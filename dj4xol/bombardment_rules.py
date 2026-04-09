@@ -116,6 +116,52 @@ def apply_dyson_bombardment_damping(damage_k, has_dyson_sphere):
     )
 
 
+def distribute_infrastructure_hits(structure_counts, total_hits):
+    """Distribute shared infrastructure damage proportionally across categories."""
+    results = {
+        key: 0
+        for key in (structure_counts or {})
+    }
+    try:
+        hits = max(0, int(total_hits or 0))
+    except (TypeError, ValueError):
+        hits = 0
+    if hits <= 0 or not structure_counts:
+        return results
+
+    active = []
+    total_available = 0
+    for index, (key, raw_count) in enumerate(structure_counts.items()):
+        try:
+            count = max(0, int(raw_count or 0))
+        except (TypeError, ValueError):
+            count = 0
+        if count <= 0:
+            continue
+        active.append((index, key, count))
+        total_available += count
+    if total_available <= 0:
+        return results
+
+    hits = min(hits, total_available)
+    assigned = 0
+    ranked = []
+    for index, key, count in active:
+        raw_share = (float(hits) * float(count)) / float(total_available)
+        base_loss = min(count, int(math.floor(raw_share)))
+        results[key] = base_loss
+        assigned += base_loss
+        ranked.append((key, raw_share - float(base_loss), count, index))
+
+    remaining = max(0, hits - assigned)
+    for key, _, _, _ in sorted(
+        ranked,
+        key=lambda item: (-item[1], -item[2], item[3]),
+    )[:remaining]:
+        results[key] += 1
+    return results
+
+
 def graviton_bombs_apply_gravity_shift(bomb_type):
     return normalize_bomb_type(bomb_type) == BOMB_TYPE_GRAVITON
 
@@ -203,4 +249,7 @@ def bombardment_damage_k(ship_count, defense_level, defenses, luck_multiplier, b
     )
     raw = float(count) * bombardment_tech_factor * offense_roll * mult
     raw /= defense_factor
-    return max(0, int(math.floor(raw)))
+    damage = max(0, int(math.floor(raw)))
+    if damage <= 0 and raw > 0.0 and defense_factor <= 1.0:
+        return 1
+    return damage

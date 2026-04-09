@@ -12941,11 +12941,11 @@ class TestBombardmentOrders(TestCase):
         self.assertEqual(star.mines, 6)
         self.assertEqual(star.factories, 5)
         self.assertEqual(star.labs, 4)
-        self.assertEqual(star.shipyards, 5)
+        self.assertEqual(star.shipyards, 6)
         self.assertAlmostEqual(star.temperature, 1.01, places=6)
         self.assertAlmostEqual(star.radiation, 1.02, places=6)
-        self.assertEqual(star.cities, 6)
-        self.assertEqual(star.megacities, 2)
+        self.assertEqual(star.cities, 7)
+        self.assertEqual(star.megacities, 4)
         self.assertTrue(star.has_administration)
         self.assertTrue(star.has_dyson_sphere)
 
@@ -13049,18 +13049,18 @@ class TestBombardmentOrders(TestCase):
         self.assertEqual(damped.colonists, 8_000)
         self.assertEqual(undamped.defenses, 4)
         self.assertEqual(damped.defenses, 6)
-        self.assertEqual(undamped.mines, 0)
-        self.assertEqual(damped.mines, 2)
-        self.assertEqual(undamped.factories, 0)
-        self.assertEqual(damped.factories, 2)
-        self.assertEqual(undamped.labs, 0)
-        self.assertEqual(damped.labs, 2)
-        self.assertEqual(undamped.shipyards, 0)
-        self.assertEqual(damped.shipyards, 2)
-        self.assertEqual(undamped.cities, 0)
-        self.assertEqual(damped.cities, 2)
-        self.assertEqual(undamped.megacities, 0)
-        self.assertEqual(damped.megacities, 2)
+        self.assertEqual(undamped.mines, 3)
+        self.assertEqual(damped.mines, 3)
+        self.assertEqual(undamped.factories, 3)
+        self.assertEqual(damped.factories, 3)
+        self.assertEqual(undamped.labs, 3)
+        self.assertEqual(damped.labs, 4)
+        self.assertEqual(undamped.shipyards, 3)
+        self.assertEqual(damped.shipyards, 4)
+        self.assertEqual(undamped.cities, 4)
+        self.assertEqual(damped.cities, 4)
+        self.assertEqual(undamped.megacities, 4)
+        self.assertEqual(damped.megacities, 4)
 
     def test_only_nova_can_remove_dyson_without_star_annihilation(self):
         from ..models import FleetOrders
@@ -13189,15 +13189,66 @@ class TestBombardmentOrders(TestCase):
         star.refresh_from_db()
         self.assertLess(star.colonists, 100_000)
         self.assertLess(star.defenses, 8)
-        self.assertLess(star.mines, 6)
-        self.assertLess(star.factories, 5)
-        self.assertLess(star.labs, 4)
-        self.assertLess(star.shipyards, 7)
-        self.assertLess(star.cities, 8)
-        self.assertLess(star.megacities, 4)
+        total_infra_before = 6 + 5 + 4 + 7 + 8 + 4
+        total_infra_after = (
+            star.mines + star.factories + star.labs +
+            star.shipyards + star.cities + star.megacities
+        )
+        self.assertEqual(total_infra_before - total_infra_after, 3)
         self.assertAlmostEqual(star.gravity, 1.05, places=6)
         self.assertAlmostEqual(star.temperature, 1.00, places=6)
         self.assertAlmostEqual(star.radiation, 1.00, places=6)
+
+    def test_conventional_bombs_distribute_infrastructure_hits_across_colony(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_shared_infra_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 25_000
+        star.defenses = 0
+        star.mines = 5
+        star.factories = 5
+        star.labs = 5
+        star.shipyards = 5
+        star.cities = 5
+        star.megacities = 5
+        star.has_administration = True
+        star.save(update_fields=[
+            'player', 'colonists', 'defenses', 'mines', 'factories',
+            'labs', 'shipyards', 'cities', 'megacities', 'has_administration',
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Shared Damage Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=4,
+            has_bombs='CONVENTIONAL',
+            integrity=100,
+        )
+        FleetOrders.objects.create(
+            game=game, fleet=fleet, order_type='BOMB', target_star=star
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=4):
+            GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+        star.refresh_from_db()
+        total_infra_before = 5 + 5 + 5 + 5 + 5 + 5 + 1
+        total_infra_after = (
+            star.mines + star.factories + star.labs +
+            star.shipyards + star.cities + star.megacities +
+            (1 if star.has_administration else 0)
+        )
+        self.assertEqual(total_infra_before - total_infra_after, 4)
+        self.assertTrue(star.has_administration)
 
     def test_graviton_bombs_gravity_shift_clamps_at_upper_bound(self):
         from ..models import FleetOrders
@@ -13321,6 +13372,27 @@ class TestBombardmentOrders(TestCase):
         self.assertGreater(low_def_damage, high_def_damage)
         self.assertGreater(neutron_damage, low_def_damage)
         self.assertGreater(graviton_damage, neutron_damage)
+
+    def test_undefended_single_bomber_gets_minimum_damage(self):
+        from ..bombardment_rules import bombardment_damage_k
+
+        with patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=0.5):
+            undefended = bombardment_damage_k(
+                ship_count=1,
+                defense_level=0.0,
+                defenses=0,
+                luck_multiplier=1.0,
+                bomb_type='CONVENTIONAL',
+            )
+            defended = bombardment_damage_k(
+                ship_count=1,
+                defense_level=0.0,
+                defenses=1,
+                luck_multiplier=1.0,
+                bomb_type='CONVENTIONAL',
+            )
+        self.assertEqual(undefended, 1)
+        self.assertEqual(defended, 0)
 
     def test_defense_level_mildly_modifies_bombardment_damage(self):
         from ..bombardment_rules import bombardment_damage_k
@@ -13983,10 +14055,10 @@ class TestBombardmentOrders(TestCase):
         star.refresh_from_db()
         self.assertLessEqual(star.defenses, 10)
         self.assertLessEqual(star.colonists, 40_000)
-        self.assertLessEqual(star.mines, 10)
-        self.assertLessEqual(star.factories, 10)
-        self.assertLessEqual(star.labs, 10)
-        self.assertLessEqual(star.shipyards, 10)
+        self.assertEqual(star.mines, 17)
+        self.assertEqual(star.factories, 17)
+        self.assertEqual(star.labs, 18)
+        self.assertEqual(star.shipyards, 18)
 
     def test_bombardment_multiplier_can_reduce_colony_damage(self):
         from ..models import FleetOrders
@@ -14036,10 +14108,10 @@ class TestBombardmentOrders(TestCase):
         star.refresh_from_db()
         self.assertEqual(star.defenses, 17)
         self.assertEqual(star.colonists, 47_000)
-        self.assertEqual(star.mines, 17)
-        self.assertEqual(star.factories, 17)
-        self.assertEqual(star.labs, 17)
-        self.assertEqual(star.shipyards, 17)
+        self.assertEqual(star.mines, 19)
+        self.assertEqual(star.factories, 19)
+        self.assertEqual(star.labs, 19)
+        self.assertEqual(star.shipyards, 20)
 
     def test_bomb_order_once_completes_and_allows_passthrough(self):
         from ..models import FleetOrders

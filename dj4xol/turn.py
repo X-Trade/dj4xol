@@ -194,6 +194,7 @@ from .chance_rules import (
 )
 from .bombardment_rules import (
     apply_dyson_bombardment_damping,
+    distribute_infrastructure_hits,
     apply_graviton_bomb_environment_shift,
     apply_neutron_bomb_environment_shift,
     apply_nova_family_environment_shift,
@@ -6330,12 +6331,28 @@ class GameTurn():
         administration_lost = 0
         dyson_sphere_lost = 0
         if is_neutron:
-            mines_lost = min(pre['mines'], neutron_collateral_k)
-            factories_lost = min(pre['factories'], neutron_collateral_k)
-            labs_lost = min(pre['labs'], neutron_collateral_k)
-            shipyards_lost = min(pre['shipyards'], damage_k)
-            cities_lost = min(pre['cities'], damage_k)
-            megacities_lost = min(pre['megacities'], damage_k)
+            collateral_losses = distribute_infrastructure_hits(
+                {
+                    'mines': pre['mines'],
+                    'factories': pre['factories'],
+                    'labs': pre['labs'],
+                },
+                neutron_collateral_k,
+            )
+            primary_losses = distribute_infrastructure_hits(
+                {
+                    'shipyards': pre['shipyards'],
+                    'cities': pre['cities'],
+                    'megacities': pre['megacities'],
+                },
+                damage_k,
+            )
+            mines_lost = collateral_losses.get('mines', 0)
+            factories_lost = collateral_losses.get('factories', 0)
+            labs_lost = collateral_losses.get('labs', 0)
+            shipyards_lost = primary_losses.get('shipyards', 0)
+            cities_lost = primary_losses.get('cities', 0)
+            megacities_lost = primary_losses.get('megacities', 0)
             star.mines = max(0, pre['mines'] - mines_lost)
             star.factories = max(0, pre['factories'] - factories_lost)
             star.labs = max(0, pre['labs'] - labs_lost)
@@ -6350,14 +6367,25 @@ class GameTurn():
                 getattr(star, 'radiation', 0.0),
             )
         elif not is_smart:
-            mines_lost = min(pre['mines'], damage_k)
-            factories_lost = min(pre['factories'], damage_k)
-            labs_lost = min(pre['labs'], damage_k)
-            shipyards_lost = min(pre['shipyards'], damage_k)
-            cities_lost = min(pre['cities'], damage_k)
-            megacities_lost = min(pre['megacities'], damage_k)
-            if pre['has_administration'] and damage_k > 0:
-                administration_lost = 1
+            infra_losses = distribute_infrastructure_hits(
+                {
+                    'mines': pre['mines'],
+                    'factories': pre['factories'],
+                    'labs': pre['labs'],
+                    'shipyards': pre['shipyards'],
+                    'cities': pre['cities'],
+                    'megacities': pre['megacities'],
+                    'administration': 1 if pre['has_administration'] else 0,
+                },
+                damage_k,
+            )
+            mines_lost = infra_losses.get('mines', 0)
+            factories_lost = infra_losses.get('factories', 0)
+            labs_lost = infra_losses.get('labs', 0)
+            shipyards_lost = infra_losses.get('shipyards', 0)
+            cities_lost = infra_losses.get('cities', 0)
+            megacities_lost = infra_losses.get('megacities', 0)
+            administration_lost = infra_losses.get('administration', 0)
             if (
                 pre['has_dyson_sphere'] and
                 damage_k > 0 and
@@ -7174,10 +7202,19 @@ class GameTurn():
                 if harass_damage > 0:
                     defenses_lost = min(int(star.defenses or 0), harass_damage)
                     colonists_lost = min(int(star.colonists or 0), harass_damage * 1000)
-                    mines_lost = min(int(star.mines or 0), harass_damage)
-                    factories_lost = min(int(star.factories or 0), harass_damage)
-                    labs_lost = min(int(star.labs or 0), harass_damage)
-                    shipyards_lost = min(int(star.shipyards or 0), harass_damage)
+                    infra_losses = distribute_infrastructure_hits(
+                        {
+                            'mines': int(star.mines or 0),
+                            'factories': int(star.factories or 0),
+                            'labs': int(star.labs or 0),
+                            'shipyards': int(star.shipyards or 0),
+                        },
+                        harass_damage,
+                    )
+                    mines_lost = infra_losses.get('mines', 0)
+                    factories_lost = infra_losses.get('factories', 0)
+                    labs_lost = infra_losses.get('labs', 0)
+                    shipyards_lost = infra_losses.get('shipyards', 0)
                     star.defenses = max(0, int(star.defenses or 0) - defenses_lost)
                     star.colonists = max(0, int(star.colonists or 0) - colonists_lost)
                     star.mines = max(0, int(star.mines or 0) - mines_lost)
