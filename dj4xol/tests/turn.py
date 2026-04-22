@@ -1824,6 +1824,56 @@ class TestAnomalyInteractions(TestCase):
             message__icontains='240 bonus RP',
         ).exists())
 
+    def test_anomaly_secret_resource_research_message_names_fleet_rift_and_resource(self):
+        game = default_game()
+        game.anomalies_enabled = True
+        game.save(update_fields=['anomalies_enabled'])
+        player = game.players.first()
+        game.fleets.all().delete()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Uniquium Probe',
+            x=22,
+            y=22,
+            advanced_scanner_range=1,
+            resource_x_inventory=1000,
+        )
+        anomaly = Anomaly.objects.create(
+            game=game,
+            x=22,
+            y=22,
+            name='Uniquium Rift',
+            anomaly_type=Anomaly.TYPE_RIFT,
+            stability=100,
+        )
+        row = ensure_player_research_rows(player)[0]
+
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.anomaly_danger_level', return_value=DANGER_MEDIUM), \
+             patch('dj4xol.turn.random.choice', return_value=row), \
+             patch('dj4xol.turn.random.random', side_effect=[0.1, 0.0]):
+            turn._apply_anomaly_research_boon(
+                fleet,
+                anomaly,
+                allow_breakthrough=False,
+                reward_tier='medium',
+            )
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.resource_x_inventory, 0)
+        msg = GameMessage.objects.filter(
+            game=game,
+            player=player,
+            category='RANDOM',
+            message__icontains='Uniquium',
+        ).latest('id')
+        self.assertIn('Uniquium Probe', msg.message)
+        self.assertIn('Uniquium Rift', msg.message)
+        self.assertIn('1000kt Uniquium', msg.message)
+        self.assertIn(row.category.name, msg.message)
+        self.assertIn('RP', msg.message)
+
     def test_cargo_loss_roll_without_cargo_converts_to_integrity_damage(self):
         game = default_game()
         game.anomalies_enabled = True

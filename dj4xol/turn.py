@@ -1666,11 +1666,21 @@ class GameTurn():
             DANGER_HIGH: 0.25,
         }.get(danger_level, 0.10)
         if allow_breakthrough and random.random() < breakthrough_chance:
-            extra_rp = self._convert_secret_resources_to_rp(fleet)
+            extra_rp, consumed_secret_resources = (
+                self._convert_secret_resources_to_rp_with_consumed(fleet)
+            )
             extra_rp = int(round(float(extra_rp) * danger_reward_multiplier))
             if self._apply_anomaly_breakthrough(player, anomaly):
                 if extra_rp > 0:
                     result = apply_research_bonus_rp(player, category.id, int(extra_rp))
+                    self._create_anomaly_secret_resource_research_message(
+                        player,
+                        fleet,
+                        anomaly,
+                        category.name,
+                        consumed_secret_resources,
+                        extra_rp,
+                    )
                     if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
                         self._create_research_unlock_messages(player, [result])
                 return
@@ -1682,7 +1692,9 @@ class GameTurn():
             bonus_rp = int(round(float(bonus_rp) * danger_reward_multiplier))
             bonus_rp = int(round(float(bonus_rp) * scanner_multiplier))
             bonus_rp = int(round(float(bonus_rp) * boon_multiplier))
-            extra_rp = self._convert_secret_resources_to_rp(fleet)
+            extra_rp, consumed_secret_resources = (
+                self._convert_secret_resources_to_rp_with_consumed(fleet)
+            )
             extra_rp = int(round(float(extra_rp) * danger_reward_multiplier))
             extra_rp = int(round(float(extra_rp) * boon_multiplier))
             total_rp = int(bonus_rp) + int(extra_rp)
@@ -1692,7 +1704,11 @@ class GameTurn():
                 % (text_prefix, format_map_object(anomaly), bonus_rp, category.name)
             )
             if extra_rp > 0:
-                text += " Exotic cargo yielded %s RP." % int(extra_rp)
+                text += " %s" % self._format_anomaly_secret_resource_research_sentence(
+                    fleet,
+                    consumed_secret_resources,
+                    extra_rp,
+                )
             if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
                 text += " Level increased to %s." % int(result['new_level'])
             self._create_anomaly_message(player, text, priority=False)
@@ -1704,7 +1720,9 @@ class GameTurn():
         bonus_rp = int(round(float(bonus_rp) * danger_reward_multiplier))
         bonus_rp = int(round(float(bonus_rp) * scanner_multiplier))
         bonus_rp = int(round(float(bonus_rp) * boon_multiplier))
-        extra_rp = self._convert_secret_resources_to_rp(fleet)
+        extra_rp, consumed_secret_resources = (
+            self._convert_secret_resources_to_rp_with_consumed(fleet)
+        )
         extra_rp = int(round(float(extra_rp) * danger_reward_multiplier))
         extra_rp = int(round(float(extra_rp) * boon_multiplier))
         total_rp = int(bonus_rp) + int(extra_rp)
@@ -1714,30 +1732,84 @@ class GameTurn():
             % (text_prefix, format_map_object(anomaly), bonus_rp, category.name)
         )
         if extra_rp > 0:
-            text += " Exotic cargo yielded %s RP." % int(extra_rp)
+            text += " %s" % self._format_anomaly_secret_resource_research_sentence(
+                fleet,
+                consumed_secret_resources,
+                extra_rp,
+            )
         if result and int(result.get('new_level', 0)) > int(result.get('old_level', 0)):
             text += " Level increased to %s." % int(result['new_level'])
         self._create_anomaly_message(player, text, priority=False)
 
     @staticmethod
     def _convert_secret_resources_to_rp(fleet):
+        extra_rp, _consumed = GameTurn._convert_secret_resources_to_rp_with_consumed(fleet)
+        return int(extra_rp)
+
+    @staticmethod
+    def _convert_secret_resources_to_rp_with_consumed(fleet):
         rates = {
             'resource_x': 2,
             'resource_y': 3,
             'resource_z': 4,
         }
         extra_rp = 0
+        consumed = {}
         update_fields = []
         for key, rate in rates.items():
             amount = int(getattr(fleet, f'{key}_inventory', 0) or 0)
             if amount <= 0:
                 continue
+            consumed[key] = amount
             extra_rp += amount * int(rate)
             setattr(fleet, f'{key}_inventory', 0)
             update_fields.append(f'{key}_inventory')
         if update_fields:
             fleet.save(update_fields=update_fields)
-        return int(extra_rp)
+        return int(extra_rp), consumed
+
+    def _format_anomaly_secret_resource_research_sentence(self, fleet, consumed, rp):
+        cargo = self._format_secret_resource_consumption(consumed)
+        if not cargo:
+            cargo = 'Exotic cargo'
+        return (
+            "%s aboard %s was consumed, yielding %s RP."
+            % (cargo, format_map_object(fleet), int(rp))
+        )
+
+    def _create_anomaly_secret_resource_research_message(
+        self,
+        player,
+        fleet,
+        anomaly,
+        category_name,
+        consumed,
+        rp,
+    ):
+        if not consumed or int(rp or 0) <= 0:
+            return
+        text = (
+            "%s aboard %s resonated with %s and was consumed, contributing %s RP "
+            "to %s research."
+            % (
+                self._format_secret_resource_consumption(consumed),
+                format_map_object(fleet),
+                format_map_object(anomaly),
+                int(rp),
+                category_name,
+            )
+        )
+        self._create_anomaly_message(player, text, priority=False)
+
+    @staticmethod
+    def _format_secret_resource_consumption(consumed):
+        parts = []
+        for key in SECRET_RESOURCE_KEYS:
+            amount = int((consumed or {}).get(key, 0) or 0)
+            if amount <= 0:
+                continue
+            parts.append('%skt %s' % (amount, get_secret_resource_name(key)))
+        return ', '.join(parts)
 
     def _apply_wormhole_interaction(self, fleet, anomaly):
         """Resolve wormhole transit: possible damage, then relocation near the paired endpoint."""
