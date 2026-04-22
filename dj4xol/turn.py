@@ -605,6 +605,7 @@ class GameTurn():
         self._stance_map_by_player_id = {}
         self._ambush_fleet_ids_for_year = set()
         self._player_colony_count_cache = {}
+        self._shipyard_service_blocked_fleet_ids_by_star_id = {}
 
     def generate_turn(self):
         """Generate a turn for the game. Requires at least one player."""
@@ -652,6 +653,7 @@ class GameTurn():
         self._player_tech_effects_by_id = {}
         self._stance_map_by_player_id = {}
         self._player_colony_count_cache = {}
+        self._shipyard_service_blocked_fleet_ids_by_star_id = {}
         refresh_contract_integrity(self.game)
         self._apply_pending_diplomacy_snapshot()
         self.move_comets()
@@ -5453,6 +5455,7 @@ class GameTurn():
         hazard_damage = max(0.0, float(damage_taken.get(attacker, 0.0)) * ORBITAL_DEFENSE_HAZARD_DAMAGE_FACTOR)
         if hazard_damage <= 0:
             return
+        self._block_shipyard_service_for_fleet(star, fleet)
 
         results = self._apply_combat_damage(
             {attacker: [fleet], defender: []},
@@ -5700,6 +5703,8 @@ class GameTurn():
                     PERMISSION_ALLOW_TRANSFER_RAID_ROLL,
                     stance_map=defender_stance_map,
                 )
+                if allow_defense or allow_roll:
+                    self._block_shipyard_service_for_fleet(star, fleet)
                 colonist_raid_non_allied = bool(
                     is_colonist_raid and (allow_defense or allow_roll)
                 )
@@ -6191,6 +6196,7 @@ class GameTurn():
         effective_defenses = calculate_effective_defenses(star)
         if effective_defenses <= 0:
             return {'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
+        self._block_shipyard_service_for_fleet(star, fleet)
 
         defender = star.player
         defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
@@ -6248,6 +6254,8 @@ class GameTurn():
             order.delete()
             return 'executed'
 
+        if star.player and star.player != fleet.player:
+            self._block_shipyard_service_for_fleet(star, fleet)
         defense_fire = self._resolve_planetary_defense_fire_against_fleet(star, fleet)
         if defense_fire.get('destroyed'):
             factory = FleetBombardmentReportMessageFactory(
@@ -10823,6 +10831,29 @@ class GameTurn():
         real_shipyards_spent = service_units / rate
         return max(0.0, float(remaining_shipyards) - real_shipyards_spent)
 
+    def _block_shipyard_service_for_fleet(self, star, fleet):
+        """Prevent a colony from servicing a fleet it fought this turn."""
+        if not star or not fleet:
+            return
+        star_id = getattr(star, 'id', None)
+        fleet_id = getattr(fleet, 'id', None)
+        if star_id is None or fleet_id is None:
+            return
+        blocked = self._shipyard_service_blocked_fleet_ids_by_star_id.setdefault(
+            star_id,
+            set(),
+        )
+        blocked.add(fleet_id)
+
+    def _shipyard_service_blocked_for_fleet(self, star, fleet):
+        if not star or not fleet:
+            return False
+        blocked = self._shipyard_service_blocked_fleet_ids_by_star_id.get(
+            getattr(star, 'id', None),
+            set(),
+        )
+        return getattr(fleet, 'id', None) in blocked
+
     def _repair_fleets_at_star(self, star, available_shipyards):
         """Service fleets at a colony, applying diplomacy-based visitor rates."""
         from .models import Fleet
@@ -10843,6 +10874,8 @@ class GameTurn():
         for fleet in owner_fleets:
             if remaining_shipyards <= 0:
                 return
+            if self._shipyard_service_blocked_for_fleet(star, fleet):
+                continue
             remaining_shipyards = self._service_fleet_with_shipyards(
                 fleet,
                 remaining_shipyards,
@@ -10858,6 +10891,8 @@ class GameTurn():
         for fleet in visitor_fleets:
             if remaining_shipyards <= 0:
                 break
+            if self._shipyard_service_blocked_for_fleet(star, fleet):
+                continue
             service_rate = player_permission_value(
                 owner,
                 fleet.player,

@@ -4025,6 +4025,85 @@ class TestFleetOrderViews(TestCase):
         self.assertNotContains(response, 'class="order-edit-btn"')
         self.assertContains(response, 'order-status-badge--repeat')
 
+    def test_staff_debug_hidden_cloaked_fleet_creates_non_locating_basic_report(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        homeworld = player.homeworld
+        race_type = get_default_race_type()
+        enemy_user = User.objects.create_user(
+            'debug_cloak_enemy_user',
+            'debug_cloak_enemy@test.com',
+            'pass',
+        )
+        enemy_account = Account.objects.create(
+            django_user=enemy_user,
+            alias='DCL',
+        )
+        enemy_player = Player.objects.create(
+            game=game,
+            account=enemy_account,
+            name='Debug Cloak Enemy',
+            plural_name='Debug Cloak Enemies',
+            race_type=race_type,
+        )
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=enemy_player,
+            name='Hidden Patrol',
+            x=homeworld.x,
+            y=homeworld.y,
+            ship_count=3,
+            max_cloaked_warp=10,
+            advanced_cloak=True,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=enemy_fleet,
+            order_type='MOVE',
+            position=1,
+            x=homeworld.x + 1,
+            y=homeworld.y,
+            warpfactor=5,
+        )
+
+        user, _ = get_default_user()
+        user.is_superuser = True
+        user.is_staff = True
+        user.save(update_fields=['is_superuser', 'is_staff'])
+        ServerSettings.objects.update_or_create(
+            key='enable_debug_actions',
+            defaults={'value': 'True'},
+        )
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {
+                'x': enemy_fleet.x,
+                'y': enemy_fleet.y,
+                'sel': enemy_fleet.short_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        detail = response.context['detail']
+        self.assertTrue(detail.get('show_fleet_orders_panel'))
+        self.assertTrue(detail.get('fleet_orders_read_only'))
+        self.assertTrue(detail.get('suppress_locate'))
+        self.assertEqual(detail.get('position_status'), 'unknown')
+        self.assertIsNone(detail.get('x'))
+        self.assertIsNone(detail.get('y'))
+        report = Report.objects.get(
+            player=player,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+        )
+        data = report.get_report_data()
+        self.assertEqual(data.get('report_tier'), 'basic')
+        self.assertNotIn('x', data)
+        self.assertNotIn('y', data)
+
     def test_staff_debug_generate_report_keeps_full_foreign_fleet_report_data(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()

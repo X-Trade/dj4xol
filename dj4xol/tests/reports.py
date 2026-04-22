@@ -210,6 +210,75 @@ class VisibilityTest(TestCase):
         self.assertTrue(data['is_habitable'])
         self.assertEqual(data['bar_style'], 'background: #00aa00;')
 
+    def test_hidden_cloaked_fleet_short_id_without_report_is_not_selectable(self):
+        """Direct links should not reveal a cloaked fleet's current location."""
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Silent Intruder',
+            x=self.owned_star.x,
+            y=self.owned_star.y,
+            max_cloaked_warp=10,
+            advanced_cloak=True,
+        )
+
+        builder = DetailBuilder(
+            self.game,
+            selected=enemy_fleet.short_id,
+            player=self.player1,
+        )
+
+        self.assertIsNone(builder.selected_obj)
+        self.assertIsNone(builder.build_detail())
+
+    def test_hidden_cloaked_fleet_short_id_uses_last_known_report(self):
+        """A hidden reported fleet should show cached position, not live orbit."""
+        enemy_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player2,
+            name='Silent Intruder',
+            x=self.owned_star.x,
+            y=self.owned_star.y,
+            max_cloaked_warp=10,
+            advanced_cloak=True,
+        )
+        report_x = self.owned_star.x + 9
+        report_y = self.owned_star.y + 4
+        report = Report.objects.create(
+            game=self.game,
+            player=self.player1,
+            year=self.game.year - 1,
+            target_type='fleet',
+            target_id=enemy_fleet.id,
+            cached_report='{}',
+        )
+        report.set_report_data({
+            'name': 'Unknown Fleet',
+            'x': report_x,
+            'y': report_y,
+            'report_tier': 'advanced',
+            'player_name': self.player2.name,
+            'ship_count': 1,
+            'integrity': 100,
+            'travel_warp': 0,
+            'heading': 0.0,
+            'is_cloaked': True,
+        })
+        report.save(update_fields=['cached_report'])
+
+        detail = DetailBuilder(
+            self.game,
+            selected=enemy_fleet.short_id,
+            player=self.player1,
+        ).build_detail()
+
+        self.assertTrue(detail['is_fleet'])
+        self.assertTrue(detail['is_last_known'])
+        self.assertEqual(detail['x'], report_x)
+        self.assertEqual(detail['y'], report_y)
+        self.assertNotEqual((detail['x'], detail['y']), (self.owned_star.x, self.owned_star.y))
+        self.assertFalse(any(obj['type'] == 'star' for obj in detail['objects_here']))
+
 
 class UnexploredDetailTest(TestCase):
     """Tests for unexplored object display."""

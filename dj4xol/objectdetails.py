@@ -147,7 +147,16 @@ class DetailBuilder():
             self.process_selected(selected)
             # Then find all objects at the selected object's actual location
             if self.selected_obj:
-                self.find_all_at_coordinates(self.selected_obj.x, self.selected_obj.y)
+                if self._selected_fleet_should_use_cached_position():
+                    self.at_cursor = [self.selected_obj]
+                    report = self._report_for_object(self.selected_obj)
+                    data = report.get_report_data() if report else {}
+                    self.set_coordinates(
+                        data.get('x'),
+                        data.get('y'),
+                    )
+                else:
+                    self.find_all_at_coordinates(self.selected_obj.x, self.selected_obj.y)
         elif x and y:
             # Fall back to x & y coordinates if no sel parameter
             self.find_all_at_coordinates(x, y)
@@ -497,12 +506,14 @@ class DetailBuilder():
             report_owner_name = report_owner_name or 'Abandoned'
 
         # Base detail fields
+        report_x = data.get('x')
+        report_y = data.get('y')
         detail = {
             'name': self._reported_object_name(self.selected_obj, target_type, data),
             'selected_id': self.selected_obj.short_id,
             'objects_here': self.get_objects_here(),
-            'x': data.get('x', self.selected_obj.x),
-            'y': data.get('y', self.selected_obj.y),
+            'x': report_x if target_type == 'fleet' else data.get('x', self.selected_obj.x),
+            'y': report_y if target_type == 'fleet' else data.get('y', self.selected_obj.y),
             'is_star': target_type == 'star',
             'is_fleet': target_type == 'fleet',
             'is_salvage': target_type == 'salvage',
@@ -641,9 +652,14 @@ class DetailBuilder():
         elif target_type == 'fleet':
             detail['fleet_short_id'] = self.selected_obj.short_id
             stale_fleet_report = not self._is_fleet_currently_visible(self.selected_obj)
-            detail['position_status'] = 'last_known' if stale_fleet_report else 'report'
+            has_report_position = detail.get('x') is not None and detail.get('y') is not None
+            detail['position_status'] = (
+                'last_known' if stale_fleet_report and has_report_position
+                else ('unknown' if stale_fleet_report else 'report')
+            )
+            detail['suppress_locate'] = bool(stale_fleet_report and not has_report_position)
             detail['is_cloaked'] = bool(data.get('is_cloaked'))
-            if stale_fleet_report and detail.get('x') is not None and detail.get('y') is not None:
+            if stale_fleet_report and has_report_position:
                 detail['last_known_position'] = self.format_empty_space(
                     detail.get('x'),
                     detail.get('y'),
@@ -1657,9 +1673,63 @@ class DetailBuilder():
             )
             if isinstance(self.selected_obj, Salvage) and not self._is_salvage_visible(self.selected_obj):
                 self.selected_obj = None
+            if (
+                isinstance(self.selected_obj, Fleet) and
+                getattr(self.selected_obj, 'player_id', None) is not None and
+                not self._is_fleet_currently_visible(self.selected_obj) and
+                not self._report_for_object(self.selected_obj) and
+                not self.allow_foreign_orders_debug
+            ):
+                self.selected_obj = None
+            if (
+                isinstance(self.selected_obj, Fleet) and
+                getattr(self.selected_obj, 'player_id', None) is not None and
+                not self._is_fleet_currently_visible(self.selected_obj) and
+                self.allow_foreign_orders_debug
+            ):
+                self._ensure_debug_basic_fleet_report(self.selected_obj)
             if self.selected_obj:
                 self.check_selected()
         return self.selected_obj
+
+    def _selected_fleet_should_use_cached_position(self):
+        return (
+            isinstance(self.selected_obj, Fleet) and
+            not self._is_fleet_currently_visible(self.selected_obj) and
+            bool(self._report_for_object(self.selected_obj))
+        )
+
+    def _report_for_object(self, obj):
+        if not obj or not self.player:
+            return None
+        return Report.objects.filter(
+            player=self.player,
+            target_type=self._get_target_type(obj),
+            target_id=obj.id,
+        ).first()
+
+    def _ensure_debug_basic_fleet_report(self, fleet):
+        """Create a non-locating debug intel stub for a hidden foreign fleet."""
+        if not fleet or not self.player or not self.allow_foreign_orders_debug:
+            return None
+        report = self._report_for_object(fleet)
+        if report:
+            return report
+        report = Report(
+            game=self.game,
+            player=self.player,
+            year=self.game.year,
+            target_type='fleet',
+            target_id=fleet.id,
+        )
+        report.set_report_data({
+            'name': format_basic_unknown_fleet_name(fleet),
+            'report_tier': 'basic',
+            'player_name': '',
+            'is_cloaked': fleet_is_cloaked(fleet),
+        })
+        report.save()
+        return report
 
     def _visible_salvages_qs(self):
         if self.spectator_mode or self.admin_view:
@@ -1704,6 +1774,19 @@ class DetailBuilder():
         # For foreign player-owned objects, prefer the cached report when one
         # exists so the detail panel matches the persisted intel snapshot.
         target_type = self._get_target_type(obj)
+        if (
+            isinstance(obj, Fleet) and
+            getattr(obj, 'player_id', None) is not None and
+            getattr(obj, 'player_id', None) != getattr(self.player, 'id', None)
+        ):
+            report = self._report_for_object(obj)
+            if report:
+                return (True, report.year)
+            if self.allow_foreign_orders_debug:
+                return (False, None)
+            if not self._is_fleet_currently_visible(obj):
+                return (False, None)
+
         foreign_owned = bool(
             getattr(obj, 'player_id', None) and
             getattr(obj, 'player_id', None) != getattr(self.player, 'id', None)

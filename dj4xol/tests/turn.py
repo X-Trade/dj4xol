@@ -7526,6 +7526,152 @@ class TestFleetTransferOrders(TestCase):
         self.assertEqual(fleet.integrity, 50)
         self.assertAlmostEqual(fleet.fuel, 50.0, places=4)
 
+    def test_shipyard_does_not_service_fleet_bombing_that_colony(self):
+        game = default_game(stars=2)
+        owner = game.players.first()
+        visitor = Player.objects.filter(game=game).exclude(id=owner.id).first()
+        if visitor is None:
+            other_user = User.objects.create_user('bomb_service', 'bomb_service@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            visitor = Player.objects.create(game=game, account=other_account, race_type=owner.race_type)
+        PlayerDiplomaticStance.objects.create(
+            player=owner,
+            target_player=visitor,
+            stance='ALLIED',
+        )
+
+        star = owner.homeworld
+        star.shipyards = 4
+        star.defenses = 0
+        star.save(update_fields=['shipyards', 'defenses'])
+        fleet = Fleet.objects.create(
+            game=game,
+            player=visitor,
+            name='Bombing Visitor',
+            x=star.x,
+            y=star.y,
+            ship_count=4,
+            integrity=10,
+            fuel=0.0,
+            max_fuel=100.0,
+            has_bombs='CONVENTIONAL',
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='BOMB',
+            target_star=star,
+            bomb_until='ONCE',
+        )
+
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.bombardment_damage_k', return_value=0), \
+             patch.object(GameTurn, '_resolve_planetary_defense_fire_against_fleet', return_value={
+                 'destroyed': False,
+                 'integrity_lost': 0,
+                 'ships_lost': 0,
+                 'defense_mult': 1.0,
+             }):
+            turn._execute_bomb_order(fleet, order)
+        turn._repair_fleets_at_star(star, 4)
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 10)
+        self.assertAlmostEqual(fleet.fuel, 0.0, places=4)
+
+    def test_shipyard_does_not_service_fleet_raiding_that_colony(self):
+        game = default_game(stars=2)
+        owner = game.players.first()
+        visitor = Player.objects.filter(game=game).exclude(id=owner.id).first()
+        if visitor is None:
+            other_user = User.objects.create_user('raid_service', 'raid_service@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            visitor = Player.objects.create(game=game, account=other_account, race_type=owner.race_type)
+        PlayerDiplomaticStance.objects.create(
+            player=owner,
+            target_player=visitor,
+            stance='NEUTRAL',
+        )
+
+        star = owner.homeworld
+        star.shipyards = 4
+        star.ironium_inventory = 100
+        star.save(update_fields=['shipyards', 'ironium_inventory'])
+        fleet = Fleet.objects.create(
+            game=game,
+            player=visitor,
+            name='Raiding Visitor',
+            x=star.x,
+            y=star.y,
+            ship_count=4,
+            integrity=10,
+            fuel=0.0,
+            max_fuel=100.0,
+            cargo_capacity=100,
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            transfer_ironium=10,
+        )
+
+        turn = GameTurn(game)
+        with patch.object(GameTurn, '_resolve_transfer_raid_defense_fire', return_value={
+            'destroyed': False,
+            'integrity_lost': 0,
+            'ships_lost': 0,
+            'defense_mult': 1.0,
+        }), patch.object(GameTurn, '_transfer_raid_successful', return_value=True):
+            turn._transfer_with_star(fleet, order, star)
+        turn._repair_fleets_at_star(star, 4)
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 10)
+        self.assertAlmostEqual(fleet.fuel, 0.0, places=4)
+
+    def test_shipyard_does_not_service_fleet_after_defense_potshot(self):
+        game = default_game(stars=2)
+        owner = game.players.first()
+        visitor = Player.objects.filter(game=game).exclude(id=owner.id).first()
+        if visitor is None:
+            other_user = User.objects.create_user('potshot_service', 'potshot_service@test.com', 'pass')
+            other_account = Account.objects.create(django_user=other_user)
+            visitor = Player.objects.create(game=game, account=other_account, race_type=owner.race_type)
+        PlayerDiplomaticStance.objects.create(
+            player=owner,
+            target_player=visitor,
+            stance='NEUTRAL',
+        )
+
+        star = owner.homeworld
+        star.shipyards = 4
+        star.defenses = 12
+        star.save(update_fields=['shipyards', 'defenses'])
+        fleet = Fleet.objects.create(
+            game=game,
+            player=visitor,
+            name='Potshot Visitor',
+            x=star.x,
+            y=star.y,
+            ship_count=4,
+            integrity=10,
+            fuel=0.0,
+            max_fuel=100.0,
+        )
+
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.roll_chance', return_value=True), \
+             patch.object(GameTurn, '_calculate_combat_damage', return_value={visitor: 10.0}), \
+             patch.object(GameTurn, '_apply_combat_damage', return_value={visitor: {'integrity_lost': 0}}):
+            turn._resolve_orbital_defense_hazard(star, fleet)
+        turn._repair_fleets_at_star(star, 4)
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 10)
+        self.assertAlmostEqual(fleet.fuel, 0.0, places=4)
+
     def test_hostile_orbit_can_take_defense_hazard_damage(self):
         game = default_game(stars=2)
         attacker = game.players.first()
