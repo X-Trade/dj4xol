@@ -69,8 +69,16 @@ def neutron_bombs_target_population_shipyards_and_cities(bomb_type):
     return normalize_bomb_type(bomb_type) == BOMB_TYPE_NEUTRON
 
 
-def apply_neutron_bomb_environment_shift(temperature, radiation):
+def _clamped_environment_scale(scale):
+    try:
+        return max(0.0, min(1.0, float(scale)))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def apply_neutron_bomb_environment_shift(temperature, radiation, scale=1.0):
     """Apply neutron bombardment environmental side-effects with clamping."""
+    scale = _clamped_environment_scale(scale)
     try:
         current_temperature = float(temperature)
     except (TypeError, ValueError):
@@ -82,11 +90,11 @@ def apply_neutron_bomb_environment_shift(temperature, radiation):
 
     new_temperature = max(
         0.0,
-        min(2.0, current_temperature + NEUTRON_BOMB_TEMPERATURE_DELTA),
+        min(2.0, current_temperature + (NEUTRON_BOMB_TEMPERATURE_DELTA * scale)),
     )
     new_radiation = max(
         0.0,
-        min(2.0, current_radiation + NEUTRON_BOMB_RADIATION_DELTA),
+        min(2.0, current_radiation + (NEUTRON_BOMB_RADIATION_DELTA * scale)),
     )
     return new_temperature, new_radiation
 
@@ -166,8 +174,9 @@ def graviton_bombs_apply_gravity_shift(bomb_type):
     return normalize_bomb_type(bomb_type) == BOMB_TYPE_GRAVITON
 
 
-def apply_graviton_bomb_environment_shift(gravity):
+def apply_graviton_bomb_environment_shift(gravity, scale=1.0):
     """Apply graviton bombardment gravity side-effect with clamping."""
+    scale = _clamped_environment_scale(scale)
     try:
         current_gravity = float(gravity)
     except (TypeError, ValueError):
@@ -175,11 +184,11 @@ def apply_graviton_bomb_environment_shift(gravity):
 
     return max(
         0.0,
-        min(2.0, current_gravity + GRAVITON_BOMB_GRAVITY_DELTA),
+        min(2.0, current_gravity + (GRAVITON_BOMB_GRAVITY_DELTA * scale)),
     )
 
 
-def apply_nova_family_environment_shift(gravity, radiation, bomb_type):
+def apply_nova_family_environment_shift(gravity, radiation, bomb_type, scale=1.0):
     """Apply nova/supernova environmental side-effects (if a star survives)."""
     normalized = normalize_bomb_type(bomb_type)
     if normalized not in (BOMB_TYPE_NOVA, BOMB_TYPE_SUPERNOVA):
@@ -195,6 +204,7 @@ def apply_nova_family_environment_shift(gravity, radiation, bomb_type):
             max(0.0, min(2.0, current_gravity)),
             max(0.0, min(2.0, current_radiation)),
         )
+    scale = _clamped_environment_scale(scale)
 
     gravity_delta = NOVA_BOMB_GRAVITY_DELTA
     radiation_delta = NOVA_BOMB_RADIATION_DELTA
@@ -213,11 +223,11 @@ def apply_nova_family_environment_shift(gravity, radiation, bomb_type):
 
     new_gravity = max(
         0.0,
-        min(2.0, current_gravity + gravity_delta),
+        min(2.0, current_gravity + (gravity_delta * scale)),
     )
     new_radiation = max(
         0.0,
-        min(2.0, current_radiation + radiation_delta),
+        min(2.0, current_radiation + (radiation_delta * scale)),
     )
     return new_gravity, new_radiation
 

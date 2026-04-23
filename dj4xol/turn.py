@@ -194,6 +194,7 @@ from .chance_rules import (
 )
 from .bombardment_rules import (
     apply_dyson_bombardment_damping,
+    bomb_damage_multiplier,
     distribute_infrastructure_hits,
     apply_graviton_bomb_environment_shift,
     apply_neutron_bomb_environment_shift,
@@ -606,6 +607,7 @@ class GameTurn():
         self._ambush_fleet_ids_for_year = set()
         self._player_colony_count_cache = {}
         self._shipyard_service_blocked_fleet_ids_by_star_id = {}
+        self._combined_bomb_order_ids = set()
 
     def generate_turn(self):
         """Generate a turn for the game. Requires at least one player."""
@@ -654,6 +656,7 @@ class GameTurn():
         self._stance_map_by_player_id = {}
         self._player_colony_count_cache = {}
         self._shipyard_service_blocked_fleet_ids_by_star_id = {}
+        self._combined_bomb_order_ids = set()
         refresh_contract_integrity(self.game)
         self._apply_pending_diplomacy_snapshot()
         self.move_comets()
@@ -6238,6 +6241,8 @@ class GameTurn():
 
     def _try_execute_bomb(self, fleet, order):
         """Try to execute a bombardment order at the targeted star."""
+        if getattr(order, 'id', None) in self._combined_bomb_order_ids:
+            return 'blocked'
         _, dest_x, dest_y, kind = order.get_actual_target()
         if kind == 'none':
             order.delete()
@@ -6299,6 +6304,528 @@ class GameTurn():
             'defense_mult': max(1.0, defender_defence_mult),
         }
 
+    @staticmethod
+    def _weighted_fleet_value(fleets, field_name, default=0.0):
+        total_ships = sum(max(0, int(getattr(fleet, 'ship_count', 0) or 0)) for fleet in fleets)
+        if total_ships <= 0:
+            return float(default)
+        total = 0.0
+        for fleet in fleets:
+            ships = max(0, int(getattr(fleet, 'ship_count', 0) or 0))
+            try:
+                value = float(getattr(fleet, field_name, default) or default)
+            except (TypeError, ValueError):
+                value = float(default)
+            total += value * float(ships)
+        return total / float(total_ships)
+
+    def _bombardment_max_potential_damage_k(
+        self,
+        ship_count,
+        defense_level,
+        bombardment_multiplier,
+        bomb_type,
+    ):
+        count = max(0, int(ship_count or 0))
+        if count <= 0:
+            return 0
+        mult = bomb_damage_multiplier(bomb_type)
+        if mult <= 0.0:
+            return 0
+        try:
+            defense_tech = float(defense_level)
+        except (TypeError, ValueError):
+            defense_tech = 0.0
+        try:
+            bombardment_mult = float(bombardment_multiplier)
+        except (TypeError, ValueError):
+            bombardment_mult = 1.0
+        bombardment_tech_factor = max(0.5, 1.0 + (defense_tech * 0.5))
+        return max(
+            0,
+            int(count * bombardment_tech_factor * mult * max(0.0, bombardment_mult)),
+        )
+
+    @staticmethod
+    def _bombardment_environment_scale(damage_k, max_potential_damage_k):
+        try:
+            damage = float(damage_k or 0)
+            potential = float(max_potential_damage_k or 0)
+        except (TypeError, ValueError):
+            return 0.0
+        if damage <= 0.0 or potential <= 0.0:
+            return 0.0
+        return max(0.0, min(1.0, damage / potential))
+
+    def _apply_bombardment_damage_to_star(
+        self,
+        star,
+        bomb_type,
+        damage_k,
+        environment_scale,
+        pre,
+        order,
+        fleet,
+    ):
+        from .models import Star
+
+        is_smart = smart_bombs_only_target_defenses_and_population(bomb_type)
+        is_neutron = neutron_bombs_target_population_shipyards_and_cities(bomb_type)
+        is_graviton = graviton_bombs_apply_gravity_shift(bomb_type)
+        neutron_collateral_k = neutron_bomb_collateral_damage_k(damage_k) if is_neutron else 0
+
+        defenses_lost = min(
+            pre['defenses'],
+            neutron_collateral_k if is_neutron else damage_k,
+        )
+        colonists_lost = min(pre['colonists'], damage_k * 1000)
+        star.defenses = max(0, pre['defenses'] - defenses_lost)
+        star.colonists = max(0, pre['colonists'] - colonists_lost)
+
+        mines_lost = 0
+        factories_lost = 0
+        labs_lost = 0
+        shipyards_lost = 0
+        cities_lost = 0
+        megacities_lost = 0
+        administration_lost = 0
+        dyson_sphere_lost = 0
+        if is_neutron:
+            collateral_losses = distribute_infrastructure_hits(
+                {
+                    'mines': pre['mines'],
+                    'factories': pre['factories'],
+                    'labs': pre['labs'],
+                },
+                neutron_collateral_k,
+            )
+            primary_losses = distribute_infrastructure_hits(
+                {
+                    'shipyards': pre['shipyards'],
+                    'cities': pre['cities'],
+                    'megacities': pre['megacities'],
+                },
+                damage_k,
+            )
+            mines_lost = collateral_losses.get('mines', 0)
+            factories_lost = collateral_losses.get('factories', 0)
+            labs_lost = collateral_losses.get('labs', 0)
+            shipyards_lost = primary_losses.get('shipyards', 0)
+            cities_lost = primary_losses.get('cities', 0)
+            megacities_lost = primary_losses.get('megacities', 0)
+            star.mines = max(0, pre['mines'] - mines_lost)
+            star.factories = max(0, pre['factories'] - factories_lost)
+            star.labs = max(0, pre['labs'] - labs_lost)
+            star.shipyards = max(0, pre['shipyards'] - shipyards_lost)
+            star.cities = max(0, pre['cities'] - cities_lost)
+            star.megacities = max(0, pre['megacities'] - megacities_lost)
+            if damage_k > 0:
+                (
+                    star.temperature,
+                    star.radiation,
+                ) = apply_neutron_bomb_environment_shift(
+                    getattr(star, 'temperature', 0.0),
+                    getattr(star, 'radiation', 0.0),
+                    scale=environment_scale,
+                )
+        elif not is_smart:
+            infra_losses = distribute_infrastructure_hits(
+                {
+                    'mines': pre['mines'],
+                    'factories': pre['factories'],
+                    'labs': pre['labs'],
+                    'shipyards': pre['shipyards'],
+                    'cities': pre['cities'],
+                    'megacities': pre['megacities'],
+                    'administration': 1 if pre['has_administration'] else 0,
+                },
+                damage_k,
+            )
+            mines_lost = infra_losses.get('mines', 0)
+            factories_lost = infra_losses.get('factories', 0)
+            labs_lost = infra_losses.get('labs', 0)
+            shipyards_lost = infra_losses.get('shipyards', 0)
+            cities_lost = infra_losses.get('cities', 0)
+            megacities_lost = infra_losses.get('megacities', 0)
+            administration_lost = infra_losses.get('administration', 0)
+            if (
+                pre['has_dyson_sphere'] and
+                damage_k > 0 and
+                bomb_type in {'NOVA', 'SUPERNOVA'}
+            ):
+                dyson_sphere_lost = 1
+            star.mines = max(0, pre['mines'] - mines_lost)
+            star.factories = max(0, pre['factories'] - factories_lost)
+            star.labs = max(0, pre['labs'] - labs_lost)
+            star.shipyards = max(0, pre['shipyards'] - shipyards_lost)
+            star.cities = max(0, pre['cities'] - cities_lost)
+            star.megacities = max(0, pre['megacities'] - megacities_lost)
+            if administration_lost:
+                star.has_administration = False
+            if dyson_sphere_lost:
+                star.has_dyson_sphere = False
+
+        if is_graviton and damage_k > 0:
+            star.gravity = apply_graviton_bomb_environment_shift(
+                getattr(star, 'gravity', 0.0),
+                scale=environment_scale,
+            )
+
+        star_destroyed = False
+        destroyed_star_name = star.name
+        blast_summary = None
+        if bomb_type == 'SUPERNOVA' and damage_k > 0:
+            stars_at_location = []
+            for location_star in Star.objects.filter(
+                game=self.game,
+                x=star.x,
+                y=star.y,
+            ).order_by('id'):
+                active_star = star if location_star.id == star.id else location_star
+                active_star.gravity, active_star.radiation = apply_nova_family_environment_shift(
+                    getattr(active_star, 'gravity', 0.0),
+                    getattr(active_star, 'radiation', 0.0),
+                    'SUPERNOVA',
+                    scale=environment_scale,
+                )
+                stars_at_location.append(active_star)
+
+            collapse_triggered = any(
+                float(getattr(location_star, 'gravity', 0.0) or 0.0) <
+                SUPERNOVA_COLLAPSE_GRAVITY_THRESHOLD
+                for location_star in stars_at_location
+            )
+            if collapse_triggered:
+                star_destroyed = True
+                blast_x = star.x
+                blast_y = star.y
+                star_snapshots = []
+                for doomed_star in stars_at_location:
+                    star_snapshot = self._destroy_star_for_bombardment(doomed_star, order, fleet)
+                    if star_snapshot is not None:
+                        star_snapshots.append(star_snapshot)
+                self._create_supernova_star_remnant(
+                    self._merge_star_remnant_snapshots(star_snapshots)
+                )
+                blast_summary = self._apply_supernova_fleet_blast(
+                    fleet,
+                    blast_x,
+                    blast_y,
+                )
+            else:
+                for location_star in stars_at_location:
+                    if location_star.id == star.id:
+                        location_star.save(update_fields=[
+                            'gravity', 'defenses', 'colonists', 'temperature', 'radiation',
+                            'mines', 'factories', 'labs',
+                            'shipyards', 'cities', 'megacities',
+                            'has_administration', 'has_dyson_sphere',
+                        ])
+                    else:
+                        location_star.save(update_fields=['gravity', 'radiation'])
+        elif bomb_type == 'NOVA' and damage_k > 0:
+            star.gravity, star.radiation = apply_nova_family_environment_shift(
+                getattr(star, 'gravity', 0.0),
+                getattr(star, 'radiation', 0.0),
+                'NOVA',
+                scale=environment_scale,
+            )
+            if float(getattr(star, 'gravity', 0.0) or 0.0) < NOVA_COLLAPSE_GRAVITY_THRESHOLD:
+                star_destroyed = True
+                star_snapshot = self._destroy_star_for_bombardment(star, order, fleet)
+                self._create_nova_star_remnant(star_snapshot)
+            else:
+                star.save(update_fields=[
+                    'gravity', 'defenses', 'colonists', 'temperature', 'radiation',
+                    'mines', 'factories', 'labs',
+                    'shipyards', 'cities', 'megacities',
+                    'has_administration', 'has_dyson_sphere',
+                ])
+        else:
+            star.save(update_fields=[
+                'gravity', 'defenses', 'colonists', 'temperature', 'radiation',
+                'mines', 'factories', 'labs',
+                'shipyards', 'cities', 'megacities',
+                'has_administration', 'has_dyson_sphere',
+            ])
+
+        return {
+            'defenses_lost': defenses_lost,
+            'colonists_lost': colonists_lost,
+            'mines_lost': mines_lost,
+            'factories_lost': factories_lost,
+            'labs_lost': labs_lost,
+            'shipyards_lost': shipyards_lost,
+            'cities_lost': cities_lost,
+            'megacities_lost': megacities_lost,
+            'administration_lost': administration_lost,
+            'dyson_sphere_lost': dyson_sphere_lost,
+            'star_destroyed': star_destroyed,
+            'destroyed_star_name': destroyed_star_name,
+            'blast_summary': blast_summary,
+        }
+
+    def _collect_combined_bombardment_participants(self, fleet, order, star, bomb_type):
+        from .models import FleetOrders
+
+        participants = [(fleet, order)]
+        if not fleet or not order or not star or not getattr(fleet, 'player_id', None):
+            return participants
+        for candidate in FleetOrders.objects.filter(
+            game=self.game,
+            order_type='BOMB',
+            fleet__game=self.game,
+            fleet__player=fleet.player,
+            fleet__x=star.x,
+            fleet__y=star.y,
+        ).exclude(id=order.id).select_related('fleet').order_by('fleet_id', 'position', 'id'):
+            candidate_fleet = candidate.fleet
+            if candidate.id in self._combined_bomb_order_ids:
+                continue
+            if normalize_bomb_type(getattr(candidate_fleet, 'has_bombs', None)) != bomb_type:
+                continue
+            first_order = candidate_fleet.orders.order_by('position', 'id').first()
+            if not first_order or first_order.id != candidate.id:
+                continue
+            _, target_x, target_y, kind = candidate.get_actual_target()
+            if kind == 'none' or int(target_x) != int(star.x) or int(target_y) != int(star.y):
+                continue
+            participants.append((candidate_fleet, candidate))
+        return participants
+
+    def _resolve_planetary_defense_fire_against_bombardment_group(self, star, fleets):
+        if not star.player or not fleets:
+            return {'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0, 'by_fleet': {}}
+        attacker = fleets[0].player
+        if star.player == attacker:
+            return {'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0, 'by_fleet': {}}
+        effective_defenses = calculate_effective_defenses(star)
+        if effective_defenses <= 0:
+            return {'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0, 'by_fleet': {}}
+
+        for fleet in fleets:
+            self._block_shipyard_service_for_fleet(star, fleet)
+
+        defender = star.player
+        defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
+        attacker_strength = sum(
+            calculate_fleet_strength(fleet, defender_defence_mult)
+            for fleet in fleets
+        )
+        defender_strength = normalize_ship_count(effective_defenses)
+        before = {
+            fleet.id: {
+                'integrity': int(getattr(fleet, 'integrity', 0) or 0),
+                'ship_count': int(getattr(fleet, 'ship_count', 0) or 0),
+            }
+            for fleet in fleets
+        }
+        damage_taken = self._calculate_combat_damage({
+            attacker: attacker_strength,
+            defender: defender_strength,
+        })
+        results = self._apply_combat_damage(
+            {attacker: fleets, defender: []},
+            damage_taken,
+        )
+        by_fleet = {}
+        from .models import Fleet
+        remaining = {
+            row.id: row
+            for row in Fleet.objects.filter(id__in=list(before.keys()))
+        }
+        for fleet_id, snapshot in before.items():
+            current = remaining.get(fleet_id)
+            if current is None:
+                by_fleet[fleet_id] = {
+                    'destroyed': True,
+                    'integrity_lost': snapshot['integrity'],
+                    'ships_lost': snapshot['ship_count'],
+                }
+            else:
+                by_fleet[fleet_id] = {
+                    'destroyed': False,
+                    'integrity_lost': max(
+                        0,
+                        snapshot['integrity'] - int(getattr(current, 'integrity', 0) or 0),
+                    ),
+                    'ships_lost': max(
+                        0,
+                        snapshot['ship_count'] - int(getattr(current, 'ship_count', 0) or 0),
+                    ),
+                }
+        result = results.get(attacker, {}) or {}
+        return {
+            'destroyed': bool(result.get('fleets_destroyed', 0)),
+            'integrity_lost': int(result.get('integrity_lost', 0) or 0),
+            'ships_lost': int(result.get('ships_lost', 0) or 0),
+            'defense_mult': max(1.0, defender_defence_mult),
+            'by_fleet': by_fleet,
+        }
+
+    def _execute_combined_bombardment(self, participants, star, bomb_type, initiating_order):
+        from .models import Fleet
+
+        order_ids = {order.id for _fleet, order in participants if getattr(order, 'id', None)}
+        self._combined_bomb_order_ids.update(order_ids)
+        fleets = [fleet for fleet, _order in participants]
+        if star.player:
+            for fleet in fleets:
+                self._block_shipyard_service_for_fleet(star, fleet)
+        defense_fire = self._resolve_planetary_defense_fire_against_bombardment_group(star, fleets)
+        by_fleet = defense_fire.get('by_fleet', {}) or {}
+        surviving_fleets_by_id = {
+            row.id: row
+            for row in Fleet.objects.filter(id__in=[fleet.id for fleet in fleets]).select_related('player', 'player__race_type')
+        }
+        surviving = [
+            (surviving_fleets_by_id[fleet.id], order)
+            for fleet, order in participants
+            if fleet.id in surviving_fleets_by_id
+        ]
+        if not surviving:
+            return 'fleet_destroyed' if initiating_order.fleet_id not in surviving_fleets_by_id else 'executed'
+
+        attack_fleets = [fleet for fleet, _order in surviving]
+        defending_player = star.player if star.player and star.player != attack_fleets[0].player else None
+        pre = {
+            'defenses': int(star.defenses or 0),
+            'colonists': int(star.colonists or 0),
+            'mines': int(star.mines or 0),
+            'factories': int(star.factories or 0),
+            'labs': int(star.labs or 0),
+            'shipyards': int(star.shipyards or 0),
+            'cities': int(getattr(star, 'cities', 0) or 0),
+            'megacities': int(getattr(star, 'megacities', 0) or 0),
+            'has_administration': bool(getattr(star, 'has_administration', False)),
+            'has_dyson_sphere': bool(getattr(star, 'has_dyson_sphere', False)),
+        }
+        total_ship_count = sum(max(0, int(fleet.ship_count or 0)) for fleet in attack_fleets)
+        defense_level = self._weighted_fleet_value(attack_fleets, 'defense_level', default=0.0)
+        total_ships_for_race = max(1, total_ship_count)
+        luck_multiplier = sum(
+            float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0) *
+            max(0, int(fleet.ship_count or 0))
+            for fleet in attack_fleets
+        ) / float(total_ships_for_race)
+        bombardment_multiplier = sum(
+            float(getattr(fleet.player.race_type, 'bombardment_multiplier', 1.0) or 1.0) *
+            max(0, int(fleet.ship_count or 0))
+            for fleet in attack_fleets
+        ) / float(total_ships_for_race)
+        effective_defenses = max(0.0, float(calculate_effective_defenses(star)))
+        damage_k = bombardment_damage_k(
+            total_ship_count,
+            defense_level,
+            effective_defenses * defense_fire.get('defense_mult', 1.0),
+            luck_multiplier,
+            bomb_type,
+        )
+        damage_k = max(0, int(round(damage_k * bombardment_multiplier)))
+        damage_k = apply_dyson_bombardment_damping(damage_k, pre['has_dyson_sphere'])
+        max_potential_damage_k = self._bombardment_max_potential_damage_k(
+            total_ship_count,
+            defense_level,
+            bombardment_multiplier,
+            bomb_type,
+        )
+        environment_scale = self._bombardment_environment_scale(damage_k, max_potential_damage_k)
+
+        lead_fleet = attack_fleets[0]
+        damage_result = self._apply_bombardment_damage_to_star(
+            star,
+            bomb_type,
+            damage_k,
+            environment_scale,
+            pre,
+            surviving[0][1],
+            lead_fleet,
+        )
+        defenses_lost = damage_result['defenses_lost']
+        colonists_lost = damage_result['colonists_lost']
+        mines_lost = damage_result['mines_lost']
+        factories_lost = damage_result['factories_lost']
+        labs_lost = damage_result['labs_lost']
+        shipyards_lost = damage_result['shipyards_lost']
+        cities_lost = damage_result['cities_lost']
+        megacities_lost = damage_result['megacities_lost']
+        administration_lost = damage_result['administration_lost']
+        dyson_sphere_lost = damage_result['dyson_sphere_lost']
+        star_destroyed = damage_result['star_destroyed']
+        destroyed_star_name = damage_result['destroyed_star_name']
+        blast_summary = damage_result['blast_summary']
+
+        for attack_fleet, _order in surviving:
+            fleet_fire = by_fleet.get(attack_fleet.id, {})
+            factory = FleetBombardmentReportMessageFactory(
+                self.game, attack_fleet.player, fleet=attack_fleet,
+                star_name=destroyed_star_name, bomb_type=bomb_type,
+                defenses_lost=defenses_lost, colonists_lost=colonists_lost,
+                mines_lost=mines_lost, factories_lost=factories_lost, labs_lost=labs_lost,
+                shipyards_lost=shipyards_lost, cities_lost=cities_lost,
+                megacities_lost=megacities_lost, administration_lost=administration_lost,
+                dyson_sphere_lost=dyson_sphere_lost,
+                integrity_lost=fleet_fire.get('integrity_lost', 0),
+                ships_lost=fleet_fire.get('ships_lost', 0),
+                star_destroyed=star_destroyed, star=None if star_destroyed else star,
+                extra_effects_text=self._supernova_blast_report_text(blast_summary, perspective='attacker'),
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
+        if defending_player is not None:
+            total_losses = (
+                defenses_lost + colonists_lost + mines_lost + factories_lost + labs_lost +
+                shipyards_lost + cities_lost + megacities_lost + administration_lost +
+                dyson_sphere_lost
+            )
+            if total_losses > 0 or star_destroyed:
+                defender_factory = FleetBombardmentReportMessageFactory(
+                    self.game, defending_player, fleet=lead_fleet,
+                    star_name=destroyed_star_name, bomb_type=bomb_type,
+                    defenses_lost=defenses_lost, colonists_lost=colonists_lost,
+                    mines_lost=mines_lost, factories_lost=factories_lost, labs_lost=labs_lost,
+                    shipyards_lost=shipyards_lost, cities_lost=cities_lost,
+                    megacities_lost=megacities_lost, administration_lost=administration_lost,
+                    dyson_sphere_lost=dyson_sphere_lost,
+                    integrity_lost=defense_fire.get('integrity_lost', 0),
+                    ships_lost=defense_fire.get('ships_lost', 0),
+                    star_destroyed=star_destroyed, perspective='defender',
+                    attacker_fleet_name='%s combined fleets' % lead_fleet.player.name,
+                    star=None if star_destroyed else star,
+                    extra_effects_text=self._supernova_blast_report_text(blast_summary, perspective='defender'),
+                )
+                defender_msg = defender_factory.new_message()
+                defender_msg.year = self.game.year
+                defender_msg.save()
+
+        for attack_fleet, attack_order in surviving:
+            completed = self._bomb_order_completed(attack_order, pre, star, star_destroyed)
+            if completed:
+                if attack_order.repeat:
+                    self._handle_repeating_order(attack_order)
+                attack_order.delete()
+
+        if initiating_order.fleet_id not in surviving_fleets_by_id:
+            return 'fleet_destroyed'
+        return 'executed' if not initiating_order.__class__.objects.filter(id=initiating_order.id).exists() else 'blocked'
+
+    @staticmethod
+    def _bomb_order_completed(order, pre, star, star_destroyed):
+        completion_mode = (getattr(order, 'bomb_until', None) or 'COLONISTS_ZERO').upper()
+        if completion_mode == 'CONTINUOUS':
+            completion_mode = 'ONCE'
+        if star_destroyed:
+            return True
+        if completion_mode == 'COLONISTS_ZERO':
+            return pre['colonists'] > 0 and int(star.colonists or 0) <= 0
+        if completion_mode == 'DEFENSES_ZERO':
+            return pre['defenses'] > 0 and int(star.defenses or 0) <= 0
+        if completion_mode == 'ONCE':
+            return True
+        return pre['colonists'] > 0 and int(star.colonists or 0) <= 0
+
     def _execute_bomb_order(self, fleet, order):
         """Execute one year of bombardment damage."""
         from .models import Star
@@ -6326,7 +6853,21 @@ class GameTurn():
             order.delete()
             return 'executed'
 
-        if star.player and star.player != fleet.player:
+        participants = self._collect_combined_bombardment_participants(
+            fleet,
+            order,
+            star,
+            bomb_type,
+        )
+        if len(participants) > 1:
+            return self._execute_combined_bombardment(
+                participants,
+                star,
+                bomb_type,
+                order,
+            )
+
+        if star.player:
             self._block_shipyard_service_for_fleet(star, fleet)
         defense_fire = self._resolve_planetary_defense_fire_against_fleet(star, fleet)
         if defense_fire.get('destroyed'):
@@ -6388,181 +6929,39 @@ class GameTurn():
             damage_k,
             pre['has_dyson_sphere'],
         )
-
-        is_smart = smart_bombs_only_target_defenses_and_population(bomb_type)
-        is_neutron = neutron_bombs_target_population_shipyards_and_cities(bomb_type)
-        is_graviton = graviton_bombs_apply_gravity_shift(bomb_type)
-        neutron_collateral_k = neutron_bomb_collateral_damage_k(damage_k) if is_neutron else 0
-
-        defenses_lost = min(
-            pre['defenses'],
-            neutron_collateral_k if is_neutron else damage_k,
+        max_potential_damage_k = self._bombardment_max_potential_damage_k(
+            fleet.ship_count,
+            fleet.defense_level,
+            bombardment_multiplier,
+            bomb_type,
         )
-        colonists_lost = min(pre['colonists'], damage_k * 1000)
-        star.defenses = max(0, pre['defenses'] - defenses_lost)
-        star.colonists = max(0, pre['colonists'] - colonists_lost)
+        environment_scale = self._bombardment_environment_scale(
+            damage_k,
+            max_potential_damage_k,
+        )
 
-        mines_lost = 0
-        factories_lost = 0
-        labs_lost = 0
-        shipyards_lost = 0
-        cities_lost = 0
-        megacities_lost = 0
-        administration_lost = 0
-        dyson_sphere_lost = 0
-        if is_neutron:
-            collateral_losses = distribute_infrastructure_hits(
-                {
-                    'mines': pre['mines'],
-                    'factories': pre['factories'],
-                    'labs': pre['labs'],
-                },
-                neutron_collateral_k,
-            )
-            primary_losses = distribute_infrastructure_hits(
-                {
-                    'shipyards': pre['shipyards'],
-                    'cities': pre['cities'],
-                    'megacities': pre['megacities'],
-                },
-                damage_k,
-            )
-            mines_lost = collateral_losses.get('mines', 0)
-            factories_lost = collateral_losses.get('factories', 0)
-            labs_lost = collateral_losses.get('labs', 0)
-            shipyards_lost = primary_losses.get('shipyards', 0)
-            cities_lost = primary_losses.get('cities', 0)
-            megacities_lost = primary_losses.get('megacities', 0)
-            star.mines = max(0, pre['mines'] - mines_lost)
-            star.factories = max(0, pre['factories'] - factories_lost)
-            star.labs = max(0, pre['labs'] - labs_lost)
-            star.shipyards = max(0, pre['shipyards'] - shipyards_lost)
-            star.cities = max(0, pre['cities'] - cities_lost)
-            star.megacities = max(0, pre['megacities'] - megacities_lost)
-            (
-                star.temperature,
-                star.radiation,
-            ) = apply_neutron_bomb_environment_shift(
-                getattr(star, 'temperature', 0.0),
-                getattr(star, 'radiation', 0.0),
-            )
-        elif not is_smart:
-            infra_losses = distribute_infrastructure_hits(
-                {
-                    'mines': pre['mines'],
-                    'factories': pre['factories'],
-                    'labs': pre['labs'],
-                    'shipyards': pre['shipyards'],
-                    'cities': pre['cities'],
-                    'megacities': pre['megacities'],
-                    'administration': 1 if pre['has_administration'] else 0,
-                },
-                damage_k,
-            )
-            mines_lost = infra_losses.get('mines', 0)
-            factories_lost = infra_losses.get('factories', 0)
-            labs_lost = infra_losses.get('labs', 0)
-            shipyards_lost = infra_losses.get('shipyards', 0)
-            cities_lost = infra_losses.get('cities', 0)
-            megacities_lost = infra_losses.get('megacities', 0)
-            administration_lost = infra_losses.get('administration', 0)
-            if (
-                pre['has_dyson_sphere'] and
-                damage_k > 0 and
-                bomb_type in {'NOVA', 'SUPERNOVA'}
-            ):
-                dyson_sphere_lost = 1
-            star.mines = max(0, pre['mines'] - mines_lost)
-            star.factories = max(0, pre['factories'] - factories_lost)
-            star.labs = max(0, pre['labs'] - labs_lost)
-            star.shipyards = max(0, pre['shipyards'] - shipyards_lost)
-            star.cities = max(0, pre['cities'] - cities_lost)
-            star.megacities = max(0, pre['megacities'] - megacities_lost)
-            if administration_lost:
-                star.has_administration = False
-            if dyson_sphere_lost:
-                star.has_dyson_sphere = False
-
-        if is_graviton:
-            star.gravity = apply_graviton_bomb_environment_shift(
-                getattr(star, 'gravity', 0.0),
-            )
-
-        star_destroyed = False
-        destroyed_star_name = star.name
-        blast_summary = None
-        if bomb_type == 'SUPERNOVA':
-            stars_at_location = []
-            for location_star in Star.objects.filter(
-                game=self.game,
-                x=star.x,
-                y=star.y,
-            ).order_by('id'):
-                active_star = star if location_star.id == star.id else location_star
-                active_star.gravity, active_star.radiation = apply_nova_family_environment_shift(
-                    getattr(active_star, 'gravity', 0.0),
-                    getattr(active_star, 'radiation', 0.0),
-                    'SUPERNOVA',
-                )
-                stars_at_location.append(active_star)
-
-            collapse_triggered = any(
-                float(getattr(location_star, 'gravity', 0.0) or 0.0) <
-                SUPERNOVA_COLLAPSE_GRAVITY_THRESHOLD
-                for location_star in stars_at_location
-            )
-            if collapse_triggered:
-                star_destroyed = True
-                blast_x = star.x
-                blast_y = star.y
-                star_snapshots = []
-                for doomed_star in stars_at_location:
-                    star_snapshot = self._destroy_star_for_bombardment(doomed_star, order, fleet)
-                    if star_snapshot is not None:
-                        star_snapshots.append(star_snapshot)
-                self._create_supernova_star_remnant(
-                    self._merge_star_remnant_snapshots(star_snapshots)
-                )
-                blast_summary = self._apply_supernova_fleet_blast(
-                    fleet,
-                    blast_x,
-                    blast_y,
-                )
-            else:
-                for location_star in stars_at_location:
-                    if location_star.id == star.id:
-                        location_star.save(update_fields=[
-                            'gravity', 'defenses', 'colonists', 'temperature', 'radiation',
-                            'mines', 'factories', 'labs',
-                            'shipyards', 'cities', 'megacities',
-                            'has_administration', 'has_dyson_sphere',
-                        ])
-                    else:
-                        location_star.save(update_fields=['gravity', 'radiation'])
-        elif bomb_type == 'NOVA':
-            star.gravity, star.radiation = apply_nova_family_environment_shift(
-                getattr(star, 'gravity', 0.0),
-                getattr(star, 'radiation', 0.0),
-                'NOVA',
-            )
-            if float(getattr(star, 'gravity', 0.0) or 0.0) < NOVA_COLLAPSE_GRAVITY_THRESHOLD:
-                star_destroyed = True
-                star_snapshot = self._destroy_star_for_bombardment(star, order, fleet)
-                self._create_nova_star_remnant(star_snapshot)
-            else:
-                star.save(update_fields=[
-                    'gravity', 'defenses', 'colonists', 'temperature', 'radiation',
-                    'mines', 'factories', 'labs',
-                    'shipyards', 'cities', 'megacities',
-                    'has_administration', 'has_dyson_sphere',
-                ])
-        else:
-            star.save(update_fields=[
-                'gravity', 'defenses', 'colonists', 'temperature', 'radiation',
-                'mines', 'factories', 'labs',
-                'shipyards', 'cities', 'megacities',
-                'has_administration', 'has_dyson_sphere',
-            ])
+        damage_result = self._apply_bombardment_damage_to_star(
+            star,
+            bomb_type,
+            damage_k,
+            environment_scale,
+            pre,
+            order,
+            fleet,
+        )
+        defenses_lost = damage_result['defenses_lost']
+        colonists_lost = damage_result['colonists_lost']
+        mines_lost = damage_result['mines_lost']
+        factories_lost = damage_result['factories_lost']
+        labs_lost = damage_result['labs_lost']
+        shipyards_lost = damage_result['shipyards_lost']
+        cities_lost = damage_result['cities_lost']
+        megacities_lost = damage_result['megacities_lost']
+        administration_lost = damage_result['administration_lost']
+        dyson_sphere_lost = damage_result['dyson_sphere_lost']
+        star_destroyed = damage_result['star_destroyed']
+        destroyed_star_name = damage_result['destroyed_star_name']
+        blast_summary = damage_result['blast_summary']
 
         factory = FleetBombardmentReportMessageFactory(
             self.game,

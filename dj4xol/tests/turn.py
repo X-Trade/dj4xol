@@ -7629,6 +7629,97 @@ class TestFleetTransferOrders(TestCase):
         self.assertEqual(fleet.integrity, 10)
         self.assertAlmostEqual(fleet.fuel, 0.0, places=4)
 
+    def test_shipyard_does_not_service_own_fleet_bombing_that_colony(self):
+        game = default_game(stars=2)
+        owner = game.players.first()
+        star = owner.homeworld
+        star.shipyards = 4
+        star.defenses = 0
+        star.save(update_fields=['shipyards', 'defenses'])
+        fleet = Fleet.objects.create(
+            game=game,
+            player=owner,
+            name='Own Colony Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=4,
+            integrity=10,
+            fuel=0.0,
+            max_fuel=100.0,
+            has_bombs='CONVENTIONAL',
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='BOMB',
+            target_star=star,
+            bomb_until='ONCE',
+        )
+
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.bombardment_damage_k', return_value=0):
+            turn._execute_bomb_order(fleet, order)
+        turn._repair_fleets_at_star(star, 4)
+
+        fleet.refresh_from_db()
+        self.assertEqual(fleet.integrity, 10)
+        self.assertAlmostEqual(fleet.fuel, 0.0, places=4)
+
+    def test_shipyard_does_not_service_combined_friendly_bombers_at_that_colony(self):
+        game = default_game(stars=2)
+        owner = game.players.first()
+        visitor = Player.objects.filter(game=game).exclude(id=owner.id).first()
+        if visitor is None:
+            other_user = User.objects.create_user(
+                'combined_bomb_service',
+                'combined_bomb_service@test.com',
+                'pass',
+            )
+            other_account = Account.objects.create(django_user=other_user)
+            visitor = Player.objects.create(game=game, account=other_account, race_type=owner.race_type)
+        PlayerDiplomaticStance.objects.create(
+            player=owner,
+            target_player=visitor,
+            stance='ALLIED',
+        )
+
+        star = owner.homeworld
+        star.shipyards = 8
+        star.defenses = 0
+        star.save(update_fields=['shipyards', 'defenses'])
+        fleets = []
+        for idx in range(2):
+            fleet = Fleet.objects.create(
+                game=game,
+                player=visitor,
+                name='Combined Friendly Bomber %s' % idx,
+                x=star.x,
+                y=star.y,
+                ship_count=4,
+                integrity=10,
+                fuel=0.0,
+                max_fuel=100.0,
+                has_bombs='CONVENTIONAL',
+            )
+            FleetOrders.objects.create(
+                game=game,
+                fleet=fleet,
+                order_type='BOMB',
+                target_star=star,
+                bomb_until='ONCE',
+            )
+            fleets.append(fleet)
+
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.bombardment_damage_k', return_value=0):
+            turn._execute_bomb_order(fleets[0], fleets[0].orders.first())
+        turn._repair_fleets_at_star(star, 8)
+
+        for fleet in fleets:
+            fleet.refresh_from_db()
+            self.assertEqual(fleet.integrity, 10)
+            self.assertAlmostEqual(fleet.fuel, 0.0, places=4)
+
     def test_shipyard_does_not_service_fleet_raiding_that_colony(self):
         game = default_game(stars=2)
         owner = game.players.first()
@@ -13138,8 +13229,8 @@ class TestBombardmentOrders(TestCase):
         self.assertEqual(star.factories, 5)
         self.assertEqual(star.labs, 4)
         self.assertEqual(star.shipyards, 6)
-        self.assertAlmostEqual(star.temperature, 1.01, places=6)
-        self.assertAlmostEqual(star.radiation, 1.02, places=6)
+        self.assertAlmostEqual(star.temperature, 1.001, places=6)
+        self.assertAlmostEqual(star.radiation, 1.002, places=6)
         self.assertEqual(star.cities, 7)
         self.assertEqual(star.megacities, 4)
         self.assertTrue(star.has_administration)
@@ -13186,8 +13277,8 @@ class TestBombardmentOrders(TestCase):
             GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
 
         star.refresh_from_db()
-        self.assertAlmostEqual(star.temperature, 2.0, places=6)
-        self.assertAlmostEqual(star.radiation, 2.0, places=6)
+        self.assertAlmostEqual(star.temperature, 1.9955, places=6)
+        self.assertAlmostEqual(star.radiation, 1.996, places=6)
 
     def test_dyson_sphere_damps_bombardment_deductions_by_half(self):
         from ..models import FleetOrders
@@ -13391,7 +13482,7 @@ class TestBombardmentOrders(TestCase):
             star.shipyards + star.cities + star.megacities
         )
         self.assertEqual(total_infra_before - total_infra_after, 3)
-        self.assertAlmostEqual(star.gravity, 1.05, places=6)
+        self.assertAlmostEqual(star.gravity, 1.0021428571428572, places=6)
         self.assertAlmostEqual(star.temperature, 1.00, places=6)
         self.assertAlmostEqual(star.radiation, 1.00, places=6)
 
@@ -13479,7 +13570,43 @@ class TestBombardmentOrders(TestCase):
             GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
 
         star.refresh_from_db()
-        self.assertAlmostEqual(star.gravity, 2.0, places=6)
+        self.assertAlmostEqual(star.gravity, 1.9507142857142856, places=6)
+
+    def test_environment_shift_requires_positive_bombardment_damage(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_env_no_damage_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10_000
+        star.gravity = 1.0
+        star.radiation = 1.0
+        star.defenses = 999
+        star.save(update_fields=['player', 'colonists', 'gravity', 'radiation', 'defenses'])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='No Penetration Nova',
+            x=star.x,
+            y=star.y,
+            ship_count=1,
+            has_bombs='NOVA',
+            integrity=100,
+        )
+        FleetOrders.objects.create(game=game, fleet=fleet, order_type='BOMB', target_star=star)
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=0):
+            GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+        star.refresh_from_db()
+        self.assertEqual(star.colonists, 10_000)
+        self.assertAlmostEqual(star.gravity, 1.0, places=6)
+        self.assertAlmostEqual(star.radiation, 1.0, places=6)
 
     def test_nova_bombs_shift_environment_when_star_survives(self):
         from ..models import FleetOrders
@@ -13518,9 +13645,110 @@ class TestBombardmentOrders(TestCase):
             GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
 
         star.refresh_from_db()
-        self.assertAlmostEqual(star.gravity, 0.80, places=6)
-        self.assertAlmostEqual(star.radiation, 1.02, places=6)
+        self.assertAlmostEqual(star.gravity, 0.998, places=6)
+        self.assertAlmostEqual(star.radiation, 1.0002, places=6)
         self.assertAlmostEqual(star.temperature, 1.00, places=6)
+
+    def test_same_type_bombers_combine_damage_against_defenses(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_combined_damage_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10_000
+        star.defenses = 1
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+
+        fleets = []
+        for idx in range(2):
+            fleet = Fleet.objects.create(
+                game=game,
+                player=attacker,
+                name='Combined Bomber %s' % idx,
+                x=star.x,
+                y=star.y,
+                ship_count=1,
+                has_bombs='CONVENTIONAL',
+                integrity=100,
+            )
+            FleetOrders.objects.create(
+                game=game,
+                fleet=fleet,
+                order_type='BOMB',
+                target_star=star,
+                bomb_until='ONCE',
+            )
+            fleets.append(fleet)
+
+        turn = GameTurn(game)
+        with patch.object(
+            GameTurn,
+            '_resolve_planetary_defense_fire_against_bombardment_group',
+            return_value={
+                'destroyed': False,
+                'integrity_lost': 0,
+                'ships_lost': 0,
+                'defense_mult': 1.0,
+                'by_fleet': {},
+            },
+        ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
+            result = turn._execute_bomb_order(fleets[0], fleets[0].orders.first())
+
+        star.refresh_from_db()
+        self.assertEqual(result, 'executed')
+        self.assertEqual(star.colonists, 9_000)
+        self.assertEqual(star.defenses, 0)
+        self.assertFalse(FleetOrders.objects.filter(fleet__in=fleets, order_type='BOMB').exists())
+
+    def test_combined_bombardment_resolves_defense_once_for_group(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_combined_defense_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10_000
+        star.defenses = 1
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+
+        fleets = []
+        for idx in range(2):
+            fleet = Fleet.objects.create(
+                game=game,
+                player=attacker,
+                name='Defense Group Bomber %s' % idx,
+                x=star.x,
+                y=star.y,
+                ship_count=1,
+                has_bombs='CONVENTIONAL',
+                integrity=100,
+            )
+            FleetOrders.objects.create(game=game, fleet=fleet, order_type='BOMB', target_star=star)
+            fleets.append(fleet)
+
+        captured = {}
+
+        def _capture_group_defense(star_arg, group_fleets):
+            captured['fleet_ids'] = sorted(f.id for f in group_fleets)
+            return {
+                'destroyed': False,
+                'integrity_lost': 0,
+                'ships_lost': 0,
+                'defense_mult': 1.0,
+                'by_fleet': {},
+            }
+
+        with patch.object(
+            GameTurn,
+            '_resolve_planetary_defense_fire_against_bombardment_group',
+            side_effect=_capture_group_defense,
+        ), patch('dj4xol.turn.bombardment_damage_k', return_value=1):
+            GameTurn(game)._execute_bomb_order(fleets[0], fleets[0].orders.first())
+
+        self.assertEqual(captured.get('fleet_ids'), sorted(f.id for f in fleets))
 
     def test_nova_family_environment_shift_helper_includes_supernova_double(self):
         from ..bombardment_rules import apply_nova_family_environment_shift
