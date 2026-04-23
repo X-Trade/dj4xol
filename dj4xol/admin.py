@@ -2,6 +2,7 @@ from django.contrib import admin, messages
 from django.utils.html import format_html
 from django.core.urlresolvers import reverse
 from django.http import HttpResponseRedirect
+from django.template.response import TemplateResponse
 from datetime import datetime
 try:
     from django.conf.urls import url
@@ -16,6 +17,9 @@ from .models import (
 )
 from .research import copy_default_requirements_to_category, ensure_default_level_requirements
 from .turn import GameTurn
+from .factory import GameFactory
+from .forms import AdminAddAiPlayerForm
+from .ai_players import build_random_ai_race_template, resolve_ai_slot_stance
 
 @admin.register(ServerRaceType)
 class ServerRaceTypeAdmin(admin.ModelAdmin):
@@ -121,17 +125,93 @@ class GameAdmin(admin.ModelAdmin):
 
     def get_urls(self):
         urls = super().get_urls()
-        extra_urls = [url(r'^(?P<game_id>.+)/generate/$',
-            self.admin_site.admin_view(self.generate_turn_view),
-            name='generate-turn')]
+        extra_urls = [
+            url(
+                r'^(?P<game_id>.+)/add-ai-player/$',
+                self.admin_site.admin_view(self.add_ai_player_view),
+                name='add-ai-player',
+            ),
+            url(
+                r'^(?P<game_id>.+)/generate/$',
+                self.admin_site.admin_view(self.generate_turn_view),
+                name='generate-turn',
+            ),
+        ]
         return extra_urls + urls
 
     def game_actions(self, obj):
-        return format_html('<a class="button" href="{}">Generate</a>',
-            reverse('admin:generate-turn', args=[obj.pk]))
+        return format_html(
+            '<a class="button" href="{}">Generate</a>&nbsp;'
+            '<a class="button" href="{}">Add AI</a>',
+            reverse('admin:generate-turn', args=[obj.pk], current_app=self.admin_site.name),
+            reverse('admin:add-ai-player', args=[obj.pk], current_app=self.admin_site.name),
+        )
 
     game_actions.short_description = 'Actions'
     game_actions.allow_tags = True
+
+    def add_ai_player_view(self, request, game_id):
+        game = Game.objects.get(pk=game_id)
+        if request.method == 'POST':
+            form = AdminAddAiPlayerForm(game, request.POST)
+            if form.is_valid():
+                cleaned = form.cleaned_data
+                race = cleaned.get('race')
+                starting_tech_override = cleaned.get('starting_tech_level_override')
+                if bool(cleaned.get('race_random')):
+                    race = build_random_ai_race_template(
+                        max_starting_tech_level=int(
+                            getattr(game, 'max_starting_tech_level', 0) or 0
+                        ),
+                    )
+                    starting_tech_override = None
+                ai_player = GameFactory(game).join_player(
+                    None,
+                    race,
+                    invited=True,
+                    is_ai=True,
+                    ai_module=cleaned.get('module_code'),
+                    starting_tech_level_override=starting_tech_override,
+                    default_diplomatic_stance=resolve_ai_slot_stance(
+                        cleaned.get('default_diplomatic_stance')
+                    ),
+                    homeworld_star=cleaned.get('homeworld_star'),
+                )
+                if ai_player is not None:
+                    self.message_user(
+                        request,
+                        'Added AI player %s to %s.' % (ai_player.name, game.name),
+                        level=messages.SUCCESS,
+                    )
+                    return HttpResponseRedirect(
+                        reverse(
+                            'admin:dj4xol_game_change',
+                            args=[game.pk],
+                            current_app=self.admin_site.name,
+                        )
+                    )
+                form.add_error(None, 'Could not add an AI player to this game.')
+        else:
+            form = AdminAddAiPlayerForm(game)
+
+        context = dict(
+            self.admin_site.each_context(request),
+            title='Add AI player',
+            opts=self.model._meta,
+            original=game,
+            game=game,
+            form=form,
+            change_url=reverse(
+                'admin:dj4xol_game_change',
+                args=[game.pk],
+                current_app=self.admin_site.name,
+            ),
+        )
+        return TemplateResponse(
+            request,
+            'admin/dj4xol/game/add_ai_player.html',
+            context,
+        )
 
     def generate_turn_view(self, request, game_id):
         game = Game.objects.get(pk=game_id)

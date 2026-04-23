@@ -19,6 +19,7 @@ from .models import (
     Game,
     Account,
     Player,
+    Star,
     CustomHelpPage,
     CustomHelpPageBlock,
     ServerSettings,
@@ -34,6 +35,7 @@ from .ai_players import (
     get_enabled_ai_modules,
     get_ai_max_per_game,
     get_remaining_server_ai_capacity,
+    normalize_ai_module_code,
 )
 
 
@@ -123,6 +125,187 @@ class RaceChoiceField(forms.ModelChoiceField):
         if obj.owner_id is None:
             return '%s (server)' % label
         return label
+
+
+class UnownedStarChoiceField(forms.ModelChoiceField):
+    """Star field that shows an admin-friendly location label."""
+
+    def label_from_instance(self, obj):
+        return '%s [%s] (%s, %s)' % (
+            obj.name,
+            obj.short_id,
+            int(getattr(obj, 'x', 0) or 0),
+            int(getattr(obj, 'y', 0) or 0),
+        )
+
+
+class AdminAddAiPlayerForm(forms.Form):
+    """Admin form for adding a single AI player to an existing game."""
+
+    ai_module = forms.ChoiceField(label='AI Player Type', choices=())
+    default_diplomatic_stance = forms.ChoiceField(
+        label='Default Stance',
+        choices=(),
+        initial=AI_SLOT_RANDOM_STANCE,
+    )
+    starting_tech_level = forms.IntegerField(
+        label='Starting Tech Level',
+        min_value=0,
+        required=False,
+        help_text=(
+            'Leave blank to use the selected race default. Random races keep '
+            'their generated starting-tech profile.'
+        ),
+    )
+    race = forms.ChoiceField(
+        label='Race',
+        choices=(),
+        required=False,
+        initial=AI_SLOT_RANDOM_RACE,
+    )
+    homeworld_star = UnownedStarChoiceField(
+        label='Homeworld Star',
+        queryset=Star.objects.none(),
+        required=False,
+        help_text='Leave blank to let the game choose a random valid homeworld star.',
+    )
+
+    def __init__(self, game, *args, **kwargs):
+        self.game = game
+        self._enabled_modules = list(get_enabled_ai_modules())
+        self._module_codes = {
+            normalize_ai_module_code(module.get('code'))
+            for module in self._enabled_modules
+            if normalize_ai_module_code(module.get('code'))
+        }
+        self._race_queryset = list(
+            ServerRace.objects
+            .select_related('owner', 'owner__django_user')
+            .order_by('name', 'id')
+        )
+        super().__init__(*args, **kwargs)
+
+        max_level = max(0, int(get_global_research_max_level() or 0))
+        self.fields['starting_tech_level'].max_value = max_level
+        self.fields['starting_tech_level'].widget.attrs['max'] = str(max_level)
+
+        self.fields['ai_module'].choices = [
+            (
+                normalize_ai_module_code(module.get('code')),
+                str(module.get('label') or module.get('code') or '').strip(),
+            )
+            for module in self._enabled_modules
+            if normalize_ai_module_code(module.get('code'))
+        ]
+        if self.fields['ai_module'].choices:
+            self.fields['ai_module'].initial = self.fields['ai_module'].choices[0][0]
+
+        self.fields['default_diplomatic_stance'].choices = list(Player.STANCE_CHOICES) + [
+            (AI_SLOT_RANDOM_STANCE, 'Random (Hostile to Warm)'),
+        ]
+
+        race_choices = [
+            (AI_SLOT_RANDOM_RACE, 'Random (generated fair race)'),
+        ]
+        for race in self._race_queryset:
+            owner = getattr(race, 'owner', None)
+            if owner is None:
+                owner_label = 'server'
+            else:
+                owner_label = owner.alias or getattr(owner.django_user, 'username', 'player')
+                if bool(getattr(race, 'public', False)):
+                    owner_label = '%s public' % owner_label
+                else:
+                    owner_label = '%s private' % owner_label
+            race_choices.append((str(race.pk), '%s (%s)' % (race.name, owner_label)))
+        self.fields['race'].choices = race_choices
+
+        self.fields['homeworld_star'].queryset = (
+            self.game.stars
+            .filter(player=None)
+            .order_by('name', 'id')
+        )
+
+        current_ai = int(self.game.players.filter(is_ai=True).count())
+        max_per_game = int(get_ai_max_per_game() or 0)
+        remaining_per_game = max(0, max_per_game - current_ai)
+        remaining_server = int(get_remaining_server_ai_capacity() or 0)
+        self.fields['ai_module'].help_text = (
+            'Game AI slots remaining: %s of %s. '
+            'Server-capped AI slots remaining: %s '
+            '(micromanager/expansionist/idle do not consume server cap).'
+        ) % (
+            remaining_per_game,
+            max_per_game,
+            remaining_server,
+        )
+        self.fields['race'].help_text = (
+            'Choose a saved race template or leave the default random option '
+            'for a generated fair AI race.'
+        )
+
+    def clean(self):
+        cleaned = super().clean()
+
+        available_star_count = int(self.fields['homeworld_star'].queryset.count())
+        if available_star_count <= 0:
+            raise forms.ValidationError(
+                'This game has no unowned stars available for a new AI player.'
+            )
+
+        if not self._module_codes:
+            raise forms.ValidationError(
+                'No AI modules are enabled by server settings.'
+            )
+
+        module_code = normalize_ai_module_code(cleaned.get('ai_module'))
+        if module_code not in self._module_codes:
+            self.add_error('ai_module', 'Select a valid AI player type.')
+        max_per_game = int(get_ai_max_per_game() or 0)
+        current_ai = int(self.game.players.filter(is_ai=True).count())
+        if current_ai >= max_per_game:
+            raise forms.ValidationError(
+                'This game already has the maximum %s AI player%s.'
+                % (max_per_game, '' if max_per_game == 1 else 's')
+            )
+
+        if (
+            module_code in self._module_codes and
+            ai_module_counts_towards_server_cap(module_code) and
+            int(get_remaining_server_ai_capacity() or 0) <= 0
+        ):
+            self.add_error(
+                'ai_module',
+                'No server-capped AI slots are currently available for that AI type.',
+            )
+
+        race_lookup = {str(race.pk): race for race in self._race_queryset}
+        race_ref = str(cleaned.get('race') or '').strip()
+        race_random = race_ref.upper() == AI_SLOT_RANDOM_RACE or not race_ref
+        race_obj = None if race_random else race_lookup.get(race_ref)
+        if not race_random and race_obj is None:
+            self.add_error('race', 'Select a valid race or use the random option.')
+
+        max_tech_level = max(0, int(get_global_research_max_level() or 0))
+        starting_tech_level = cleaned.get('starting_tech_level')
+        if starting_tech_level in (None, ''):
+            if race_random:
+                starting_tech_level = None
+            else:
+                starting_tech_level = int(getattr(race_obj, 'starting_tech_level', 0) or 0)
+        else:
+            starting_tech_level = int(starting_tech_level)
+        if starting_tech_level is not None and starting_tech_level > max_tech_level:
+            self.add_error(
+                'starting_tech_level',
+                'Starting tech level cannot exceed %s.' % max_tech_level,
+            )
+
+        cleaned['module_code'] = module_code
+        cleaned['race_random'] = bool(race_random)
+        cleaned['race'] = race_obj
+        cleaned['starting_tech_level_override'] = starting_tech_level
+        return cleaned
 
 
 class ServerRaceForm(forms.ModelForm):

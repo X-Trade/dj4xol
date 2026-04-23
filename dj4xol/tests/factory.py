@@ -171,6 +171,45 @@ class testGameFactory(TestCase):
         player = gf.join_player(self.accounts[0], self.races[0])
         self.assertEqual(player.homeworld.colonists, 5000)
 
+    def test_join_player_uses_selected_homeworld_star_when_provided(self):
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(6)
+        game = gf.save()
+        selected_star = game.stars.filter(player=None).order_by('name', 'id').first()
+
+        player = gf.join_player(
+            None,
+            self.races[0],
+            invited=True,
+            is_ai=True,
+            ai_module='idle',
+            homeworld_star=selected_star,
+        )
+
+        self.assertIsNotNone(player)
+        self.assertEqual(player.homeworld_id, selected_star.id)
+
+    def test_join_player_rejects_selected_homeworld_star_if_already_owned(self):
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(6)
+        gf.save()
+
+        owner_player = gf.join_player(self.accounts[0], self.races[0])
+        ai_player = gf.join_player(
+            None,
+            self.races[1],
+            invited=True,
+            is_ai=True,
+            ai_module='idle',
+            homeworld_star=owner_player.homeworld,
+        )
+
+        self.assertIsNone(ai_player)
+
     def test_join_player_splits_starting_population_across_starting_colonies(self):
         self.race_type.starting_colonies = 2
         self.race_type.save(update_fields=['starting_colonies'])

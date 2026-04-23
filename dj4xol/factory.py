@@ -1264,6 +1264,7 @@ class GameFactory():
         ai_module='',
         starting_tech_level_override=None,
         default_diplomatic_stance=None,
+        homeworld_star=None,
     ):
         """Add a player to an existing game with homeworld assignment.
         Returns the created Player instance or None if joining failed.
@@ -1287,6 +1288,17 @@ class GameFactory():
         available_stars = list(self.game.stars.filter(player=None))
         if not available_stars:
             return None
+
+        selected_homeworld = None
+        if homeworld_star is not None:
+            if getattr(homeworld_star, 'game_id', None) != self.game.id:
+                return None
+            selected_homeworld = next(
+                (star for star in available_stars if star.id == getattr(homeworld_star, 'id', None)),
+                None,
+            )
+            if selected_homeworld is None:
+                return None
 
         ai_module_code = ''
         if bool(is_ai):
@@ -1338,7 +1350,9 @@ class GameFactory():
         colonist_allocations = self._split_starting_colonists(player, starting_colony_count)
         mine_allocations = self._split_starting_integer(player.starting_mines, starting_colony_count)
         factory_allocations = self._split_starting_integer(player.starting_factories, starting_colony_count)
-        homeworld = self._find_homeworld_star(available_stars)
+        homeworld = selected_homeworld or self._find_homeworld_star(available_stars)
+        if homeworld is None:
+            return None
         self._assign_starting_colony_to_player(
             player,
             homeworld,

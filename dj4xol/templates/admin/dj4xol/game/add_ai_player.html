@@ -1,0 +1,44 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">Home</a>
+&rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; <a href="{% url 'admin:dj4xol_game_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+&rsaquo; <a href="{{ change_url }}">{{ game }}</a>
+&rsaquo; Add AI player
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+            <p class="errornote">
+                {% for error in form.non_field_errors %}
+                    {{ error }}
+                {% endfor %}
+            </p>
+        {% endif %}
+        <fieldset class="module aligned">
+            {% for field in form %}
+                <div class="form-row{% if field.errors %} errors{% endif %}">
+                    <div>
+                        {{ field.label_tag }}
+                        {{ field }}
+                        {% if field.help_text %}
+                            <div class="help">{{ field.help_text|safe }}</div>
+                        {% endif %}
+                        {{ field.errors }}
+                    </div>
+                </div>
+            {% endfor %}
+        </fieldset>
+        <div class="submit-row">
+            <input type="submit" value="Add AI player" class="default">
+            <a href="{{ change_url }}" class="button cancel-link">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
