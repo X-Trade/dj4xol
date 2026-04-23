@@ -13750,6 +13750,43 @@ class TestBombardmentOrders(TestCase):
 
         self.assertEqual(captured.get('fleet_ids'), sorted(f.id for f in fleets))
 
+    def test_star_annihilation_report_mentions_population_without_zero_loss_summary(self):
+        from ..messages import FleetBombardmentReportMessageFactory
+
+        game = default_game(stars=1)
+        player = game.players.first()
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Nova Fleet',
+            x=1,
+            y=1,
+            ship_count=1,
+            integrity=100,
+        )
+
+        msg = FleetBombardmentReportMessageFactory(
+            game,
+            player,
+            fleet=fleet,
+            star_name='Doomed Star',
+            bomb_type='NOVA',
+            defenses_lost=0,
+            colonists_lost=0,
+            mines_lost=0,
+            factories_lost=0,
+            labs_lost=0,
+            shipyards_lost=0,
+            annihilated_colonists=50_000,
+            star_destroyed=True,
+        ).new_message()
+
+        self.assertIn('Doomed Star was annihilated.', msg.message)
+        self.assertIn('50,000 colonists were killed.', msg.message)
+        self.assertNotIn('0 defenses destroyed', msg.message)
+        self.assertNotIn('0 colonists killed', msg.message)
+        self.assertNotIn('no infrastructure damaged', msg.message)
+
     def test_nova_family_environment_shift_helper_includes_supernova_double(self):
         from ..bombardment_rules import apply_nova_family_environment_shift
 

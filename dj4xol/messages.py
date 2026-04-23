@@ -774,6 +774,7 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
         defenses_lost, colonists_lost, mines_lost, factories_lost, labs_lost,
         shipyards_lost, cities_lost=0, megacities_lost=0,
         administration_lost=0, dyson_sphere_lost=0,
+        annihilated_colonists=0,
         integrity_lost=0, ships_lost=0, star_destroyed=False,
         perspective='attacker', attacker_fleet_name=None, star=None,
         extra_effects_text='', message=None
@@ -792,6 +793,7 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
         self.megacities_lost = int(megacities_lost or 0)
         self.administration_lost = int(administration_lost or 0)
         self.dyson_sphere_lost = int(dyson_sphere_lost or 0)
+        self.annihilated_colonists = int(annihilated_colonists or 0)
         self.integrity_lost = int(integrity_lost or 0)
         self.ships_lost = int(ships_lost or 0)
         self.star_destroyed = bool(star_destroyed)
@@ -825,7 +827,22 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
             if self.star is not None and not self.star_destroyed
             else escape(self.star_name)
         )
-        if self.perspective == 'defender':
+        if self.star_destroyed:
+            if self.perspective == 'defender':
+                msg = (
+                    f"{escape(self.attacker_fleet_name)} bombarded {star_label} "
+                    f"({escape(self.bomb_type.title())} bombs): "
+                    f"{escape(self.star_name)} was annihilated."
+                )
+            else:
+                msg = (
+                    f"{format_map_object(self.fleet)} bombarded {star_label} "
+                    f"({escape(self.bomb_type.title())} bombs): "
+                    f"{escape(self.star_name)} was annihilated."
+                )
+            if self.annihilated_colonists > 0:
+                msg += f" {self.annihilated_colonists:,} colonists were killed."
+        elif self.perspective == 'defender':
             msg = (
                 f"{escape(self.attacker_fleet_name)} bombarded {star_label} "
                 f"({escape(self.bomb_type.title())} bombs): "
@@ -852,8 +869,6 @@ class FleetBombardmentReportMessageFactory(MessageFactory):
                     f" Defensive fire inflicted {self.integrity_lost}% integrity loss"
                     f" and {self.ships_lost} ships lost."
                 )
-        if self.star_destroyed:
-            msg += f" {escape(self.star_name)} was annihilated."
         if self.extra_effects_text:
             msg += f" {escape(self.extra_effects_text)}"
         return msg
