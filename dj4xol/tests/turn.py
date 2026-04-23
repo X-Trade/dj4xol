@@ -12828,6 +12828,10 @@ class TestInterceptPatrolOrders(TestCase):
             boranium_inventory=3000,
             germanium_inventory=3000,
             resource_x_inventory=100,
+            ironium_yield=0,
+            boranium_yield=0,
+            germanium_yield=0,
+            resource_x_yield=0,
         )
         activator = Fleet.objects.create(
             game=game,
@@ -12850,7 +12854,10 @@ class TestInterceptPatrolOrders(TestCase):
             order_type='GENESIS',
         )
 
-        GameTurn(game).generate_turn()
+        with patch.object(GameTurn, '_genesis_should_touch_star', return_value=True), \
+             patch.object(GameTurn, '_genesis_should_destroy_star', return_value=True), \
+             patch.object(GameTurn, '_genesis_should_consume_collateral_fleet', return_value=True):
+            GameTurn(game).generate_turn()
 
         self.assertFalse(Fleet.objects.filter(id=activator.id).exists())
         self.assertFalse(Fleet.objects.filter(id=collateral.id).exists())
@@ -12861,9 +12868,9 @@ class TestInterceptPatrolOrders(TestCase):
         self.assertGreaterEqual(created_star.ironium_yield, 20)
         self.assertGreaterEqual(created_star.boranium_yield, 20)
         self.assertGreaterEqual(created_star.germanium_yield, 20)
-        self.assertEqual(created_star.ironium_inventory, 1000)
-        self.assertEqual(created_star.boranium_inventory, 3000)
-        self.assertEqual(created_star.germanium_inventory, 3000)
+        self.assertEqual(created_star.ironium_inventory, 1133)
+        self.assertEqual(created_star.boranium_inventory, 3033)
+        self.assertEqual(created_star.germanium_inventory, 3034)
         self.assertEqual(created_star.resource_x_inventory, 0)
         self.assertLessEqual(abs(created_star.gravity - player1.gravity_center), 0.04)
         self.assertLessEqual(abs(created_star.temperature - player1.temperature_center), 0.04)
@@ -12900,6 +12907,12 @@ class TestInterceptPatrolOrders(TestCase):
         self.assertTrue(FleetOrders.objects.filter(id=order.id).exists())
         self.assertFalse(
             Star.objects.filter(game=game, x=24, y=24).exists()
+        )
+        self.assertTrue(
+            player1.messages.filter(
+                category='EXCEPTION',
+                message__icontains='insufficient local materials',
+            ).exists()
         )
 
     def test_genesis_consumes_asteroid_field_and_deposits_remaining_resources(self):
@@ -12938,7 +12951,7 @@ class TestInterceptPatrolOrders(TestCase):
 
         self.assertFalse(Salvage.objects.filter(id=asteroid.id).exists())
         created_star = Star.objects.get(game=game, x=26, y=26)
-        self.assertEqual(created_star.ironium_inventory, 500)
+        self.assertEqual(created_star.ironium_inventory, 550)
         self.assertEqual(created_star.boranium_inventory, 1500)
         self.assertEqual(created_star.germanium_inventory, 1500)
 
@@ -12976,8 +12989,67 @@ class TestInterceptPatrolOrders(TestCase):
         created_star = Star.objects.get(game=game, x=27, y=27)
         self.assertEqual(created_star.ironium_inventory, 0)
         self.assertEqual(created_star.boranium_inventory, 0)
-        self.assertEqual(created_star.germanium_inventory, 0)
+        self.assertEqual(created_star.germanium_inventory, 100)
         self.assertEqual(created_star.resource_y_inventory, 0)
+
+    def test_genesis_activation_uses_salvage_before_friendly_fleets_before_stars(self):
+        game, player1, _player2 = self._create_two_player_game()
+        source_star = Star.objects.create(
+            game=game,
+            name='Genesis Late Source',
+            x=27,
+            y=28,
+            player=player1,
+            ironium_inventory=9000,
+            resource_x_inventory=200,
+            ironium_yield=0,
+            resource_x_yield=0,
+        )
+        salvage = Salvage.objects.create(
+            game=game,
+            x=27,
+            y=28,
+            salvage_type=Salvage.TYPE_SALVAGE,
+            ironium_inventory=4000,
+            resource_x_inventory=100,
+        )
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Genesis Lead Fleet',
+            x=27,
+            y=28,
+            has_genesis_device=True,
+            ironium_inventory=1000,
+        )
+        friendly = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Genesis Support Fleet',
+            x=27,
+            y=28,
+            ironium_inventory=4000,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        with patch.object(GameTurn, '_genesis_should_touch_star', return_value=False), \
+             patch.object(GameTurn, '_genesis_should_consume_collateral_fleet', return_value=False), \
+             patch('dj4xol.turn.random.uniform', side_effect=lambda a, b: b):
+            GameTurn(game).generate_turn()
+
+        self.assertFalse(Fleet.objects.filter(id=activator.id).exists())
+        self.assertTrue(Fleet.objects.filter(id=friendly.id).exists())
+        self.assertFalse(Salvage.objects.filter(id=salvage.id).exists())
+        source_star.refresh_from_db()
+        self.assertEqual(source_star.ironium_inventory, 9000)
+        self.assertEqual(source_star.resource_x_inventory, 200)
+        created_star = Star.objects.filter(game=game, x=27, y=28).exclude(id=source_star.id).get()
+        self.assertEqual(created_star.ironium_inventory, 100)
+        self.assertEqual(created_star.resource_x_inventory, 0)
 
     def test_genesis_fails_at_non_comet_anomaly_location_and_loses_fleet(self):
         game, player1, _player2 = self._create_two_player_game()
@@ -13027,6 +13099,10 @@ class TestInterceptPatrolOrders(TestCase):
             boranium_inventory=3000,
             germanium_inventory=3000,
             resource_x_inventory=100,
+            ironium_yield=0,
+            boranium_yield=0,
+            germanium_yield=0,
+            resource_x_yield=0,
         )
         activator = Fleet.objects.create(
             game=game,
@@ -13050,7 +13126,9 @@ class TestInterceptPatrolOrders(TestCase):
             order_type='GENESIS',
         )
 
-        with patch('dj4xol.turn.random.uniform', side_effect=lambda a, b: b), \
+        with patch.object(GameTurn, '_genesis_should_touch_star', return_value=True), \
+             patch.object(GameTurn, '_genesis_should_destroy_star', return_value=True), \
+             patch('dj4xol.turn.random.uniform', side_effect=lambda a, b: b), \
              patch('dj4xol.turn.random.randint', return_value=0), \
              patch('dj4xol.turn.roll_chance', return_value=False):
             GameTurn(game).generate_turn()
@@ -13061,9 +13139,155 @@ class TestInterceptPatrolOrders(TestCase):
         self.assertAlmostEqual(created_star.gravity - player1.gravity_center, 0.02, places=4)
         self.assertAlmostEqual(created_star.temperature - player1.temperature_center, 0.02, places=4)
         self.assertAlmostEqual(created_star.radiation - player1.radiation_center, 0.02, places=4)
-        self.assertEqual(created_star.ironium_yield, 57)
-        self.assertEqual(created_star.boranium_yield, 57)
-        self.assertEqual(created_star.germanium_yield, 57)
+        self.assertGreater(created_star.ironium_yield, created_star.boranium_yield)
+        self.assertGreaterEqual(created_star.boranium_yield, 50)
+        self.assertGreaterEqual(created_star.germanium_yield, 50)
+
+    def test_genesis_yields_follow_fleet_material_mix_even_without_star_or_salvage(self):
+        game, player1, _player2 = self._create_two_player_game()
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Fleet-Only Genesis',
+            x=32,
+            y=32,
+            has_genesis_device=True,
+            ironium_inventory=5000,
+            resource_x_inventory=100,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        with patch('dj4xol.turn.random.randint', return_value=0), \
+             patch('dj4xol.turn.roll_chance', return_value=False):
+            GameTurn(game).generate_turn()
+
+        created_star = Star.objects.get(game=game, x=32, y=32)
+        self.assertGreater(created_star.ironium_yield, created_star.boranium_yield)
+        self.assertGreater(created_star.ironium_yield, created_star.germanium_yield)
+        self.assertGreaterEqual(created_star.ironium_yield, 95)
+        self.assertGreaterEqual(created_star.boranium_yield, 20)
+        self.assertGreaterEqual(created_star.germanium_yield, 20)
+
+    def test_genesis_can_leave_activation_star_untouched_after_meeting_minimum(self):
+        game, player1, _player2 = self._create_two_player_game()
+        source_star = Star.objects.create(
+            game=game,
+            name='Genesis Strip Source',
+            x=34,
+            y=34,
+            player=player1,
+            ironium_inventory=10000,
+            resource_x_inventory=200,
+            ironium_yield=0,
+            resource_x_yield=0,
+        )
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Strip Genesis Fleet',
+            x=34,
+            y=34,
+            has_genesis_device=True,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        with patch.object(GameTurn, '_genesis_should_touch_star', return_value=False):
+            GameTurn(game).generate_turn()
+
+        source_star.refresh_from_db()
+        self.assertEqual(source_star.ironium_inventory, 5100)
+        self.assertEqual(source_star.resource_x_inventory, 100)
+        self.assertEqual(Star.objects.filter(game=game, x=34, y=34).count(), 2)
+
+    def test_genesis_can_strip_star_after_activation_consumption(self):
+        game, player1, _player2 = self._create_two_player_game()
+        source_star = Star.objects.create(
+            game=game,
+            name='Genesis Strip Source',
+            x=35,
+            y=35,
+            player=player1,
+            ironium_inventory=10000,
+            resource_x_inventory=200,
+            ironium_yield=0,
+            resource_x_yield=0,
+        )
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Strip Genesis Fleet',
+            x=35,
+            y=35,
+            has_genesis_device=True,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        with patch.object(GameTurn, '_genesis_should_touch_star', return_value=True), \
+             patch.object(GameTurn, '_genesis_should_destroy_star', return_value=False), \
+             patch.object(GameTurn, '_genesis_star_strip_fraction', return_value=0.5):
+            GameTurn(game).generate_turn()
+
+        source_star.refresh_from_db()
+        self.assertEqual(source_star.ironium_inventory, 2550)
+        self.assertEqual(source_star.resource_x_inventory, 50)
+        self.assertEqual(Star.objects.filter(game=game, x=35, y=35).count(), 2)
+
+    def test_genesis_can_leave_collateral_fleet_intact(self):
+        game, player1, player2 = self._create_two_player_game()
+        source_star = Star.objects.create(
+            game=game,
+            name='Genesis Fleet Survivor Source',
+            x=36,
+            y=36,
+            player=player1,
+            ironium_inventory=6000,
+            resource_x_inventory=100,
+            ironium_yield=0,
+            resource_x_yield=0,
+        )
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Genesis Survivor Fleet',
+            x=36,
+            y=36,
+            has_genesis_device=True,
+        )
+        collateral = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name='Collateral Survivor',
+            x=36,
+            y=36,
+            ironium_inventory=900,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        with patch.object(GameTurn, '_genesis_should_touch_star', return_value=True), \
+             patch.object(GameTurn, '_genesis_should_destroy_star', return_value=True), \
+             patch.object(GameTurn, '_genesis_should_consume_collateral_fleet', return_value=False):
+            GameTurn(game).generate_turn()
+
+        self.assertTrue(Fleet.objects.filter(id=collateral.id).exists())
+        collateral.refresh_from_db()
+        self.assertEqual(collateral.ironium_inventory, 900)
+        self.assertFalse(Star.objects.filter(id=source_star.id).exists())
 
 
 class TestBombardmentOrders(TestCase):

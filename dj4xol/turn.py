@@ -36,6 +36,7 @@ from .messages import (
     FleetWormholeDestroyedMessageFactory,
     FleetMergedMessageFactory,
     GenesisActivationFailedMessageFactory,
+    GenesisActivationInsufficientResourcesMessageFactory,
     GenesisActivationSuccessMessageFactory,
     GenesisFleetConsumedMessageFactory,
     GenesisStarBornPublicMessageFactory,
@@ -318,8 +319,11 @@ GENESIS_COMET_ENVIRONMENT_DELTA = 0.02
 GENESIS_COMET_YIELD_BONUS = 10
 GENESIS_SALVAGE_CARRYOVER_MIN = 0.50
 GENESIS_SALVAGE_CARRYOVER_MAX = 1.00
-GENESIS_COLONISED_STAR_WEIGHT = 3
-GENESIS_UNCOLONISED_STAR_WEIGHT = 1
+GENESIS_COLLATERAL_FLEET_CONSUME_CHANCE = 0.80
+GENESIS_STAR_TOUCH_CHANCE = 0.50
+GENESIS_STAR_DESTROY_CHANCE = 0.20
+GENESIS_STAR_STRIP_FRACTION_MIN = 0.50
+GENESIS_STAR_STRIP_FRACTION_MAX = 1.00
 GENESIS_MATERIAL_PREFERENCE_KEYS = (
     'ironium',
     'boranium',
@@ -7996,59 +8000,138 @@ class GameTurn():
         }
 
     @staticmethod
-    def _weighted_random_genesis_star(stars):
-        if not stars:
-            return None
-        weights = [
-            GENESIS_COLONISED_STAR_WEIGHT
-            if (
-                getattr(star, 'player_id', None) is not None or
-                int(getattr(star, 'colonists', 0) or 0) > 0
-            ) else
-            GENESIS_UNCOLONISED_STAR_WEIGHT
-            for star in stars
+    def _genesis_should_consume_collateral_fleet(fleet):
+        return roll_chance(GENESIS_COLLATERAL_FLEET_CONSUME_CHANCE)
+
+    @staticmethod
+    def _genesis_should_destroy_star(star):
+        return roll_chance(GENESIS_STAR_DESTROY_CHANCE)
+
+    @staticmethod
+    def _genesis_should_touch_star(star):
+        return roll_chance(GENESIS_STAR_TOUCH_CHANCE)
+
+    @staticmethod
+    def _genesis_star_strip_fraction(star):
+        return random.uniform(
+            GENESIS_STAR_STRIP_FRACTION_MIN,
+            GENESIS_STAR_STRIP_FRACTION_MAX,
+        )
+
+    @staticmethod
+    def _genesis_strip_star_materials(star, fraction):
+        stripped = {}
+        for key in ALL_RESOURCE_KEYS:
+            available = int(getattr(star, '%s_inventory' % key, 0) or 0)
+            stripped[key] = max(0, min(available, int(round(available * float(fraction)))))
+        return stripped
+
+    def _genesis_destroyed_star_materials(self, star):
+        snapshot = self._snapshot_star_for_nova_remnant(star)
+        minerals = {}
+        for key in ALL_RESOURCE_KEYS:
+            surface = int(snapshot.get('%s_inventory' % key, 0) or 0)
+            yield_pct = int(snapshot.get('%s_yield' % key, 0) or 0)
+            minerals[key] = surface + self._exposed_minerals_from_yield(
+                yield_pct,
+                SUPERNOVA_ASTEROID_FIELD_EXPOSED_POTENTIAL_FRACTION,
+            )
+        return snapshot, minerals
+
+    @staticmethod
+    def _genesis_fleet_materials(fleet):
+        dry_mass = int(getattr(fleet, 'dry_mass', 0) or 0)
+        bonus_ironium = dry_mass // 3
+        bonus_boranium = dry_mass // 3
+        bonus_germanium = dry_mass - bonus_ironium - bonus_boranium
+        return {
+            'ironium': int(getattr(fleet, 'ironium_inventory', 0) or 0) + bonus_ironium,
+            'boranium': int(getattr(fleet, 'boranium_inventory', 0) or 0) + bonus_boranium,
+            'germanium': int(getattr(fleet, 'germanium_inventory', 0) or 0) + bonus_germanium,
+            'resource_x': int(getattr(fleet, 'resource_x_inventory', 0) or 0),
+            'resource_y': int(getattr(fleet, 'resource_y_inventory', 0) or 0),
+            'resource_z': int(getattr(fleet, 'resource_z_inventory', 0) or 0),
+        }
+
+    def _build_genesis_activation_entry(self, kind, obj, inventory, carryover_mode='full'):
+        return {
+            'kind': kind,
+            'obj': obj,
+            'inventory': dict(inventory),
+            'original_inventory': dict(inventory),
+            'carryover_mode': carryover_mode,
+        }
+
+    def _genesis_entry_requirement_totals(self, entries):
+        totals = {key: 0 for key in ALL_RESOURCE_KEYS}
+        for entry in entries:
+            for key in ALL_RESOURCE_KEYS:
+                totals[key] += int(entry['inventory'].get(key, 0) or 0)
+        return totals
+
+    def _select_genesis_activation_entries(self, activator_fleet, location_state):
+        activator_id = getattr(activator_fleet, 'id', None)
+        owner_id = getattr(getattr(activator_fleet, 'player', None), 'id', None)
+        entries = [
+            self._build_genesis_activation_entry(
+                'activator',
+                activator_fleet,
+                self._genesis_fleet_materials(activator_fleet),
+            )
         ]
-        return random.choices(stars, weights=weights, k=1)[0]
 
-    def _select_genesis_touched_stars(self, location_state):
-        fleets = list(location_state.get('fleets', []))
-        salvages = list(location_state.get('salvages', []))
-        remaining_stars = list(location_state.get('stars', []))
-        source_totals = {key: 0 for key in ALL_RESOURCE_KEYS}
-        yield_source_totals = {key: 0 for key in ALL_RESOURCE_KEYS}
-        touched_stars = []
+        for salvage in location_state.get('salvages', []):
+            entries.append(
+                self._build_genesis_activation_entry(
+                    'salvage',
+                    salvage,
+                    self._resource_inventory_map(salvage),
+                    carryover_mode='salvage',
+                )
+            )
 
-        for obj in fleets + salvages:
-            inventory = self._resource_inventory_map(obj)
-            for key in ALL_RESOURCE_KEYS:
-                source_totals[key] += int(inventory.get(key, 0) or 0)
+        friendly_fleets = [
+            fleet for fleet in location_state.get('fleets', [])
+            if getattr(fleet, 'id', None) != activator_id and fleet.player_id == owner_id
+        ]
+        random.shuffle(friendly_fleets)
+        for fleet in friendly_fleets:
+            if self._genesis_totals_meet_requirements(
+                self._genesis_entry_requirement_totals(entries)
+            ):
+                break
+            entries.append(
+                self._build_genesis_activation_entry(
+                    'fleet',
+                    fleet,
+                    self._genesis_fleet_materials(fleet),
+                )
+            )
 
-        for salvage in salvages:
-            inventory = self._resource_inventory_map(salvage)
-            for key in ALL_RESOURCE_KEYS:
-                yield_source_totals[key] += int(inventory.get(key, 0) or 0)
+        if not self._genesis_totals_meet_requirements(
+            self._genesis_entry_requirement_totals(entries)
+        ):
+            stars = list(location_state.get('stars', []))
+            random.shuffle(stars)
+            for star in stars:
+                if self._genesis_totals_meet_requirements(
+                    self._genesis_entry_requirement_totals(entries)
+                ):
+                    break
+                entries.append(
+                    self._build_genesis_activation_entry(
+                        'star',
+                        star,
+                        self._resource_inventory_map(star),
+                        carryover_mode='none',
+                    )
+                )
 
-        if remaining_stars:
-            selected = self._weighted_random_genesis_star(remaining_stars)
-            touched_stars.append(selected)
-            remaining_stars.remove(selected)
-            inventory = self._resource_inventory_map(selected)
-            for key in ALL_RESOURCE_KEYS:
-                amount = int(inventory.get(key, 0) or 0)
-                source_totals[key] += amount
-                yield_source_totals[key] += amount
-
-        while remaining_stars and not self._genesis_totals_meet_requirements(source_totals):
-            selected = self._weighted_random_genesis_star(remaining_stars)
-            touched_stars.append(selected)
-            remaining_stars.remove(selected)
-            inventory = self._resource_inventory_map(selected)
-            for key in ALL_RESOURCE_KEYS:
-                amount = int(inventory.get(key, 0) or 0)
-                source_totals[key] += amount
-                yield_source_totals[key] += amount
-
-        return touched_stars, source_totals, yield_source_totals
+        if not self._genesis_totals_meet_requirements(
+            self._genesis_entry_requirement_totals(entries)
+        ):
+            return None
+        return entries
 
     @staticmethod
     def _choose_genesis_secret_requirement_key(resource_totals):
@@ -8066,46 +8149,15 @@ class GameTurn():
             ),
         )
 
-    def _consume_genesis_resources(self, fleets, salvages, touched_stars):
-        entries = []
-        for fleet in fleets:
-            entries.append({
-                'kind': 'fleet',
-                'obj': fleet,
-                'inventory': self._resource_inventory_map(fleet),
-            })
-        for salvage in salvages:
-            entries.append({
-                'kind': 'salvage',
-                'obj': salvage,
-                'inventory': self._resource_inventory_map(salvage),
-            })
-        for star in touched_stars:
-            entries.append({
-                'kind': 'star',
-                'obj': star,
-                'inventory': self._resource_inventory_map(star),
-            })
-
-        totals = {key: 0 for key in ALL_RESOURCE_KEYS}
-        for entry in entries:
-            for key in ALL_RESOURCE_KEYS:
-                totals[key] += int(entry['inventory'].get(key, 0) or 0)
+    def _consume_genesis_resources(self, entries):
+        totals = self._genesis_entry_requirement_totals(entries)
         if not self._genesis_totals_meet_requirements(totals):
-            return None, None
-
+            return None, None, None
         secret_key = self._choose_genesis_secret_requirement_key(totals)
         if secret_key is None:
-            return None, None
+            return None, None, None
 
-        leftovers = [
-            {
-                'kind': entry['kind'],
-                'obj': entry['obj'],
-                'inventory': dict(entry['inventory']),
-            }
-            for entry in entries
-        ]
+        leftovers = [dict(entry, inventory=dict(entry['inventory'])) for entry in entries]
 
         consumed = {key: 0 for key in ALL_RESOURCE_KEYS}
 
@@ -8121,13 +8173,13 @@ class GameTurn():
             remaining_secret -= used
             consumed[secret_key] += used
         if remaining_secret > 0:
-            return None, None
+            return None, None, None
 
         remaining_material = GENESIS_TOTAL_MATERIAL_REQUIRED
-        for key in GENESIS_MATERIAL_PREFERENCE_KEYS:
+        for entry in leftovers:
             if remaining_material <= 0:
                 break
-            for entry in leftovers:
+            for key in GENESIS_MATERIAL_PREFERENCE_KEYS:
                 if remaining_material <= 0:
                     break
                 available = int(entry['inventory'].get(key, 0) or 0)
@@ -8138,23 +8190,152 @@ class GameTurn():
                 remaining_material -= used
                 consumed[key] += used
         if remaining_material > 0:
-            return None, None
+            return None, None, None
+        return leftovers, consumed, secret_key
 
+    def _genesis_accumulate_inventory(self, totals, inventory):
+        for key in ALL_RESOURCE_KEYS:
+            totals[key] += int(inventory.get(key, 0) or 0)
+
+    def _build_genesis_activation_outputs(self, leftover_entries):
         carryover = {key: 0 for key in ALL_RESOURCE_KEYS}
-        for entry in leftovers:
-            if entry['kind'] == 'star':
-                for key in ALL_RESOURCE_KEYS:
-                    carryover[key] += int(entry['inventory'].get(key, 0) or 0)
-            elif entry['kind'] == 'salvage':
+        yield_source_totals = {key: 0 for key in ALL_RESOURCE_KEYS}
+        activation_star_updates = []
+        consumed_activation_fleets = []
+
+        for entry in leftover_entries:
+            original = entry.get('original_inventory', {})
+            leftover = entry.get('inventory', {})
+            consumed_here = {
+                key: max(
+                    0,
+                    int(original.get(key, 0) or 0) - int(leftover.get(key, 0) or 0),
+                )
+                for key in ALL_RESOURCE_KEYS
+            }
+            kind = entry.get('kind')
+            if kind in ('activator', 'fleet'):
+                consumed_activation_fleets.append(entry['obj'])
+                self._genesis_accumulate_inventory(yield_source_totals, original)
+                self._genesis_accumulate_inventory(carryover, leftover)
+            elif kind == 'salvage':
+                self._genesis_accumulate_inventory(yield_source_totals, original)
                 factor = random.uniform(
                     GENESIS_SALVAGE_CARRYOVER_MIN,
                     GENESIS_SALVAGE_CARRYOVER_MAX,
                 )
                 for key in ALL_RESOURCE_KEYS:
                     carryover[key] += int(round(
-                        int(entry['inventory'].get(key, 0) or 0) * factor
+                        int(leftover.get(key, 0) or 0) * factor
                     ))
-        return carryover, consumed
+            elif kind == 'star':
+                self._genesis_accumulate_inventory(yield_source_totals, consumed_here)
+                if any(int(value or 0) > 0 for value in consumed_here.values()):
+                    activation_star_updates.append({
+                        'star': entry['obj'],
+                        'consumed_inventory': consumed_here,
+                    })
+
+        return (
+            carryover,
+            yield_source_totals,
+            activation_star_updates,
+            consumed_activation_fleets,
+        )
+
+    def _resolve_genesis_collateral_effects(
+        self,
+        activator_fleet,
+        location_state,
+        activation_star_updates,
+        consumed_activation_fleets,
+    ):
+        activator_id = getattr(activator_fleet, 'id', None)
+        consumed_fleet_ids = {
+            getattr(fleet, 'id', None)
+            for fleet in consumed_activation_fleets
+        }
+        star_activation_consumed = {
+            effect['star'].id: effect['consumed_inventory']
+            for effect in activation_star_updates
+        }
+
+        star_effects = []
+        for star in location_state.get('stars', []):
+            base_inventory = self._resource_inventory_map(star)
+            already_consumed = star_activation_consumed.get(star.id, {})
+            for key in ALL_RESOURCE_KEYS:
+                base_inventory[key] = max(
+                    0,
+                    int(base_inventory.get(key, 0) or 0) -
+                    int(already_consumed.get(key, 0) or 0),
+                )
+
+            if not self._genesis_should_touch_star(star):
+                star_effects.append({
+                    'star': star,
+                    'touched': False,
+                    'activation_consumed_inventory': dict(already_consumed),
+                })
+                continue
+
+            if self._genesis_should_destroy_star(star):
+                snapshot, inventory = self._genesis_destroyed_star_materials(star)
+                for key in ALL_RESOURCE_KEYS:
+                    inventory[key] = max(
+                        0,
+                        int(inventory.get(key, 0) or 0) -
+                        int(already_consumed.get(key, 0) or 0),
+                    )
+                star_effects.append({
+                    'star': star,
+                    'touched': True,
+                    'destroyed': True,
+                    'snapshot': snapshot,
+                    'inventory': inventory,
+                    'activation_consumed_inventory': dict(already_consumed),
+                })
+                continue
+
+            fraction = self._genesis_star_strip_fraction(star)
+            inventory = {
+                key: max(
+                    0,
+                    min(
+                        int(base_inventory.get(key, 0) or 0),
+                        int(round(int(base_inventory.get(key, 0) or 0) * float(fraction))),
+                    ),
+                )
+                for key in ALL_RESOURCE_KEYS
+            }
+            star_effects.append({
+                'star': star,
+                'touched': True,
+                'destroyed': False,
+                'strip_fraction': fraction,
+                'inventory': inventory,
+                'activation_consumed_inventory': dict(already_consumed),
+            })
+
+        collateral_fleet_effects = []
+        for fleet in location_state.get('fleets', []):
+            fleet_id = getattr(fleet, 'id', None)
+            if fleet_id == activator_id or fleet_id in consumed_fleet_ids:
+                continue
+            if not self._genesis_should_consume_collateral_fleet(fleet):
+                collateral_fleet_effects.append({
+                    'fleet': fleet,
+                    'consumed': False,
+                })
+                continue
+            materials = self._genesis_fleet_materials(fleet)
+            collateral_fleet_effects.append({
+                'fleet': fleet,
+                'consumed': True,
+                'inventory': materials,
+            })
+
+        return star_effects, collateral_fleet_effects
 
     def _build_genesis_star_yields(self, resource_totals, yield_bonus=0):
         yields = {}
@@ -8271,6 +8452,7 @@ class GameTurn():
         consumed_resources = {}
         blocking_anomaly = None
         activation_failed = False
+        insufficient_resources = False
 
         with transaction.atomic():
             fresh_state = self._collect_genesis_location_state(x, y)
@@ -8288,74 +8470,159 @@ class GameTurn():
                     anomaly for anomaly in fresh_state['anomalies']
                     if getattr(anomaly, 'anomaly_type', None) == anomaly.TYPE_COMET
                 ]
-                touched_stars, source_totals, yield_source_totals = self._select_genesis_touched_stars(
-                    fresh_state
+                activation_entries = self._select_genesis_activation_entries(
+                    fleet,
+                    fresh_state,
                 )
-                if not self._genesis_totals_meet_requirements(source_totals):
-                    return 'blocked'
+                if activation_entries is None:
+                    insufficient_resources = True
+                else:
+                    (
+                        leftover_entries,
+                        consumed_resources,
+                        _secret_key,
+                    ) = self._consume_genesis_resources(activation_entries)
+                    if leftover_entries is None or consumed_resources is None:
+                        insufficient_resources = True
 
-                carryover_resources, consumed_resources = self._consume_genesis_resources(
-                    fresh_state['fleets'],
-                    fresh_state['salvages'],
-                    touched_stars,
-                )
-                if carryover_resources is None or consumed_resources is None:
-                    return 'blocked'
-
-                order.delete()
-                notify_consumed = [
-                    victim for victim in fresh_state['fleets']
-                    if (
-                        victim.player_id and
-                        victim.id != fleet.id and
-                        victim.player_id != getattr(owner, 'id', None)
+                if insufficient_resources:
+                    pass
+                else:
+                    (
+                        carryover_resources,
+                        yield_source_totals,
+                        activation_star_updates,
+                        consumed_activation_fleets,
+                    ) = self._build_genesis_activation_outputs(leftover_entries)
+                    star_effects, collateral_fleet_effects = self._resolve_genesis_collateral_effects(
+                        fleet,
+                        fresh_state,
+                        activation_star_updates,
+                        consumed_activation_fleets,
                     )
-                ]
-                destroyed_fleet_count = len(fresh_state['fleets'])
-
-                for anomaly in comet_anomalies:
-                    anomaly.delete()
-
-                for salvage in fresh_state['salvages']:
-                    salvage.delete()
-
-                for victim in fresh_state['fleets']:
-                    victim.delete()
-
-                for star in touched_stars:
-                    destroyed_owner_id = star.player_id
-                    destroyed_star_id = star.id
-                    destroyed_star_short_id = star.short_id
-                    destroyed_x = star.x
-                    destroyed_y = star.y
-                    star.delete()
-                    if destroyed_owner_id:
-                        lost_player = Player.objects.filter(id=destroyed_owner_id).first()
-                        if lost_player:
-                            self._handle_homeworld_loss(
-                                lost_player,
-                                lost_star_id=destroyed_star_id,
-                                location=(destroyed_x, destroyed_y),
+                    for effect in star_effects:
+                        if effect.get('touched'):
+                            self._genesis_accumulate_inventory(
+                                yield_source_totals,
+                                effect.get('inventory', {}),
                             )
-                    self._retarget_or_remove_orders_for_destroyed_star(
-                        destroyed_star_id,
-                        destroyed_star_short_id,
-                        destroyed_x,
-                        destroyed_y,
-                        preserve_order_id=None,
+                            self._genesis_accumulate_inventory(
+                                carryover_resources,
+                                effect.get('inventory', {}),
+                            )
+                    for effect in collateral_fleet_effects:
+                        if effect.get('consumed'):
+                            self._genesis_accumulate_inventory(
+                                yield_source_totals,
+                                effect.get('inventory', {}),
+                            )
+                            self._genesis_accumulate_inventory(
+                                carryover_resources,
+                                effect.get('inventory', {}),
+                            )
+
+                    order.delete()
+                    notify_consumed = [
+                        effect['fleet'] for effect in collateral_fleet_effects
+                        if (
+                            effect.get('consumed') and
+                            effect['fleet'].player_id and
+                            effect['fleet'].id != fleet.id and
+                            effect['fleet'].player_id != getattr(owner, 'id', None)
+                        )
+                    ]
+                    destroyed_fleet_count = len(consumed_activation_fleets) + sum(
+                        1 for effect in collateral_fleet_effects if effect.get('consumed')
                     )
 
-                created_star = self._create_genesis_star(
-                    owner,
-                    x,
-                    y,
-                    yield_source_totals,
-                    carryover_resources=carryover_resources,
-                    environment_delta=(
-                        GENESIS_COMET_ENVIRONMENT_DELTA if comet_anomalies else GENESIS_ENVIRONMENT_DELTA
-                    ),
-                    yield_bonus=GENESIS_COMET_YIELD_BONUS if comet_anomalies else 0,
-                )
+                    for anomaly in comet_anomalies:
+                        anomaly.delete()
+
+                    for salvage in fresh_state['salvages']:
+                        salvage.delete()
+
+                    for doomed_fleet in consumed_activation_fleets:
+                        doomed_fleet.delete()
+                    for effect in collateral_fleet_effects:
+                        if effect.get('consumed'):
+                            effect['fleet'].delete()
+
+                    activation_star_consumed = {
+                        effect['star'].id: effect['consumed_inventory']
+                        for effect in activation_star_updates
+                    }
+
+                    for effect in star_effects:
+                        star = effect['star']
+                        if not effect.get('touched'):
+                            consumed_inventory = activation_star_consumed.get(star.id, {})
+                            update_fields = []
+                            for key in ALL_RESOURCE_KEYS:
+                                consumed = int(consumed_inventory.get(key, 0) or 0)
+                                if consumed <= 0:
+                                    continue
+                                field = '%s_inventory' % key
+                                current = int(getattr(star, field, 0) or 0)
+                                new_value = max(0, current - consumed)
+                                if new_value != current:
+                                    setattr(star, field, new_value)
+                                    update_fields.append(field)
+                            if update_fields:
+                                star.save(update_fields=update_fields)
+                            continue
+
+                        if not effect.get('destroyed'):
+                            update_fields = []
+                            for key in ALL_RESOURCE_KEYS:
+                                field = '%s_inventory' % key
+                                current = int(getattr(star, field, 0) or 0)
+                                current = max(
+                                    0,
+                                    current - int(activation_star_consumed.get(star.id, {}).get(key, 0) or 0),
+                                )
+                                stripped = int(effect['inventory'].get(key, 0) or 0)
+                                new_value = max(0, current - stripped)
+                                stored_value = int(getattr(star, field, 0) or 0)
+                                if new_value != stored_value:
+                                    setattr(star, field, new_value)
+                                    update_fields.append(field)
+                            if update_fields:
+                                star.save(update_fields=update_fields)
+                            continue
+
+                        destroyed_owner_id = star.player_id
+                        destroyed_star_id = star.id
+                        destroyed_star_short_id = star.short_id
+                        destroyed_x = star.x
+                        destroyed_y = star.y
+                        star.delete()
+                        if destroyed_owner_id:
+                            lost_player = Player.objects.filter(id=destroyed_owner_id).first()
+                            if lost_player:
+                                self._handle_homeworld_loss(
+                                    lost_player,
+                                    lost_star_id=destroyed_star_id,
+                                    location=(destroyed_x, destroyed_y),
+                                )
+                        self._retarget_or_remove_orders_for_destroyed_star(
+                            destroyed_star_id,
+                            destroyed_star_short_id,
+                            destroyed_x,
+                            destroyed_y,
+                            preserve_order_id=None,
+                        )
+
+                    created_star = self._create_genesis_star(
+                        owner,
+                        x,
+                        y,
+                        yield_source_totals,
+                        carryover_resources=carryover_resources,
+                        environment_delta=(
+                            GENESIS_COMET_ENVIRONMENT_DELTA if comet_anomalies else GENESIS_ENVIRONMENT_DELTA
+                        ),
+                        yield_bonus=GENESIS_COMET_YIELD_BONUS if comet_anomalies else 0,
+                    )
 
         if blocking_anomaly is not None:
             if owner:
@@ -8364,6 +8631,20 @@ class GameTurn():
                     owner,
                     fleet_name=fleet_name,
                     anomaly=blocking_anomaly,
+                )
+                msg = factory.new_message()
+                msg.year = self.game.year
+                msg.save()
+            return 'blocked'
+
+        if insufficient_resources:
+            if owner:
+                factory = GenesisActivationInsufficientResourcesMessageFactory(
+                    self.game,
+                    owner,
+                    fleet_name=fleet_name,
+                    x=x,
+                    y=y,
                 )
                 msg = factory.new_message()
                 msg.year = self.game.year

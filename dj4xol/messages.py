@@ -1010,6 +1010,25 @@ class GenesisActivationFailedMessageFactory(MessageFactory):
         )
 
 
+class GenesisActivationInsufficientResourcesMessageFactory(MessageFactory):
+    """Owner-only message for a Genesis activation blocked by missing local resources."""
+    category = 'EXCEPTION'
+    priority = True
+
+    def __init__(self, game, player, fleet_name, x, y, message=None):
+        super().__init__(game, player, message, intensity=-0.5)
+        self.fleet_name = fleet_name
+        self.x = x
+        self.y = y
+
+    def format_message(self):
+        return (
+            f"{escape(self.fleet_name or 'A fleet')} could not activate its Genesis Device at "
+            f"{map_coordinate_link(self.game, self.x, self.y)} because insufficient local materials "
+            f"were available."
+        )
+
+
 class AnomalyTargetLostMessageFactory(MessageFactory):
     """Messages for fleets whose anomaly target vanished before arrival."""
     category = 'EXCEPTION'
