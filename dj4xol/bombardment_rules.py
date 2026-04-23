@@ -1,4 +1,5 @@
 import math
+import random
 
 from .chance_rules import scaled_luck_roll
 from .models import (
@@ -122,6 +123,118 @@ def apply_dyson_bombardment_damping(damage_k, has_dyson_sphere):
         0,
         int(round(base * DYSON_BOMBARDMENT_DAMPING_MULTIPLIER)),
     )
+
+
+def bombardment_point_budget(damage_k, minimum_points=0, points_per_damage=2):
+    """Convert coarse bombardment damage into spendable bombardment points."""
+    try:
+        damage = max(0, int(damage_k or 0))
+    except (TypeError, ValueError):
+        damage = 0
+    try:
+        minimum = max(0, int(minimum_points or 0))
+    except (TypeError, ValueError):
+        minimum = 0
+    try:
+        multiplier = max(0, int(points_per_damage or 0))
+    except (TypeError, ValueError):
+        multiplier = 0
+    return max(minimum, damage * multiplier)
+
+
+def allocate_weighted_hits(
+    total_hits,
+    capacities,
+    weight_scales=None,
+    rng=None,
+    scale_by_capacity=True,
+):
+    """Allocate hits across capped targets, using stable random remainder spreading."""
+    results = {
+        key: 0
+        for key in (capacities or {})
+    }
+    try:
+        hits = max(0, int(total_hits or 0))
+    except (TypeError, ValueError):
+        hits = 0
+    if hits <= 0 or not capacities:
+        return results
+
+    if rng is None:
+        rng = random
+    scales = weight_scales or {}
+
+    remaining = {}
+    for key, raw_capacity in capacities.items():
+        try:
+            capacity = max(0, int(raw_capacity or 0))
+        except (TypeError, ValueError):
+            capacity = 0
+        if capacity > 0:
+            remaining[key] = capacity
+    if not remaining:
+        return results
+
+    hits = min(hits, sum(remaining.values()))
+
+    weighted = []
+    total_weight = 0.0
+    for key, capacity in remaining.items():
+        try:
+            scale = float(scales.get(key, 1.0) or 0.0)
+        except (TypeError, ValueError):
+            scale = 1.0
+        weight = max(0.0, scale)
+        if scale_by_capacity:
+            weight *= float(capacity)
+        if weight <= 0.0:
+            continue
+        weighted.append((key, weight))
+        total_weight += weight
+    if total_weight <= 0.0:
+        return results
+
+    assigned = 0
+    for key, weight in weighted:
+        share = float(hits) * (weight / total_weight)
+        base_hits = min(remaining[key], int(math.floor(share)))
+        results[key] += base_hits
+        remaining[key] -= base_hits
+        assigned += base_hits
+
+    remaining_hits = max(0, hits - assigned)
+    while remaining_hits > 0:
+        choices = []
+        total_choice_weight = 0.0
+        for key, capacity in remaining.items():
+            if capacity <= 0:
+                continue
+            try:
+                scale = float(scales.get(key, 1.0) or 0.0)
+            except (TypeError, ValueError):
+                scale = 1.0
+            weight = max(0.0, scale)
+            if scale_by_capacity:
+                weight *= float(capacity)
+            if weight <= 0.0:
+                continue
+            choices.append((key, weight))
+            total_choice_weight += weight
+        if total_choice_weight <= 0.0:
+            break
+        roll = float(rng.random()) * total_choice_weight
+        chosen_key = choices[-1][0]
+        cumulative = 0.0
+        for key, weight in choices:
+            cumulative += weight
+            if roll < cumulative:
+                chosen_key = key
+                break
+        results[chosen_key] += 1
+        remaining[chosen_key] -= 1
+        remaining_hits -= 1
+    return results
 
 
 def distribute_infrastructure_hits(structure_counts, total_hits):
@@ -259,7 +372,4 @@ def bombardment_damage_k(ship_count, defense_level, defenses, luck_multiplier, b
     )
     raw = float(count) * bombardment_tech_factor * offense_roll * mult
     raw /= defense_factor
-    damage = max(0, int(math.floor(raw)))
-    if damage <= 0 and raw > 0.0 and defense_factor <= 1.0:
-        return 1
-    return damage
+    return max(0, int(math.floor(raw)))

@@ -193,16 +193,16 @@ from .chance_rules import (
     anomaly_spawn_chance,
 )
 from .bombardment_rules import (
+    allocate_weighted_hits,
     apply_dyson_bombardment_damping,
+    bombardment_point_budget,
     bomb_damage_multiplier,
-    distribute_infrastructure_hits,
     apply_graviton_bomb_environment_shift,
     apply_neutron_bomb_environment_shift,
     apply_nova_family_environment_shift,
     bombardment_damage_k,
     graviton_bombs_apply_gravity_shift,
     NOVA_COLLAPSE_GRAVITY_THRESHOLD,
-    neutron_bomb_collateral_damage_k,
     neutron_bombs_target_population_shipyards_and_cities,
     normalize_bomb_type,
     normalize_miner_type,
@@ -308,11 +308,7 @@ SUPERNOVA_COLLATERAL_INTEGRITY_LOSS_MAX = 95
 SUPERNOVA_COLLATERAL_SHIP_LOSS_FRACTION_MIN = 0.25
 SUPERNOVA_COLLATERAL_SHIP_LOSS_FRACTION_MAX = 0.60
 STAR_VANISH_FLEET_MENTION_CHANCE = 0.35
-GENESIS_REQUIRED_RESOURCE_TOTALS = {
-    'ironium': 5000,
-    'boranium': 2500,
-    'germanium': 2500,
-}
+GENESIS_TOTAL_MATERIAL_REQUIRED = 5000
 GENESIS_SECRET_REQUIREMENT_KEYS = ('resource_x', 'resource_y')
 GENESIS_SECRET_MINIMUM = 100
 GENESIS_MINERAL_MIN_YIELD = 20
@@ -324,6 +320,14 @@ GENESIS_SALVAGE_CARRYOVER_MIN = 0.50
 GENESIS_SALVAGE_CARRYOVER_MAX = 1.00
 GENESIS_COLONISED_STAR_WEIGHT = 3
 GENESIS_UNCOLONISED_STAR_WEIGHT = 1
+GENESIS_MATERIAL_PREFERENCE_KEYS = (
+    'ironium',
+    'boranium',
+    'germanium',
+    'resource_z',
+    'resource_x',
+    'resource_y',
+)
 REMOTE_MINER_UNITS_BY_TYPE = {
     'SMALL': 1,
     'MEDIUM': 2,
@@ -6319,6 +6323,24 @@ class GameTurn():
             total += value * float(ships)
         return total / float(total_ships)
 
+    def _bombardment_rng(self, star, bomb_type, fleets):
+        fleet_ids = ','.join(
+            str(int(getattr(fleet, 'id', 0) or 0))
+            for fleet in sorted(
+                list(fleets or []),
+                key=lambda fleet: int(getattr(fleet, 'id', 0) or 0),
+            )
+        )
+        seed_source = '%s:%s:%s:%s:%s' % (
+            getattr(self.game, 'id', ''),
+            int(getattr(self.game, 'year', 0) or 0),
+            int(getattr(star, 'id', 0) or 0),
+            str(bomb_type or ''),
+            fleet_ids,
+        )
+        seed = int(hashlib.sha256(seed_source.encode('utf-8')).hexdigest()[:16], 16)
+        return random.Random(seed)
+
     def _bombardment_max_potential_damage_k(
         self,
         ship_count,
@@ -6347,38 +6369,116 @@ class GameTurn():
         )
 
     @staticmethod
-    def _bombardment_environment_scale(damage_k, max_potential_damage_k):
+    def _bombardment_environment_scale(damage_points, max_potential_points):
         try:
-            damage = float(damage_k or 0)
-            potential = float(max_potential_damage_k or 0)
+            damage = float(damage_points or 0)
+            potential = float(max_potential_points or 0)
         except (TypeError, ValueError):
             return 0.0
         if damage <= 0.0 or potential <= 0.0:
             return 0.0
         return max(0.0, min(1.0, damage / potential))
 
+    @staticmethod
+    def _bombardment_domain_weights(bomb_type):
+        if smart_bombs_only_target_defenses_and_population(bomb_type):
+            return {
+                'colonists': 1.0,
+                'defenses': 1.0,
+            }
+        if neutron_bombs_target_population_shipyards_and_cities(bomb_type):
+            return {
+                'colonists': 4.0,
+                'defenses': 1.0,
+                'infrastructure': 4.0,
+            }
+        return {
+            'colonists': 1.0,
+            'defenses': 1.0,
+            'infrastructure': 1.0,
+        }
+
+    @staticmethod
+    def _bombardment_infrastructure_capacities(pre, bomb_type):
+        capacities = {}
+        if neutron_bombs_target_population_shipyards_and_cities(bomb_type):
+            capacities.update({
+                'mines': pre['mines'],
+                'factories': pre['factories'],
+                'labs': pre['labs'],
+            })
+        if not smart_bombs_only_target_defenses_and_population(bomb_type):
+            capacities.update({
+                'shipyards': pre['shipyards'],
+                'cities': pre['cities'],
+                'megacities': pre['megacities'],
+            })
+        if (
+            not smart_bombs_only_target_defenses_and_population(bomb_type)
+            and not neutron_bombs_target_population_shipyards_and_cities(bomb_type)
+        ):
+            capacities['administration'] = 1 if pre['has_administration'] else 0
+        return capacities
+
+    @staticmethod
+    def _bombardment_infrastructure_weights(bomb_type):
+        if neutron_bombs_target_population_shipyards_and_cities(bomb_type):
+            return {
+                'mines': 0.25,
+                'factories': 0.25,
+                'labs': 0.25,
+                'shipyards': 1.0,
+                'cities': 1.0,
+                'megacities': 1.0,
+            }
+        return {
+            'mines': 1.0,
+            'factories': 1.0,
+            'labs': 1.0,
+            'shipyards': 1.0,
+            'cities': 1.0,
+            'megacities': 1.0,
+            'administration': 1.0,
+        }
+
     def _apply_bombardment_damage_to_star(
         self,
         star,
         bomb_type,
-        damage_k,
+        bombardment_points,
         environment_scale,
         pre,
         order,
         fleet,
+        rng,
     ):
         from .models import Star
 
         is_smart = smart_bombs_only_target_defenses_and_population(bomb_type)
         is_neutron = neutron_bombs_target_population_shipyards_and_cities(bomb_type)
         is_graviton = graviton_bombs_apply_gravity_shift(bomb_type)
-        neutron_collateral_k = neutron_bomb_collateral_damage_k(damage_k) if is_neutron else 0
 
-        defenses_lost = min(
-            pre['defenses'],
-            neutron_collateral_k if is_neutron else damage_k,
+        infrastructure_capacities = self._bombardment_infrastructure_capacities(pre, bomb_type)
+        infrastructure_capacity = sum(
+            max(0, int(value or 0))
+            for value in infrastructure_capacities.values()
         )
-        colonists_lost = min(pre['colonists'], damage_k * 1000)
+        domain_capacities = {
+            'colonists': int(ceil(float(max(0, int(pre['colonists'] or 0))) / 1000.0)),
+            'defenses': max(0, int(pre['defenses'] or 0)),
+            'infrastructure': infrastructure_capacity,
+        }
+        domain_weights = self._bombardment_domain_weights(bomb_type)
+        domain_hits = allocate_weighted_hits(
+            bombardment_points,
+            domain_capacities,
+            weight_scales=domain_weights,
+            rng=rng,
+            scale_by_capacity=False,
+        )
+
+        defenses_lost = min(pre['defenses'], int(domain_hits.get('defenses', 0) or 0))
+        colonists_lost = min(pre['colonists'], int(domain_hits.get('colonists', 0) or 0) * 1000)
         star.defenses = max(0, pre['defenses'] - defenses_lost)
         star.colonists = max(0, pre['colonists'] - colonists_lost)
 
@@ -6390,56 +6490,13 @@ class GameTurn():
         megacities_lost = 0
         administration_lost = 0
         dyson_sphere_lost = 0
-        if is_neutron:
-            collateral_losses = distribute_infrastructure_hits(
-                {
-                    'mines': pre['mines'],
-                    'factories': pre['factories'],
-                    'labs': pre['labs'],
-                },
-                neutron_collateral_k,
-            )
-            primary_losses = distribute_infrastructure_hits(
-                {
-                    'shipyards': pre['shipyards'],
-                    'cities': pre['cities'],
-                    'megacities': pre['megacities'],
-                },
-                damage_k,
-            )
-            mines_lost = collateral_losses.get('mines', 0)
-            factories_lost = collateral_losses.get('factories', 0)
-            labs_lost = collateral_losses.get('labs', 0)
-            shipyards_lost = primary_losses.get('shipyards', 0)
-            cities_lost = primary_losses.get('cities', 0)
-            megacities_lost = primary_losses.get('megacities', 0)
-            star.mines = max(0, pre['mines'] - mines_lost)
-            star.factories = max(0, pre['factories'] - factories_lost)
-            star.labs = max(0, pre['labs'] - labs_lost)
-            star.shipyards = max(0, pre['shipyards'] - shipyards_lost)
-            star.cities = max(0, pre['cities'] - cities_lost)
-            star.megacities = max(0, pre['megacities'] - megacities_lost)
-            if damage_k > 0:
-                (
-                    star.temperature,
-                    star.radiation,
-                ) = apply_neutron_bomb_environment_shift(
-                    getattr(star, 'temperature', 0.0),
-                    getattr(star, 'radiation', 0.0),
-                    scale=environment_scale,
-                )
-        elif not is_smart:
-            infra_losses = distribute_infrastructure_hits(
-                {
-                    'mines': pre['mines'],
-                    'factories': pre['factories'],
-                    'labs': pre['labs'],
-                    'shipyards': pre['shipyards'],
-                    'cities': pre['cities'],
-                    'megacities': pre['megacities'],
-                    'administration': 1 if pre['has_administration'] else 0,
-                },
-                damage_k,
+        infrastructure_hits = int(domain_hits.get('infrastructure', 0) or 0)
+        if infrastructure_hits > 0:
+            infra_losses = allocate_weighted_hits(
+                infrastructure_hits,
+                infrastructure_capacities,
+                weight_scales=self._bombardment_infrastructure_weights(bomb_type),
+                rng=rng,
             )
             mines_lost = infra_losses.get('mines', 0)
             factories_lost = infra_losses.get('factories', 0)
@@ -6448,12 +6505,6 @@ class GameTurn():
             cities_lost = infra_losses.get('cities', 0)
             megacities_lost = infra_losses.get('megacities', 0)
             administration_lost = infra_losses.get('administration', 0)
-            if (
-                pre['has_dyson_sphere'] and
-                damage_k > 0 and
-                bomb_type in {'NOVA', 'SUPERNOVA'}
-            ):
-                dyson_sphere_lost = 1
             star.mines = max(0, pre['mines'] - mines_lost)
             star.factories = max(0, pre['factories'] - factories_lost)
             star.labs = max(0, pre['labs'] - labs_lost)
@@ -6462,10 +6513,31 @@ class GameTurn():
             star.megacities = max(0, pre['megacities'] - megacities_lost)
             if administration_lost:
                 star.has_administration = False
-            if dyson_sphere_lost:
-                star.has_dyson_sphere = False
 
-        if is_graviton and damage_k > 0:
+        actual_damage_dealt = bool(
+            colonists_lost or defenses_lost or mines_lost or factories_lost or
+            labs_lost or shipyards_lost or cities_lost or megacities_lost or
+            administration_lost
+        )
+        if (
+            pre['has_dyson_sphere'] and
+            actual_damage_dealt and
+            bomb_type in {'NOVA', 'SUPERNOVA'}
+        ):
+            dyson_sphere_lost = 1
+            star.has_dyson_sphere = False
+
+        if is_neutron and actual_damage_dealt:
+            (
+                star.temperature,
+                star.radiation,
+            ) = apply_neutron_bomb_environment_shift(
+                getattr(star, 'temperature', 0.0),
+                getattr(star, 'radiation', 0.0),
+                scale=environment_scale,
+            )
+
+        if is_graviton and actual_damage_dealt:
             star.gravity = apply_graviton_bomb_environment_shift(
                 getattr(star, 'gravity', 0.0),
                 scale=environment_scale,
@@ -6474,7 +6546,7 @@ class GameTurn():
         star_destroyed = False
         destroyed_star_name = star.name
         blast_summary = None
-        if bomb_type == 'SUPERNOVA' and damage_k > 0:
+        if bomb_type == 'SUPERNOVA' and actual_damage_dealt:
             stars_at_location = []
             for location_star in Star.objects.filter(
                 game=self.game,
@@ -6523,7 +6595,7 @@ class GameTurn():
                         ])
                     else:
                         location_star.save(update_fields=['gravity', 'radiation'])
-        elif bomb_type == 'NOVA' and damage_k > 0:
+        elif bomb_type == 'NOVA' and actual_damage_dealt:
             star.gravity, star.radiation = apply_nova_family_environment_shift(
                 getattr(star, 'gravity', 0.0),
                 getattr(star, 'radiation', 0.0),
@@ -6729,17 +6801,27 @@ class GameTurn():
             bombardment_multiplier,
             bomb_type,
         )
-        environment_scale = self._bombardment_environment_scale(damage_k, max_potential_damage_k)
+        bombardment_points = bombardment_point_budget(
+            damage_k,
+            minimum_points=1 if effective_defenses <= 0.0 else 0,
+        )
+        max_potential_points = bombardment_point_budget(max_potential_damage_k)
+        environment_scale = self._bombardment_environment_scale(
+            bombardment_points,
+            max_potential_points,
+        )
+        rng = self._bombardment_rng(star, bomb_type, attack_fleets)
 
         lead_fleet = attack_fleets[0]
         damage_result = self._apply_bombardment_damage_to_star(
             star,
             bomb_type,
-            damage_k,
+            bombardment_points,
             environment_scale,
             pre,
             surviving[0][1],
             lead_fleet,
+            rng,
         )
         defenses_lost = damage_result['defenses_lost']
         colonists_lost = damage_result['colonists_lost']
@@ -6937,19 +7019,26 @@ class GameTurn():
             bombardment_multiplier,
             bomb_type,
         )
-        environment_scale = self._bombardment_environment_scale(
+        bombardment_points = bombardment_point_budget(
             damage_k,
-            max_potential_damage_k,
+            minimum_points=1 if effective_defenses <= 0.0 else 0,
         )
+        max_potential_points = bombardment_point_budget(max_potential_damage_k)
+        environment_scale = self._bombardment_environment_scale(
+            bombardment_points,
+            max_potential_points,
+        )
+        rng = self._bombardment_rng(star, bomb_type, [fleet])
 
         damage_result = self._apply_bombardment_damage_to_star(
             star,
             bomb_type,
-            damage_k,
+            bombardment_points,
             environment_scale,
             pre,
             order,
             fleet,
+            rng,
         )
         defenses_lost = damage_result['defenses_lost']
         colonists_lost = damage_result['colonists_lost']
@@ -7685,14 +7774,14 @@ class GameTurn():
                 if harass_damage > 0:
                     defenses_lost = min(int(star.defenses or 0), harass_damage)
                     colonists_lost = min(int(star.colonists or 0), harass_damage * 1000)
-                    infra_losses = distribute_infrastructure_hits(
+                    infra_losses = allocate_weighted_hits(
+                        harass_damage,
                         {
                             'mines': int(star.mines or 0),
                             'factories': int(star.factories or 0),
                             'labs': int(star.labs or 0),
                             'shipyards': int(star.shipyards or 0),
                         },
-                        harass_damage,
                     )
                     mines_lost = infra_losses.get('mines', 0)
                     factories_lost = infra_losses.get('factories', 0)
@@ -7877,9 +7966,12 @@ class GameTurn():
 
     @staticmethod
     def _genesis_totals_meet_requirements(resource_totals):
-        for key, required in GENESIS_REQUIRED_RESOURCE_TOTALS.items():
-            if int(resource_totals.get(key, 0) or 0) < int(required):
-                return False
+        total_material = sum(
+            max(0, int(resource_totals.get(key, 0) or 0))
+            for key in ALL_RESOURCE_KEYS
+        )
+        if total_material < (GENESIS_TOTAL_MATERIAL_REQUIRED + GENESIS_SECRET_MINIMUM):
+            return False
         return any(
             int(resource_totals.get(key, 0) or 0) >= GENESIS_SECRET_MINIMUM
             for key in GENESIS_SECRET_REQUIREMENT_KEYS
@@ -8002,11 +8094,9 @@ class GameTurn():
         if not self._genesis_totals_meet_requirements(totals):
             return None, None
 
-        required = dict(GENESIS_REQUIRED_RESOURCE_TOTALS)
         secret_key = self._choose_genesis_secret_requirement_key(totals)
         if secret_key is None:
             return None, None
-        required[secret_key] = GENESIS_SECRET_MINIMUM
 
         leftovers = [
             {
@@ -8017,19 +8107,38 @@ class GameTurn():
             for entry in entries
         ]
 
-        for key, required_amount in required.items():
-            remaining = int(required_amount or 0)
+        consumed = {key: 0 for key in ALL_RESOURCE_KEYS}
+
+        remaining_secret = GENESIS_SECRET_MINIMUM
+        for entry in leftovers:
+            if remaining_secret <= 0:
+                break
+            available = int(entry['inventory'].get(secret_key, 0) or 0)
+            if available <= 0:
+                continue
+            used = min(available, remaining_secret)
+            entry['inventory'][secret_key] = available - used
+            remaining_secret -= used
+            consumed[secret_key] += used
+        if remaining_secret > 0:
+            return None, None
+
+        remaining_material = GENESIS_TOTAL_MATERIAL_REQUIRED
+        for key in GENESIS_MATERIAL_PREFERENCE_KEYS:
+            if remaining_material <= 0:
+                break
             for entry in leftovers:
-                if remaining <= 0:
+                if remaining_material <= 0:
                     break
                 available = int(entry['inventory'].get(key, 0) or 0)
                 if available <= 0:
                     continue
-                used = min(available, remaining)
+                used = min(available, remaining_material)
                 entry['inventory'][key] = available - used
-                remaining -= used
-            if remaining > 0:
-                return None, None
+                remaining_material -= used
+                consumed[key] += used
+        if remaining_material > 0:
+            return None, None
 
         carryover = {key: 0 for key in ALL_RESOURCE_KEYS}
         for entry in leftovers:
@@ -8045,7 +8154,7 @@ class GameTurn():
                     carryover[key] += int(round(
                         int(entry['inventory'].get(key, 0) or 0) * factor
                     ))
-        return carryover, required
+        return carryover, consumed
 
     def _build_genesis_star_yields(self, resource_totals, yield_bonus=0):
         yields = {}
