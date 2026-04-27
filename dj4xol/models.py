@@ -1110,22 +1110,11 @@ class Player(AbstractGameObject, HabitabilityMixin):
         choices=STANCE_CHOICES,
         default='NEUTRAL',
     )
-    pending_default_diplomatic_stance = models.CharField(
-        max_length=8,
-        choices=STANCE_CHOICES,
-        default='NEUTRAL',
-    )
     is_ai = models.BooleanField(default=False)
     ai_module = models.CharField(max_length=32, blank=True, default='')
     ai_last_checkin_year = models.IntegerField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
-        update_fields = kwargs.get('update_fields')
-        if update_fields and 'default_diplomatic_stance' in update_fields and 'pending_default_diplomatic_stance' not in update_fields:
-            self.pending_default_diplomatic_stance = self.default_diplomatic_stance
-            kwargs['update_fields'] = list(set(update_fields) | {'pending_default_diplomatic_stance'})
-        elif self._state.adding and self.pending_default_diplomatic_stance == 'NEUTRAL' and self.default_diplomatic_stance != 'NEUTRAL':
-            self.pending_default_diplomatic_stance = self.default_diplomatic_stance
         profanity_filter = profanity_filter_settings()
         if self.plural_name is None:
             self.plural_name = self.name + 's'

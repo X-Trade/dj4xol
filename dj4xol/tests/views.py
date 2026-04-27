@@ -2957,7 +2957,7 @@ class TestPlayCliWebApi(TestCase):
         self.assertTrue(payload['ok'])
         self.assertTrue(payload['mutated'])
         self.player.refresh_from_db()
-        self.assertEqual(self.player.pending_default_diplomatic_stance, 'HOSTILE')
+        self.assertEqual(self.player.default_diplomatic_stance, 'HOSTILE')
 
     def test_command_endpoint_allows_diplomacy_request_accept(self):
         contract = DiplomaticContract.objects.create(
@@ -5372,10 +5372,9 @@ class TestDiplomacyView(TestCase):
 
         self.assertEqual(response.status_code, 302)
         player.refresh_from_db()
-        self.assertEqual(player.default_diplomatic_stance, 'NEUTRAL')
-        self.assertEqual(player.pending_default_diplomatic_stance, 'COLD')
+        self.assertEqual(player.default_diplomatic_stance, 'COLD')
         row = PlayerDiplomaticStance.objects.get(player=player, target_player=other_player)
-        self.assertEqual(row.stance, 'NEUTRAL')
+        self.assertEqual(row.stance, 'COLD')
         self.assertEqual(row.pending_stance, 'ALLIED')
 
     def test_diplomacy_page_lists_contact_from_stance_row_without_report(self):

@@ -1053,13 +1053,24 @@ class GenesisActivationInsufficientResourcesMessageFactory(MessageFactory):
     category = 'EXCEPTION'
     priority = True
 
-    def __init__(self, game, player, fleet_name, x, y, message=None):
+    def __init__(self, game, player, fleet_name, x, y, missing_secret_quantity=False, message=None):
         super().__init__(game, player, message, intensity=-0.5)
         self.fleet_name = fleet_name
         self.x = x
         self.y = y
+        self.missing_secret_quantity = bool(missing_secret_quantity)
 
     def format_message(self):
+        if self.missing_secret_quantity:
+            secret_options = ' or '.join(
+                '%skt %s' % (100, get_secret_resource_name(key))
+                for key in ('resource_x', 'resource_y')
+            )
+            return (
+                f"{escape(self.fleet_name or 'A fleet')} could not activate its Genesis Device at "
+                f"{map_coordinate_link(self.game, self.x, self.y)} because it requires at least "
+                f"{secret_options} among the local materials."
+            )
         return (
             f"{escape(self.fleet_name or 'A fleet')} could not activate its Genesis Device at "
             f"{map_coordinate_link(self.game, self.x, self.y)} because insufficient local materials "

@@ -2328,9 +2328,7 @@ class DetailBuilder():
                 else:
                     order_data['bomb_tooltip'] = 'Bomb until 0 colonists'
             elif o.order_type == 'GENESIS':
-                order_data['genesis_tooltip'] = (
-                    'Create a new star here, always consuming salvage and the activating fleet, while other fleets and stars may also be stripped or consumed'
-                )
+                order_data['genesis_tooltip'] = 'Create a new star here'
 
             orders.append(order_data)
         return orders

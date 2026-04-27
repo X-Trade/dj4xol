@@ -12906,7 +12906,7 @@ class TestInterceptPatrolOrders(TestCase):
             player2.messages.filter(message__icontains='new star').exists()
         )
 
-    def test_genesis_order_blocks_until_local_requirements_are_met(self):
+    def test_genesis_order_fails_and_is_removed_when_local_materials_are_insufficient(self):
         from ..models import FleetOrders
 
         game, player1, _player2 = self._create_two_player_game()
@@ -12928,7 +12928,7 @@ class TestInterceptPatrolOrders(TestCase):
         GameTurn(game).generate_turn()
 
         self.assertTrue(Fleet.objects.filter(id=activator.id).exists())
-        self.assertTrue(FleetOrders.objects.filter(id=order.id).exists())
+        self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
         self.assertFalse(
             Star.objects.filter(game=game, x=24, y=24).exists()
         )
@@ -12936,6 +12936,44 @@ class TestInterceptPatrolOrders(TestCase):
             player1.messages.filter(
                 category='EXCEPTION',
                 message__icontains='insufficient local materials',
+            ).exists()
+        )
+
+    def test_genesis_order_missing_secret_resource_quantity_gets_specific_failure_message(self):
+        from ..models import FleetOrders
+
+        game, player1, _player2 = self._create_two_player_game()
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Secret-Starved Genesis Fleet',
+            x=25,
+            y=25,
+            has_genesis_device=True,
+            ironium_inventory=6000,
+            resource_z_inventory=200,
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        GameTurn(game).generate_turn()
+
+        self.assertTrue(Fleet.objects.filter(id=activator.id).exists())
+        self.assertFalse(FleetOrders.objects.filter(id=order.id).exists())
+        self.assertFalse(
+            Star.objects.filter(game=game, x=25, y=25).exists()
+        )
+        self.assertTrue(
+            player1.messages.filter(
+                category='EXCEPTION',
+                message__icontains='requires at least',
+            ).filter(
+                message__icontains='Uniquium',
+            ).filter(
+                message__icontains='Rarium',
             ).exists()
         )
 

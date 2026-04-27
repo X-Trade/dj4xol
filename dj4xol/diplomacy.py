@@ -279,12 +279,9 @@ def player_default_stance(player):
 
 
 def player_pending_default_stance(player):
-    if not player:
-        return DEFAULT_STANCE
-    pending = getattr(player, 'pending_default_diplomatic_stance', None)
-    if pending in (None, ''):
-        pending = getattr(player, 'default_diplomatic_stance', DEFAULT_STANCE)
-    return normalise_stance(pending)
+    # Default stance only seeds future first-contact rows, so it does not need
+    # turn-boundary pending treatment.
+    return player_default_stance(player) if player else DEFAULT_STANCE
 
 
 def stance_permission_profile(stance):
@@ -504,8 +501,8 @@ def update_player_stances(player, default_stance, stance_by_target_short_id):
     if not player:
         return
 
-    player.pending_default_diplomatic_stance = normalise_stance(default_stance)
-    player.save(update_fields=['pending_default_diplomatic_stance'])
+    player.default_diplomatic_stance = normalise_stance(default_stance)
+    player.save(update_fields=['default_diplomatic_stance'])
 
     targets = {
         p.short_id: p for p in Player.objects.filter(game=player.game).exclude(id=player.id)

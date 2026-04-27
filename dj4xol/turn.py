@@ -8278,6 +8278,56 @@ class GameTurn():
             return None
         return entries
 
+    def _genesis_available_location_totals(self, activator_fleet, location_state):
+        activator_id = getattr(activator_fleet, 'id', None)
+        owner_id = getattr(getattr(activator_fleet, 'player', None), 'id', None)
+        entries = [
+            self._build_genesis_activation_entry(
+                'activator',
+                activator_fleet,
+                self._genesis_fleet_materials(activator_fleet),
+            )
+        ]
+        for salvage in location_state.get('salvages', []):
+            entries.append(
+                self._build_genesis_activation_entry(
+                    'salvage',
+                    salvage,
+                    self._resource_inventory_map(salvage),
+                )
+            )
+        for fleet in location_state.get('fleets', []):
+            if getattr(fleet, 'id', None) != activator_id and fleet.player_id == owner_id:
+                entries.append(
+                    self._build_genesis_activation_entry(
+                        'fleet',
+                        fleet,
+                        self._genesis_fleet_materials(fleet),
+                    )
+                )
+        for star in location_state.get('stars', []):
+            entries.append(
+                self._build_genesis_activation_entry(
+                    'star',
+                    star,
+                    self._resource_inventory_map(star),
+                )
+            )
+        return self._genesis_entry_requirement_totals(entries)
+
+    @staticmethod
+    def _genesis_missing_secret_quantity(resource_totals):
+        total_material = sum(
+            max(0, int(resource_totals.get(key, 0) or 0))
+            for key in ALL_RESOURCE_KEYS
+        )
+        if total_material < (GENESIS_TOTAL_MATERIAL_REQUIRED + GENESIS_SECRET_MINIMUM):
+            return False
+        return not any(
+            int(resource_totals.get(key, 0) or 0) >= GENESIS_SECRET_MINIMUM
+            for key in GENESIS_SECRET_REQUIREMENT_KEYS
+        )
+
     @staticmethod
     def _choose_genesis_secret_requirement_key(resource_totals):
         choices = [
@@ -8600,6 +8650,7 @@ class GameTurn():
         blocking_anomaly = None
         activation_failed = False
         insufficient_resources = False
+        missing_secret_quantity = False
 
         with transaction.atomic():
             fresh_state = self._collect_genesis_location_state(x, y)
@@ -8623,6 +8674,9 @@ class GameTurn():
                 )
                 if activation_entries is None:
                     insufficient_resources = True
+                    missing_secret_quantity = self._genesis_missing_secret_quantity(
+                        self._genesis_available_location_totals(fleet, fresh_state)
+                    )
                 else:
                     (
                         leftover_entries,
@@ -8631,9 +8685,12 @@ class GameTurn():
                     ) = self._consume_genesis_resources(activation_entries)
                     if leftover_entries is None or consumed_resources is None:
                         insufficient_resources = True
+                        missing_secret_quantity = self._genesis_missing_secret_quantity(
+                            self._genesis_entry_requirement_totals(activation_entries)
+                        )
 
                 if insufficient_resources:
-                    pass
+                    order.delete()
                 else:
                     (
                         carryover_resources,
@@ -8801,7 +8858,7 @@ class GameTurn():
                 msg = factory.new_message()
                 msg.year = self.game.year
                 msg.save()
-            return 'blocked'
+            return 'executed'
 
         if insufficient_resources:
             if owner:
@@ -8811,6 +8868,7 @@ class GameTurn():
                     fleet_name=fleet_name,
                     x=x,
                     y=y,
+                    missing_secret_quantity=missing_secret_quantity,
                 )
                 msg = factory.new_message()
                 msg.year = self.game.year

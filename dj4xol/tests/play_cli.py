@@ -1897,8 +1897,8 @@ class PlayCommandTest(TestCase):
                 self.assertEqual(int(round(row.allocation_percent)), 0)
 
     def test_diplomacy_overview_command_outputs_default_and_contacts(self):
-        self.player1.pending_default_diplomatic_stance = 'COLD'
-        self.player1.save(update_fields=['pending_default_diplomatic_stance'])
+        self.player1.default_diplomatic_stance = 'COLD'
+        self.player1.save(update_fields=['default_diplomatic_stance'])
         PlayerDiplomaticStance.objects.create(
             player=self.player1,
             target_player=self.player2,
