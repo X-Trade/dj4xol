@@ -2,6 +2,7 @@ import math
 import random
 
 from .chance_rules import scaled_luck_roll
+from .combat_rules import normalize_ship_count
 from .models import (
     BOMB_TYPE_CONVENTIONAL,
     BOMB_TYPE_NEUTRON,
@@ -345,7 +346,14 @@ def apply_nova_family_environment_shift(gravity, radiation, bomb_type, scale=1.0
     return new_gravity, new_radiation
 
 
-def bombardment_damage_k(ship_count, defense_level, defenses, luck_multiplier, bomb_type):
+def bombardment_damage_k(
+    ship_count,
+    defense_level,
+    defenses,
+    luck_multiplier,
+    bomb_type,
+    bombardment_multiplier=1.0,
+):
     """Return bombardment damage in thousands of units."""
     mult = bomb_damage_multiplier(bomb_type)
     if mult <= 0.0:
@@ -360,16 +368,28 @@ def bombardment_damage_k(ship_count, defense_level, defenses, luck_multiplier, b
     except (TypeError, ValueError):
         defense_tech = 0.0
     bombardment_tech_factor = max(0.5, 1.0 + (defense_tech * 0.5))
-
-    # Defenses temper bombardment output: 0 defenses => full damage,
-    # higher defenses progressively reduce damage.
-    defense_factor = 1.0 + max(0.0, float(defenses or 0.0))
+    try:
+        bombardment_mult = float(bombardment_multiplier)
+    except (TypeError, ValueError):
+        bombardment_mult = 1.0
     offense_roll = scaled_luck_roll(
         luck_multiplier,
         min_scale=0.5,
         max_scale=1.0,
         bend=0.65,
     )
-    raw = float(count) * bombardment_tech_factor * offense_roll * mult
-    raw /= defense_factor
+    attack_pressure = normalize_ship_count(
+        float(count) *
+        bombardment_tech_factor *
+        max(0.0, bombardment_mult) *
+        offense_roll *
+        mult
+    )
+    defense_pressure = normalize_ship_count(max(0.0, float(defenses or 0.0)))
+    if attack_pressure <= 0.0:
+        return 0
+    if defense_pressure <= 0.0:
+        raw = attack_pressure
+    else:
+        raw = attack_pressure * (attack_pressure / (attack_pressure + defense_pressure))
     return max(0, int(math.floor(raw)))

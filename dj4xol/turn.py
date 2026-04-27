@@ -1,11 +1,20 @@
 from datetime import timedelta
-from math import atan2, atanh, ceil, cos, degrees, log2, pi, sin, sqrt, tanh
+from math import atan2, atanh, ceil, cos, degrees, pi, sin, sqrt, tanh
 import hashlib
 import time
 from numpy import array as nparray, linalg
 from django.db import models
 from django.utils import timezone
 
+from .combat_rules import (
+    calculate_damage_pressure,
+    calculate_scaled_count_strength,
+    denormalize_ship_count,
+    multiplier_to_tech_level,
+    normalize_ship_count,
+    resolve_damage_to_fleet,
+    tech_level_to_multiplier,
+)
 from .messages import (
     EnvironmentalDeathMessageFactory,
     OvercrowdingDeathMessageFactory,
@@ -275,11 +284,9 @@ SALVAGE_DEGRADATION_MIN = 0.30  # Minimum 30% loss when creating salvage
 SALVAGE_DEGRADATION_MAX = 0.70  # Maximum 70% loss when creating salvage
 
 # Combat constants (MVP)
-COMBAT_COUNT_SOFTENING = 2.0    # Higher values mean stronger diminishing returns
-COMBAT_DAMAGE_SCALE = 30        # Integrity damage per point of opponent strength
+COMBAT_DAMAGE_SCALE = 30        # Integrity damage baseline for attack-vs-defense pressure
 COMBAT_SALVAGE_DAMAGE_CHANCE = 0.25
 COMBAT_SALVAGE_DAMAGE_FACTOR = 0.20
-COMBAT_SHIP_LOSS_MAX_CHANCE = 0.50
 COMBAT_LUCK_JITTER = 0.12
 COMBAT_ATTACK_ROLL_BEND = 1.0
 COMBAT_DEFENSE_ROLL_BEND = 1.0
@@ -525,37 +532,6 @@ def calculate_salvage_minerals(
     )
 
 
-def normalize_ship_count(ship_count):
-    """Normalize ship count with diminishing returns and no hard cap.
-
-    The curve is scaled so that 2 ships maps to 1.0:
-    f(n) = 2n / (n + COMBAT_COUNT_SOFTENING)
-    """
-    if ship_count <= 0:
-        return 0.0
-    n = float(ship_count)
-    return (2.0 * n) / (n + COMBAT_COUNT_SOFTENING)
-
-
-def tech_level_to_multiplier(level):
-    """Convert log2 tech level to linear multiplier."""
-    try:
-        value = float(level)
-    except (TypeError, ValueError):
-        value = 0.0
-    return 2.0 ** max(0.0, value)
-
-
-def multiplier_to_tech_level(multiplier):
-    """Convert linear multiplier back to log2 tech level."""
-    try:
-        value = float(multiplier)
-    except (TypeError, ValueError):
-        value = 1.0
-    # Keep merged values in supported range for combat multipliers.
-    return max(0.0, log2(max(1.0, value)))
-
-
 def calculate_fleet_attack_multiplier(fleet):
     """Return combined attack multiplier from race + fleet tech."""
     race_mult = fleet.player.race_type.combat_multiplier
@@ -574,26 +550,60 @@ def calculate_fleet_strength(
     attack_roll_scale=1.0,
     offense_bonus_multiplier=1.0,
 ):
-    """Calculate fleet combat strength against opponent defenses."""
-    count_norm = normalize_ship_count(fleet.ship_count)
-    integrity_norm = max(0.0, min(1.0, fleet.integrity / 100.0))
+    """Calculate fleet attack strength against a target defense multiplier."""
     attack_mult = calculate_fleet_attack_multiplier(fleet)
     try:
-        scale = float(attack_roll_scale)
+        defence_mult = float(opponent_defence_multiplier)
     except (TypeError, ValueError):
-        scale = 1.0
-    scale = max(0.0, min(1.0, scale))
-    attack_mult *= scale
-    try:
-        offense_bonus = float(offense_bonus_multiplier)
-    except (TypeError, ValueError):
-        offense_bonus = 1.0
-    attack_mult *= max(0.0, offense_bonus)
-    defence_factor = 1.0 / opponent_defence_multiplier if opponent_defence_multiplier else 1.0
-    base = count_norm * attack_mult * defence_factor
-    integrity_factor = (2.0 * integrity_norm) - (integrity_norm ** 2)
-    strength = base * integrity_factor
-    return max(0.0, strength)
+        defence_mult = 1.0
+    return calculate_scaled_count_strength(
+        fleet.ship_count,
+        multiplier=attack_mult / max(0.001, defence_mult if defence_mult else 1.0),
+        integrity=fleet.integrity,
+        roll_scale=attack_roll_scale,
+        bonus_multiplier=offense_bonus_multiplier,
+    )
+
+
+def calculate_fleet_attack_strength(
+    fleet,
+    attack_roll_scale=1.0,
+    offense_bonus_multiplier=1.0,
+):
+    """Return outgoing combat strength for a fleet."""
+    return calculate_scaled_count_strength(
+        fleet.ship_count,
+        multiplier=calculate_fleet_attack_multiplier(fleet),
+        integrity=fleet.integrity,
+        roll_scale=attack_roll_scale,
+        bonus_multiplier=offense_bonus_multiplier,
+    )
+
+
+def calculate_fleet_defense_strength(fleet, defense_roll_scale=1.0):
+    """Return defensive resilience for a fleet."""
+    return calculate_scaled_count_strength(
+        fleet.ship_count,
+        multiplier=calculate_fleet_defense_multiplier(fleet),
+        integrity=fleet.integrity,
+        roll_scale=defense_roll_scale,
+    )
+
+
+def calculate_colony_defense_strength(
+    effective_defenses,
+    defense_multiplier=1.0,
+    defense_roll_scale=1.0,
+    readiness_multiplier=1.0,
+):
+    """Return static defense strength for colonies in combat-like exchanges."""
+    return calculate_scaled_count_strength(
+        effective_defenses,
+        multiplier=defense_multiplier,
+        integrity=100.0,
+        roll_scale=defense_roll_scale,
+        bonus_multiplier=readiness_multiplier,
+    )
 
 
 class GameTurn():
@@ -616,6 +626,7 @@ class GameTurn():
         self._player_colony_count_cache = {}
         self._shipyard_service_blocked_fleet_ids_by_star_id = {}
         self._combined_bomb_order_ids = set()
+        self._homeworld_loss_context_by_player_id = {}
 
     def generate_turn(self):
         """Generate a turn for the game. Requires at least one player."""
@@ -665,6 +676,7 @@ class GameTurn():
         self._player_colony_count_cache = {}
         self._shipyard_service_blocked_fleet_ids_by_star_id = {}
         self._combined_bomb_order_ids = set()
+        self._homeworld_loss_context_by_player_id = {}
         refresh_contract_integrity(self.game)
         self._apply_pending_diplomacy_snapshot()
         self.move_comets()
@@ -687,6 +699,7 @@ class GameTurn():
         self.random_events()
         self.spawn_anomalies()
         self.clear_empty_planets()
+        self._validate_homeworld_assignments()
         self.check_join_deadline()
         self.generate_scanner_reports()
         self.generate_reports()
@@ -2123,6 +2136,9 @@ class GameTurn():
             for star in Star.objects.filter(game=self.game):
                 if star.player_id == player.id:
                     continue
+                if (star.x, star.y) in player_fleet_positions:
+                    # Direct exploration reports later this turn should own on-site discovery.
+                    continue
                 if has_advanced and position_in_scanner_range(
                     star.x, star.y, sources, range_key='advanced'
                 ):
@@ -3496,48 +3512,51 @@ class GameTurn():
         }
         players = sorted(fleets_by_player.keys(), key=lambda p: p.id)
 
-        strength_by_player = {}
+        attack_strength_by_player = {}
+        defense_strength_by_player = {}
         for player in players:
-            opponent_fleets = []
-            for opponent in players:
-                if opponent == player:
-                    continue
-                opponent_fleets.extend(fleets_by_player[opponent])
+            opponent_fleets = [
+                fleet
+                for opponent in players
+                if opponent != player
+                for fleet in fleets_by_player[opponent]
+            ]
             if opponent_fleets:
                 total_enemy_ships = sum(max(1, f.ship_count) for f in opponent_fleets)
-                weighted_enemy_def = sum(
-                    calculate_fleet_defense_multiplier(f) *
-                    roll_defense_scale(
-                        getattr(f.player.race_type, 'luck_multiplier', 1.0)
-                    ) *
-                    max(1, f.ship_count)
-                    for f in opponent_fleets
-                ) / float(total_enemy_ships)
-                opponent_defence = weighted_enemy_def
                 diplomacy_attack_scale = sum(
                     self._combat_readiness_multiplier(player, f.player) *
                     max(1, f.ship_count)
                     for f in opponent_fleets
                 ) / float(total_enemy_ships)
             else:
-                opponent_defence = 1.0
                 diplomacy_attack_scale = 1.0
-            strength_by_player[player] = sum(
-                calculate_fleet_strength(
+            attack_strength_by_player[player] = sum(
+                calculate_fleet_attack_strength(
                     fleet,
-                    opponent_defence,
                     attack_roll_scale=(
                         roll_attack_scale(
-                        getattr(fleet.player.race_type, 'luck_multiplier', 1.0)
+                            getattr(fleet.player.race_type, 'luck_multiplier', 1.0)
                         ) * diplomacy_attack_scale
                     ),
                     offense_bonus_multiplier=self._fleet_ambush_attack_multiplier(fleet),
                 )
                 for fleet in fleets_by_player[player]
             )
+            defense_strength_by_player[player] = sum(
+                calculate_fleet_defense_strength(
+                    fleet,
+                    defense_roll_scale=roll_defense_scale(
+                        getattr(fleet.player.race_type, 'luck_multiplier', 1.0)
+                    ),
+                )
+                for fleet in fleets_by_player[player]
+            )
 
-        winner = self._choose_combat_winner(players, strength_by_player)
-        damage_taken = self._calculate_combat_damage(strength_by_player)
+        winner = self._choose_combat_winner(players, attack_strength_by_player)
+        damage_taken = self._calculate_combat_damage(
+            attack_strength_by_player,
+            defense_strength_by_player,
+        )
         results = self._apply_combat_damage(fleets_by_player, damage_taken)
         self._create_combat_encounter_reports(x, y)
 
@@ -3696,56 +3715,66 @@ class GameTurn():
                 return player
         return players[-1]
 
-    def _calculate_combat_damage(self, strength_by_player):
-        """Calculate damage each player takes based on absolute opponents' strength.
+    def _calculate_combat_damage(self, attack_strength_by_player, defense_strength_by_player=None):
+        """Calculate integrity damage from opposing attack pressure."""
+        if defense_strength_by_player is None:
+            defense_strength_by_player = attack_strength_by_player
 
-        This intentionally avoids a fixed shared damage pool, so overwhelming
-        strength can decisively destroy weaker fleets in a single engagement.
-        """
-        total_strength = sum(strength_by_player.values())
-        if total_strength <= 0:
-            per_player = COMBAT_DAMAGE_SCALE / max(1, len(strength_by_player))
-            return {player: per_player for player in strength_by_player}
-
+        total_attack = sum(max(0.0, float(value or 0.0)) for value in attack_strength_by_player.values())
         damage_taken = {}
-        for player, strength in strength_by_player.items():
-            opponent_strength = total_strength - strength
-            relative_share = max(0.0, opponent_strength / total_strength)
-            intensity = 1.0 + max(0.0, opponent_strength)
-            damage_taken[player] = COMBAT_DAMAGE_SCALE * relative_share * intensity
+        for player in attack_strength_by_player:
+            own_attack = max(0.0, float(attack_strength_by_player.get(player, 0.0) or 0.0))
+            own_defense = max(0.0, float(defense_strength_by_player.get(player, 0.0) or 0.0))
+            opponent_attack = max(0.0, total_attack - own_attack)
+            damage_taken[player] = calculate_damage_pressure(
+                opponent_attack,
+                own_defense,
+                damage_scale=COMBAT_DAMAGE_SCALE,
+            )
         return damage_taken
 
     def _apply_combat_damage(self, fleets_by_player, damage_taken):
         """Apply combat damage to fleets and return summary results."""
         results = {}
         for player, fleets in fleets_by_player.items():
-            total_ships = sum(fleet.ship_count for fleet in fleets) or 1
             total_integrity_loss = 0
             ships_lost = 0
             fleets_destroyed = 0
             salvage_created = False
+            by_fleet = {}
+            player_damage_percent = max(0.0, float(damage_taken.get(player, 0.0) or 0.0))
 
             for fleet in fleets:
-                share = fleet.ship_count / total_ships
-                integrity_loss = int(round(damage_taken[player] * share))
-                if damage_taken[player] > 0 and integrity_loss == 0:
-                    integrity_loss = 1
-
+                defense_multiplier = calculate_fleet_defense_multiplier(fleet)
+                damage_result = resolve_damage_to_fleet(
+                    fleet.ship_count,
+                    fleet.integrity,
+                    defense_multiplier=defense_multiplier,
+                    damage_percent=player_damage_percent,
+                )
+                integrity_loss = int(damage_result.get('integrity_lost', 0) or 0)
+                ship_loss = int(damage_result.get('ships_lost', 0) or 0)
                 total_integrity_loss += integrity_loss
-                old_integrity = fleet.integrity
-                fleet.integrity = max(0, fleet.integrity - integrity_loss)
+                ships_lost += ship_loss
+                by_fleet[fleet.id] = {
+                    'destroyed': bool(damage_result.get('destroyed', False)),
+                    'integrity_lost': integrity_loss,
+                    'ships_lost': ship_loss,
+                }
 
-                if fleet.integrity <= 0:
+                if damage_result.get('destroyed'):
                     if self._handle_combat_destruction(fleet):
                         salvage_created = True
                     fleets_destroyed += 1
                     continue
 
-                ship_loss = self._maybe_reduce_ship_count(fleet)
-                if ship_loss:
-                    ships_lost += ship_loss
+                fleet.ship_count = int(damage_result.get('ship_count', fleet.ship_count) or 0)
+                fleet.integrity = int(damage_result.get('integrity', fleet.integrity) or 0)
 
-                if integrity_loss > 0 and self._maybe_create_combat_salvage(fleet, integrity_loss):
+                if integrity_loss > 0 and self._maybe_create_combat_salvage(
+                    fleet,
+                    float(damage_result.get('damage_fraction', 0.0) or 0.0),
+                ):
                     salvage_created = True
 
                 fleet.save(update_fields=['integrity', 'ship_count'])
@@ -3755,6 +3784,7 @@ class GameTurn():
                 'ships_lost': ships_lost,
                 'fleets_destroyed': fleets_destroyed,
                 'salvage_created': salvage_created,
+                'by_fleet': by_fleet,
             }
         return results
 
@@ -3764,22 +3794,12 @@ class GameTurn():
         fleet.delete()
         return bool(salvage_result)
 
-    def _maybe_reduce_ship_count(self, fleet):
-        """If integrity is low, there is a chance of losing a ship."""
-        if fleet.integrity >= 50 or fleet.ship_count <= 1:
-            return 0
-        chance = min(COMBAT_SHIP_LOSS_MAX_CHANCE, (50 - fleet.integrity) / 100.0)
-        if roll_chance(chance):
-            fleet.ship_count -= 1
-            return 1
-        return 0
-
-    def _maybe_create_combat_salvage(self, fleet, integrity_loss):
+    def _maybe_create_combat_salvage(self, fleet, damage_fraction):
         """Chance to create a small amount of salvage based on damage dealt."""
         if not roll_chance(COMBAT_SALVAGE_DAMAGE_CHANCE):
             return False
 
-        damage_fraction = max(0.0, min(1.0, integrity_loss / 100.0))
+        damage_fraction = max(0.0, min(1.0, float(damage_fraction or 0.0)))
         if damage_fraction == 0:
             return False
 
@@ -5301,17 +5321,26 @@ class GameTurn():
         effective_defenses = calculate_effective_defenses(star)
         if effective_defenses > 0:
             defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
-            attacker_strength = calculate_fleet_strength(
+            attacker_attack = calculate_fleet_attack_strength(
                 fleet,
-                defender_defence_mult,
                 attack_roll_scale=attacker_readiness,
             )
-            defender_strength = normalize_ship_count(effective_defenses) * defender_readiness
-            strength_by_player = {
-                attacker: attacker_strength,
-                defender: defender_strength,
-            }
-            damage_taken = self._calculate_combat_damage(strength_by_player)
+            attacker_defense = calculate_fleet_defense_strength(fleet)
+            defender_strength = calculate_colony_defense_strength(
+                effective_defenses,
+                defense_multiplier=defender_defence_mult,
+                readiness_multiplier=defender_readiness,
+            )
+            damage_taken = self._calculate_combat_damage(
+                {
+                    attacker: attacker_attack,
+                    defender: defender_strength,
+                },
+                {
+                    attacker: attacker_defense,
+                    defender: defender_strength,
+                },
+            )
             results = self._apply_combat_damage(
                 {attacker: [fleet], defender: []},
                 damage_taken
@@ -5524,17 +5553,25 @@ class GameTurn():
 
         defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
 
-        attacker_strength = calculate_fleet_strength(
+        attacker_strength = calculate_fleet_attack_strength(
             fleet,
-            defender_defence_mult,
             attack_roll_scale=1.0,
         )
-        defender_strength = normalize_ship_count(effective_defenses)
-        strength_by_player = {
-            attacker: attacker_strength,
-            defender: defender_strength,
-        }
-        damage_taken = self._calculate_combat_damage(strength_by_player)
+        attacker_defense = calculate_fleet_defense_strength(fleet)
+        defender_strength = calculate_colony_defense_strength(
+            effective_defenses,
+            defense_multiplier=defender_defence_mult,
+        )
+        damage_taken = self._calculate_combat_damage(
+            {
+                attacker: attacker_strength,
+                defender: defender_strength,
+            },
+            {
+                attacker: attacker_defense,
+                defender: defender_strength,
+            },
+        )
         hazard_damage = max(0.0, float(damage_taken.get(attacker, 0.0)) * ORBITAL_DEFENSE_HAZARD_DAMAGE_FACTOR)
         if hazard_damage <= 0:
             return
@@ -5610,8 +5647,11 @@ class GameTurn():
     ):
         defender = star.player
         defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
-        attacker_strength = calculate_fleet_strength(fleet, defender_defence_mult)
-        defender_strength = normalize_ship_count(calculate_effective_defenses(star))
+        attacker_strength = calculate_fleet_attack_strength(fleet)
+        defender_strength = calculate_colony_defense_strength(
+            calculate_effective_defenses(star),
+            defense_multiplier=defender_defence_mult,
+        )
         if colonist_raid:
             if attacker_is_parasitic:
                 defender_strength *= PARASITIC_COLONIST_RAID_DEFENDER_STRENGTH_MULTIPLIER
@@ -5990,6 +6030,8 @@ class GameTurn():
                 )
                 if allow_defense or allow_roll:
                     self._handle_invasion(fleet, star, colonists_transfer_kt)
+                    if not fleet.__class__.objects.filter(id=fleet.id).exists():
+                        return 'fleet_destroyed'
                     fleet.colonists -= colonists_transfer_kt
                     colonists_transfer_kt = 0
 
@@ -6263,10 +6305,7 @@ class GameTurn():
         """Return colony defense multiplier including tech and fixed homeworld bonus."""
         if defender is None:
             return 1.0
-        raw_defence_mult = getattr(defender.race_type, 'defence_multiplier', 1.0)
-        if raw_defence_mult is None:
-            raw_defence_mult = 1.0
-        defender_defence_mult = float(raw_defence_mult)
+        defender_defence_mult = 1.0
         defender_defence_mult *= tech_level_to_multiplier(get_player_colony_defense_level(defender))
         if star is not None and bool(getattr(defender, 'fixed_homeworld', False)):
             if int(getattr(defender, 'homeworld_id', 0) or 0) == int(getattr(star, 'id', 0) or 0):
@@ -6286,13 +6325,22 @@ class GameTurn():
         defender = star.player
         defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
 
-        attacker_strength = calculate_fleet_strength(fleet, defender_defence_mult)
-        defender_strength = normalize_ship_count(effective_defenses)
-        strength_by_player = {
-            fleet.player: attacker_strength,
-            defender: defender_strength,
-        }
-        damage_taken = self._calculate_combat_damage(strength_by_player)
+        attacker_attack = calculate_fleet_attack_strength(fleet)
+        attacker_defense = calculate_fleet_defense_strength(fleet)
+        defender_strength = calculate_colony_defense_strength(
+            effective_defenses,
+            defense_multiplier=defender_defence_mult,
+        )
+        damage_taken = self._calculate_combat_damage(
+            {
+                fleet.player: attacker_attack,
+                defender: defender_strength,
+            },
+            {
+                fleet.player: attacker_defense,
+                defender: defender_strength,
+            },
+        )
         try:
             mult = float(damage_multiplier)
         except (TypeError, ValueError):
@@ -6367,10 +6415,13 @@ class GameTurn():
         except (TypeError, ValueError):
             bombardment_mult = 1.0
         bombardment_tech_factor = max(0.5, 1.0 + (defense_tech * 0.5))
-        return max(
-            0,
-            int(count * bombardment_tech_factor * mult * max(0.0, bombardment_mult)),
+        scaled_count = (
+            count *
+            bombardment_tech_factor *
+            mult *
+            max(0.0, bombardment_mult)
         )
+        return max(0, int(normalize_ship_count(scaled_count)))
 
     @staticmethod
     def _bombardment_environment_scale(damage_points, max_potential_points):
@@ -6445,6 +6496,81 @@ class GameTurn():
             'administration': 1.0,
         }
 
+    def _record_homeworld_loss_context(
+        self,
+        owner_ids,
+        attacker,
+        location=None,
+        lost_star_id=None,
+        score=0,
+        terminal=False,
+    ):
+        attacker_id = int(getattr(attacker, 'id', 0) or 0)
+        if attacker_id <= 0:
+            return
+        try:
+            numeric_score = float(score or 0)
+        except (TypeError, ValueError):
+            numeric_score = 0.0
+        for owner_id in owner_ids or []:
+            owner_id = int(owner_id or 0)
+            if owner_id <= 0 or owner_id == attacker_id:
+                continue
+            existing = self._homeworld_loss_context_by_player_id.get(owner_id) or {}
+            existing_rank = (
+                1 if bool(existing.get('terminal')) else 0,
+                float(existing.get('score', 0.0) or 0.0),
+            )
+            new_rank = (
+                1 if terminal else 0,
+                numeric_score,
+            )
+            if existing and existing_rank > new_rank:
+                continue
+            self._homeworld_loss_context_by_player_id[owner_id] = {
+                'attacker_player_id': attacker_id,
+                'location': location,
+                'lost_star_id': lost_star_id,
+                'score': numeric_score,
+                'terminal': bool(terminal),
+            }
+
+    @staticmethod
+    def _homeworld_assignment_valid(player):
+        homeworld = getattr(player, 'homeworld', None)
+        if homeworld is None:
+            return False
+        if int(getattr(homeworld, 'player_id', 0) or 0) != int(getattr(player, 'id', 0) or 0):
+            return False
+        return int(getattr(homeworld, 'colonists', 0) or 0) > 0
+
+    def _validate_homeworld_assignments(self):
+        from .models import Player
+
+        for player in Player.objects.filter(game=self.game, defeated=False).select_related('homeworld'):
+            context = self._homeworld_loss_context_by_player_id.get(int(player.id)) or {}
+            if getattr(player, 'homeworld_id', None) is None and not context:
+                continue
+            if self._homeworld_assignment_valid(player):
+                continue
+            homeworld = getattr(player, 'homeworld', None)
+            location = None
+            lost_star_id = None
+            if homeworld is not None:
+                location = (homeworld.x, homeworld.y)
+                lost_star_id = homeworld.id
+            if context.get('location') is not None:
+                location = context.get('location')
+            if context.get('lost_star_id') is not None:
+                lost_star_id = context.get('lost_star_id')
+            self._handle_homeworld_loss(
+                player,
+                lost_star=homeworld,
+                location=location,
+                lost_star_id=lost_star_id,
+                force=True,
+            )
+
     def _apply_bombardment_damage_to_star(
         self,
         star,
@@ -6461,6 +6587,7 @@ class GameTurn():
         is_smart = smart_bombs_only_target_defenses_and_population(bomb_type)
         is_neutron = neutron_bombs_target_population_shipyards_and_cities(bomb_type)
         is_graviton = graviton_bombs_apply_gravity_shift(bomb_type)
+        homeworld_owner_ids = list(star.homeworld_of.values_list('id', flat=True))
 
         infrastructure_capacities = self._bombardment_infrastructure_capacities(pre, bomb_type)
         infrastructure_capacity = sum(
@@ -6625,6 +6752,18 @@ class GameTurn():
                 'has_administration', 'has_dyson_sphere',
             ])
 
+        if actual_damage_dealt and homeworld_owner_ids:
+            homeworld_destroyed = bool(star_destroyed)
+            homeworld_depopulated = pre['colonists'] > 0 and int(getattr(star, 'colonists', 0) or 0) <= 0
+            self._record_homeworld_loss_context(
+                homeworld_owner_ids,
+                getattr(fleet, 'player', None),
+                location=(int(star.x), int(star.y)),
+                lost_star_id=int(getattr(star, 'id', 0) or 0),
+                score=int(bombardment_points or 0),
+                terminal=(homeworld_destroyed or homeworld_depopulated),
+            )
+
         return {
             'defenses_lost': defenses_lost,
             'colonists_lost': colonists_lost,
@@ -6684,53 +6823,35 @@ class GameTurn():
 
         defender = star.player
         defender_defence_mult = self._get_colony_defense_multiplier(defender, star)
-        attacker_strength = sum(
-            calculate_fleet_strength(fleet, defender_defence_mult)
+        attacker_attack = sum(
+            calculate_fleet_attack_strength(fleet)
             for fleet in fleets
         )
-        defender_strength = normalize_ship_count(effective_defenses)
-        before = {
-            fleet.id: {
-                'integrity': int(getattr(fleet, 'integrity', 0) or 0),
-                'ship_count': int(getattr(fleet, 'ship_count', 0) or 0),
-            }
+        attacker_defense = sum(
+            calculate_fleet_defense_strength(fleet)
             for fleet in fleets
-        }
-        damage_taken = self._calculate_combat_damage({
-            attacker: attacker_strength,
-            defender: defender_strength,
-        })
+        )
+        defender_strength = calculate_colony_defense_strength(
+            effective_defenses,
+            defense_multiplier=defender_defence_mult,
+        )
+        damage_taken = self._calculate_combat_damage(
+            {
+                attacker: attacker_attack,
+                defender: defender_strength,
+            },
+            {
+                attacker: attacker_defense,
+                defender: defender_strength,
+            },
+        )
         results = self._apply_combat_damage(
             {attacker: fleets, defender: []},
             damage_taken,
         )
         by_fleet = {}
-        from .models import Fleet
-        remaining = {
-            row.id: row
-            for row in Fleet.objects.filter(id__in=list(before.keys()))
-        }
-        for fleet_id, snapshot in before.items():
-            current = remaining.get(fleet_id)
-            if current is None:
-                by_fleet[fleet_id] = {
-                    'destroyed': True,
-                    'integrity_lost': snapshot['integrity'],
-                    'ships_lost': snapshot['ship_count'],
-                }
-            else:
-                by_fleet[fleet_id] = {
-                    'destroyed': False,
-                    'integrity_lost': max(
-                        0,
-                        snapshot['integrity'] - int(getattr(current, 'integrity', 0) or 0),
-                    ),
-                    'ships_lost': max(
-                        0,
-                        snapshot['ship_count'] - int(getattr(current, 'ship_count', 0) or 0),
-                    ),
-                }
         result = results.get(attacker, {}) or {}
+        by_fleet.update(result.get('by_fleet', {}) or {})
         return {
             'destroyed': bool(result.get('fleets_destroyed', 0)),
             'integrity_lost': int(result.get('integrity_lost', 0) or 0),
@@ -6796,8 +6917,8 @@ class GameTurn():
             effective_defenses * defense_fire.get('defense_mult', 1.0),
             luck_multiplier,
             bomb_type,
+            bombardment_multiplier=bombardment_multiplier,
         )
-        damage_k = max(0, int(round(damage_k * bombardment_multiplier)))
         damage_k = apply_dyson_bombardment_damping(damage_k, pre['has_dyson_sphere'])
         max_potential_damage_k = self._bombardment_max_potential_damage_k(
             total_ship_count,
@@ -7011,8 +7132,8 @@ class GameTurn():
             effective_defenses * defense_fire.get('defense_mult', 1.0),
             luck_multiplier,
             bomb_type,
+            bombardment_multiplier=bombardment_multiplier,
         )
-        damage_k = max(0, int(round(damage_k * bombardment_multiplier)))
         damage_k = apply_dyson_bombardment_damping(
             damage_k,
             pre['has_dyson_sphere'],
@@ -7390,15 +7511,16 @@ class GameTurn():
         destroyed_owner_id = star.player_id
         destroyed_star_id = star.id
         destroyed_star_short_id = star.short_id
+        homeworld_owner_ids = list(star.homeworld_of.values_list('id', flat=True))
         star.delete()
-        if destroyed_owner_id:
+        if homeworld_owner_ids:
             from .models import Player
-            lost_player = Player.objects.filter(id=destroyed_owner_id).first()
-            if lost_player:
+            for lost_player in Player.objects.filter(id__in=homeworld_owner_ids):
                 self._handle_homeworld_loss(
                     lost_player,
                     lost_star_id=destroyed_star_id,
                     location=(destroyed_x, destroyed_y),
+                    force=True,
                 )
         self._retarget_or_remove_orders_for_destroyed_star(
             destroyed_star_id,
@@ -8595,14 +8717,15 @@ class GameTurn():
                         destroyed_star_short_id = star.short_id
                         destroyed_x = star.x
                         destroyed_y = star.y
+                        homeworld_owner_ids = list(star.homeworld_of.values_list('id', flat=True))
                         star.delete()
-                        if destroyed_owner_id:
-                            lost_player = Player.objects.filter(id=destroyed_owner_id).first()
-                            if lost_player:
+                        if homeworld_owner_ids:
+                            for lost_player in Player.objects.filter(id__in=homeworld_owner_ids):
                                 self._handle_homeworld_loss(
                                     lost_player,
                                     lost_star_id=destroyed_star_id,
                                     location=(destroyed_x, destroyed_y),
+                                    force=True,
                                 )
                         self._retarget_or_remove_orders_for_destroyed_star(
                             destroyed_star_id,
@@ -8723,25 +8846,26 @@ class GameTurn():
         ) // total_ships
         source_attack_mult = tech_level_to_multiplier(source_fleet.offense_level)
         target_attack_mult = tech_level_to_multiplier(target_fleet.offense_level)
-        merged_count_norm = normalize_ship_count(total_ships)
-        source_count_norm = normalize_ship_count(source_fleet.ship_count)
-        target_count_norm = normalize_ship_count(target_fleet.ship_count)
 
         # Preserve proportional pre-merge attack contribution with a slight
         # retention penalty so merging remains a strategic tradeoff.
         combined_attack_score = (
-            (source_count_norm * source_attack_mult) +
-            (target_count_norm * target_attack_mult)
+            normalize_ship_count(source_fleet.ship_count * source_attack_mult) +
+            normalize_ship_count(target_fleet.ship_count * target_attack_mult)
         ) * MERGE_COMBAT_RETENTION
-        merged_attack_mult = combined_attack_score / max(0.001, merged_count_norm)
+        merged_attack_mult = (
+            denormalize_ship_count(combined_attack_score) / float(max(1, total_ships))
+        )
 
         source_defense_mult = tech_level_to_multiplier(source_fleet.defense_level)
         target_defense_mult = tech_level_to_multiplier(target_fleet.defense_level)
         combined_defense_score = (
-            (source_defense_mult * source_fleet.ship_count) +
-            (target_defense_mult * target_fleet.ship_count)
+            normalize_ship_count(source_fleet.ship_count * source_defense_mult) +
+            normalize_ship_count(target_fleet.ship_count * target_defense_mult)
         ) * MERGE_COMBAT_RETENTION
-        merged_defense_mult = combined_defense_score / float(total_ships)
+        merged_defense_mult = (
+            denormalize_ship_count(combined_defense_score) / float(max(1, total_ships))
+        )
 
         merged_offense_level = multiplier_to_tech_level(merged_attack_mult)
         merged_defense_level = multiplier_to_tech_level(merged_defense_mult)
@@ -9319,6 +9443,19 @@ class GameTurn():
         return max(candidates, key=lambda s: (int(s.colonists or 0), int(s.id)))
 
     def _determine_defeat_victor(self, defeated_player, location=None):
+        recorded = self._homeworld_loss_context_by_player_id.get(
+            int(getattr(defeated_player, 'id', 0) or 0)
+        ) or {}
+        recorded_attacker_id = int(recorded.get('attacker_player_id', 0) or 0)
+        if recorded_attacker_id > 0:
+            from .models import Player
+            victor = Player.objects.filter(
+                game=self.game,
+                id=recorded_attacker_id,
+                defeated=False,
+            ).exclude(id=getattr(defeated_player, 'id', None)).first()
+            if victor is not None:
+                return victor
         if not location:
             return None
         try:
@@ -9377,22 +9514,39 @@ class GameTurn():
             else:
                 self._abandon_fleet(fleet)
 
-    def _defeat_player(self, player, lost_star_id=None, location=None):
+    def _create_homeworld_reassigned_message(self, player, new_homeworld):
+        from .models import GameMessage
+
+        if player is None or new_homeworld is None:
+            return
+        GameMessage.objects.create(
+            game=self.game,
+            player=player,
+            year=self.game.year,
+            category='GENERAL',
+            priority=True,
+            message='Our homeworld has changed. %s is now our homeworld.' % (
+                format_map_object(new_homeworld),
+            ),
+        )
+
+    def _defeat_player(self, player, lost_star_id=None, location=None, victor=None):
         if player is None or bool(getattr(player, 'defeated', False)):
             return
         player.defeated = True
         player.turned_in = True
         player.homeworld = None
         player.save(update_fields=['defeated', 'turned_in', 'homeworld'])
-        victor = self._determine_defeat_victor(player, location=location)
+        victor = victor or self._determine_defeat_victor(player, location=location)
+        self._homeworld_loss_context_by_player_id.pop(int(player.id), None)
         self._abandon_player_colonies(player, exclude_star_id=lost_star_id)
         self._resolve_defeated_player_fleets(player, victor)
 
-    def _handle_homeworld_loss(self, player, lost_star=None, location=None, lost_star_id=None):
+    def _handle_homeworld_loss(self, player, lost_star=None, location=None, lost_star_id=None, force=False):
         if player is None or bool(getattr(player, 'defeated', False)):
             return
         star_id = lost_star_id or (lost_star.id if lost_star is not None else None)
-        if star_id is not None:
+        if star_id is not None and not force:
             if int(getattr(player, 'homeworld_id', 0) or 0) != int(star_id):
                 return
         if bool(getattr(player, 'fixed_homeworld', False)):
@@ -9402,6 +9556,8 @@ class GameTurn():
         if replacement is not None:
             player.homeworld = replacement
             player.save(update_fields=['homeworld'])
+            self._homeworld_loss_context_by_player_id.pop(int(player.id), None)
+            self._create_homeworld_reassigned_message(player, replacement)
             return
         self._defeat_player(player, lost_star_id=star_id, location=location)
 

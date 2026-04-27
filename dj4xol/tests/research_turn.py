@@ -27,6 +27,7 @@ from ..diplomatic_contracts import grant_player_technology
 from ..turn import (
     GameTurn,
     MERGE_COMBAT_RETENTION,
+    denormalize_ship_count,
     normalize_ship_count,
     tech_level_to_multiplier,
     multiplier_to_tech_level,
@@ -1033,17 +1034,21 @@ class ResearchTurnTest(TestCase):
         self.assertEqual(result, 'executed')
         fleet_b.refresh_from_db()
         expected_attack_mult = (
-            (
-                normalize_ship_count(10) * tech_level_to_multiplier(0.0) +
-                normalize_ship_count(1) * tech_level_to_multiplier(10.0)
-            ) * MERGE_COMBAT_RETENTION
-        ) / normalize_ship_count(11)
+            denormalize_ship_count(
+                (
+                    normalize_ship_count(10 * tech_level_to_multiplier(0.0)) +
+                    normalize_ship_count(1 * tech_level_to_multiplier(10.0))
+                ) * MERGE_COMBAT_RETENTION
+            ) / 11.0
+        )
         expected_defense_mult = (
-            (
-                10 * tech_level_to_multiplier(0.0) +
-                1 * tech_level_to_multiplier(10.0)
-            ) * MERGE_COMBAT_RETENTION
-        ) / 11.0
+            denormalize_ship_count(
+                (
+                    normalize_ship_count(10 * tech_level_to_multiplier(0.0)) +
+                    normalize_ship_count(1 * tech_level_to_multiplier(10.0))
+                ) * MERGE_COMBAT_RETENTION
+            ) / 11.0
+        )
         self.assertAlmostEqual(
             fleet_b.offense_level,
             multiplier_to_tech_level(expected_attack_mult),

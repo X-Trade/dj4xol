@@ -170,6 +170,7 @@ class HelpPagesTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Space Combat')
         self.assertContains(response, 'Damage Resolution')
+        self.assertContains(response, 'overall staying power')
 
     def test_help_diplomacy_renders(self):
         response = self.client.get(reverse('dj4xol:help_diplomacy'))

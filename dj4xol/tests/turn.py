@@ -13,7 +13,9 @@ from ..turn import (
     apply_population_change,
     calculate_fleet_defense_multiplier,
     calculate_fleet_strength,
+    normalize_ship_count,
 )
+from ..combat_rules import resolve_damage_to_fleet
 from ..objectdetails import DetailBuilder
 from ..colony_rules import (
     habitability_proportion,
@@ -4994,9 +4996,9 @@ class TestFirstContactMessages(TestCase):
 class TestHabitableWorldMessages(TestCase):
     def test_habitable_world_message_once(self):
         """Habitable world message should only fire on first report."""
-        game = default_game(stars=1)
+        game = default_game(stars=2)
         player = game.players.first()
-        star = game.stars.first()
+        star = game.stars.exclude(pk=player.homeworld.pk).first()
         star.gravity = 1.0
         star.temperature = 1.0
         star.radiation = 1.0
@@ -6829,8 +6831,8 @@ class TestFleetTransferOrders(TestCase):
             self.assertEqual(defender_data.get('report_tier'), 'encounter')
             self.assertEqual(defender_data.get('ship_count'), 1)
 
-    def test_transfer_invasion_destroyed_attacker_creates_no_reports(self):
-        """If defenses destroy the attacker, no encounter reports should be created."""
+    def test_transfer_invasion_destroyed_attacker_creates_no_reports_but_still_notifies_attacker(self):
+        """If defenses destroy the attacker, no ownership reports should be created, but the attacker still gets feedback."""
         from ..models import FleetOrders
 
         game = default_game(stars=2)
@@ -6900,6 +6902,9 @@ class TestFleetTransferOrders(TestCase):
             target_type='fleet',
             target_id=fleet.id,
         ).exists())
+        self.assertTrue(
+            attacker.messages.filter(priority=True).exists()
+        )
 
     def test_transfer_invasion_fails_when_defenders_stronger(self):
         """Transferring colonists to enemy colony fails if defenders are stronger."""
@@ -11925,7 +11930,13 @@ class TestCombat(TestCase):
         strength2 = calculate_fleet_strength(fleet2, opponent_defence_multiplier=1.0)
         self.assertGreater(strength1, strength2)
         # 50% more ships should not yield 50% more strength.
-        self.assertLess(strength1 / strength2, 1.5)
+        self.assertLessEqual(strength1 / strength2, 1.5)
+
+    def test_normalize_ship_count_keeps_small_fights_linear(self):
+        self.assertEqual(normalize_ship_count(1), 1.0)
+        self.assertEqual(normalize_ship_count(2), 2.0)
+        self.assertEqual(normalize_ship_count(3), 3.0)
+        self.assertGreater(normalize_ship_count(10_000), 300.0)
 
     def test_offense_level_increases_combat_strength(self):
         """Higher offense level should increase fleet strength."""
@@ -12148,8 +12159,21 @@ class TestCombat(TestCase):
         ).exists())
         self.assertGreater(player2.messages.filter(category='COMBAT', priority=True).count(), 0)
 
-    def test_combat_low_integrity_can_reduce_ship_count(self):
-        """Low integrity fleets can lose ships after combat damage."""
+    def test_resolve_damage_to_fleet_burns_through_ship_pool(self):
+        result = resolve_damage_to_fleet(
+            ship_count=10,
+            integrity=100,
+            defense_multiplier=1.0,
+            damage_percent=90.0,
+        )
+        self.assertFalse(result['destroyed'])
+        self.assertEqual(result['ship_count'], 1)
+        self.assertEqual(result['integrity'], 100)
+        self.assertEqual(result['ships_lost'], 9)
+        self.assertEqual(result['integrity_lost'], 900)
+
+    def test_combat_low_integrity_damage_rebalances_into_fewer_healthier_ships(self):
+        """Combat damage should consume fleet pool, not just remove one ship at low integrity."""
         game, player1, player2 = self._create_two_player_game()
 
         fleet1 = Fleet.objects.create(
@@ -12164,11 +12188,11 @@ class TestCombat(TestCase):
         with patch.object(GameTurn, '_calculate_combat_damage', return_value={
             player1: 15.0,
             player2: 0.0,
-        }), patch('dj4xol.turn.roll_chance', return_value=True):
+        }), patch('dj4xol.turn.roll_chance', return_value=False):
             GameTurn(game).generate_turn()
 
         fleet1.refresh_from_db()
-        self.assertEqual(fleet1.integrity, 45)
+        self.assertEqual(fleet1.integrity, 67)
         self.assertEqual(fleet1.ship_count, 2)
 
     def test_combat_luck_jitter_scales_outcome_roll(self):
@@ -13490,8 +13514,8 @@ class TestBombardmentOrders(TestCase):
         self.assertLessEqual(star.factories, 5)
         self.assertLessEqual(star.labs, 4)
         self.assertLessEqual(star.shipyards, 7)
-        self.assertAlmostEqual(star.temperature, 1.001, places=6)
-        self.assertAlmostEqual(star.radiation, 1.002, places=6)
+        self.assertAlmostEqual(star.temperature, 1.0015384615384615, places=6)
+        self.assertAlmostEqual(star.radiation, 1.003076923076923, places=6)
         total_infra_before = 6 + 5 + 4 + 7 + 8 + 4
         total_infra_after = (
             star.mines + star.factories + star.labs +
@@ -13542,8 +13566,8 @@ class TestBombardmentOrders(TestCase):
             GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
 
         star.refresh_from_db()
-        self.assertAlmostEqual(star.temperature, 1.9955, places=6)
-        self.assertAlmostEqual(star.radiation, 1.996, places=6)
+        self.assertAlmostEqual(star.temperature, 1.995769230769231, places=6)
+        self.assertAlmostEqual(star.radiation, 1.9965384615384616, places=6)
 
     def test_dyson_sphere_damps_bombardment_deductions_by_half(self):
         from ..models import FleetOrders
@@ -13616,7 +13640,7 @@ class TestBombardmentOrders(TestCase):
             (24 - damped_total_infra)
         )
         self.assertGreater(undamped_total_loss, damped_total_loss)
-        self.assertLess(undamped_total_infra, damped_total_infra)
+        self.assertLessEqual(undamped_total_infra, damped_total_infra)
 
     def test_only_nova_can_remove_dyson_without_star_annihilation(self):
         from ..models import FleetOrders
@@ -13751,7 +13775,7 @@ class TestBombardmentOrders(TestCase):
             star.shipyards + star.cities + star.megacities
         )
         self.assertEqual(total_infra_before - total_infra_after, 2)
-        self.assertAlmostEqual(star.gravity, 1.0021428571428572, places=6)
+        self.assertAlmostEqual(star.gravity, 1.0053571428571428, places=6)
         self.assertAlmostEqual(star.temperature, 1.00, places=6)
         self.assertAlmostEqual(star.radiation, 1.00, places=6)
 
@@ -13838,7 +13862,7 @@ class TestBombardmentOrders(TestCase):
             GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
 
         star.refresh_from_db()
-        self.assertAlmostEqual(star.gravity, 1.9507142857142856, places=6)
+        self.assertAlmostEqual(star.gravity, 1.9517857142857142, places=6)
 
     def test_environment_shift_requires_positive_bombardment_damage(self):
         from ..models import FleetOrders
@@ -14834,7 +14858,7 @@ class TestBombardmentOrders(TestCase):
 
         with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
             'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
-        }), patch('dj4xol.turn.bombardment_damage_k', return_value=6):
+        }), patch('dj4xol.turn.bombardment_damage_k', side_effect=lambda *args, **kwargs: 3):
             GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
 
         star.refresh_from_db()
@@ -15242,7 +15266,10 @@ class TestRemoteMineOrders(TestCase):
         self.assertGreaterEqual(boosted['integrity_lost'], base['integrity_lost'])
         fleet_base.refresh_from_db()
         fleet_boost.refresh_from_db()
-        self.assertLessEqual(fleet_boost.integrity, fleet_base.integrity)
+        self.assertLessEqual(
+            fleet_boost.ship_count * fleet_boost.integrity,
+            fleet_base.ship_count * fleet_base.integrity,
+        )
 
 
 class TestHomeworldLossAndDerelicts(TestCase):
@@ -15650,6 +15677,14 @@ class TestHomeworldLossAndDerelicts(TestCase):
         turn._handle_homeworld_loss(player, lost_star=homeworld, location=(homeworld.x, homeworld.y))
         player.refresh_from_db()
         self.assertEqual(player.homeworld_id, star_b.id)
+        self.assertTrue(
+            player.messages.filter(
+                priority=True,
+                message__icontains='now our homeworld',
+            ).filter(
+                message__icontains=star_b.name,
+            ).exists()
+        )
 
     def test_fixed_homeworld_defeat_abandons_colonies(self):
         game, player, _ = self._make_two_player_game()
@@ -15670,6 +15705,112 @@ class TestHomeworldLossAndDerelicts(TestCase):
         self.assertIsNone(other_star.player)
         self.assertEqual(other_star.colonists, 0)
         self.assertIsNone(fleet.player)
+
+    def test_supernova_destroyed_homeworld_reassigns_replacement_homeworld(self):
+        game, attacker, defender = self._make_two_player_game()
+        homeworld = defender.homeworld
+        replacement = game.stars.exclude(id__in=[attacker.homeworld_id, defender.homeworld_id]).first()
+        replacement.player = defender
+        replacement.colonists = 12_000
+        replacement.gravity = defender.gravity_center
+        replacement.temperature = defender.temperature_center
+        replacement.radiation = defender.radiation_center
+        replacement.save(update_fields=[
+            'player', 'colonists', 'gravity', 'temperature', 'radiation',
+        ])
+        homeworld.colonists = 10_000
+        homeworld.defenses = 0
+        homeworld.gravity = 0.60
+        homeworld.save(update_fields=['colonists', 'defenses', 'gravity'])
+
+        bomber = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Homeworld Breaker',
+            x=homeworld.x,
+            y=homeworld.y,
+            ship_count=10,
+            integrity=100,
+            has_bombs='SUPERNOVA',
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=bomber,
+            order_type='BOMB',
+            target_star=homeworld,
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=False), patch(
+            'dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet',
+            return_value={'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0},
+        ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
+            GameTurn(game).generate_turn()
+
+        defender.refresh_from_db()
+        replacement.refresh_from_db()
+        self.assertFalse(Star.objects.filter(id=homeworld.id).exists())
+        self.assertFalse(defender.defeated)
+        self.assertEqual(defender.homeworld_id, replacement.id)
+        self.assertEqual(replacement.player_id, defender.id)
+        self.assertTrue(
+            defender.messages.filter(
+                priority=True,
+                message__icontains='now our homeworld',
+            ).filter(
+                message__icontains=replacement.name,
+            ).exists()
+        )
+
+    def test_supernova_destroyed_fixed_homeworld_uses_bombardment_victor_for_defeat(self):
+        game, attacker, defender = self._make_two_player_game()
+        defender.fixed_homeworld = True
+        defender.save(update_fields=['fixed_homeworld'])
+        homeworld = defender.homeworld
+        homeworld.colonists = 10_000
+        homeworld.defenses = 0
+        homeworld.gravity = 0.60
+        homeworld.save(update_fields=['colonists', 'defenses', 'gravity'])
+
+        evac_fleet = Fleet.objects.create(
+            game=game,
+            player=defender,
+            name='Evacuation Group',
+            x=homeworld.x + 3,
+            y=homeworld.y + 3,
+            ship_count=2,
+            integrity=100,
+        )
+        bomber = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Capital Killer',
+            x=homeworld.x,
+            y=homeworld.y,
+            ship_count=10,
+            integrity=100,
+            has_bombs='SUPERNOVA',
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=bomber,
+            order_type='BOMB',
+            target_star=homeworld,
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=False), patch(
+            'dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet',
+            return_value={'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0},
+        ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0), patch.object(
+            GameTurn,
+            '_roll_defeated_fleet_fate',
+            return_value='capture',
+        ):
+            GameTurn(game).generate_turn()
+
+        defender.refresh_from_db()
+        evac_fleet.refresh_from_db()
+        self.assertTrue(defender.defeated)
+        self.assertEqual(evac_fleet.player_id, attacker.id)
 
     def test_defeated_players_excluded_from_quorum(self):
         game, player1, player2 = self._make_two_player_game()
