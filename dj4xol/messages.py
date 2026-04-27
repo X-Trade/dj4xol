@@ -992,6 +992,44 @@ class GenesisFleetConsumedMessageFactory(MessageFactory):
         )
 
 
+class GenesisStarConsumedMessageFactory(MessageFactory):
+    """Priority message for an occupied world destroyed by Genesis activation."""
+    category = 'EXCEPTION'
+    priority = True
+
+    def __init__(self, game, player, star_name, activating_race_plural, star, message=None):
+        super().__init__(game, player, message, intensity=-1.0)
+        self.star_name = star_name
+        self.activating_race_plural = activating_race_plural
+        self.star = star
+
+    def format_message(self):
+        return (
+            f"Star {escape(self.star_name or 'Unknown Star')} was consumed by the "
+            f"{escape(self.activating_race_plural or 'unknown')} Genesis Device activation at "
+            f"{format_map_object(self.star)}."
+        )
+
+
+class GenesisStarStrippedMessageFactory(MessageFactory):
+    """Priority message for an occupied world stripped by Genesis activation."""
+    category = 'EXCEPTION'
+    priority = True
+
+    def __init__(self, game, player, star_name, activating_race_plural, star, message=None):
+        super().__init__(game, player, message, intensity=-0.7)
+        self.star_name = star_name
+        self.activating_race_plural = activating_race_plural
+        self.star = star
+
+    def format_message(self):
+        return (
+            f"Star {escape(self.star_name or 'Unknown Star')} was stripped of resources by the "
+            f"{escape(self.activating_race_plural or 'unknown')} Genesis Device activation creating "
+            f"{format_map_object(self.star)}."
+        )
+
+
 class GenesisActivationFailedMessageFactory(MessageFactory):
     """Owner-only message for a Genesis activation lost to anomaly interference."""
     category = 'EXCEPTION'

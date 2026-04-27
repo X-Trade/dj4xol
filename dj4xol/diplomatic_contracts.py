@@ -980,6 +980,16 @@ def _evacuate_colony_to_owner_fleets(star, owner):
     return transferred_kt
 
 
+def _colony_transfer_will_defeat_source(star, owner):
+    if star is None or owner is None:
+        return False
+    if int(getattr(owner, 'homeworld_id', 0) or 0) != int(getattr(star, 'id', 0) or 0):
+        return False
+    if bool(getattr(owner, 'fixed_homeworld', False)):
+        return True
+    return not owner.stars.exclude(id=star.id).exists()
+
+
 def _transfer_specific_colony_clause(contract, prefix, handle_homeworld_loss=True):
     grant_source, grant_target = _colony_clause_parties(contract, prefix)
     star = getattr(contract, '%s_star' % prefix)
@@ -988,7 +998,8 @@ def _transfer_specific_colony_clause(contract, prefix, handle_homeworld_loss=Tru
 
     from .messages import ColonyReceivedMessageFactory, ColonyTransferredMessageFactory
 
-    _evacuate_colony_to_owner_fleets(star, grant_source)
+    if not _colony_transfer_will_defeat_source(star, grant_source):
+        _evacuate_colony_to_owner_fleets(star, grant_source)
     star.player = grant_target
     star.save(update_fields=['player'])
     sender_msg = ColonyTransferredMessageFactory(

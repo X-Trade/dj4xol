@@ -48,6 +48,8 @@ from .messages import (
     GenesisActivationInsufficientResourcesMessageFactory,
     GenesisActivationSuccessMessageFactory,
     GenesisFleetConsumedMessageFactory,
+    GenesisStarConsumedMessageFactory,
+    GenesisStarStrippedMessageFactory,
     GenesisStarBornPublicMessageFactory,
     FleetTransferredMessageFactory,
     FleetReceivedMessageFactory,
@@ -6505,8 +6507,11 @@ class GameTurn():
         score=0,
         terminal=False,
     ):
-        attacker_id = int(getattr(attacker, 'id', 0) or 0)
-        if attacker_id <= 0:
+        attacker_id = getattr(attacker, 'id', None)
+        if attacker_id is None:
+            return
+        attacker_key = int(attacker_id)
+        if attacker_key <= 0:
             return
         try:
             numeric_score = float(score or 0)
@@ -6514,7 +6519,7 @@ class GameTurn():
             numeric_score = 0.0
         for owner_id in owner_ids or []:
             owner_id = int(owner_id or 0)
-            if owner_id <= 0 or owner_id == attacker_id:
+            if owner_id <= 0 or owner_id == attacker_key:
                 continue
             existing = self._homeworld_loss_context_by_player_id.get(owner_id) or {}
             existing_rank = (
@@ -6702,6 +6707,15 @@ class GameTurn():
                 star_destroyed = True
                 blast_x = star.x
                 blast_y = star.y
+                if homeworld_owner_ids:
+                    self._record_homeworld_loss_context(
+                        homeworld_owner_ids,
+                        getattr(fleet, 'player', None),
+                        location=(int(blast_x), int(blast_y)),
+                        lost_star_id=int(getattr(star, 'id', 0) or 0),
+                        score=int(bombardment_points or 0),
+                        terminal=True,
+                    )
                 star_snapshots = []
                 for doomed_star in stars_at_location:
                     star_snapshot = self._destroy_star_for_bombardment(doomed_star, order, fleet)
@@ -6735,6 +6749,15 @@ class GameTurn():
             )
             if float(getattr(star, 'gravity', 0.0) or 0.0) < NOVA_COLLAPSE_GRAVITY_THRESHOLD:
                 star_destroyed = True
+                if homeworld_owner_ids:
+                    self._record_homeworld_loss_context(
+                        homeworld_owner_ids,
+                        getattr(fleet, 'player', None),
+                        location=(int(star.x), int(star.y)),
+                        lost_star_id=int(getattr(star, 'id', 0) or 0),
+                        score=int(bombardment_points or 0),
+                        terminal=True,
+                    )
                 star_snapshot = self._destroy_star_for_bombardment(star, order, fleet)
                 self._create_nova_star_remnant(star_snapshot)
             else:
@@ -6752,7 +6775,7 @@ class GameTurn():
                 'has_administration', 'has_dyson_sphere',
             ])
 
-        if actual_damage_dealt and homeworld_owner_ids:
+        if actual_damage_dealt and homeworld_owner_ids and not star_destroyed:
             homeworld_destroyed = bool(star_destroyed)
             homeworld_depopulated = pre['colonists'] > 0 and int(getattr(star, 'colonists', 0) or 0) <= 0
             self._record_homeworld_loss_context(
@@ -8570,6 +8593,8 @@ class GameTurn():
         fleet_name = fleet.name
         created_star = None
         notify_consumed = []
+        notify_destroyed_stars = []
+        notify_stripped_stars = []
         destroyed_fleet_count = 0
         consumed_resources = {}
         blocking_anomaly = None
@@ -8694,7 +8719,10 @@ class GameTurn():
                             continue
 
                         if not effect.get('destroyed'):
+                            stripped_owner = star.player
+                            stripped_star_name = star.name
                             update_fields = []
+                            stripped_any = False
                             for key in ALL_RESOURCE_KEYS:
                                 field = '%s_inventory' % key
                                 current = int(getattr(star, field, 0) or 0)
@@ -8703,6 +8731,8 @@ class GameTurn():
                                     current - int(activation_star_consumed.get(star.id, {}).get(key, 0) or 0),
                                 )
                                 stripped = int(effect['inventory'].get(key, 0) or 0)
+                                if stripped > 0:
+                                    stripped_any = True
                                 new_value = max(0, current - stripped)
                                 stored_value = int(getattr(star, field, 0) or 0)
                                 if new_value != stored_value:
@@ -8710,15 +8740,27 @@ class GameTurn():
                                     update_fields.append(field)
                             if update_fields:
                                 star.save(update_fields=update_fields)
+                            if stripped_any and stripped_owner is not None:
+                                notify_stripped_stars.append({
+                                    'player': stripped_owner,
+                                    'star_name': stripped_star_name,
+                                })
                             continue
 
                         destroyed_owner_id = star.player_id
+                        destroyed_owner = star.player
                         destroyed_star_id = star.id
                         destroyed_star_short_id = star.short_id
+                        destroyed_star_name = star.name
                         destroyed_x = star.x
                         destroyed_y = star.y
                         homeworld_owner_ids = list(star.homeworld_of.values_list('id', flat=True))
                         star.delete()
+                        if destroyed_owner is not None and getattr(destroyed_owner, 'id', None) is not None:
+                            notify_destroyed_stars.append({
+                                'player': destroyed_owner,
+                                'star_name': destroyed_star_name,
+                            })
                         if homeworld_owner_ids:
                             for lost_player in Player.objects.filter(id__in=homeworld_owner_ids):
                                 self._handle_homeworld_loss(
@@ -8726,6 +8768,7 @@ class GameTurn():
                                     lost_star_id=destroyed_star_id,
                                     location=(destroyed_x, destroyed_y),
                                     force=True,
+                                    victor=owner,
                                 )
                         self._retarget_or_remove_orders_for_destroyed_star(
                             destroyed_star_id,
@@ -8802,6 +8845,30 @@ class GameTurn():
                 self.game,
                 victim.player,
                 fleet=victim,
+                star=created_star,
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
+        for destroyed_star_notice in notify_destroyed_stars:
+            factory = GenesisStarConsumedMessageFactory(
+                self.game,
+                destroyed_star_notice['player'],
+                star_name=destroyed_star_notice['star_name'],
+                activating_race_plural=getattr(owner, 'plural_name', None),
+                star=created_star,
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
+
+        for stripped_star_notice in notify_stripped_stars:
+            factory = GenesisStarStrippedMessageFactory(
+                self.game,
+                stripped_star_notice['player'],
+                star_name=stripped_star_notice['star_name'],
+                activating_race_plural=getattr(owner, 'plural_name', None),
                 star=created_star,
             )
             msg = factory.new_message()
@@ -9446,8 +9513,8 @@ class GameTurn():
         recorded = self._homeworld_loss_context_by_player_id.get(
             int(getattr(defeated_player, 'id', 0) or 0)
         ) or {}
-        recorded_attacker_id = int(recorded.get('attacker_player_id', 0) or 0)
-        if recorded_attacker_id > 0:
+        recorded_attacker_id = recorded.get('attacker_player_id')
+        if recorded_attacker_id is not None:
             from .models import Player
             victor = Player.objects.filter(
                 game=self.game,
@@ -9542,7 +9609,7 @@ class GameTurn():
         self._abandon_player_colonies(player, exclude_star_id=lost_star_id)
         self._resolve_defeated_player_fleets(player, victor)
 
-    def _handle_homeworld_loss(self, player, lost_star=None, location=None, lost_star_id=None, force=False):
+    def _handle_homeworld_loss(self, player, lost_star=None, location=None, lost_star_id=None, force=False, victor=None):
         if player is None or bool(getattr(player, 'defeated', False)):
             return
         star_id = lost_star_id or (lost_star.id if lost_star is not None else None)
@@ -9550,7 +9617,7 @@ class GameTurn():
             if int(getattr(player, 'homeworld_id', 0) or 0) != int(star_id):
                 return
         if bool(getattr(player, 'fixed_homeworld', False)):
-            self._defeat_player(player, lost_star_id=star_id, location=location)
+            self._defeat_player(player, lost_star_id=star_id, location=location, victor=victor)
             return
         replacement = self._select_replacement_homeworld(player, exclude_star_id=star_id)
         if replacement is not None:
@@ -9559,7 +9626,7 @@ class GameTurn():
             self._homeworld_loss_context_by_player_id.pop(int(player.id), None)
             self._create_homeworld_reassigned_message(player, replacement)
             return
-        self._defeat_player(player, lost_star_id=star_id, location=location)
+        self._defeat_player(player, lost_star_id=star_id, location=location, victor=victor)
 
     def check_join_deadline(self):
         """Close joining if past the deadline year."""

@@ -13267,6 +13267,14 @@ class TestInterceptPatrolOrders(TestCase):
         self.assertEqual(source_star.ironium_inventory, 2550)
         self.assertEqual(source_star.resource_x_inventory, 50)
         self.assertEqual(Star.objects.filter(game=game, x=35, y=35).count(), 2)
+        self.assertTrue(
+            player1.messages.filter(
+                category='EXCEPTION',
+                message__icontains='Genesis Strip Source',
+            ).filter(
+                message__icontains='stripped of resources',
+            ).exists()
+        )
 
     def test_genesis_can_leave_collateral_fleet_intact(self):
         game, player1, player2 = self._create_two_player_game()
@@ -13312,6 +13320,69 @@ class TestInterceptPatrolOrders(TestCase):
         collateral.refresh_from_db()
         self.assertEqual(collateral.ironium_inventory, 900)
         self.assertFalse(Star.objects.filter(id=source_star.id).exists())
+        self.assertTrue(
+            player1.messages.filter(
+                category='EXCEPTION',
+                message__icontains='Genesis Fleet Survivor Source',
+            ).filter(
+                message__icontains='consumed by',
+            ).exists()
+        )
+
+    def test_genesis_destroyed_homeworld_notifies_owner_and_sets_victor(self):
+        game, player1, player2 = self._create_two_player_game()
+        source_star = Star.objects.create(
+            game=game,
+            name='Genesis Victim',
+            x=38,
+            y=38,
+            player=player2,
+            ironium_inventory=6000,
+            resource_x_inventory=100,
+            ironium_yield=0,
+            resource_x_yield=0,
+        )
+        player2.homeworld = source_star
+        player2.fixed_homeworld = True
+        player2.save(update_fields=['homeworld', 'fixed_homeworld'])
+        defender_fleet = Fleet.objects.create(
+            game=game,
+            player=player2,
+            name='Defender Fleet',
+            x=5,
+            y=5,
+        )
+        activator = Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Genesis Victor Fleet',
+            x=38,
+            y=38,
+            has_genesis_device=True,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=activator,
+            order_type='GENESIS',
+        )
+
+        with patch.object(GameTurn, '_genesis_should_touch_star', return_value=True), \
+             patch.object(GameTurn, '_genesis_should_destroy_star', return_value=True), \
+             patch.object(GameTurn, '_roll_defeated_fleet_fate', return_value='capture'):
+            GameTurn(game).generate_turn()
+
+        player2.refresh_from_db()
+        defender_fleet.refresh_from_db()
+        self.assertTrue(player2.defeated)
+        self.assertEqual(defender_fleet.player_id, player1.id)
+        self.assertTrue(
+            player2.messages.filter(
+                category='EXCEPTION',
+                message__icontains='Genesis Victim',
+            ).filter(
+                message__icontains=player1.plural_name,
+            ).exists()
+        )
 
 
 class TestBombardmentOrders(TestCase):
@@ -15797,7 +15868,7 @@ class TestHomeworldLossAndDerelicts(TestCase):
             target_star=homeworld,
         )
 
-        with patch('dj4xol.turn.roll_chance', return_value=False), patch(
+        with patch('dj4xol.turn.roll_chance', return_value=True), patch(
             'dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet',
             return_value={'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0},
         ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0), patch.object(
@@ -15810,7 +15881,102 @@ class TestHomeworldLossAndDerelicts(TestCase):
         defender.refresh_from_db()
         evac_fleet.refresh_from_db()
         self.assertTrue(defender.defeated)
+        self.assertFalse(Fleet.objects.filter(id=bomber.id).exists())
         self.assertEqual(evac_fleet.player_id, attacker.id)
+
+    def test_diplomatic_colony_transfer_evacuates_when_source_survives(self):
+        from ..diplomatic_contracts import accept_contract
+
+        game, giver, receiver = self._make_two_player_game()
+        colony = game.stars.exclude(id__in=[giver.homeworld_id, receiver.homeworld_id]).first()
+        colony.player = giver
+        colony.colonists = 50_000
+        colony.save(update_fields=['player', 'colonists'])
+        fleet = Fleet.objects.create(
+            game=game,
+            player=giver,
+            name='Treaty Lifeboat',
+            x=colony.x,
+            y=colony.y,
+            cargo_capacity=100,
+            ship_count=1,
+            integrity=100,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=giver,
+            recipient=receiver,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_COLONY,
+            offer_star=colony,
+        )
+
+        ok, _message = accept_contract(contract, receiver)
+
+        self.assertTrue(ok)
+        giver.refresh_from_db()
+        colony.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertFalse(giver.defeated)
+        self.assertEqual(colony.player_id, receiver.id)
+        self.assertGreater(fleet.colonists, 0)
+        self.assertLess(colony.colonists, 50_000)
+
+    def test_diplomatic_colony_transfer_skips_evacuation_when_source_is_defeated(self):
+        from ..diplomatic_contracts import accept_contract
+
+        game, giver, receiver = self._make_two_player_game()
+        giver.fixed_homeworld = True
+        giver.save(update_fields=['fixed_homeworld'])
+        homeworld = giver.homeworld
+        homeworld.colonists = 50_000
+        homeworld.save(update_fields=['colonists'])
+        fleet = Fleet.objects.create(
+            game=game,
+            player=giver,
+            name='Doomed Lifeboat',
+            x=homeworld.x,
+            y=homeworld.y,
+            cargo_capacity=100,
+            ship_count=1,
+            integrity=100,
+        )
+        Fleet.objects.create(
+            game=game,
+            player=receiver,
+            name='Occupation Fleet',
+            x=homeworld.x,
+            y=homeworld.y,
+            ship_count=1,
+            integrity=100,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=giver,
+            recipient=receiver,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_COLONY,
+            offer_star=homeworld,
+        )
+
+        with patch.object(GameTurn, '_roll_defeated_fleet_fate', return_value='scuttle'):
+            ok, _message = accept_contract(contract, receiver)
+
+        self.assertTrue(ok)
+        giver.refresh_from_db()
+        homeworld.refresh_from_db()
+        contract.refresh_from_db()
+        self.assertTrue(giver.defeated)
+        self.assertEqual(homeworld.player_id, receiver.id)
+        self.assertEqual(homeworld.colonists, 50_000)
+        self.assertFalse(Fleet.objects.filter(id=fleet.id).exists())
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
 
     def test_defeated_players_excluded_from_quorum(self):
         game, player1, player2 = self._make_two_player_game()
