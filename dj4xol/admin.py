@@ -1,3 +1,4 @@
+from django import forms as django_forms
 from django.contrib import admin, messages
 from django.utils.html import format_html
 from django.core.urlresolvers import reverse
@@ -10,7 +11,7 @@ except ImportError:
     from django.urls import re_path as url
 
 from .models import (
-    Account, Player, Game, ServerSettings, ServerRaceType, ServerRace,
+    Account, Player, Game, Star, ServerSettings, ServerRaceType, ServerRace,
     EmailRollupLog, GameInvitation,
     DefaultResearchLevelRequirement, ResearchCategory, ResearchLevelRequirement,
     Technology, PlayerResearch, HullDesign, HullDesignSlot, Spectator,
@@ -19,7 +20,40 @@ from .research import copy_default_requirements_to_category, ensure_default_leve
 from .turn import GameTurn
 from .factory import GameFactory
 from .forms import AdminAddAiPlayerForm
-from .ai_players import build_random_ai_race_template, resolve_ai_slot_stance
+from .ai_players import (
+    ai_module_choices,
+    build_random_ai_race_template,
+    normalize_ai_module_code,
+    resolve_ai_slot_stance,
+)
+
+
+class PlayerAdminForm(django_forms.ModelForm):
+    ai_module = django_forms.ChoiceField(required=False, choices=())
+
+    class Meta:
+        model = Player
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        known_choices = list(ai_module_choices(enabled_only=False))
+        known_codes = {code for code, _label in known_choices}
+        current_value = normalize_ai_module_code(getattr(self.instance, 'ai_module', ''))
+        if current_value and current_value not in known_codes:
+            known_choices.append((current_value, '%s (legacy)' % current_value))
+        self.fields['ai_module'].choices = [('', '---------')] + known_choices
+        if self.instance and self.instance.pk:
+            self.fields['homeworld'].queryset = (
+                Star.objects
+                .filter(player=self.instance)
+                .order_by('name', 'id')
+            )
+        else:
+            self.fields['homeworld'].queryset = Star.objects.none()
+
+    def clean_ai_module(self):
+        return normalize_ai_module_code(self.cleaned_data.get('ai_module'))
 
 @admin.register(ServerRaceType)
 class ServerRaceTypeAdmin(admin.ModelAdmin):
@@ -111,9 +145,15 @@ class GameInvitationAdmin(admin.ModelAdmin):
 
 @admin.register(Player)
 class PlayerAdmin(admin.ModelAdmin):
+    form = PlayerAdminForm
     list_display = ('pk', 'short_id', 'game', 'account', 'name', 'is_ai', 'ai_module')
     readonly_fields = ('pk',)
-    list_select_related = ('game', 'account')
+    list_select_related = ('game', 'account', 'homeworld')
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj:
+            return ('pk', 'game')
+        return self.readonly_fields
 
 @admin.register(Game)
 class GameAdmin(admin.ModelAdmin):

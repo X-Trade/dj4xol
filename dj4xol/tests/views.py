@@ -142,6 +142,11 @@ class TestMessageFiltering(TestCase):
         self.assertContains(response, 'dj4xol/js/turn_submit.js')
         self.assertContains(response, 'data-turn-submit-form="1"', html=False)
         self.assertNotContains(response, 'onchange="this.form.submit()"')
+        self.assertContains(
+            response,
+            '<button type="submit" class="nav-button primary">Apply</button>',
+            html=True,
+        )
 
     def test_messages_filtered_by_messages_seen_year(self):
         """Messages should be filtered to year >= messages_seen_year."""

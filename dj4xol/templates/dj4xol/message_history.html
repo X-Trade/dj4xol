@@ -92,7 +92,7 @@
                                 </span>
                             </div>
                             <div class="message-filter-actions">
-                                <button type="submit">Apply</button>
+                                <button type="submit" class="nav-button primary">Apply</button>
                                 {% if current_year or current_category or priority_only or search_query %}
                                 <a class="action-link" href="{% url 'dj4xol:message_history' game.short_id %}">Clear</a>
                                 {% endif %}
