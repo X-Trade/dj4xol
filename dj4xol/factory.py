@@ -772,6 +772,17 @@ class GameFactory():
         """Calculate distance between two stars."""
         return math.sqrt((star1.x - star2.x) ** 2 + (star1.y - star2.y) ** 2)
 
+    def _homeworld_candidate_score(self, star, existing_colonies):
+        distances = [self._distance(star, colony) for colony in existing_colonies]
+        nearest = min(distances)
+        average = sum(distances) / float(len(distances))
+        centroid_x = sum(float(colony.x) for colony in existing_colonies) / float(len(existing_colonies))
+        centroid_y = sum(float(colony.y) for colony in existing_colonies) / float(len(existing_colonies))
+        centroid_distance = math.sqrt(
+            (float(star.x) - centroid_x) ** 2 + (float(star.y) - centroid_y) ** 2
+        )
+        return (nearest, average, centroid_distance, int(star.id.int))
+
     def _star_has_secret_resources(self, star):
         return any(
             int(getattr(star, f'{key}_yield', 0) or 0) > 0 or
@@ -882,6 +893,35 @@ class GameFactory():
                 return True
             seen.add(coord)
         return False
+
+    def _existing_player_colonies(self):
+        if self.game.pk:
+            return list(self.game.stars.filter(player__isnull=False))
+        return [star for star in self.stars if getattr(star, 'player', None) is not None]
+
+    def _player_colony_coordinates(self):
+        return {
+            (int(star.x), int(star.y))
+            for star in self._existing_player_colonies()
+        }
+
+    def _filter_homeworld_spot_conflicts(self, stars):
+        occupied_coords = self._player_colony_coordinates()
+        if not occupied_coords:
+            return list(stars)
+        return [
+            star for star in stars
+            if (int(star.x), int(star.y)) not in occupied_coords
+        ]
+
+    def valid_homeworld_candidates(self):
+        if not self.game.pk:
+            return self._filter_homeworld_spot_conflicts(
+                star for star in self.stars if getattr(star, 'player', None) is None
+            )
+        return self._filter_homeworld_spot_conflicts(
+            self.game.stars.filter(player=None).order_by('name', 'id')
+        )
 
     def _split_starting_colonists(self, player, colony_count):
         total = max(0, int(player.starting_colonists or 20)) * 1000
@@ -1194,26 +1234,28 @@ class GameFactory():
 
         non_secret = [s for s in available_stars if not self._star_has_secret_resources(s)]
         candidates = non_secret or list(available_stars)
+        candidates = self._filter_homeworld_spot_conflicts(candidates)
+        if not candidates:
+            return None
         preferred = [s for s in candidates if not near_secret(s)]
         if preferred:
             candidates = preferred
 
-        existing_homeworlds = [p.homeworld for p in self.game.players.select_related('homeworld')
-                              if p.homeworld]
-        if not existing_homeworlds:
+        existing_colonies = self._existing_player_colonies()
+        if not existing_colonies:
             return random.choice(candidates)
 
         min_dist = self._min_homeworld_distance()
 
-        # Find stars far enough from all existing homeworlds
+        # Find stars far enough from all existing colonies.
         suitable = [s for s in candidates
-                    if all(self._distance(s, hw) >= min_dist for hw in existing_homeworlds)]
+                    if all(self._distance(s, colony) >= min_dist for colony in existing_colonies)]
 
         if suitable:
-            return random.choice(suitable)
+            return max(suitable, key=lambda s: self._homeworld_candidate_score(s, existing_colonies))
 
-        # Fallback: pick the star with maximum distance to nearest homeworld
-        return max(candidates, key=lambda s: min(self._distance(s, hw) for hw in existing_homeworlds))
+        # Fallback: pick the star with maximum distance to nearest colony.
+        return max(candidates, key=lambda s: self._homeworld_candidate_score(s, existing_colonies))
 
     def _assign_homeworld_to_player(self, player, star):
         """Assign a specific star as homeworld to a player with starting population.
@@ -1288,13 +1330,16 @@ class GameFactory():
         available_stars = list(self.game.stars.filter(player=None))
         if not available_stars:
             return None
+        valid_homeworld_stars = self._filter_homeworld_spot_conflicts(available_stars)
+        if not valid_homeworld_stars:
+            return None
 
         selected_homeworld = None
         if homeworld_star is not None:
             if getattr(homeworld_star, 'game_id', None) != self.game.id:
                 return None
             selected_homeworld = next(
-                (star for star in available_stars if star.id == getattr(homeworld_star, 'id', None)),
+                (star for star in valid_homeworld_stars if star.id == getattr(homeworld_star, 'id', None)),
                 None,
             )
             if selected_homeworld is None:
@@ -1350,7 +1395,7 @@ class GameFactory():
         colonist_allocations = self._split_starting_colonists(player, starting_colony_count)
         mine_allocations = self._split_starting_integer(player.starting_mines, starting_colony_count)
         factory_allocations = self._split_starting_integer(player.starting_factories, starting_colony_count)
-        homeworld = selected_homeworld or self._find_homeworld_star(available_stars)
+        homeworld = selected_homeworld or self._find_homeworld_star(valid_homeworld_stars)
         if homeworld is None:
             return None
         self._assign_starting_colony_to_player(

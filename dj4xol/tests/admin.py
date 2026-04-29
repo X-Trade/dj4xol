@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from ..models import Player
+from ..models import Player, Star
 from ._util import default_game, get_default_race
 
 
@@ -50,6 +50,22 @@ class GameAdminAiPlayerViewTest(TestCase):
         self.assertEqual(ai_player.default_diplomatic_stance, 'WARM')
         self.assertEqual(ai_player.starting_tech_level, 4)
         self.assertEqual(ai_player.homeworld_id, target_star.id)
+
+    def test_add_ai_player_view_excludes_homeworlds_on_existing_colony_spots(self):
+        player = self.game.players.get()
+        blocked_companion = Star.objects.create(
+            game=self.game,
+            name='Blocked Companion',
+            x=player.homeworld.x,
+            y=player.homeworld.y,
+        )
+
+        response = self.client.get(
+            reverse('admin:add-ai-player', args=[self.game.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, blocked_companion.name)
 
     def test_add_ai_player_view_uses_random_race_path(self):
         with patch('dj4xol.admin.build_random_ai_race_template', return_value=self.race) as race_mock, \

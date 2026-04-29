@@ -3596,6 +3596,8 @@ class TestFleetTransferOrderExecution(TestCase):
 
         game = default_game()
         player = game.players.first()
+        player.race_type.population_growth_multiplier = 0
+        player.race_type.save(update_fields=['population_growth_multiplier'])
         star = player.homeworld
 
         # Set up star with abundant resources
@@ -3603,6 +3605,10 @@ class TestFleetTransferOrderExecution(TestCase):
         star.boranium_inventory = 5000
         star.germanium_inventory = 5000
         star.colonists = 100000
+        star.mines = 0
+        star.ironium_yield = 0
+        star.boranium_yield = 0
+        star.germanium_yield = 0
         star.save()
 
         # Create small capacity fleet
@@ -3635,22 +3641,67 @@ class TestFleetTransferOrderExecution(TestCase):
         star.refresh_from_db()
         fleet.refresh_from_db()
 
-        # Should transfer exactly 1000kt total, proportionally allocated
-        # Each resource gets 1000/4000 = 25% of what was requested
-        self.assertEqual(fleet.ironium_inventory, 250)   # 1000 * 0.25
-        self.assertEqual(fleet.boranium_inventory, 250)  # 1000 * 0.25
-        self.assertEqual(fleet.germanium_inventory, 250) # 1000 * 0.25
-        # Colonists are limited by available population (100000 individuals = 100kt)
-        self.assertEqual(fleet.colonists, 100)
-
-        # Total cargo reflects colonist availability cap
-        self.assertEqual(fleet.cargo_used, 850)
+        # Source availability is capped before proportional loading, so the
+        # 100kt of available colonists no longer reserve a full 25% share.
+        self.assertEqual(fleet.ironium_inventory, 323)
+        self.assertEqual(fleet.boranium_inventory, 323)
+        self.assertEqual(fleet.germanium_inventory, 322)
+        self.assertEqual(fleet.colonists, 32)
+        self.assertEqual(fleet.cargo_used, 1000)
 
         # Star should have corresponding amounts removed
-        self.assertEqual(star.ironium_inventory, 4750)  # 5000 - 250
-        self.assertEqual(star.boranium_inventory, 4750)
-        self.assertEqual(star.germanium_inventory, 4750)
-        self.assertEqual(star.colonists, 0)  # 100000 individuals transferred (100kt)
+        self.assertEqual(star.ironium_inventory, 4677)
+        self.assertEqual(star.boranium_inventory, 4677)
+        self.assertEqual(star.germanium_inventory, 4678)
+        self.assertEqual(star.colonists, 68000)
+
+    def test_overloaded_star_load_ignores_missing_resource_before_proportional_allocation(self):
+        from ..models import FleetOrders, Fleet
+
+        game = default_game()
+        player = game.players.first()
+        star = player.homeworld
+        star.ironium_inventory = 1000
+        star.boranium_inventory = 1000
+        star.germanium_inventory = 0
+        star.colonists = 0
+        star.mines = 0
+        star.ironium_yield = 0
+        star.boranium_yield = 0
+        star.germanium_yield = 0
+        star.save()
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Two Mineral Loader",
+            x=star.x,
+            y=star.y,
+            cargo_capacity=1000,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='TRANSFER',
+            target_star=star,
+            transfer_type='LOAD',
+            transfer_ironium=1000,
+            transfer_boranium=1000,
+            transfer_germanium=1000,
+        )
+
+        GameTurn(game).generate_turn()
+
+        star.refresh_from_db()
+        fleet.refresh_from_db()
+
+        self.assertEqual(fleet.ironium_inventory, 500)
+        self.assertEqual(fleet.boranium_inventory, 500)
+        self.assertEqual(fleet.germanium_inventory, 0)
+        self.assertEqual(fleet.cargo_used, 1000)
+        self.assertEqual(star.ironium_inventory, 500)
+        self.assertEqual(star.boranium_inventory, 500)
+        self.assertEqual(star.germanium_inventory, 0)
 
     def test_transfer_overprovision_includes_secret_resources(self):
         """Overprovisioned transfers should allocate secret resources proportionally."""
@@ -8842,9 +8893,9 @@ class TestFleetTransferOrders(TestCase):
 
         # Fleet can only take 100kt more (1000 - 900)
         # Proportions: ironium = 80/120 = 2/3, boranium = 40/120 = 1/3
-        # Actual transfer: ironium = 100 * 2/3 = 66kt, boranium = 100 * 1/3 = 33kt
-        expected_ironium = int(100 * 80/120)  # 66
-        expected_boranium = int(100 * 40/120)  # 33
+        # Actual transfer uses largest-remainder rounding to fill the final kt.
+        expected_ironium = 67
+        expected_boranium = 33
 
         self.assertEqual(fleet.ironium_inventory, expected_ironium)
         self.assertEqual(fleet.boranium_inventory, expected_boranium)
@@ -8853,6 +8904,55 @@ class TestFleetTransferOrders(TestCase):
         # Star should have lost the same amounts
         self.assertEqual(target_star.ironium_inventory, 1000 - expected_ironium)
         self.assertEqual(target_star.boranium_inventory, 1000 - expected_boranium)
+
+    def test_overloaded_fleet_load_ignores_missing_resource_before_proportional_allocation(self):
+        from ..models import Fleet, FleetOrders
+
+        game = default_game(stars=5)
+        player = game.players.first()
+        star = player.homeworld
+        receiving_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Receiving Fleet",
+            x=star.x,
+            y=star.y,
+            cargo_capacity=1000,
+        )
+        source_fleet = Fleet.objects.create(
+            game=game,
+            player=player,
+            name="Source Fleet",
+            x=star.x,
+            y=star.y,
+            cargo_capacity=3000,
+            ironium_inventory=1000,
+            boranium_inventory=1000,
+            germanium_inventory=0,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=receiving_fleet,
+            order_type='TRANSFER',
+            transfer_type='LOAD',
+            transfer_ironium=1000,
+            transfer_boranium=1000,
+            transfer_germanium=1000,
+            target_fleet=source_fleet,
+        )
+
+        GameTurn(game).generate_turn()
+
+        receiving_fleet.refresh_from_db()
+        source_fleet.refresh_from_db()
+
+        self.assertEqual(receiving_fleet.ironium_inventory, 500)
+        self.assertEqual(receiving_fleet.boranium_inventory, 500)
+        self.assertEqual(receiving_fleet.germanium_inventory, 0)
+        self.assertEqual(receiving_fleet.cargo_used, 1000)
+        self.assertEqual(source_fleet.ironium_inventory, 500)
+        self.assertEqual(source_fleet.boranium_inventory, 500)
+        self.assertEqual(source_fleet.germanium_inventory, 0)
 
     def test_limited_by_star_resources(self):
         """Test loading limited by what's available at the star."""

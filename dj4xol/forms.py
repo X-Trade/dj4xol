@@ -220,9 +220,13 @@ class AdminAddAiPlayerForm(forms.Form):
             race_choices.append((str(race.pk), '%s (%s)' % (race.name, owner_label)))
         self.fields['race'].choices = race_choices
 
+        from .factory import GameFactory
+        homeworld_candidate_ids = [
+            star.id for star in GameFactory(self.game).valid_homeworld_candidates()
+        ]
         self.fields['homeworld_star'].queryset = (
             self.game.stars
-            .filter(player=None)
+            .filter(player=None, id__in=homeworld_candidate_ids)
             .order_by('name', 'id')
         )
 

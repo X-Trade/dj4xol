@@ -210,6 +210,32 @@ class testGameFactory(TestCase):
 
         self.assertIsNone(ai_player)
 
+    def test_join_player_rejects_selected_homeworld_star_on_existing_colony_spot(self):
+        gf = GameFactory()
+        gf.set_map_size(100, 100)
+        gf.set_owner(self.accounts[0])
+        gf.create_stars(6)
+        game = gf.save()
+
+        owner_player = gf.join_player(self.accounts[0], self.races[0])
+        blocked_companion = Star.objects.create(
+            game=game,
+            name='Blocked Companion',
+            x=owner_player.homeworld.x,
+            y=owner_player.homeworld.y,
+        )
+
+        ai_player = gf.join_player(
+            None,
+            self.races[1],
+            invited=True,
+            is_ai=True,
+            ai_module='idle',
+            homeworld_star=blocked_companion,
+        )
+
+        self.assertIsNone(ai_player)
+
     def test_join_player_splits_starting_population_across_starting_colonies(self):
         self.race_type.starting_colonies = 2
         self.race_type.save(update_fields=['starting_colonies'])
@@ -349,6 +375,37 @@ class testGameFactory(TestCase):
         dist = gf._distance(p1.homeworld, p2.homeworld)
         # Should be at least 50ly apart (25% of 200)
         self.assertGreaterEqual(dist, 50)
+
+    def test_join_player_auto_homeworld_avoids_colony_spots_and_prefers_farthest_colony_distance(self):
+        gf = GameFactory()
+        gf.set_map_size(200, 200)
+        gf.set_owner(self.accounts[0])
+        gf.game.joinable = True
+        gf.create_stars(1)
+        game = gf.save()
+        first_star = game.stars.first()
+        first_star.x = 0
+        first_star.y = 0
+        first_star.save(update_fields=['x', 'y'])
+        first_player = gf.join_player(
+            self.accounts[0],
+            self.races[0],
+            homeworld_star=first_star,
+        )
+        blocked_companion = Star.objects.create(
+            game=game,
+            name='Blocked Companion',
+            x=first_player.homeworld.x,
+            y=first_player.homeworld.y,
+        )
+        Star.objects.create(game=game, name='Near Candidate', x=20, y=0)
+        far_candidate = Star.objects.create(game=game, name='Far Candidate', x=100, y=100)
+
+        second_player = gf.join_player(self.accounts[1], self.races[1])
+
+        self.assertIsNotNone(second_player)
+        self.assertEqual(second_player.homeworld_id, far_candidate.id)
+        self.assertIsNone(Star.objects.get(id=blocked_companion.id).player_id)
 
     def test_homeworld_environmentals_match_player_centers(self):
         """Homeworld should have environmentals set to player's habitable centers."""

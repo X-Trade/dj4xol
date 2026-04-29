@@ -5787,6 +5787,47 @@ class GameTurn():
             msg.year = self.game.year
             msg.save()
 
+    def _proportional_transfer_allocation(self, keys, requested, available, capacity):
+        capacity = max(0, int(capacity or 0))
+        keys = list(keys)
+        zeroes = {key: 0 for key in keys}
+        if capacity <= 0:
+            return zeroes
+
+        effective = {
+            key: min(
+                max(0, int(requested.get(key, 0) or 0)),
+                max(0, int(available.get(key, 0) or 0)),
+            )
+            for key in keys
+        }
+        total_effective = sum(effective.values())
+        if total_effective <= 0:
+            return zeroes
+        if total_effective <= capacity:
+            return effective
+
+        floors = {}
+        remainders = []
+        for idx, key in enumerate(keys):
+            scaled = effective[key] * capacity / float(total_effective)
+            floor_value = int(scaled)
+            floors[key] = min(floor_value, effective[key])
+            remainders.append((scaled - floor_value, effective[key], -idx, key))
+
+        remaining = capacity - sum(floors.values())
+        if remaining <= 0:
+            return floors
+
+        for _, _, _, key in sorted(remainders, reverse=True):
+            if remaining <= 0:
+                break
+            if floors[key] >= effective[key]:
+                continue
+            floors[key] += 1
+            remaining -= 1
+        return floors
+
     def _transfer_with_star(self, fleet, order, star):
         """Execute transfer between fleet and star."""
         fleet_max_capacity = fleet.cargo_capacity  # Use fleet's actual capacity
@@ -5883,19 +5924,33 @@ class GameTurn():
                     return
 
             fleet_available = fleet_max_capacity - fleet.cargo_used
-            total_transfer = min(fleet_available, total_requested)
+            allocation_keys = list(resource_keys) + ['colonists']
+            requested = {
+                key: int(getattr(order, f'transfer_{key}', 0) or 0)
+                for key in resource_keys
+            }
+            requested['colonists'] = int(order.transfer_colonists or 0)
+            available = {
+                key: int(getattr(star, f'{key}_inventory', 0) or 0)
+                for key in resource_keys
+            }
+            available['colonists'] = int(star.colonists or 0) // 1000
+            allocation = self._proportional_transfer_allocation(
+                allocation_keys,
+                requested,
+                available,
+                fleet_available,
+            )
 
-            if total_transfer <= 0:
+            if sum(allocation.values()) <= 0:
                 return
 
-            transfer_factor = total_transfer / float(total_requested)
-            transfers = {}
-            for key in resource_keys:
-                requested = int(getattr(order, f'transfer_{key}', 0) or 0)
-                available = int(getattr(star, f'{key}_inventory', 0) or 0)
-                transfers[key] = min(int(requested * transfer_factor), available)
+            transfers = {
+                key: int(allocation.get(key, 0) or 0)
+                for key in resource_keys
+            }
 
-            requested_colonists_kt = int((order.transfer_colonists or 0) * transfer_factor)
+            requested_colonists_kt = int(allocation.get('colonists', 0) or 0)
             attempted_colonists_individuals = min(
                 requested_colonists_kt * 1000,
                 int(star.colonists or 0),
@@ -6099,20 +6154,32 @@ class GameTurn():
                 return
 
             source_available = source_fleet.cargo_capacity - source_fleet.cargo_used
-            total_transfer = min(source_available, total_requested)
-            if total_transfer <= 0:
+            allocation_keys = list(resource_keys) + ['colonists']
+            requested = {
+                key: int(getattr(order, f'transfer_{key}', 0) or 0)
+                for key in resource_keys
+            }
+            requested['colonists'] = int(order.transfer_colonists or 0)
+            available = {
+                key: int(getattr(target_fleet, f'{key}_inventory', 0) or 0)
+                for key in resource_keys
+            }
+            available['colonists'] = int(target_fleet.colonists or 0)
+            allocation = self._proportional_transfer_allocation(
+                allocation_keys,
+                requested,
+                available,
+                source_available,
+            )
+
+            if sum(allocation.values()) <= 0:
                 return
 
-            transfer_factor = total_transfer / float(total_requested)
-            transfers = {}
-            for key in resource_keys:
-                requested = int(getattr(order, f'transfer_{key}', 0) or 0)
-                available = int(getattr(target_fleet, f'{key}_inventory', 0) or 0)
-                transfers[key] = min(int(requested * transfer_factor), available)
-            colonists_transfer = min(
-                int((order.transfer_colonists or 0) * transfer_factor),
-                int(target_fleet.colonists or 0)
-            )
+            transfers = {
+                key: int(allocation.get(key, 0) or 0)
+                for key in resource_keys
+            }
+            colonists_transfer = int(allocation.get('colonists', 0) or 0)
 
             for key in resource_keys:
                 setattr(
@@ -6149,10 +6216,20 @@ class GameTurn():
             if total_transfer > target_available:
                 if target_available <= 0:
                     return
-                scale_factor = target_available / float(total_transfer)
-                for key in resource_keys:
-                    transfers[key] = int(transfers[key] * scale_factor)
-                colonists_transfer = int(colonists_transfer * scale_factor)
+                allocation_keys = list(resource_keys) + ['colonists']
+                requested = dict(transfers)
+                requested['colonists'] = colonists_transfer
+                allocation = self._proportional_transfer_allocation(
+                    allocation_keys,
+                    requested,
+                    requested,
+                    target_available,
+                )
+                transfers = {
+                    key: int(allocation.get(key, 0) or 0)
+                    for key in resource_keys
+                }
+                colonists_transfer = int(allocation.get('colonists', 0) or 0)
 
             for key in resource_keys:
                 setattr(
@@ -6197,14 +6274,16 @@ class GameTurn():
             if total_salvage == 0:
                 return
 
-            transfers = {}
-            if total_salvage <= fleet_available:
-                for key in ALL_RESOURCE_KEYS:
-                    transfers[key] = int(getattr(salvage, f'{key}_inventory', 0) or 0)
-            else:
-                ratio = fleet_available / float(total_salvage)
-                for key in ALL_RESOURCE_KEYS:
-                    transfers[key] = int((getattr(salvage, f'{key}_inventory', 0) or 0) * ratio)
+            available = {
+                key: int(getattr(salvage, f'{key}_inventory', 0) or 0)
+                for key in ALL_RESOURCE_KEYS
+            }
+            transfers = self._proportional_transfer_allocation(
+                ALL_RESOURCE_KEYS,
+                available,
+                available,
+                fleet_available,
+            )
         else:
             # Transfer requested amounts (limited by available)
             total_requested = sum(
@@ -6213,20 +6292,22 @@ class GameTurn():
             if total_requested == 0:
                 return
 
-            # Limit by fleet available space
-            total_transfer = min(fleet_available, total_requested)
-            if total_transfer <= 0:
+            requested = {
+                key: int(getattr(order, f'transfer_{key}', 0) or 0)
+                for key in ALL_RESOURCE_KEYS
+            }
+            available = {
+                key: int(getattr(salvage, f'{key}_inventory', 0) or 0)
+                for key in ALL_RESOURCE_KEYS
+            }
+            transfers = self._proportional_transfer_allocation(
+                ALL_RESOURCE_KEYS,
+                requested,
+                available,
+                fleet_available,
+            )
+            if sum(transfers.values()) <= 0:
                 return
-
-            # Calculate proportional transfers
-            transfer_factor = total_transfer / total_requested
-            transfers = {}
-            for key in ALL_RESOURCE_KEYS:
-                transfers[key] = min(
-                    int(getattr(order, f'transfer_{key}', 0) or 0) * transfer_factor,
-                    int(getattr(salvage, f'{key}_inventory', 0) or 0)
-                )
-            transfers = {key: int(val) for key, val in transfers.items()}
 
         # Execute the transfer
         for key in ALL_RESOURCE_KEYS:
