@@ -25,6 +25,7 @@ from .colony_ai_rules import (
     ROLE_MINING,
     ROLE_PRODUCTION,
     ROLE_RESEARCH,
+    ROLE_SECRET_RESOURCE,
     role_score,
     score_terraform_roi,
 )
@@ -42,7 +43,7 @@ JOB_MAX_RATIO = 0.75
 
 MICROMANAGER_MODE_STANDARD = 'standard'
 MICROMANAGER_MODE_EXPANSIONIST = 'expansionist'
-EXPANSIONIST_MINE_TARGET_MULTIPLIER = 1.75
+EXPANSIONIST_MINE_TARGET_MULTIPLIER = 2.25
 
 TIER_BASIC = 1
 TIER_SUPPORT = 2
@@ -1034,6 +1035,9 @@ def _scored_micromanager_candidate_orders(
     production_role = role_score(colony_ai_profile, ROLE_PRODUCTION) * role_tier_factor
     research_role = role_score(colony_ai_profile, ROLE_RESEARCH) * role_tier_factor
     frontier_role = role_score(colony_ai_profile, ROLE_FRONTIER) * role_tier_factor
+    secret_resource_role = (
+        role_score(colony_ai_profile, ROLE_SECRET_RESOURCE) * role_tier_factor
+    )
     candidates = {}
     first_seen = {}
     city_candidate_ready = False
@@ -1263,6 +1267,8 @@ def _scored_micromanager_candidate_orders(
                     mine_score *= 1.20
             if mining_role > 0.0:
                 mine_score *= 1.0 + (mining_role * 0.45)
+            if secret_resource_role > 0.0:
+                mine_score *= 1.0 + (secret_resource_role * 0.35)
             append_candidate('BUILD_MINE', mine_score * mine_tailoff)
 
     if (
@@ -1378,6 +1384,12 @@ def _scored_micromanager_candidate_orders(
                 base_score += 260.0 * frontier_role
                 if frontier_role > 0.0 and int(getattr(star, 'defenses', 0) or 0) < 100:
                     base_score += 90.0 * frontier_role
+                base_score += 220.0 * secret_resource_role
+                if (
+                    secret_resource_role > 0.0 and
+                    int(getattr(star, 'defenses', 0) or 0) < MATURE_SUPPORT_FLOOR
+                ):
+                    base_score += 120.0 * secret_resource_role
             if job_ratio < JOB_MIN_RATIO:
                 base_score *= 0.75
             elif job_ratio < JOB_TARGET_RATIO:

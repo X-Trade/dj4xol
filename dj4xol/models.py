@@ -1255,6 +1255,137 @@ class PlayerDiplomaticStance(models.Model):
         super(PlayerDiplomaticStance, self).save(*args, **kwargs)
 
 
+class MicromanagerObjectState(AbstractGameObject):
+    """Owner-scoped Administration AI memory for stars and fleets."""
+    TARGET_STAR = 'star'
+    TARGET_FLEET = 'fleet'
+    TARGET_TYPE_CHOICES = [
+        (TARGET_STAR, 'Star'),
+        (TARGET_FLEET, 'Fleet'),
+    ]
+
+    player = models.ForeignKey(
+        Player,
+        related_name='micromanager_object_states',
+        on_delete=models.CASCADE,
+    )
+    target_type = models.CharField(
+        max_length=10,
+        choices=TARGET_TYPE_CHOICES,
+    )
+    target_star = models.ForeignKey(
+        Star,
+        null=True,
+        blank=True,
+        related_name='micromanager_states',
+        on_delete=models.CASCADE,
+    )
+    target_fleet = models.ForeignKey(
+        Fleet,
+        null=True,
+        blank=True,
+        related_name='micromanager_states',
+        on_delete=models.CASCADE,
+    )
+    primary_role = models.CharField(max_length=40, blank=True, default='')
+    mission = models.CharField(max_length=40, blank=True, default='')
+    tags_json = models.TextField(blank=True, default='[]')
+    data_json = models.TextField(blank=True, default='{}')
+    updated_year = models.IntegerField(default=0)
+
+    class Meta:
+        unique_together = [
+            ['player', 'target_type', 'target_star'],
+            ['player', 'target_type', 'target_fleet'],
+            ['game', 'short_id'],
+        ]
+        index_together = [
+            ['player', 'target_type', 'primary_role'],
+            ['player', 'target_type', 'mission'],
+        ]
+
+    def __str__(self):
+        target = self.target_star or self.target_fleet
+        return '%s micromanager state for %s %s' % (
+            self.player,
+            self.target_type,
+            target or '',
+        )
+
+    def clean(self):
+        super(MicromanagerObjectState, self).clean()
+        has_star = self.target_star_id is not None
+        has_fleet = self.target_fleet_id is not None
+        if self.target_type == self.TARGET_STAR:
+            if not has_star or has_fleet:
+                raise ValidationError('Star micromanager state must target one star.')
+        elif self.target_type == self.TARGET_FLEET:
+            if not has_fleet or has_star:
+                raise ValidationError('Fleet micromanager state must target one fleet.')
+        else:
+            raise ValidationError('Unknown micromanager target type.')
+        if self.player_id and self.game_id and self.player.game_id != self.game_id:
+            raise ValidationError('Micromanager state player must be in the same game.')
+
+    def save(self, *args, **kwargs):
+        if self.target_star_id and not self.game_id:
+            self.game = self.target_star.game
+        elif self.target_fleet_id and not self.game_id:
+            self.game = self.target_fleet.game
+        super(MicromanagerObjectState, self).save(*args, **kwargs)
+
+    def get_tags(self):
+        import json
+        try:
+            tags = json.loads(self.tags_json) if self.tags_json else []
+        except (TypeError, ValueError):
+            return []
+        if not isinstance(tags, list):
+            return []
+        return [str(tag) for tag in tags]
+
+    def set_tags(self, tags):
+        import json
+        clean_tags = sorted({str(tag) for tag in (tags or []) if str(tag)})
+        self.tags_json = json.dumps(clean_tags)
+
+    def get_data(self):
+        import json
+        try:
+            data = json.loads(self.data_json) if self.data_json else {}
+        except (TypeError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return data
+
+    def set_data(self, data):
+        import json
+        self.data_json = json.dumps(dict(data or {}), sort_keys=True)
+
+    @classmethod
+    def clear_for_star(cls, star):
+        if star is None or getattr(star, 'id', None) is None:
+            return 0
+        deleted, _details = cls.objects.filter(
+            game=star.game,
+            target_type=cls.TARGET_STAR,
+            target_star=star,
+        ).delete()
+        return deleted
+
+    @classmethod
+    def clear_for_fleet(cls, fleet):
+        if fleet is None or getattr(fleet, 'id', None) is None:
+            return 0
+        deleted, _details = cls.objects.filter(
+            game=fleet.game,
+            target_type=cls.TARGET_FLEET,
+            target_fleet=fleet,
+        ).delete()
+        return deleted
+
+
 class FleetOrders(AbstractGameObject):
     """Movement and action orders for a fleet."""
     ORDER_TYPE_CHOICES = [

@@ -439,6 +439,14 @@ EXPANSIONIST_COLONISE_SEARCH_RADIUS = 28.0
 EXPANSIONIST_WIDE_COLONISE_SEARCH_RADIUS = 60.0
 EXPANSIONIST_DEFENSE_FLEET_RATIO = 0.34
 EXPANSIONIST_DEFENSE_SHIP_RATIO = 0.34
+MICROMANAGER_EXPLORATION_EARLY_ACTIVE_FLEETS = 1
+MICROMANAGER_EXPLORATION_LATE_ACTIVE_FLEETS = 0
+EXPANSIONIST_EXPLORATION_EARLY_ACTIVE_FLEETS = 3
+EXPANSIONIST_EXPLORATION_LATE_ACTIVE_FLEETS = 1
+MICROMANAGER_EXPLORATION_ROUTE_LEGS = 3
+EXPANSIONIST_EXPLORATION_ROUTE_LEGS = 5
+MICROMANAGER_EXPLORATION_MAX_LEG_DISTANCE = 90.0
+EXPANSIONIST_EXPLORATION_MAX_LEG_DISTANCE = 140.0
 
 
 # Chance calculation functions (separated for testability)
@@ -5143,16 +5151,94 @@ class GameTurn():
     def _abandon_fleet(self, fleet):
         """Mark a fleet as unowned and clear its orders."""
         fleet.orders.all().delete()
-        fleet.player = None
+        self._set_fleet_owner(fleet, None)
         fleet.travel_warp = 0
         fleet.save(update_fields=['player', 'travel_warp'])
 
     def _capture_fleet(self, fleet, new_owner):
         """Transfer fleet ownership to a new player and clear orders."""
         fleet.orders.all().delete()
-        fleet.player = new_owner
+        self._set_fleet_owner(fleet, new_owner)
         fleet.travel_warp = 0
         fleet.save(update_fields=['player', 'travel_warp'])
+
+    @staticmethod
+    def _set_fleet_owner(fleet, new_owner):
+        previous_owner_id = int(getattr(fleet, 'player_id', 0) or 0)
+        new_owner_id = int(getattr(new_owner, 'id', 0) or 0)
+        if previous_owner_id != new_owner_id:
+            from .models import MicromanagerObjectState
+            MicromanagerObjectState.clear_for_fleet(fleet)
+        fleet.player = new_owner
+
+    @staticmethod
+    def _set_star_owner(star, new_owner):
+        previous_owner_id = int(getattr(star, 'player_id', 0) or 0)
+        new_owner_id = int(getattr(new_owner, 'id', 0) or 0)
+        if previous_owner_id != new_owner_id:
+            from .models import MicromanagerObjectState
+            MicromanagerObjectState.clear_for_star(star)
+        star.player = new_owner
+
+    def _update_micromanager_star_state(self, player, star, profile):
+        if player is None or star is None or not isinstance(profile, dict):
+            return None
+        from .models import MicromanagerObjectState
+
+        state, _created = MicromanagerObjectState.objects.update_or_create(
+            player=player,
+            target_type=MicromanagerObjectState.TARGET_STAR,
+            target_star=star,
+            defaults={
+                'game': self.game,
+                'target_fleet': None,
+                'primary_role': str(profile.get('primary_role') or '')[:40],
+                'mission': 'colony_role',
+                'updated_year': int(getattr(self.game, 'year', 0) or 0),
+            },
+        )
+        state.set_tags(profile.get('roles') or [])
+        state.set_data({
+            'scores': profile.get('scores') or {},
+            'habitability': profile.get('habitability'),
+            'capacity': profile.get('capacity'),
+            'max_resource_factor': profile.get('max_resource_factor'),
+            'max_secret_resource_factor': profile.get('max_secret_resource_factor'),
+            'has_secret_resource_yield': profile.get('has_secret_resource_yield'),
+            'threat_score': profile.get('threat_score'),
+        })
+        state.save(update_fields=['tags_json', 'data_json'])
+        return state
+
+    def _update_micromanager_fleet_state(
+        self,
+        player,
+        fleet,
+        mission,
+        tags=None,
+        data=None,
+        primary_role='',
+    ):
+        if player is None or fleet is None:
+            return None
+        from .models import MicromanagerObjectState
+
+        state, _created = MicromanagerObjectState.objects.update_or_create(
+            player=player,
+            target_type=MicromanagerObjectState.TARGET_FLEET,
+            target_fleet=fleet,
+            defaults={
+                'game': self.game,
+                'target_star': None,
+                'primary_role': str(primary_role or '')[:40],
+                'mission': str(mission or '')[:40],
+                'updated_year': int(getattr(self.game, 'year', 0) or 0),
+            },
+        )
+        state.set_tags(tags or [])
+        state.set_data(data or {})
+        state.save(update_fields=['tags_json', 'data_json'])
+        return state
 
     def _destroy_derelict_fleet(self, fleet):
         """Destroy an unowned fleet and create salvage if possible."""
@@ -5497,7 +5583,7 @@ class GameTurn():
             attacker_losses = invaders - remaining_invaders
             defender_losses = defenders
             star.colonists = max(0, remaining_invaders)
-            star.player = attacker
+            self._set_star_owner(star, attacker)
             star.save(update_fields=['colonists', 'player'])
             if defender:
                 self._handle_homeworld_loss(
@@ -6135,7 +6221,7 @@ class GameTurn():
 
             if colonists_transfer_kt > 0 and star.player is None:
                 if random.random() < 0.10:
-                    star.player = fleet.player
+                    self._set_star_owner(star, fleet.player)
                     factory = ColonistsUnexpectedColonyMessageFactory(
                     self.game, fleet.player, fleet, colonists_transfer_kt, star
                     )
@@ -8282,7 +8368,7 @@ class GameTurn():
             star.colonists += colonists_kt * 1000  # Convert thousands to individuals
 
             # Set ownership of the star
-            star.player = player
+            self._set_star_owner(star, player)
             star.save()
 
             # Create message for player
@@ -9747,7 +9833,7 @@ class GameTurn():
                 )
             self._create_colony_abandoned_message(star.player, star)
             star.production_orders.all().delete()
-            star.player = None
+            self._set_star_owner(star, None)
             star.save()
 
     def _create_colony_abandoned_message(self, player, star):
@@ -9822,7 +9908,7 @@ class GameTurn():
         for star in stars:
             self._create_colony_abandoned_message(player, star)
             star.production_orders.all().delete()
-            star.player = None
+            self._set_star_owner(star, None)
             star.colonists = 0
             star.save(update_fields=['player', 'colonists'])
 
@@ -10847,6 +10933,11 @@ class GameTurn():
             star,
             report_context=self._colony_ai_report_context_for_star(star, tier),
         )
+        self._update_micromanager_star_state(
+            star.player,
+            star,
+            colony_ai_profile,
+        )
         planned = plan_micromanager_orders(
             star.player,
             star,
@@ -11517,6 +11608,35 @@ class GameTurn():
             })
         FleetOrders.objects.create(**kwargs)
 
+    def _queue_auto_exploration_route(self, fleet, route_stars):
+        route_stars = list(route_stars or [])
+        if not route_stars:
+            return False
+        start_position = (
+            fleet.orders.aggregate(max_pos=models.Max('position'))['max_pos'] or 0
+        )
+        position = int(start_position) + 1
+        current_x = int(getattr(fleet, 'x', 0) or 0)
+        current_y = int(getattr(fleet, 'y', 0) or 0)
+        created = False
+        for target_star in route_stars:
+            if target_star is None:
+                continue
+            target_x = int(getattr(target_star, 'x', 0) or 0)
+            target_y = int(getattr(target_star, 'y', 0) or 0)
+            if current_x == target_x and current_y == target_y:
+                continue
+            self._create_auto_move_order(
+                fleet,
+                position,
+                target_star=target_star,
+            )
+            position += 1
+            current_x = target_x
+            current_y = target_y
+            created = True
+        return created
+
     def _create_auto_transfer_order(
         self,
         fleet,
@@ -11877,6 +11997,281 @@ class GameTurn():
             ).values_list('target_star_id', flat=True)
         )
 
+    @staticmethod
+    def _fleet_has_only_micromanager_move_orders(fleet):
+        orders = list(fleet.orders.order_by('position', 'id'))
+        if not orders:
+            return False
+        return not any(
+            order.order_type != 'MOVE' or
+            not bool(getattr(order, 'added_by_micromanager', False))
+            for order in orders
+        )
+
+    def _active_auto_exploration_fleet_ids(self, player):
+        from .models import Fleet
+
+        if player is None:
+            return set()
+        fleet_ids = set()
+        fleets = Fleet.objects.filter(
+            game=self.game,
+            player=player,
+            orders__order_type='MOVE',
+            orders__added_by_micromanager=True,
+        ).distinct()
+        for fleet in fleets:
+            if self._fleet_has_only_micromanager_move_orders(fleet):
+                fleet_ids.add(fleet.id)
+        return fleet_ids
+
+    def _active_auto_exploration_target_ids(self, player):
+        from .models import Fleet
+
+        if player is None:
+            return set()
+        target_ids = set()
+        fleets = Fleet.objects.filter(
+            game=self.game,
+            player=player,
+            orders__order_type='MOVE',
+            orders__added_by_micromanager=True,
+        ).distinct()
+        for fleet in fleets:
+            if not self._fleet_has_only_micromanager_move_orders(fleet):
+                continue
+            target_ids.update(
+                fleet.orders.filter(
+                    order_type='MOVE',
+                    target_star_id__isnull=False,
+                ).values_list('target_star_id', flat=True)
+            )
+        return target_ids
+
+    def _desired_auto_exploration_fleet_count(self, player, micromanager_mode='standard'):
+        from .models import Report, Star
+
+        if player is None or getattr(self.game, 'no_scanners', False):
+            return 0
+        reported_ids = set(Report.objects.filter(
+            game=self.game,
+            player=player,
+            target_type='star',
+        ).values_list('target_id', flat=True))
+        unknown_count = Star.objects.filter(game=self.game).exclude(
+            id__in=list(reported_ids)
+        ).exclude(player=player).count()
+        if unknown_count <= 0:
+            return 0
+        colony_count = self._player_owned_colony_count(player)
+        expansionist_mode = self._is_expansionist_micromanager_mode(
+            micromanager_mode
+        )
+        if expansionist_mode:
+            if colony_count < EXPANSIONIST_EARLY_EXPANSION_COLONY_THRESHOLD:
+                return EXPANSIONIST_EXPLORATION_EARLY_ACTIVE_FLEETS
+            return EXPANSIONIST_EXPLORATION_LATE_ACTIVE_FLEETS
+        if colony_count < MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD:
+            return MICROMANAGER_EXPLORATION_EARLY_ACTIVE_FLEETS
+        return MICROMANAGER_EXPLORATION_LATE_ACTIVE_FLEETS
+
+    def _fleet_exploration_scan_radius(self, fleet):
+        try:
+            basic = int(getattr(fleet, 'basic_scanner_range', 0) or 0)
+        except (TypeError, ValueError):
+            basic = 0
+        try:
+            advanced = int(getattr(fleet, 'advanced_scanner_range', 0) or 0)
+        except (TypeError, ValueError):
+            advanced = 0
+        return max(0, basic, advanced)
+
+    def _star_report_exploration_value(self, report_data):
+        if not isinstance(report_data, dict):
+            return 5.0
+        tier = report_data.get('report_tier') or ''
+        rank = self._report_tier_rank(tier)
+        if rank <= self._report_tier_rank('observed'):
+            return 4.0
+        if rank <= self._report_tier_rank('basic'):
+            return 2.0
+        if rank <= self._report_tier_rank('advanced'):
+            return 0.35
+        return 0.0
+
+    def _build_auto_exploration_route(
+        self,
+        player,
+        fleet,
+        reserved_target_ids=None,
+        micromanager_mode='standard',
+    ):
+        from .models import Report, Star
+
+        if player is None or fleet is None:
+            return []
+        reserved_target_ids = set(reserved_target_ids or [])
+        report_data_by_target_id = {}
+        for report in Report.objects.filter(
+            game=self.game,
+            player=player,
+            target_type='star',
+        ).only('target_id', 'cached_report'):
+            report_data_by_target_id[report.target_id] = report.get_report_data()
+
+        stars = list(Star.objects.filter(game=self.game).order_by('id'))
+        if not stars:
+            return []
+        expansionist_mode = self._is_expansionist_micromanager_mode(
+            micromanager_mode
+        )
+        scan_radius = self._fleet_exploration_scan_radius(fleet)
+        max_legs = (
+            EXPANSIONIST_EXPLORATION_ROUTE_LEGS
+            if expansionist_mode else
+            MICROMANAGER_EXPLORATION_ROUTE_LEGS
+        )
+        max_leg_distance = (
+            EXPANSIONIST_EXPLORATION_MAX_LEG_DISTANCE
+            if expansionist_mode else
+            MICROMANAGER_EXPLORATION_MAX_LEG_DISTANCE
+        )
+        current_x = int(getattr(fleet, 'x', 0) or 0)
+        current_y = int(getattr(fleet, 'y', 0) or 0)
+        route = []
+        covered_ids = set(reserved_target_ids)
+        for _idx in range(max_legs):
+            best = None
+            best_score = 0.0
+            best_distance = None
+            for star in stars:
+                if star.id in covered_ids:
+                    continue
+                if int(getattr(star, 'player_id', 0) or 0) == int(getattr(player, 'id', 0) or 0):
+                    continue
+                base_value = self._star_report_exploration_value(
+                    report_data_by_target_id.get(star.id)
+                )
+                if base_value <= 0.0:
+                    continue
+                distance = self._distance_between_points(
+                    current_x,
+                    current_y,
+                    star.x,
+                    star.y,
+                )
+                if distance <= 0.0 or distance > max_leg_distance:
+                    continue
+                coverage_value = base_value
+                if scan_radius > 0:
+                    for other in stars:
+                        if other.id == star.id or other.id in covered_ids:
+                            continue
+                        if int(getattr(other, 'player_id', 0) or 0) == int(getattr(player, 'id', 0) or 0):
+                            continue
+                        other_value = self._star_report_exploration_value(
+                            report_data_by_target_id.get(other.id)
+                        )
+                        if other_value <= 0.0:
+                            continue
+                        if self._distance_between_points(star.x, star.y, other.x, other.y) <= scan_radius:
+                            coverage_value += other_value
+                distance_penalty = 1.0 + (float(distance) / 80.0)
+                score = coverage_value / distance_penalty
+                if (
+                    best is None or
+                    score > best_score or
+                    (score == best_score and (best_distance is None or distance < best_distance))
+                ):
+                    best = star
+                    best_score = score
+                    best_distance = distance
+            if best is None:
+                break
+            route.append(best)
+            covered_ids.add(best.id)
+            if scan_radius > 0:
+                for other in stars:
+                    if self._distance_between_points(best.x, best.y, other.x, other.y) <= scan_radius:
+                        covered_ids.add(other.id)
+            current_x = int(best.x)
+            current_y = int(best.y)
+        return route
+
+    def _dispatch_auto_exploration_route(
+        self,
+        star,
+        orbit_fleets,
+        micromanager_mode='standard',
+    ):
+        player = getattr(star, 'player', None)
+        if not player or not bool(getattr(player, 'is_ai', False)):
+            return
+        module_code = normalize_ai_module_code(getattr(player, 'ai_module', ''))
+        if not ai_module_uses_micromanager_behavior(module_code):
+            return
+        if not hasattr(self, '_micromanager_auto_fleet_ids_for_year'):
+            self._micromanager_auto_fleet_ids_for_year = set()
+        desired = self._desired_auto_exploration_fleet_count(
+            player,
+            micromanager_mode=micromanager_mode,
+        )
+        if desired <= 0:
+            return
+        active_ids = self._active_auto_exploration_fleet_ids(player)
+        remaining_dispatches = max(0, int(desired) - len(active_ids))
+        if remaining_dispatches <= 0:
+            return
+
+        idle_fleets = self._idle_orbit_fleets(orbit_fleets)
+        dispatchable = self._dispatchable_idle_fleets_for_colony(
+            orbit_fleets,
+            idle_fleets,
+            micromanager_mode=micromanager_mode,
+        )
+        if not dispatchable:
+            return
+        expansionist_mode = self._is_expansionist_micromanager_mode(
+            micromanager_mode
+        )
+        dispatchable.sort(
+            key=lambda fleet: (
+                -self._fleet_exploration_scan_radius(fleet),
+                self._fleet_defense_score(fleet)[0],
+                self._fleet_defense_score(fleet)[1],
+                int(fleet.id or 0),
+            )
+        )
+        reserved_target_ids = self._active_auto_exploration_target_ids(player)
+        dispatches = 0
+        per_colony_limit = 2 if expansionist_mode else 1
+        for fleet in dispatchable:
+            if dispatches >= remaining_dispatches or dispatches >= per_colony_limit:
+                break
+            route = self._build_auto_exploration_route(
+                player,
+                fleet,
+                reserved_target_ids=reserved_target_ids,
+                micromanager_mode=micromanager_mode,
+            )
+            if not route:
+                continue
+            if not self._queue_auto_exploration_route(fleet, route):
+                continue
+            self._micromanager_auto_fleet_ids_for_year.add(fleet.id)
+            self._update_micromanager_fleet_state(
+                player,
+                fleet,
+                'scout',
+                tags=['scout', 'exploration'],
+                data={
+                    'route_star_ids': [str(route_star.id) for route_star in route],
+                    'route_short_ids': [route_star.short_id for route_star in route],
+                },
+            )
+            reserved_target_ids.update(route_star.id for route_star in route)
+            dispatches += 1
+
     def _best_colonise_target_for_colony(self, star, excluded_target_ids=None):
         from .models import Report, Star
 
@@ -12041,6 +12436,17 @@ class GameTurn():
             if not created:
                 continue
             self._micromanager_auto_fleet_ids_for_year.add(fleet.id)
+            self._update_micromanager_fleet_state(
+                getattr(star, 'player', None),
+                fleet,
+                'colonise',
+                tags=['colonise'],
+                data={
+                    'source_star_id': str(star.id),
+                    'target_star_id': str(target_star.id),
+                    'colonists_kt': transfer_colonists,
+                },
+            )
             dispatches += 1
             reserved_target_ids.add(target_star.id)
             spare_colonists = max(0, spare_colonists - transfer_colonists)
@@ -12114,6 +12520,17 @@ class GameTurn():
                 added_by_micromanager=True,
             )
             self._micromanager_auto_fleet_ids_for_year.add(fleet.id)
+            self._update_micromanager_fleet_state(
+                getattr(star, 'player', None),
+                fleet,
+                'patrol',
+                tags=['patrol', 'defense'],
+                data={
+                    'home_star_id': str(star.id),
+                    'patrol_radius': MICROMANAGER_PATROL_RADIUS,
+                    'intercept_speed': intercept_speed,
+                },
+            )
 
     def _refresh_administration_fleet_dispatch_queue(self, star):
         """Tier-4 Administration: auto-dispatch idle fleets for logistics."""
@@ -12134,9 +12551,12 @@ class GameTurn():
 
         module_code = normalize_ai_module_code(getattr(player, 'ai_module', ''))
         micromanager_mode = micromanager_mode_for_player(player)
+        expansionist_mode = self._is_expansionist_micromanager_mode(
+            micromanager_mode
+        )
         expansion_threshold = (
             EXPANSIONIST_EARLY_EXPANSION_COLONY_THRESHOLD
-            if self._is_expansionist_micromanager_mode(micromanager_mode) else
+            if expansionist_mode else
             MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD
         )
         early_ai_expansion = (
@@ -12173,6 +12593,12 @@ class GameTurn():
                 orbit_fleets,
                 micromanager_mode=micromanager_mode,
             )
+            if expansionist_mode:
+                self._dispatch_auto_exploration_route(
+                    star,
+                    orbit_fleets,
+                    micromanager_mode=micromanager_mode,
+                )
             if early_ai_expansion:
                 self._assign_auto_patrol_orders(
                     star,
@@ -12197,6 +12623,9 @@ class GameTurn():
 
                 created = False
                 delivered = {key: 0 for key in ALL_RESOURCE_KEYS}
+                mission = ''
+                mission_tags = []
+                mission_data = {}
                 if self._total_transfer_amount(deficits) > 0:
                     source_star, transfers = self._best_colony_source_for_deficits(
                         star, deficits, fleet, cost_map
@@ -12210,6 +12639,13 @@ class GameTurn():
                         )
                         if created:
                             delivered = transfers
+                            mission = 'logistics_collect'
+                            mission_tags = ['logistics', 'collect']
+                            mission_data = {
+                                'home_star_id': str(star.id),
+                                'pickup_star_id': str(source_star.id),
+                                'transfers': transfers,
+                            }
                     else:
                         source_salvage, transfers = self._best_asteroid_source_for_deficits(
                             star, deficits, fleet
@@ -12223,6 +12659,13 @@ class GameTurn():
                             )
                             if created:
                                 delivered = transfers
+                                mission = 'logistics_collect'
+                                mission_tags = ['logistics', 'collect', 'salvage']
+                                mission_data = {
+                                    'home_star_id': str(star.id),
+                                    'pickup_salvage_id': str(source_salvage.id),
+                                    'transfers': transfers,
+                                }
                 else:
                     excess = self._resource_surplus_for_star(
                         star, cost_map, reserve_factor=2
@@ -12237,11 +12680,27 @@ class GameTurn():
                             dest_star=target_star,
                             transfers=transfers,
                         )
+                        if created:
+                            mission = 'logistics_delivery'
+                            mission_tags = ['logistics', 'delivery']
+                            mission_data = {
+                                'source_star_id': str(star.id),
+                                'dest_star_id': str(target_star.id),
+                                'transfers': transfers,
+                            }
 
                 if not created:
                     continue
 
                 self._micromanager_auto_fleet_ids_for_year.add(fleet.id)
+                if mission:
+                    self._update_micromanager_fleet_state(
+                        player,
+                        fleet,
+                        mission,
+                        tags=mission_tags,
+                        data=mission_data,
+                    )
                 dispatches += 1
                 for key in ALL_RESOURCE_KEYS:
                     deficits[key] = max(
@@ -12251,6 +12710,12 @@ class GameTurn():
                     )
         if int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER and not early_ai_expansion:
             self._assign_auto_patrol_orders(
+                star,
+                orbit_fleets,
+                micromanager_mode=micromanager_mode,
+            )
+        if int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER and not expansionist_mode:
+            self._dispatch_auto_exploration_route(
                 star,
                 orbit_fleets,
                 micromanager_mode=micromanager_mode,
@@ -12640,7 +13105,7 @@ class GameTurn():
         # Clear the colony
         star.colonists = 0
         star.production_orders.all().delete()
-        star.player = None
+        self._set_star_owner(star, None)
         star.save()
 
 

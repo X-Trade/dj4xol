@@ -815,3 +815,55 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
                 9,
                 msg=history,
             )
+
+    def test_expansionist_ai_explores_unknown_map_over_forty_years(self):
+        race_type = self._create_race_type(
+            "MEXP",
+            "MechExplore",
+            is_mechanical=True,
+            ignores_all=True,
+        )
+        race = self._create_race(
+            "MachinaExplore",
+            race_type,
+            starting_mines=2,
+            starting_factories=4,
+            starting_labs=0,
+            starting_shipyards=1,
+            starting_fleets=6,
+            starting_colonists=50,
+        )
+        _game, ai_player = self._build_ai_game(
+            "Expansionist Exploration Long Test",
+            race,
+            AI_MODULE_EXPANSIONIST,
+            star_count=32,
+            map_size=140,
+            report_all=False,
+        )
+        Fleet.objects.filter(game=ai_player.game, player=ai_player).update(
+            basic_scanner_range=8
+        )
+        initial_reports = Report.objects.filter(
+            game=ai_player.game,
+            player=ai_player,
+            target_type="star",
+        ).count()
+
+        result = self._run_ai_year_trace(
+            ai_player,
+            max(self.AI_YEARS, 40),
+            "exp-explore",
+        )
+        final_reports = Report.objects.filter(
+            game=ai_player.game,
+            player=ai_player,
+            target_type="star",
+        ).count()
+        history = "\n".join(snapshot["line"] for snapshot in result["snapshots"])
+
+        self.assertGreaterEqual(final_reports, initial_reports + 5, msg=history)
+        self.assertFalse(
+            result["duplicate_colonise_target_years"],
+            msg=history,
+        )

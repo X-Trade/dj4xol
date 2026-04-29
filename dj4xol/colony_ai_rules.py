@@ -6,6 +6,7 @@ from .colony_rules import (
     habitability_value_for_environment,
 )
 from .mineral_rules import ALL_RESOURCE_KEYS
+from .mineral_rules import SECRET_RESOURCE_KEYS
 
 
 ROLE_MINING = 'mining'
@@ -13,6 +14,7 @@ ROLE_EDEN = 'eden'
 ROLE_PRODUCTION = 'production'
 ROLE_RESEARCH = 'research'
 ROLE_FRONTIER = 'frontier'
+ROLE_SECRET_RESOURCE = 'secret_resource'
 ROLE_TERRAFORM_CANDIDATE = 'terraform_candidate'
 ROLE_MARGINAL = 'marginal'
 
@@ -72,22 +74,28 @@ def environment_habitability(player, star):
 
 def resource_quality(star):
     """Return a normalized resource quality profile for colony role scoring."""
-    yields = [
-        max(0, _safe_int(getattr(star, '%s_yield' % key, 0)))
-        for key in ALL_RESOURCE_KEYS
-    ]
+    yields = {}
+    for key in ALL_RESOURCE_KEYS:
+        yields[key] = max(0, _safe_int(getattr(star, '%s_yield' % key, 0)))
+    values = list(yields.values())
+    secret_values = [yields.get(key, 0) for key in SECRET_RESOURCE_KEYS]
     if not yields:
         return {
             'max_resource_factor': 0,
             'average_resource_factor': 0.0,
             'resource_score': 0.0,
+            'max_secret_resource_factor': 0,
+            'has_secret_resource_yield': False,
         }
-    max_factor = max(yields)
-    average = float(sum(yields)) / float(len(yields))
+    max_factor = max(values)
+    max_secret = max(secret_values) if secret_values else 0
+    average = float(sum(values)) / float(len(values))
     return {
         'max_resource_factor': max_factor,
         'average_resource_factor': average,
         'resource_score': _clamp(float(max_factor) / 100.0),
+        'max_secret_resource_factor': max_secret,
+        'has_secret_resource_yield': max_secret > 0,
     }
 
 
@@ -135,6 +143,8 @@ def classify_colony_role(player, star, report_context=None):
     habitability = environment_habitability(player, star)
     resources = resource_quality(star)
     max_resource = int(resources['max_resource_factor'])
+    max_secret_resource = int(resources['max_secret_resource_factor'])
+    has_secret_resource = bool(resources['has_secret_resource_yield'])
     resource_score = float(resources['resource_score'])
     capacity = colony_capacity(player, star)
     capacity_score = _clamp(float(capacity) / float(3 * BILLION))
@@ -155,13 +165,26 @@ def classify_colony_role(player, star, report_context=None):
         ROLE_PRODUCTION: 0.0,
         ROLE_RESEARCH: 0.0,
         ROLE_FRONTIER: 0.0,
+        ROLE_SECRET_RESOURCE: 0.0,
         ROLE_TERRAFORM_CANDIDATE: 0.0,
         ROLE_MARGINAL: 0.0,
     }
 
-    if survivable and max_resource >= MINING_RESOURCE_FACTOR:
+    if survivable and (max_resource >= MINING_RESOURCE_FACTOR or has_secret_resource):
         scores[ROLE_MINING] = _clamp(
             0.35 + ((max_resource - MINING_RESOURCE_FACTOR) / 70.0)
+        )
+        if has_secret_resource:
+            scores[ROLE_MINING] = max(
+                scores[ROLE_MINING],
+                _clamp(0.42 + (float(max_secret_resource) / 160.0)),
+            )
+
+    if survivable and has_secret_resource:
+        scores[ROLE_SECRET_RESOURCE] = _clamp(
+            0.50 +
+            (float(max_secret_resource) / 140.0) +
+            (resource_score * 0.10)
         )
 
     if habitability >= EDEN_HABITABILITY:
@@ -203,6 +226,7 @@ def classify_colony_role(player, star, report_context=None):
         scores[ROLE_MINING],
         scores[ROLE_EDEN] * 0.85,
         scores[ROLE_PRODUCTION],
+        scores[ROLE_SECRET_RESOURCE],
         capacity_score * 0.60,
         scores[ROLE_FRONTIER] * 0.75,
     )
@@ -229,6 +253,8 @@ def classify_colony_role(player, star, report_context=None):
         'habitability': habitability,
         'capacity': capacity,
         'max_resource_factor': max_resource,
+        'max_secret_resource_factor': max_secret_resource,
+        'has_secret_resource_yield': has_secret_resource,
         'average_resource_factor': resources['average_resource_factor'],
         'threat_score': threat_score,
         'is_homeworld': is_homeworld,
@@ -256,6 +282,7 @@ def score_terraform_roi(profile, tier=3):
         role_score(profile, ROLE_MINING),
         role_score(profile, ROLE_EDEN) * 0.85,
         role_score(profile, ROLE_PRODUCTION),
+        role_score(profile, ROLE_SECRET_RESOURCE),
         role_score(profile, ROLE_FRONTIER) * 0.70,
     )
     if value <= 0.0:
