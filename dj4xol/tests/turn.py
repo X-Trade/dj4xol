@@ -37,7 +37,7 @@ from ..colony_rules import (
     COLONISTS_PER_JOB,
     BUILDPOINTS_PER_FACTORY,
 )
-from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, PlayerTechnologyGrant, Report, ServerRaceType, DiplomaticContract
+from ..models import ProductionOrder, GameMessage, Fleet, FleetOrders, Star, Salvage, Anomaly, Account, Player, PlayerDiplomaticStance, PlayerTechnologyGrant, Report, ServerRaceType, DiplomaticContract, ResearchCategory, Technology
 from ..factory import GameFactory
 from ..research import (
     ensure_player_research_rows,
@@ -16505,6 +16505,570 @@ class TestHomeworldLossAndDerelicts(TestCase):
         ai_player.refresh_from_db()
         self.assertEqual(contract.status, DiplomaticContract.STATUS_DECLINED)
         self.assertEqual(ai_player.ai_last_checkin_year, game.year)
+
+    def test_micromanager_family_ai_can_accept_new_technology_gift_after_auto_turn_in(self):
+        from ..models import ServerSettings
+
+        game = default_game(stars=8)
+        human = game.players.first()
+        race = get_default_race()
+        micromanager_ai = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        expansionist_ai = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='expansionist',
+        )
+        ServerSettings.objects.update_or_create(
+            key='ai_check_in_turns',
+            defaults={
+                'value': '1',
+                'description': 'AI check-in cadence in turns',
+            },
+        )
+        category = ResearchCategory.objects.create(
+            code='SCAN_GIFT',
+            name='Scanner Gift',
+            enabled=True,
+        )
+        scanner = Technology.objects.create(
+            category=category,
+            level=12,
+            name='Advanced L12 Scanner Gift',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 120}',
+        )
+        PlayerTechnologyGrant.objects.create(
+            player=human,
+            technology=scanner,
+            obtained_via_diplomacy=False,
+            granted_year=game.year,
+        )
+
+        contracts = []
+        for ai_player in (micromanager_ai, expansionist_ai):
+            ai_player.turned_in = True
+            ai_player.ai_last_checkin_year = game.year - 1
+            ai_player.save(update_fields=['turned_in', 'ai_last_checkin_year'])
+            contracts.append(DiplomaticContract.objects.create(
+                game=game,
+                sender=human,
+                recipient=ai_player,
+                status=DiplomaticContract.STATUS_SENT,
+                sent_year=game.year,
+                expires_year=game.year + 24,
+                request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+                offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+                offer_technology=scanner,
+            ))
+
+        with patch('dj4xol.ai_players._ai_roll_acceptance', return_value=True) as roll_acceptance:
+            GameTurn(game)._update_ai_checkin_state(auto_turn_in=False)
+
+        for contract in contracts:
+            contract.refresh_from_db()
+            self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+            self.assertTrue(
+                PlayerTechnologyGrant.objects.filter(
+                    player=contract.recipient,
+                    technology=scanner,
+                    obtained_via_diplomacy=True,
+                ).exists()
+            )
+        self.assertEqual(roll_acceptance.call_count, 2)
+
+    def test_micromanager_family_ai_can_decline_new_technology_gift_after_auto_turn_in(self):
+        from ..models import ServerSettings
+
+        game = default_game(stars=8)
+        human = game.players.first()
+        race = get_default_race()
+        ai_player = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        ServerSettings.objects.update_or_create(
+            key='ai_check_in_turns',
+            defaults={
+                'value': '1',
+                'description': 'AI check-in cadence in turns',
+            },
+        )
+        category = ResearchCategory.objects.create(
+            code='SCAN_GIFT_DECLINE',
+            name='Scanner Gift Decline',
+            enabled=True,
+        )
+        scanner = Technology.objects.create(
+            category=category,
+            level=12,
+            name='Advanced L12 Scanner Gift Decline',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 120}',
+        )
+        PlayerTechnologyGrant.objects.create(
+            player=human,
+            technology=scanner,
+            obtained_via_diplomacy=False,
+            granted_year=game.year,
+        )
+        ai_player.turned_in = True
+        ai_player.ai_last_checkin_year = game.year - 1
+        ai_player.save(update_fields=['turned_in', 'ai_last_checkin_year'])
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=scanner,
+        )
+
+        with patch('dj4xol.ai_players._ai_roll_acceptance', return_value=False) as roll_acceptance:
+            GameTurn(game)._update_ai_checkin_state(auto_turn_in=False)
+
+        contract.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_DECLINED)
+        self.assertEqual(roll_acceptance.call_count, 1)
+        self.assertFalse(
+            PlayerTechnologyGrant.objects.filter(
+                player=ai_player,
+                technology=scanner,
+                obtained_via_diplomacy=True,
+            ).exists()
+        )
+
+    def test_technology_gift_acceptance_chance_scales_with_delta_and_mutual_stance(self):
+        from ..ai_players import _gift_offer_acceptance_chance
+
+        game = default_game(stars=8)
+        human = game.players.first()
+        race = get_default_race()
+        ai_player = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        category = ResearchCategory.objects.create(
+            code='SCAN_GIFT_CHANCE',
+            name='Scanner Gift Chance',
+            enabled=True,
+        )
+        current_scanner = Technology.objects.create(
+            category=category,
+            level=4,
+            name='Known L4 Scanner Gift Baseline',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 40}',
+        )
+        lateral_scanner = Technology.objects.create(
+            category=category,
+            level=4,
+            name='Lateral L4 Scanner Gift',
+            tech_type='SCANNER',
+            params_json='{"pen_scanner_range": 40}',
+        )
+        advanced_scanner = Technology.objects.create(
+            category=category,
+            level=12,
+            name='Advanced L12 Scanner Gift Chance',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 120}',
+        )
+        PlayerTechnologyGrant.objects.create(
+            player=ai_player,
+            technology=current_scanner,
+            obtained_via_diplomacy=False,
+            granted_year=game.year,
+        )
+        for technology in (lateral_scanner, advanced_scanner):
+            PlayerTechnologyGrant.objects.create(
+                player=human,
+                technology=technology,
+                obtained_via_diplomacy=False,
+                granted_year=game.year,
+            )
+
+        lateral_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=lateral_scanner,
+        )
+        advanced_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=advanced_scanner,
+        )
+
+        neutral_lateral_chance = _gift_offer_acceptance_chance(ai_player, lateral_contract)
+        neutral_advanced_chance = _gift_offer_acceptance_chance(ai_player, advanced_contract)
+        self.assertGreater(neutral_advanced_chance, neutral_lateral_chance)
+
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=ai_player,
+            target_player=human,
+            defaults={'stance': 'ALLIED', 'pending_stance': 'ALLIED'},
+        )
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=human,
+            target_player=ai_player,
+            defaults={'stance': 'ALLIED', 'pending_stance': 'ALLIED'},
+        )
+        allied_advanced_chance = _gift_offer_acceptance_chance(ai_player, advanced_contract)
+        self.assertGreater(allied_advanced_chance, neutral_advanced_chance)
+
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=ai_player,
+            target_player=human,
+            defaults={'stance': 'HOSTILE', 'pending_stance': 'HOSTILE'},
+        )
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=human,
+            target_player=ai_player,
+            defaults={'stance': 'HOSTILE', 'pending_stance': 'HOSTILE'},
+        )
+        hostile_advanced_chance = _gift_offer_acceptance_chance(ai_player, advanced_contract)
+        self.assertLess(hostile_advanced_chance, neutral_advanced_chance)
+
+    def test_report_gift_acceptance_chance_scales_with_report_value_and_mutual_stance(self):
+        from ..ai_players import _gift_offer_acceptance_chance
+
+        game = default_game(stars=8)
+        human = game.players.first()
+        race = get_default_race()
+        ai_player = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        basic_star = game.stars.exclude(id__in=[human.homeworld_id, ai_player.homeworld_id]).first()
+        ownership_star = game.stars.exclude(id__in=[human.homeworld_id, ai_player.homeworld_id, basic_star.id]).first()
+        basic_report = Report.objects.create(
+            game=game,
+            player=human,
+            target_type='star',
+            target_id=basic_star.id,
+            year=game.year,
+            cached_report='{}',
+        )
+        basic_report.set_report_data({
+            'name': basic_star.name,
+            'x': basic_star.x,
+            'y': basic_star.y,
+            'report_tier': 'basic',
+        })
+        basic_report.save(update_fields=['cached_report'])
+        ownership_report = Report.objects.create(
+            game=game,
+            player=human,
+            target_type='star',
+            target_id=ownership_star.id,
+            year=game.year,
+            cached_report='{}',
+        )
+        ownership_report.set_report_data({
+            'name': ownership_star.name,
+            'x': ownership_star.x,
+            'y': ownership_star.y,
+            'report_tier': 'ownership',
+        })
+        ownership_report.save(update_fields=['cached_report'])
+        basic_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_REPORT,
+            offer_report_target_type='star',
+            offer_report_target_id=basic_star.id,
+        )
+        ownership_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_REPORT,
+            offer_report_target_type='star',
+            offer_report_target_id=ownership_star.id,
+        )
+
+        neutral_basic_chance = _gift_offer_acceptance_chance(ai_player, basic_contract)
+        neutral_ownership_chance = _gift_offer_acceptance_chance(ai_player, ownership_contract)
+        self.assertGreater(neutral_ownership_chance, neutral_basic_chance)
+
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=ai_player,
+            target_player=human,
+            defaults={'stance': 'ALLIED', 'pending_stance': 'ALLIED'},
+        )
+        PlayerDiplomaticStance.objects.update_or_create(
+            player=human,
+            target_player=ai_player,
+            defaults={'stance': 'ALLIED', 'pending_stance': 'ALLIED'},
+        )
+        allied_ownership_chance = _gift_offer_acceptance_chance(ai_player, ownership_contract)
+        self.assertGreater(allied_ownership_chance, neutral_ownership_chance)
+
+    def test_technology_trade_acceptance_chance_scales_with_recent_success(self):
+        from ..ai_players import _decide_passive_ai_contract_response
+
+        game = default_game(stars=8)
+        human = game.players.first()
+        race = get_default_race()
+        ai_player = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        category = ResearchCategory.objects.create(
+            code='SCAN_TRADE_CHANCE',
+            name='Scanner Trade Chance',
+            enabled=True,
+        )
+        requested = Technology.objects.create(
+            category=category,
+            level=4,
+            name='Requested L4 Scanner Trade',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 40}',
+        )
+        offered = Technology.objects.create(
+            category=category,
+            level=12,
+            name='Offered L12 Scanner Trade',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 120}',
+        )
+        bonus_gift = Technology.objects.create(
+            category=category,
+            level=5,
+            name='Recent Gift Scanner Trade',
+            tech_type='SCANNER',
+            params_json='{"pen_scanner_range": 50}',
+        )
+        PlayerTechnologyGrant.objects.create(
+            player=ai_player,
+            technology=requested,
+            obtained_via_diplomacy=False,
+            granted_year=game.year,
+        )
+        for technology in (offered, bonus_gift):
+            PlayerTechnologyGrant.objects.create(
+                player=human,
+                technology=technology,
+                obtained_via_diplomacy=False,
+                granted_year=game.year,
+            )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            request_technology=requested,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=offered,
+        )
+
+        with patch('dj4xol.ai_players._ai_roll_acceptance', return_value=False) as roll_acceptance:
+            _decide_passive_ai_contract_response(ai_player, contract, 'micromanager')
+        neutral_chance = roll_acceptance.call_args[0][0]
+
+        DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_FULFILLED,
+            sent_year=game.year,
+            fulfilled_year=game.year,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=bonus_gift,
+        )
+        with patch('dj4xol.ai_players._ai_roll_acceptance', return_value=False) as roll_acceptance:
+            _decide_passive_ai_contract_response(ai_player, contract, 'micromanager')
+        trusted_chance = roll_acceptance.call_args[0][0]
+
+        self.assertGreater(trusted_chance, neutral_chance)
+
+    def test_stance_exchange_acceptance_rewards_mutual_or_higher_sender_stance_after_success(self):
+        from ..ai_players import _decide_passive_ai_contract_response
+
+        game = default_game(stars=8)
+        human = game.players.first()
+        race = get_default_race()
+        ai_player = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        mutual_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_STANCE,
+            request_stance='WARM',
+            offer_clause_type=DiplomaticContract.CLAUSE_STANCE,
+            offer_stance='WARM',
+        )
+        higher_sender_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_STANCE,
+            request_stance='WARM',
+            offer_clause_type=DiplomaticContract.CLAUSE_STANCE,
+            offer_stance='ALLIED',
+        )
+
+        with patch('dj4xol.ai_players._ai_roll_acceptance', return_value=False) as roll_acceptance:
+            _decide_passive_ai_contract_response(ai_player, mutual_contract, 'micromanager')
+        no_history_mutual_chance = roll_acceptance.call_args[0][0]
+
+        DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_FULFILLED,
+            sent_year=game.year,
+            fulfilled_year=game.year,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_REPORT,
+            offer_report_target_type='star',
+            offer_report_target_id=ai_player.homeworld_id,
+        )
+        with patch('dj4xol.ai_players._ai_roll_acceptance', return_value=False) as roll_acceptance:
+            _decide_passive_ai_contract_response(ai_player, mutual_contract, 'micromanager')
+        trusted_mutual_chance = roll_acceptance.call_args[0][0]
+        with patch('dj4xol.ai_players._ai_roll_acceptance', return_value=False) as roll_acceptance:
+            _decide_passive_ai_contract_response(ai_player, higher_sender_contract, 'micromanager')
+        trusted_higher_sender_chance = roll_acceptance.call_args[0][0]
+
+        self.assertGreater(trusted_mutual_chance, no_history_mutual_chance)
+        self.assertGreater(trusted_higher_sender_chance, trusted_mutual_chance)
+
+    def test_colony_trade_uses_random_roll_and_can_complete_after_auto_turn_in(self):
+        from ..models import ServerSettings
+
+        game = default_game(stars=8)
+        human = game.players.first()
+        race = get_default_race()
+        ai_player = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        ServerSettings.objects.update_or_create(
+            key='ai_check_in_turns',
+            defaults={
+                'value': '1',
+                'description': 'AI check-in cadence in turns',
+            },
+        )
+        colony = game.stars.exclude(id__in=[human.homeworld_id, ai_player.homeworld_id]).first()
+        colony.player = ai_player
+        colony.colonists = 15_000
+        colony.ironium_inventory = 100
+        colony.boranium_inventory = 100
+        colony.germanium_inventory = 100
+        colony.save(update_fields=[
+            'player',
+            'colonists',
+            'ironium_inventory',
+            'boranium_inventory',
+            'germanium_inventory',
+        ])
+        category = ResearchCategory.objects.create(
+            code='COLONY_TRADE_TECH',
+            name='Colony Trade Tech',
+            enabled=True,
+        )
+        offered = Technology.objects.create(
+            category=category,
+            level=12,
+            name='Colony Trade L12 Scanner',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 120}',
+        )
+        PlayerTechnologyGrant.objects.create(
+            player=human,
+            technology=offered,
+            obtained_via_diplomacy=False,
+            granted_year=game.year,
+        )
+        ai_player.turned_in = True
+        ai_player.ai_last_checkin_year = game.year - 1
+        ai_player.save(update_fields=['turned_in', 'ai_last_checkin_year'])
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_SPECIFIC_COLONY,
+            request_star=colony,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=offered,
+        )
+
+        with patch('dj4xol.ai_players._ai_roll_acceptance', return_value=True) as roll_acceptance:
+            GameTurn(game)._update_ai_checkin_state(auto_turn_in=False)
+
+        contract.refresh_from_db()
+        colony.refresh_from_db()
+        self.assertEqual(contract.status, DiplomaticContract.STATUS_FULFILLED)
+        self.assertEqual(colony.player_id, human.id)
+        self.assertEqual(roll_acceptance.call_count, 1)
 
     def test_micromanager_ai_orders_survive_without_built_administration(self):
         from ..models import ServerSettings

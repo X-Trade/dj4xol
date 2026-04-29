@@ -159,7 +159,13 @@ from .colony_rules import (
     OVERMINING_DEPLETION_MULTIPLIER,
 )
 from .colony_ai_rules import (
+    ROLE_EDEN,
+    ROLE_FRONTIER,
+    ROLE_MINING,
+    ROLE_PRODUCTION,
+    ROLE_SECRET_RESOURCE,
     classify_colony_role,
+    role_score,
     stance_threat_weight,
 )
 from .research import (
@@ -10885,6 +10891,86 @@ class GameTurn():
             'threat_score': min(1.0, threat_score),
         }
 
+    def _colony_ai_profile_for_star(self, star, tier=None):
+        """Return a fresh role profile for current AI decisions."""
+        player = getattr(star, 'player', None)
+        if player is None:
+            return {}
+        if tier is None:
+            administration_profile = self._get_player_administration_profile_cached(
+                player
+            )
+            tier, _ai_tier = self._effective_administration_tier(
+                player,
+                administration_profile=administration_profile,
+            )
+        return classify_colony_role(
+            player,
+            star,
+            report_context=self._colony_ai_report_context_for_star(star, tier),
+        )
+
+    @staticmethod
+    def _profile_homeworld_score(profile):
+        if not isinstance(profile, dict):
+            return 0.0
+        return 1.0 if bool(profile.get('is_homeworld')) else 0.0
+
+    def _role_logistics_export_score(self, profile):
+        """Score how willingly a colony should export mineral stock."""
+        if not isinstance(profile, dict):
+            return 0.0
+        return max(
+            role_score(profile, ROLE_MINING),
+            role_score(profile, ROLE_SECRET_RESOURCE),
+            role_score(profile, ROLE_PRODUCTION) * 0.45,
+        )
+
+    def _role_logistics_import_score(self, profile):
+        """Score how valuable it is to feed minerals into a colony."""
+        if not isinstance(profile, dict):
+            return 0.0
+        return max(
+            role_score(profile, ROLE_EDEN),
+            role_score(profile, ROLE_PRODUCTION) * 0.85,
+            role_score(profile, ROLE_SECRET_RESOURCE) * 0.85,
+            role_score(profile, ROLE_FRONTIER) * 0.80,
+            self._profile_homeworld_score(profile) * 0.75,
+        )
+
+    def _role_defense_support_score(self, profile, star):
+        """Score colonies that should be kept well defended."""
+        if not isinstance(profile, dict):
+            return 0.0
+        role_value = max(
+            role_score(profile, ROLE_FRONTIER),
+            role_score(profile, ROLE_SECRET_RESOURCE),
+        )
+        defenses = max(0, int(getattr(star, 'defenses', 0) or 0))
+        defense_gap = max(0.0, 1.0 - (float(defenses) / 100.0))
+        return role_value * (0.60 + (defense_gap * 0.70))
+
+    def _role_colony_ship_source_score(self, profile):
+        if not isinstance(profile, dict):
+            return 0.0
+        return max(
+            self._profile_homeworld_score(profile),
+            role_score(profile, ROLE_EDEN),
+            role_score(profile, ROLE_PRODUCTION) * 0.90,
+        )
+
+    def _mineral_export_reserve_factor_for_star(self, star, tier=None, default=2):
+        """Keep fewer reserves on mining exporters and more on import hubs."""
+        profile = self._colony_ai_profile_for_star(star, tier=tier)
+        export_score = self._role_logistics_export_score(profile)
+        import_score = self._role_logistics_import_score(profile)
+        defense_score = self._role_defense_support_score(profile, star)
+        if export_score >= 0.50 and import_score < 0.55 and defense_score < 0.55:
+            return 1
+        if import_score >= 0.65 or defense_score >= 0.55:
+            return max(2, int(default or 2))
+        return max(1, int(default or 1))
+
     def _projected_player_economy_order_types(self, orders):
         """Return remaining player mine/factory orders as projected types."""
         projected = []
@@ -11293,6 +11379,8 @@ class GameTurn():
         orbit_fleets,
         idle_fleets,
         micromanager_mode='standard',
+        star=None,
+        tier=None,
     ):
         """Return weakest idle fleets that can be sent without stripping defense."""
         expansionist_mode = self._is_expansionist_micromanager_mode(
@@ -11314,22 +11402,37 @@ class GameTurn():
             ),
             reverse=True,
         )
+        defense_pressure = 0.0
+        if star is not None:
+            profile = self._colony_ai_profile_for_star(star, tier=tier)
+            defense_pressure = self._role_defense_support_score(profile, star)
+        reserve_fleet_ratio = (
+            EXPANSIONIST_DEFENSE_FLEET_RATIO
+            if expansionist_mode else
+            MICROMANAGER_DEFENSE_FLEET_RATIO
+        )
+        reserve_ship_ratio = (
+            EXPANSIONIST_DEFENSE_SHIP_RATIO
+            if expansionist_mode else
+            MICROMANAGER_DEFENSE_SHIP_RATIO
+        )
+        if defense_pressure > 0.0:
+            reserve_fleet_ratio = max(
+                reserve_fleet_ratio,
+                min(0.86, reserve_fleet_ratio + (defense_pressure * 0.42)),
+            )
+            reserve_ship_ratio = max(
+                reserve_ship_ratio,
+                min(0.90, reserve_ship_ratio + (defense_pressure * 0.45)),
+            )
         reserve_fleet_count = max(
             1,
-            int(ceil(float(len(ranked)) * (
-                EXPANSIONIST_DEFENSE_FLEET_RATIO
-                if expansionist_mode else
-                MICROMANAGER_DEFENSE_FLEET_RATIO
-            ))),
+            int(ceil(float(len(ranked)) * reserve_fleet_ratio)),
         )
         total_ships = sum(int(getattr(fleet, 'ship_count', 0) or 0) for fleet in ranked)
         reserve_ship_count = max(
             1,
-            int(ceil(float(total_ships) * (
-                EXPANSIONIST_DEFENSE_SHIP_RATIO
-                if expansionist_mode else
-                MICROMANAGER_DEFENSE_SHIP_RATIO
-            ))),
+            int(ceil(float(total_ships) * reserve_ship_ratio)),
         )
 
         reserved_ids = set()
@@ -11546,6 +11649,7 @@ class GameTurn():
         orbit_fleets,
         cost_map,
         micromanager_mode='standard',
+        tier=None,
     ):
         """Tier-5: queue one auto build-fleet order when below orbit target."""
         from .models import ProductionOrder
@@ -11585,12 +11689,16 @@ class GameTurn():
             orbit_fleets,
             idle_fleets,
             micromanager_mode=micromanager_mode,
+            star=star,
+            tier=tier,
         )
         patrol_fleets = self._reassignable_patrol_fleets_for_colony(orbit_fleets)
         dispatchable_patrol = self._dispatchable_idle_fleets_for_colony(
             orbit_fleets,
             patrol_fleets,
             micromanager_mode=micromanager_mode,
+            star=star,
+            tier=tier,
         )
         mission_pool_needs_build = self._expansionist_fleet_mission_pool_needs_build(
             star,
@@ -11638,7 +11746,14 @@ class GameTurn():
             added_by_micromanager=True,
         )
 
-    def _best_colony_source_for_deficits(self, star, deficits, fleet, cost_map):
+    def _best_colony_source_for_deficits(
+        self,
+        star,
+        deficits,
+        fleet,
+        cost_map,
+        tier=None,
+    ):
         """Pick best same-owner colony source for this colony's deficits."""
         player = getattr(star, 'player', None)
         if not player:
@@ -11649,23 +11764,48 @@ class GameTurn():
 
         best_source = None
         best_transfer = None
-        best_score = 0
+        best_score = 0.0
         best_distance = None
+        dest_profile = self._colony_ai_profile_for_star(star, tier=tier)
+        dest_import_score = self._role_logistics_import_score(dest_profile)
+        dest_defense_score = self._role_defense_support_score(dest_profile, star)
         for source in player.stars.exclude(id=star.id):
             if source.player_id != player.id:
                 continue
             if int(getattr(source, 'colonists', 0) or 0) <= 0:
                 continue
+            reserve_factor = self._mineral_export_reserve_factor_for_star(
+                source,
+                tier=tier,
+                default=1,
+            )
             surplus = self._resource_surplus_for_star(
-                source, cost_map, reserve_factor=1
+                source, cost_map, reserve_factor=reserve_factor
             )
             transfers = self._transfer_amounts_for_need_and_supply(
                 deficits, surplus, capacity
             )
-            score = self._total_transfer_amount(transfers)
-            if score <= 0:
+            transfer_total = self._total_transfer_amount(transfers)
+            if transfer_total <= 0:
                 continue
             distance = self._distance_between_points(star.x, star.y, source.x, source.y)
+            source_profile = self._colony_ai_profile_for_star(source, tier=tier)
+            export_score = self._role_logistics_export_score(source_profile)
+            source_import_score = self._role_logistics_import_score(source_profile)
+            source_defense_score = self._role_defense_support_score(
+                source_profile,
+                source,
+            )
+            role_factor = (
+                1.0 +
+                (export_score * 0.90) +
+                (dest_import_score * 0.35) +
+                (dest_defense_score * 0.35) -
+                (source_import_score * 0.25) -
+                (source_defense_score * 0.30)
+            )
+            distance_factor = 1.0 + (float(distance) / 160.0)
+            score = (float(transfer_total) * max(0.25, role_factor)) / distance_factor
             if (
                 best_source is None or
                 score > best_score or
@@ -11724,7 +11864,14 @@ class GameTurn():
                 best_distance = distance
         return best_salvage, best_transfer
 
-    def _best_colony_destination_for_excess(self, source_star, excess, fleet, cost_map):
+    def _best_colony_destination_for_excess(
+        self,
+        source_star,
+        excess,
+        fleet,
+        cost_map,
+        tier=None,
+    ):
         """Pick best colony destination for optional excess redistribution."""
         player = getattr(source_star, 'player', None)
         if not player:
@@ -11735,8 +11882,10 @@ class GameTurn():
 
         best_dest = None
         best_transfer = None
-        best_score = 0
+        best_score = 0.0
         best_distance = None
+        source_profile = self._colony_ai_profile_for_star(source_star, tier=tier)
+        export_score = self._role_logistics_export_score(source_profile)
         for dest in player.stars.exclude(id=source_star.id):
             if dest.player_id != player.id:
                 continue
@@ -11746,12 +11895,23 @@ class GameTurn():
             transfers = self._transfer_amounts_for_need_and_supply(
                 deficits, excess, capacity
             )
-            score = self._total_transfer_amount(transfers)
-            if score <= 0:
+            transfer_total = self._total_transfer_amount(transfers)
+            if transfer_total <= 0:
                 continue
             distance = self._distance_between_points(
                 source_star.x, source_star.y, dest.x, dest.y
             )
+            dest_profile = self._colony_ai_profile_for_star(dest, tier=tier)
+            import_score = self._role_logistics_import_score(dest_profile)
+            defense_score = self._role_defense_support_score(dest_profile, dest)
+            role_factor = (
+                1.0 +
+                (export_score * 0.30) +
+                (import_score * 0.90) +
+                (defense_score * 0.65)
+            )
+            distance_factor = 1.0 + (float(distance) / 160.0)
+            score = (float(transfer_total) * max(0.25, role_factor)) / distance_factor
             if (
                 best_dest is None or
                 score > best_score or
@@ -12145,6 +12305,7 @@ class GameTurn():
         self,
         star,
         micromanager_mode='standard',
+        tier=None,
     ):
         """Return spare colony colonists in kt while preserving local workforce."""
         expansionist_mode = self._is_expansionist_micromanager_mode(
@@ -12169,6 +12330,20 @@ class GameTurn():
             soft_pop_reserve = min(
                 int(MICROMANAGER_COLONISE_RESERVE_COLONISTS or 0) * 1000,
                 soft_pop_cap,
+            )
+        profile = self._colony_ai_profile_for_star(star, tier=tier)
+        source_score = self._role_colony_ship_source_score(profile)
+        fragile_score = max(
+            role_score(profile, ROLE_FRONTIER),
+            role_score(profile, ROLE_SECRET_RESOURCE),
+            role_score(profile, ROLE_MINING) * 0.55,
+        )
+        if source_score >= 0.65:
+            soft_pop_reserve = int(float(soft_pop_reserve) * 0.75)
+        elif fragile_score >= 0.35:
+            soft_pop_reserve = max(
+                soft_pop_reserve,
+                int(float(current_colonists) * 0.55),
             )
         reserve_colonists = max(
             workforce_reserve,
@@ -12427,6 +12602,7 @@ class GameTurn():
         star,
         orbit_fleets,
         micromanager_mode='standard',
+        tier=None,
     ):
         player = getattr(star, 'player', None)
         if not player or not bool(getattr(player, 'is_ai', False)):
@@ -12452,6 +12628,8 @@ class GameTurn():
             orbit_fleets,
             idle_fleets,
             micromanager_mode=micromanager_mode,
+            star=star,
+            tier=tier,
         )
         if not dispatchable:
             return
@@ -12583,6 +12761,7 @@ class GameTurn():
         star,
         orbit_fleets,
         micromanager_mode='standard',
+        tier=None,
     ):
         """Tier-5: dispatch one idle fleet to colonise a nearby viable star."""
         if not hasattr(self, '_micromanager_auto_fleet_ids_for_year'):
@@ -12592,6 +12771,8 @@ class GameTurn():
             orbit_fleets,
             idle_fleets,
             micromanager_mode=micromanager_mode,
+            star=star,
+            tier=tier,
         )
         repurposed_patrol_ids = set()
         if not dispatchable:
@@ -12600,6 +12781,8 @@ class GameTurn():
                 orbit_fleets,
                 patrol_fleets,
                 micromanager_mode=micromanager_mode,
+                star=star,
+                tier=tier,
             )
             repurposed_patrol_ids = {
                 int(getattr(fleet, 'id', 0) or 0)
@@ -12610,6 +12793,7 @@ class GameTurn():
         spare_colonists = self._spare_colonists_for_auto_colonise(
             star,
             micromanager_mode=micromanager_mode,
+            tier=tier,
         )
         if spare_colonists <= 0:
             return
@@ -12682,6 +12866,7 @@ class GameTurn():
         star,
         orbit_fleets,
         micromanager_mode='standard',
+        tier=None,
     ):
         """Tier-5: keep patrol duty on the strongest available orbit fleets."""
         candidate_fleets = self._available_patrol_candidate_fleets_for_colony(
@@ -12694,6 +12879,15 @@ class GameTurn():
             len(candidate_fleets),
             micromanager_mode=micromanager_mode,
         )
+        profile = self._colony_ai_profile_for_star(star, tier=tier)
+        defense_support_score = self._role_defense_support_score(profile, star)
+        if defense_support_score >= 0.45 and len(candidate_fleets) > 1:
+            defensive_target = int(ceil(
+                float(len(candidate_fleets)) *
+                min(0.55, 0.32 + (defense_support_score * 0.22))
+            ))
+            patrol_target = max(patrol_target, defensive_target)
+            patrol_target = min(patrol_target, len(candidate_fleets) - 1)
         ranked_candidates = sorted(
             candidate_fleets,
             key=lambda fleet: (
@@ -12811,24 +13005,28 @@ class GameTurn():
                 orbit_fleets,
                 cost_map,
                 micromanager_mode=micromanager_mode,
+                tier=tier,
             )
             # Colonisation should take first claim on eligible idle fleets.
             self._dispatch_auto_colonise_route(
                 star,
                 orbit_fleets,
                 micromanager_mode=micromanager_mode,
+                tier=tier,
             )
             if expansionist_mode:
                 self._dispatch_auto_exploration_route(
                     star,
                     orbit_fleets,
                     micromanager_mode=micromanager_mode,
+                    tier=tier,
                 )
             if early_ai_expansion:
                 self._assign_auto_patrol_orders(
                     star,
                     orbit_fleets,
                     micromanager_mode=micromanager_mode,
+                    tier=tier,
                 )
 
         idle_fleets = self._idle_orbit_fleets(orbit_fleets)
@@ -12836,6 +13034,8 @@ class GameTurn():
             orbit_fleets,
             idle_fleets,
             micromanager_mode=micromanager_mode,
+            star=star,
+            tier=tier,
         )
         if dispatchable_fleets:
             deficits = self._resource_deficits_for_star(star, cost_map)
@@ -12853,7 +13053,7 @@ class GameTurn():
                 mission_data = {}
                 if self._total_transfer_amount(deficits) > 0:
                     source_star, transfers = self._best_colony_source_for_deficits(
-                        star, deficits, fleet, cost_map
+                        star, deficits, fleet, cost_map, tier=tier
                     )
                     if source_star and self._total_transfer_amount(transfers) > 0:
                         created = self._queue_auto_collect_route(
@@ -12893,10 +13093,16 @@ class GameTurn():
                                 }
                 else:
                     excess = self._resource_surplus_for_star(
-                        star, cost_map, reserve_factor=2
+                        star,
+                        cost_map,
+                        reserve_factor=self._mineral_export_reserve_factor_for_star(
+                            star,
+                            tier=tier,
+                            default=2,
+                        ),
                     )
                     target_star, transfers = self._best_colony_destination_for_excess(
-                        star, excess, fleet, cost_map
+                        star, excess, fleet, cost_map, tier=tier
                     )
                     if target_star and self._total_transfer_amount(transfers) > 0:
                         created = self._queue_auto_delivery_route(
@@ -12938,12 +13144,14 @@ class GameTurn():
                 star,
                 orbit_fleets,
                 micromanager_mode=micromanager_mode,
+                tier=tier,
             )
         if int(tier or 0) >= MICROMANAGER_ADVANCED_FLEET_TIER and not expansionist_mode:
             self._dispatch_auto_exploration_route(
                 star,
                 orbit_fleets,
                 micromanager_mode=micromanager_mode,
+                tier=tier,
             )
 
     def _fleet_service_requirements(self, fleet):

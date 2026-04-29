@@ -806,12 +806,83 @@ def _star_material_value_kt(star):
     return int(total)
 
 
+def _technology_clause_value_kt(contract, prefix):
+    technology = getattr(contract, '%s_technology' % prefix, None)
+    if technology is None:
+        return 0
+    try:
+        level = int(getattr(technology, 'level', 0) or 0)
+    except (TypeError, ValueError):
+        level = 0
+    return int(250 + (max(0, level) * 125))
+
+
+def _report_clause_value_kt(contract, prefix):
+    from .models import Report
+
+    if contract is None:
+        return 0
+    if prefix == 'request':
+        source = getattr(contract, 'recipient', None)
+    else:
+        source = getattr(contract, 'sender', None)
+    target_type = str(getattr(contract, '%s_report_target_type' % prefix, '') or '').strip()
+    target_id = getattr(contract, '%s_report_target_id' % prefix, None)
+    if source is None or not target_type or target_id is None:
+        return 0
+    report = Report.objects.filter(
+        game=getattr(contract, 'game', None),
+        player=source,
+        target_type=target_type,
+        target_id=target_id,
+    ).first()
+    if report is None:
+        return 0
+    data = report.get_report_data() or {}
+    tier = str(data.get('report_tier') or '').strip().lower()
+    tier_values = {
+        'observed': 120,
+        'basic': 250,
+        'advanced': 520,
+        'encounter': 700,
+        'ownership': 900,
+    }
+    return int(tier_values.get(tier, 200))
+
+
+def _stance_clause_value_kt(contract, prefix):
+    if contract is None:
+        return 0
+    if prefix == 'request':
+        source = getattr(contract, 'recipient', None)
+        target = getattr(contract, 'sender', None)
+    else:
+        source = getattr(contract, 'sender', None)
+        target = getattr(contract, 'recipient', None)
+    requested = str(getattr(contract, '%s_stance' % prefix, '') or '').strip().upper()
+    if source is None or target is None or not requested:
+        return 0
+    current = _current_stance_towards_sender(source, target)
+    delta = _stance_rank(requested) - _stance_rank(current)
+    if delta > 0:
+        return int(180 + (delta * 320))
+    if delta == 0:
+        return 80
+    return 40
+
+
 def _contract_offer_value_kt(contract):
     from .models import DiplomaticContract
 
     if contract is None:
         return 0
     clause = str(getattr(contract, 'offer_clause_type', '') or '')
+    if clause == DiplomaticContract.CLAUSE_TECHNOLOGY:
+        return _technology_clause_value_kt(contract, 'offer')
+    if clause == DiplomaticContract.CLAUSE_STANCE:
+        return _stance_clause_value_kt(contract, 'offer')
+    if clause == DiplomaticContract.CLAUSE_REPORT:
+        return _report_clause_value_kt(contract, 'offer')
     if clause in (
         DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
         DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET,
@@ -832,6 +903,12 @@ def _contract_request_cost_kt(contract):
     if contract is None:
         return 0
     clause = str(getattr(contract, 'request_clause_type', '') or '')
+    if clause == DiplomaticContract.CLAUSE_TECHNOLOGY:
+        return _technology_clause_value_kt(contract, 'request')
+    if clause == DiplomaticContract.CLAUSE_STANCE:
+        return _stance_clause_value_kt(contract, 'request')
+    if clause == DiplomaticContract.CLAUSE_REPORT:
+        return _report_clause_value_kt(contract, 'request')
     if clause in (
         DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
         DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET,
@@ -1081,10 +1158,42 @@ def _is_offered_colony_habitable_for_recipient(contract):
     return float(calculate_habitability_factor(recipient, star) or 0.0) > 0.0
 
 
-def _gift_offer_acceptance_chance(player, contract):
+def _is_new_technology_gift(contract, recipient):
     from .models import DiplomaticContract
 
-    clause = str(getattr(contract, 'offer_clause_type', '') or '')
+    if contract is None or recipient is None:
+        return False
+    if str(getattr(contract, 'offer_clause_type', '') or '') != DiplomaticContract.CLAUSE_TECHNOLOGY:
+        return False
+    tech = getattr(contract, 'offer_technology', None)
+    sender = getattr(contract, 'sender', None)
+    if tech is None or sender is None:
+        return False
+    return (
+        _player_has_technology(sender, tech) and
+        not _player_has_technology(recipient, tech)
+    )
+
+
+def _mutual_stance_diplomacy_modifier(recipient, sender):
+    from .diplomacy import STANCE_NEUTRAL, STANCE_SCORES, normalise_stance, stance_towards
+
+    if recipient is None or sender is None:
+        return 0.0
+    recipient_stance = normalise_stance(stance_towards(recipient, sender))
+    sender_stance = normalise_stance(stance_towards(sender, recipient))
+    neutral_score = float(STANCE_SCORES.get(STANCE_NEUTRAL, 2))
+    recipient_score = float(STANCE_SCORES.get(recipient_stance, neutral_score))
+    sender_score = float(STANCE_SCORES.get(sender_stance, neutral_score))
+    average_score = (recipient_score + sender_score) / 2.0
+    return (average_score - neutral_score) * 0.06
+
+
+def _clamped_acceptance_chance(value):
+    return min(0.95, max(0.03, float(value or 0.0)))
+
+
+def _trade_acceptance_chance(player, contract, request_value, offer_value, base=0.16):
     scores = _directed_interaction_scores(
         getattr(contract, 'sender', None),
         player,
@@ -1092,25 +1201,102 @@ def _gift_offer_acceptance_chance(player, contract):
         int(getattr(getattr(contract, 'game', None), 'year', 0) or 0),
     )
     trust = max(0.0, float(scores.get('success', 0.0)) - (float(scores.get('negative', 0.0)) * 0.5))
+    gift_success = max(0.0, float(scores.get('gift_success', 0.0) or 0.0))
+    stance_modifier = _mutual_stance_diplomacy_modifier(player, getattr(contract, 'sender', None))
+    ratio = 0.0
+    if request_value > 0:
+        ratio = float(max(0, offer_value)) / float(max(1, request_value))
+    elif offer_value > 0:
+        ratio = 1.25
+    value_modifier = min(0.34, max(-0.24, (ratio - 1.0) * 0.24))
+    trust_modifier = min(0.14, (trust * 0.04) + (gift_success * 0.03))
+    return _clamped_acceptance_chance(base + value_modifier + stance_modifier + trust_modifier)
+
+
+def _stance_exchange_acceptance_modifier(player, contract, requested_delta, scores):
+    from .models import DiplomaticContract
+
+    if contract is None or player is None or requested_delta <= 0:
+        return 0.0
+    if str(getattr(contract, 'offer_clause_type', '') or '') != DiplomaticContract.CLAUSE_STANCE:
+        return 0.0
+    sender = getattr(contract, 'sender', None)
+    if sender is None:
+        return 0.0
+    requested = str(getattr(contract, 'request_stance', '') or '').strip().upper()
+    offered = str(getattr(contract, 'offer_stance', '') or '').strip().upper()
+    if not requested or not offered:
+        return 0.0
+    offered_current = _current_stance_towards_sender(sender, player)
+    offered_delta = _stance_rank(offered) - _stance_rank(offered_current)
+    if offered_delta <= 0:
+        return 0.0
+
+    trust = max(
+        0.0,
+        float(scores.get('success', 0.0)) - (float(scores.get('negative', 0.0)) * 0.5),
+    )
+    gift_success = max(0.0, float(scores.get('gift_success', 0.0) or 0.0))
+    relationship_factor = min(1.0, (trust * 0.55) + (gift_success * 0.35))
+    if relationship_factor <= 0.0:
+        return 0.0
+
+    boost = 0.0
+    if requested == offered:
+        boost += 0.05
+    if offered_delta > requested_delta:
+        boost += min(0.08, float(offered_delta - requested_delta) * 0.04)
+    return min(0.10, boost * relationship_factor)
+
+
+def _gift_offer_acceptance_chance(player, contract):
+    from .models import DiplomaticContract
+
+    clause = str(getattr(contract, 'offer_clause_type', '') or '')
+    sender = getattr(contract, 'sender', None)
+    scores = _directed_interaction_scores(
+        sender,
+        player,
+        getattr(contract, 'game', None),
+        int(getattr(getattr(contract, 'game', None), 'year', 0) or 0),
+    )
+    trust = max(0.0, float(scores.get('success', 0.0)) - (float(scores.get('negative', 0.0)) * 0.5))
+    stance_modifier = _mutual_stance_diplomacy_modifier(player, sender)
 
     if clause == DiplomaticContract.CLAUSE_SPECIFIC_FLEET:
-        return min(0.95, 0.82 + min(0.10, trust * 0.04))
+        return _clamped_acceptance_chance(0.82 + stance_modifier + min(0.10, trust * 0.04))
     if clause == DiplomaticContract.CLAUSE_TECHNOLOGY:
         delta = _offered_technology_level_delta(contract, player)
         # Technology gifts should be conservative at baseline, but ramp strongly
         # when they materially leapfrog the recipient's current tech level.
-        base = 0.18 + min(0.56, float(delta) * 0.14)
-        return min(0.95, base + min(0.08, trust * 0.03))
+        base = 0.16 + min(0.56, float(delta) * 0.13)
+        if _is_new_technology_gift(contract, player) and delta <= 0:
+            base += 0.12
+        return _clamped_acceptance_chance(base + stance_modifier + min(0.08, trust * 0.03))
     if clause == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
         base = 0.22
         if _is_offered_colony_habitable_for_recipient(contract):
             base = 0.74
-        return min(0.95, base + min(0.06, trust * 0.02))
+        return _clamped_acceptance_chance(base + stance_modifier + min(0.06, trust * 0.02))
+    if clause == DiplomaticContract.CLAUSE_REPORT:
+        value = _contract_offer_value_kt(contract)
+        base = 0.18
+        if value >= 700:
+            base = 0.50
+        elif value >= 500:
+            base = 0.38
+        elif value >= 250:
+            base = 0.30
+        return _clamped_acceptance_chance(base + stance_modifier + min(0.08, trust * 0.03))
+    if clause == DiplomaticContract.CLAUSE_STANCE:
+        value = _contract_offer_value_kt(contract)
+        base = 0.16 + min(0.30, float(value) / 1800.0)
+        return _clamped_acceptance_chance(base + stance_modifier + min(0.08, trust * 0.03))
     if clause in (
         DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
         DiplomaticContract.CLAUSE_RESOURCE_ON_GIVEN_FLEET,
     ):
-        return min(0.95, 0.72 + min(0.10, trust * 0.04))
+        return _clamped_acceptance_chance(0.72 + stance_modifier + min(0.10, trust * 0.04))
     return 0.0
 
 
@@ -1610,16 +1796,15 @@ def _decide_passive_ai_contract_response(player, contract, module_code):
         if not _technology_trade_has_new_offer(contract):
             return False, 'technology-trade-invalid', None
         base = 0.10 if module_code == AI_MODULE_IDLE else 0.20
-        if offer_value > request_value:
-            base += 0.05
-        return _ai_roll_acceptance(base, repeat_count), 'technology-trade-roll', None
+        chance = _trade_acceptance_chance(player, contract, request_value, offer_value, base=base)
+        chance += min(0.18, float(_offered_technology_level_delta(contract, player)) * 0.03)
+        return _ai_roll_acceptance(_clamped_acceptance_chance(chance), repeat_count), 'technology-trade-roll', None
 
     if request_clause == DiplomaticContract.CLAUSE_STANCE:
         if module_code == AI_MODULE_IDLE:
             base = 0.04
-            if offer_value > request_value:
-                base += 0.04
-            return _ai_roll_acceptance(base, repeat_count), 'stance-roll-idle', None
+            chance = _trade_acceptance_chance(player, contract, request_value, offer_value, base=base)
+            return _ai_roll_acceptance(chance, repeat_count), 'stance-roll-idle', None
 
         requested = str(getattr(contract, 'request_stance', '') or '').strip().upper()
         current = _current_stance_towards_sender(player, getattr(contract, 'sender', None))
@@ -1643,23 +1828,45 @@ def _decide_passive_ai_contract_response(player, contract, module_code):
                 base = 0.08 + min(0.25, trust * 0.12)
             else:
                 base = 0.03
-        if offer_value > request_value:
-            base += 0.05
-        return _ai_roll_acceptance(base, repeat_count), 'stance-roll-micromanager', None
+        chance = _trade_acceptance_chance(player, contract, request_value, offer_value, base=base)
+        chance += _stance_exchange_acceptance_modifier(player, contract, delta, scores)
+        return _ai_roll_acceptance(_clamped_acceptance_chance(chance), repeat_count), 'stance-roll-micromanager', None
+
+    if request_clause == DiplomaticContract.CLAUSE_REPORT:
+        if request_value <= 0:
+            return False, 'report-trade-invalid', None
+        base = 0.18
+        if str(getattr(contract, 'offer_clause_type', '') or '') == DiplomaticContract.CLAUSE_REPORT:
+            base = 0.24
+        chance = _trade_acceptance_chance(player, contract, request_value, offer_value, base=base)
+        return _ai_roll_acceptance(chance, repeat_count), 'report-trade-roll', None
+
+    if request_clause == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
+        if request_value <= 0:
+            return False, 'colony-trade-invalid', None
+        if offer_value <= 0:
+            return False, 'colony-trade-no-offer', None
+        chance = _trade_acceptance_chance(player, contract, request_value, offer_value, base=0.08)
+        return _ai_roll_acceptance(chance, repeat_count), 'colony-trade-roll', None
 
     if module_code == AI_MODULE_IDLE:
         if offer_value <= 0:
             return False, 'idle-requires-material-offer', None
         if request_value > 0 and offer_value <= request_value:
             return False, 'idle-unfavorable', None
-        return True, 'idle-material-accept', None
+        chance = _trade_acceptance_chance(player, contract, request_value, offer_value, base=0.08)
+        return _ai_roll_acceptance(chance, repeat_count), 'idle-material-roll', None
 
     if request_value > 0:
-        if offer_value <= request_value:
-            return False, 'unfavorable-trade', None
-        return True, 'favorable-trade', None
+        if offer_value <= 0:
+            return False, 'trade-no-offer', None
+        chance = _trade_acceptance_chance(player, contract, request_value, offer_value, base=0.14)
+        return _ai_roll_acceptance(chance, repeat_count), 'trade-roll', None
     if offer_value > 0:
-        return True, 'free-material-offer', None
+        chance = _gift_offer_acceptance_chance(player, contract)
+        if chance <= 0.0:
+            chance = _trade_acceptance_chance(player, contract, request_value, offer_value, base=0.18)
+        return _ai_roll_acceptance(chance, repeat_count), 'free-offer-roll', None
     return False, 'default-reject', None
 
 
@@ -1684,7 +1891,12 @@ def _apply_passive_ai_diplomacy_turn(player, game, module_code):
             module_code,
         )
         if should_accept:
-            ok, _msg = perform_contract_action(contract, player, 'accept')
+            ok, _msg = perform_contract_action(
+                contract,
+                player,
+                'accept',
+                ignore_action_lock=True,
+            )
             if ok:
                 contract.refresh_from_db()
                 if isinstance(delivery_plan, dict):
@@ -1702,7 +1914,12 @@ def _apply_passive_ai_diplomacy_turn(player, game, module_code):
             contract.refresh_from_db()
             if contract.status != DiplomaticContract.STATUS_SENT:
                 continue
-        ok, _msg = perform_contract_action(contract, player, 'decline')
+        ok, _msg = perform_contract_action(
+            contract,
+            player,
+            'decline',
+            ignore_action_lock=True,
+        )
         if not ok:
             continue
         declined += 1

@@ -1431,14 +1431,15 @@ def refresh_contract_integrity(game):
 
 
 @transaction.atomic
-def accept_contract(contract, acting_player):
+def accept_contract(contract, acting_player, ignore_action_lock=False):
     if not contract or not acting_player or contract.recipient_id != acting_player.id:
         return False, 'Request not found.'
     if contract.status != DiplomaticContract.STATUS_SENT:
         return False, 'Request is no longer awaiting a response.'
-    locked, reason = diplomatic_actions_locked(acting_player)
-    if locked:
-        return False, reason
+    if not ignore_action_lock:
+        locked, reason = diplomatic_actions_locked(acting_player)
+        if locked:
+            return False, reason
 
     contract.status = DiplomaticContract.STATUS_ACCEPTED
     contract.accepted_year = contract.game.year
@@ -1506,14 +1507,15 @@ def accept_contract(contract, acting_player):
 
 
 @transaction.atomic
-def decline_contract(contract, acting_player):
+def decline_contract(contract, acting_player, ignore_action_lock=False):
     if not contract or not acting_player or contract.recipient_id != acting_player.id:
         return False, 'Request not found.'
     if contract.status != DiplomaticContract.STATUS_SENT:
         return False, 'Request is no longer awaiting a response.'
-    locked, reason = diplomatic_actions_locked(acting_player)
-    if locked:
-        return False, reason
+    if not ignore_action_lock:
+        locked, reason = diplomatic_actions_locked(acting_player)
+        if locked:
+            return False, reason
     contract.status = DiplomaticContract.STATUS_DECLINED
     contract.handled_year = contract.game.year
     contract.save(update_fields=['status', 'handled_year', 'updated_at'])
@@ -1816,12 +1818,26 @@ def contract_action_permissions(contract, acting_player):
     }
 
 
-def perform_contract_action(contract, acting_player, action, extra_years=None):
+def perform_contract_action(
+    contract,
+    acting_player,
+    action,
+    extra_years=None,
+    ignore_action_lock=False,
+):
     op = str(action or '').strip().lower()
     if op == 'accept':
-        return accept_contract(contract, acting_player)
+        return accept_contract(
+            contract,
+            acting_player,
+            ignore_action_lock=ignore_action_lock,
+        )
     if op == 'decline':
-        return decline_contract(contract, acting_player)
+        return decline_contract(
+            contract,
+            acting_player,
+            ignore_action_lock=ignore_action_lock,
+        )
     if op == 'revoke':
         return revoke_contract(contract, acting_player)
     if op == 'extend':

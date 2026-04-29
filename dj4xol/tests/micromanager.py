@@ -3158,6 +3158,70 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertFalse(fleet.orders.exists())
 
+    def test_administration_level_four_keeps_more_idle_defenders_at_secret_resource_world(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 10
+        self.star.factories = 10
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.resource_x_yield = 40
+        self.star.save()
+
+        donor = self.game.stars.exclude(id=self.star.id).first()
+        donor.player = self.player
+        donor.colonists = 100_000
+        donor.mines = 0
+        donor.factories = 0
+        donor.labs = 0
+        donor.defenses = 0
+        donor.shipyards = 0
+        donor.ironium_inventory = 500
+        donor.boranium_inventory = 0
+        donor.germanium_inventory = 0
+        donor.ironium_yield = 0
+        donor.boranium_yield = 0
+        donor.germanium_yield = 0
+        donor.save()
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            quantity=1,
+            position=1,
+        )
+
+        self.player.fleets.all().delete()
+        for idx, ship_count in enumerate((6, 3, 1), start=1):
+            Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Secret Guard %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=ship_count,
+                offense_level=ship_count,
+                defense_level=ship_count,
+            )
+
+        GameTurn(self.game)._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertFalse(
+            FleetOrders.objects.filter(
+                fleet__player=self.player,
+                added_by_micromanager=True,
+            ).exists()
+        )
+
     def test_ai_micromanager_level_five_can_queue_fleet_build_with_three_year_horizon(self):
         self.player.is_ai = True
         self.player.ai_module = 'micromanager'
@@ -5077,6 +5141,303 @@ class AdministrationAutomationTest(TestCase):
                 getattr(weak_orders[2], 'transfer_%s' % key),
                 int(expected_transfers.get(key, 0) or 0),
             )
+
+    def test_role_aware_logistics_prefers_mining_world_as_mineral_source(self):
+        self._create_administration_tech(5, 4)
+        cost_map = get_player_production_costs(self.player)
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.resource_x_inventory = 0
+        self.star.resource_y_inventory = 0
+        self.star.resource_z_inventory = 0
+        self.star.save(update_fields=[
+            'ironium_inventory', 'boranium_inventory', 'germanium_inventory',
+            'resource_x_inventory', 'resource_y_inventory',
+            'resource_z_inventory',
+        ])
+        dest, mining_source, generic_source = list(
+            self.game.stars.exclude(id=self.star.id).order_by('id')[:3]
+        )
+        self.game.stars.exclude(
+            id__in=[dest.id, mining_source.id, generic_source.id]
+        ).update(
+            ironium_inventory=0,
+            boranium_inventory=0,
+            germanium_inventory=0,
+            resource_x_inventory=0,
+            resource_y_inventory=0,
+            resource_z_inventory=0,
+        )
+        for star in (dest, mining_source, generic_source):
+            star.player = self.player
+            star.colonists = 100_000
+            star.mines = 0
+            star.factories = 10
+            star.labs = 0
+            star.defenses = 0
+            star.shipyards = 0
+            star.ironium_inventory = 0
+            star.boranium_inventory = 0
+            star.germanium_inventory = 0
+            star.ironium_yield = 0
+            star.boranium_yield = 0
+            star.germanium_yield = 0
+            star.save()
+            star.production_orders.all().delete()
+
+        dest.x = self.star.x
+        dest.y = self.star.y
+        dest.gravity = self.player.gravity_center
+        dest.temperature = self.player.temperature_center
+        dest.radiation = self.player.radiation_center
+        dest.save(update_fields=['x', 'y', 'gravity', 'temperature', 'radiation'])
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=dest,
+            order_type='BUILD_FACTORY',
+            quantity=1,
+            position=1,
+        )
+
+        mining_source.x = int(dest.x) + 2
+        mining_source.y = int(dest.y)
+        mining_source.ironium_inventory = 1000
+        mining_source.ironium_yield = 90
+        mining_source.save(update_fields=[
+            'x', 'y', 'ironium_inventory', 'ironium_yield',
+        ])
+        generic_source.x = int(dest.x) + 5
+        generic_source.y = int(dest.y)
+        generic_source.ironium_inventory = 1000
+        generic_source.ironium_yield = 0
+        generic_source.save(update_fields=[
+            'x', 'y', 'ironium_inventory', 'ironium_yield',
+        ])
+
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Courier',
+            x=dest.x,
+            y=dest.y,
+            cargo_capacity=500,
+        )
+        turn = GameTurn(self.game)
+        source, transfers = turn._best_colony_source_for_deficits(
+            dest,
+            turn._resource_deficits_for_star(dest, cost_map),
+            fleet,
+            cost_map,
+            tier=5,
+        )
+
+        self.assertEqual(source.id, mining_source.id)
+        self.assertGreater(int(transfers.get('ironium', 0) or 0), 0)
+
+    def test_role_aware_logistics_prefers_eden_as_mineral_destination_and_adapts(self):
+        self._create_administration_tech(5, 4)
+        cost_map = get_player_production_costs(self.player)
+        source = self.star
+        eden, alternate = list(
+            self.game.stars.exclude(id=source.id).order_by('id')[:2]
+        )
+        source.player = self.player
+        source.colonists = 100_000
+        source.ironium_inventory = 1000
+        source.boranium_inventory = 0
+        source.germanium_inventory = 0
+        source.save(update_fields=[
+            'player', 'colonists', 'ironium_inventory',
+            'boranium_inventory', 'germanium_inventory',
+        ])
+        source.production_orders.all().delete()
+
+        for offset, target in enumerate((eden, alternate), start=1):
+            target.player = self.player
+            target.colonists = 100_000
+            target.x = int(source.x) + offset
+            target.y = int(source.y)
+            target.mines = 0
+            target.factories = 5
+            target.labs = 0
+            target.defenses = 0
+            target.shipyards = 0
+            target.ironium_inventory = 0
+            target.boranium_inventory = 0
+            target.germanium_inventory = 0
+            target.ironium_yield = 0
+            target.boranium_yield = 0
+            target.germanium_yield = 0
+            target.save()
+            target.production_orders.all().delete()
+            ProductionOrder.objects.create(
+                game=self.game,
+                star=target,
+                order_type='BUILD_FACTORY',
+                quantity=1,
+                position=1,
+            )
+
+        eden.gravity = self.player.gravity_center
+        eden.temperature = self.player.temperature_center
+        eden.radiation = self.player.radiation_center
+        eden.save(update_fields=['gravity', 'temperature', 'radiation'])
+        alternate.gravity = self.player.gravity_center + (self.player.gravity_width * 3)
+        alternate.temperature = self.player.temperature_center + (self.player.temperature_width * 3)
+        alternate.radiation = self.player.radiation_center + (self.player.radiation_width * 3)
+        alternate.save(update_fields=['gravity', 'temperature', 'radiation'])
+
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Distributor',
+            x=source.x,
+            y=source.y,
+            cargo_capacity=500,
+        )
+        turn = GameTurn(self.game)
+        first_dest, _transfers = turn._best_colony_destination_for_excess(
+            source,
+            {'ironium': 500},
+            fleet,
+            cost_map,
+            tier=5,
+        )
+        self.assertEqual(first_dest.id, eden.id)
+
+        eden.gravity = self.player.gravity_center + (self.player.gravity_width * 3)
+        eden.temperature = self.player.temperature_center + (self.player.temperature_width * 3)
+        eden.radiation = self.player.radiation_center + (self.player.radiation_width * 3)
+        eden.save(update_fields=['gravity', 'temperature', 'radiation'])
+        alternate.gravity = self.player.gravity_center
+        alternate.temperature = self.player.temperature_center
+        alternate.radiation = self.player.radiation_center
+        alternate.save(update_fields=['gravity', 'temperature', 'radiation'])
+
+        second_dest, _transfers = turn._best_colony_destination_for_excess(
+            source,
+            {'ironium': 500},
+            fleet,
+            cost_map,
+            tier=5,
+        )
+        self.assertEqual(second_dest.id, alternate.id)
+
+    def test_role_aware_logistics_prefers_secret_resource_defense_destination(self):
+        self._create_administration_tech(5, 4)
+        cost_map = get_player_production_costs(self.player)
+        source = self.star
+        secret_world, normal_world = list(
+            self.game.stars.exclude(id=source.id).order_by('id')[:2]
+        )
+        source.player = self.player
+        source.colonists = 100_000
+        source.ironium_inventory = 1000
+        source.boranium_inventory = 0
+        source.germanium_inventory = 0
+        source.save(update_fields=[
+            'player', 'colonists', 'ironium_inventory',
+            'boranium_inventory', 'germanium_inventory',
+        ])
+        source.production_orders.all().delete()
+
+        for offset, target in enumerate((secret_world, normal_world), start=1):
+            target.player = self.player
+            target.colonists = 100_000
+            target.x = int(source.x) + offset
+            target.y = int(source.y)
+            target.gravity = self.player.gravity_center
+            target.temperature = self.player.temperature_center
+            target.radiation = self.player.radiation_center
+            target.mines = 0
+            target.factories = 10
+            target.labs = 0
+            target.defenses = 0
+            target.shipyards = 0
+            target.ironium_inventory = 0
+            target.boranium_inventory = 0
+            target.germanium_inventory = 0
+            target.ironium_yield = 0
+            target.boranium_yield = 0
+            target.germanium_yield = 0
+            target.resource_x_yield = 0
+            target.resource_y_yield = 0
+            target.resource_z_yield = 0
+            target.save()
+            target.production_orders.all().delete()
+            ProductionOrder.objects.create(
+                game=self.game,
+                star=target,
+                order_type='BUILD_DEFENSE',
+                quantity=1,
+                position=1,
+            )
+        secret_world.resource_x_yield = 35
+        secret_world.save(update_fields=['resource_x_yield'])
+
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Defense Courier',
+            x=source.x,
+            y=source.y,
+            cargo_capacity=500,
+        )
+        turn = GameTurn(self.game)
+        target, transfers = turn._best_colony_destination_for_excess(
+            source,
+            {'ironium': 500},
+            fleet,
+            cost_map,
+            tier=5,
+        )
+
+        self.assertEqual(target.id, secret_world.id)
+        self.assertGreater(int(transfers.get('ironium', 0) or 0), 0)
+
+    def test_role_aware_colonist_export_adapts_to_current_role(self):
+        source = self.game.stars.exclude(id=self.star.id).first()
+        source.player = self.player
+        source.colonists = 300_000
+        source.mines = 30
+        source.factories = 20
+        source.labs = 0
+        source.defenses = 0
+        source.shipyards = 1
+        source.gravity = self.player.gravity_center
+        source.temperature = self.player.temperature_center
+        source.radiation = self.player.radiation_center
+        source.ironium_yield = 10
+        source.boranium_yield = 10
+        source.germanium_yield = 10
+        source.save()
+
+        turn = GameTurn(self.game)
+        eden_spare = turn._spare_colonists_for_auto_colonise(
+            source,
+            micromanager_mode='expansionist',
+            tier=5,
+        )
+
+        source.gravity = self.player.gravity_center + (self.player.gravity_width * 3)
+        source.temperature = self.player.temperature_center + (
+            self.player.temperature_width * 3
+        )
+        source.radiation = self.player.radiation_center + (
+            self.player.radiation_width * 3
+        )
+        source.ironium_yield = 90
+        source.save(update_fields=[
+            'gravity', 'temperature', 'radiation', 'ironium_yield',
+        ])
+        mining_spare = turn._spare_colonists_for_auto_colonise(
+            source,
+            micromanager_mode='expansionist',
+            tier=5,
+        )
+
+        self.assertGreater(eden_spare, mining_spare)
 
     def test_micromanager_keeps_one_auto_order_per_type_over_multiple_years(self):
         self._create_administration_tech(2, 2)
