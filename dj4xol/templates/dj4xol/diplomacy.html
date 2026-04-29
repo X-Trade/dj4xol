@@ -99,6 +99,14 @@
                                 </div>
                                 {% else %}
                                 <div class="detail-row">
+                                    <span class="env-label">Race Type</span>
+                                    <span class="detail-value">{{ detail.race_type }}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="env-label">Homeworld</span>
+                                    <span class="detail-value">{{ detail.homeworld }}</span>
+                                </div>
+                                <div class="detail-row">
                                     <span class="env-label">Their Stance</span>
                                     <span class="detail-value">{{ detail.their_stance }}</span>
                                 </div>
@@ -139,6 +147,24 @@
                                             name="reveal_cloaked_fleets"
                                             value="1"
                                             {% if detail.reveal_cloaked_fleets_checked %}checked{% endif %}
+                                            {% if diplomacy_locked %}disabled{% endif %}
+                                        >
+                                    </span>
+                                </form>
+                                {% endif %}
+                                {% if detail.show_auto_downgrade_toggle %}
+                                <form method="post" class="diplomacy-effects-row">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="target" value="{{ selected_target }}">
+                                    <input type="hidden" name="action" value="toggle_auto_downgrade">
+                                    <span class="diplomacy-effects-name">Hostile action downgrade</span>
+                                    <span class="diplomacy-effects-summary">
+                                        <input
+                                            id="auto-downgrade-hostile-actions-toggle"
+                                            type="checkbox"
+                                            name="auto_downgrade_on_hostile_actions"
+                                            value="1"
+                                            {% if detail.auto_downgrade_on_hostile_actions_checked %}checked{% endif %}
                                             {% if diplomacy_locked %}disabled{% endif %}
                                         >
                                     </span>

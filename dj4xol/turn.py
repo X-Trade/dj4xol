@@ -83,6 +83,11 @@ from .diplomacy import (
     PERMISSION_ORBITAL_DEFENSE_CHANCE_SCALE,
     PERMISSION_SHARE_INTEL,
     PERMISSION_SHIPYARD_REPAIR_RATE,
+    STANCE_ALLIED,
+    STANCE_COLD,
+    STANCE_HOSTILE,
+    STANCE_NEUTRAL,
+    STANCE_WARM,
     build_stance_map,
     apply_pending_diplomacy_snapshot,
     combat_chance_percent,
@@ -90,9 +95,11 @@ from .diplomacy import (
     combined_diplomacy_chance_scale,
     combat_readiness_multiplier,
     ensure_contact_stance_entry,
+    normalise_stance,
     player_can_transfer_with_fleet,
     player_grants_permission,
     player_permission_value,
+    player_pending_default_stance,
     player_reveals_cloaked_fleets,
     shared_colony_report_policy,
     shared_fleet_report_policy,
@@ -728,6 +735,58 @@ class GameTurn():
             msg = factory.new_message()
             msg.year = self.game.year
             msg.save()
+
+    def _auto_downgrade_for_hostile_action(self, victim_player, attacker_player, force_hostile=False):
+        """Stage the victim's stance toward an attacker after hostile colony actions."""
+        from .models import PlayerDiplomaticStance
+
+        if not victim_player or not attacker_player:
+            return False
+        if getattr(victim_player, 'id', None) == getattr(attacker_player, 'id', None):
+            return False
+        if getattr(victim_player, 'game_id', None) != getattr(attacker_player, 'game_id', None):
+            return False
+
+        row = PlayerDiplomaticStance.objects.filter(
+            player=victim_player,
+            target_player=attacker_player,
+        ).first()
+        if row is not None and not bool(getattr(row, 'auto_downgrade_on_hostile_actions', True)):
+            return False
+
+        current_stance = normalise_stance(
+            (
+                getattr(row, 'pending_stance', None) or
+                getattr(row, 'stance', None)
+            ) if row is not None else player_pending_default_stance(victim_player)
+        )
+        if force_hostile:
+            next_stance = STANCE_HOSTILE
+        else:
+            ladder = [
+                STANCE_HOSTILE,
+                STANCE_COLD,
+                STANCE_NEUTRAL,
+                STANCE_WARM,
+                STANCE_ALLIED,
+            ]
+            next_stance = ladder[max(0, ladder.index(current_stance) - 1)]
+        if next_stance == current_stance:
+            return False
+
+        if row is None:
+            row = PlayerDiplomaticStance(
+                player=victim_player,
+                target_player=attacker_player,
+                stance=current_stance,
+                pending_stance=current_stance,
+            )
+        row.pending_stance = next_stance
+        if row.pk:
+            row.save(update_fields=['pending_stance'])
+        else:
+            row.save()
+        return True
 
     @staticmethod
     def _anomaly_stability(anomaly):
@@ -7087,6 +7146,16 @@ class GameTurn():
             msg.save()
 
         if defending_player is not None:
+            for attacking_player in {
+                attack_fleet.player
+                for attack_fleet in attack_fleets
+                if attack_fleet.player_id != defending_player.id
+            }:
+                self._auto_downgrade_for_hostile_action(
+                    defending_player,
+                    attacking_player,
+                    force_hostile=star_destroyed,
+                )
             total_losses = (
                 defenses_lost + colonists_lost + mines_lost + factories_lost + labs_lost +
                 shipyards_lost + cities_lost + megacities_lost + administration_lost +
@@ -7116,7 +7185,7 @@ class GameTurn():
         for attack_fleet, attack_order in surviving:
             completed = self._bomb_order_completed(attack_order, pre, star, star_destroyed)
             if completed:
-                if attack_order.repeat:
+                if attack_order.repeat and not star_destroyed:
                     self._handle_repeating_order(attack_order)
                 attack_order.delete()
 
@@ -7314,6 +7383,11 @@ class GameTurn():
         msg.save()
 
         if defending_player is not None:
+            self._auto_downgrade_for_hostile_action(
+                defending_player,
+                fleet.player,
+                force_hostile=star_destroyed,
+            )
             total_losses = (
                 defenses_lost + colonists_lost +
                 mines_lost + factories_lost + labs_lost + shipyards_lost +
@@ -7370,7 +7444,7 @@ class GameTurn():
             completed = pre['colonists'] > 0 and int(star.colonists or 0) <= 0
 
         if completed:
-            if order.repeat:
+            if order.repeat and not star_destroyed:
                 self._handle_repeating_order(order)
             order.delete()
             return 'executed'
@@ -7990,6 +8064,7 @@ class GameTurn():
             )
             if defense_fire.get('destroyed'):
                 return 'fleet_destroyed'
+            self._auto_downgrade_for_hostile_action(star.player, fleet.player)
             if roll_chance(REMOTE_MINE_HARASS_CHANCE):
                 effective_defenses = max(0.0, float(calculate_effective_defenses(star)))
                 luck_multiplier = float(getattr(fleet.player.race_type, 'luck_multiplier', 1.0) or 1.0)
@@ -8726,6 +8801,7 @@ class GameTurn():
         notify_consumed = []
         notify_destroyed_stars = []
         notify_stripped_stars = []
+        hostile_genesis_star_actions = []
         destroyed_fleet_count = 0
         consumed_resources = {}
         blocking_anomaly = None
@@ -8859,6 +8935,14 @@ class GameTurn():
                         if not effect.get('destroyed'):
                             stripped_owner = star.player
                             stripped_star_name = star.name
+                            if (
+                                stripped_owner is not None and
+                                getattr(stripped_owner, 'id', None) != getattr(owner, 'id', None)
+                            ):
+                                hostile_genesis_star_actions.append({
+                                    'player': stripped_owner,
+                                    'force_hostile': False,
+                                })
                             update_fields = []
                             stripped_any = False
                             for key in ALL_RESOURCE_KEYS:
@@ -8895,6 +8979,11 @@ class GameTurn():
                         homeworld_owner_ids = list(star.homeworld_of.values_list('id', flat=True))
                         star.delete()
                         if destroyed_owner is not None and getattr(destroyed_owner, 'id', None) is not None:
+                            if getattr(destroyed_owner, 'id', None) != getattr(owner, 'id', None):
+                                hostile_genesis_star_actions.append({
+                                    'player': destroyed_owner,
+                                    'force_hostile': True,
+                                })
                             notify_destroyed_stars.append({
                                 'player': destroyed_owner,
                                 'star_name': destroyed_star_name,
@@ -8978,6 +9067,13 @@ class GameTurn():
             success_msg = success_factory.new_message()
             success_msg.year = self.game.year
             success_msg.save()
+
+        for notice in hostile_genesis_star_actions:
+            self._auto_downgrade_for_hostile_action(
+                notice.get('player'),
+                owner,
+                force_hostile=bool(notice.get('force_hostile')),
+            )
 
         for victim in notify_consumed:
             factory = GenesisFleetConsumedMessageFactory(

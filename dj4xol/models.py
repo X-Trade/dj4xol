@@ -1234,6 +1234,7 @@ class PlayerDiplomaticStance(models.Model):
         default='NEUTRAL',
     )
     reveal_cloaked_fleets = models.BooleanField(default=False)
+    auto_downgrade_on_hostile_actions = models.BooleanField(default=True)
 
     class Meta:
         unique_together = [['player', 'target_player']]

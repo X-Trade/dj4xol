@@ -91,6 +91,26 @@ class GameAdminAiPlayerViewTest(TestCase):
         )
         stance_mock.assert_called_once_with('RANDOM')
 
+    def test_add_ai_player_random_race_uses_explicit_tech_level_override(self):
+        self.race.starting_tech_level = 1
+        self.race.save(update_fields=['starting_tech_level'])
+
+        with patch('dj4xol.admin.build_random_ai_race_template', return_value=self.race):
+            response = self.client.post(
+                reverse('admin:add-ai-player', args=[self.game.pk]),
+                {
+                    'ai_module': 'idle',
+                    'default_diplomatic_stance': 'NEUTRAL',
+                    'starting_tech_level': '4',
+                    'race': '__RANDOM__',
+                    'homeworld_star': '',
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        ai_player = self.game.players.get(is_ai=True)
+        self.assertEqual(ai_player.starting_tech_level, 4)
+
 
 class PlayerAdminFormTest(TestCase):
     def setUp(self):

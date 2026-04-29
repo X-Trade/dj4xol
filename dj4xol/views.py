@@ -932,6 +932,20 @@ def starmap(request, game_short_id):
     url = request.path
     x = request.GET.get('x', None)
     y = request.GET.get('y', None)
+    debug_can_create_anomaly_at_selection = False
+    if _debug_actions_enabled() and bool(request.user.is_staff or request.user.is_superuser):
+        try:
+            selection_x = int(x)
+            selection_y = int(y)
+        except (TypeError, ValueError):
+            selection_x = None
+            selection_y = None
+        if selection_x is not None and selection_y is not None:
+            debug_can_create_anomaly_at_selection = not Star.objects.filter(
+                game=game,
+                x=selection_x,
+                y=selection_y,
+            ).exists()
 
     selected = request.GET.get('sel', None)
     allow_foreign_orders_debug = bool(
@@ -1079,6 +1093,7 @@ def starmap(request, game_short_id):
         'suppress_locate': suppress_locate,
         'selected_patrol_circles_json': json.dumps(selected_patrol_circles),
         'enable_debug_actions': _debug_actions_enabled(),
+        'debug_can_create_anomaly_at_selection': debug_can_create_anomaly_at_selection,
         'play_cli_web_enabled': _play_cli_web_enabled(),
     })
 
@@ -1263,32 +1278,45 @@ def _spawn_random_anomaly_at(game, x, y):
 
 
 @player_only_view()
-def debug_create_anomaly(request, game_short_id, fleet_short_id):
-    """Debug: spawn a random anomaly directly on the selected fleet."""
+def debug_create_anomaly(request, game_short_id, fleet_short_id=None):
+    """Debug: spawn a random anomaly at a legal coordinate."""
     game = Game.objects.get(short_id=game_short_id)
     if not _debug_actions_enabled():
         return render(request, 'dj4xol/forbidden.html', {
             'message': 'Debug actions are disabled.'
         })
+    if not bool(request.user.is_staff or request.user.is_superuser):
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Staff access required.'
+        }, status=403)
     account = request.user.dj4xol_account
     player = Player.objects.filter(game=game, account=account).first()
     if not player:
         return render(request, 'dj4xol/forbidden.html', {
             'message': 'No player found for this game.'
         })
-    if player.turned_in:
-        return _redirect_preserving_selection(request, game)
-    fleet = Fleet.objects.filter(
-        game=game,
-        short_id=fleet_short_id,
-        player=player,
-    ).first()
-    if fleet is None:
-        return render(request, 'dj4xol/forbidden.html', {
-            'message': 'Fleet not found.'
-        })
 
-    _spawn_random_anomaly_at(game, fleet.x, fleet.y)
+    x_value = request.POST.get('x') or request.GET.get('x')
+    y_value = request.POST.get('y') or request.GET.get('y')
+    if (x_value in (None, '') or y_value in (None, '')) and fleet_short_id:
+        fleet = Fleet.objects.filter(game=game, short_id=fleet_short_id).first()
+        if fleet is not None:
+            x_value = fleet.x
+            y_value = fleet.y
+
+    try:
+        x = int(x_value)
+        y = int(y_value)
+    except (TypeError, ValueError):
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Choose a valid map location before creating an anomaly.'
+        }, status=400)
+    if Star.objects.filter(game=game, x=x, y=y).exists():
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Cannot create an anomaly on a star.'
+        }, status=400)
+
+    _spawn_random_anomaly_at(game, x, y)
     return _redirect_preserving_selection(request, game)
 
 
@@ -2073,8 +2101,8 @@ def create_game(request):
                             d.get('max_starting_tech_level') or 5
                         ),
                     )
-                    # Random race generation chooses its own balanced starting tech profile.
-                    starting_tech_override = None
+                    if not bool(slot.get('starting_tech_level_specified')):
+                        starting_tech_override = None
                 ai_player = factory.join_player(
                     None,
                     race_for_slot,
@@ -3838,6 +3866,26 @@ def diplomacy(request, game_short_id):
                 ) and current_stance == STANCE_ALLIED
                 row.save(update_fields=['reveal_cloaked_fleets'])
                 return redirect(_diplomacy_redirect_url(game.short_id, target=selected_target))
+        elif action == 'toggle_auto_downgrade':
+            if selected_player is None:
+                contract_errors.append('Select a discovered race first.')
+            elif locked:
+                contract_errors.append(lock_reason)
+            else:
+                default_stance = player_pending_default_stance(player)
+                row, _created = PlayerDiplomaticStance.objects.get_or_create(
+                    player=player,
+                    target_player=selected_player,
+                    defaults={
+                        'stance': default_stance,
+                        'pending_stance': default_stance,
+                    },
+                )
+                row.auto_downgrade_on_hostile_actions = bool(
+                    request.POST.get('auto_downgrade_on_hostile_actions')
+                )
+                row.save(update_fields=['auto_downgrade_on_hostile_actions'])
+                return redirect(_diplomacy_redirect_url(game.short_id, target=selected_target))
         elif action in ('accept_contract', 'decline_contract', 'revoke_contract', 'extend_contract'):
             contract = DiplomaticContract.objects.filter(
                 game=game,
@@ -4038,6 +4086,8 @@ def diplomacy(request, game_short_id):
         detail = {
             'name': _diplomacy_player_display_name(selected_player),
             'is_defeated': bool(getattr(selected_player, 'defeated', False)),
+            'race_type': getattr(getattr(selected_player, 'race_type', None), 'name', None) or 'Unknown',
+            'homeworld': getattr(getattr(selected_player, 'homeworld', None), 'name', None) or 'Unknown',
             'their_stance': stance_label(their_stance),
             'our_stance': stance_label(our_stance),
             'combat_chance_base': combat_chance_base,
@@ -4050,6 +4100,12 @@ def diplomacy(request, game_short_id):
             'show_reveal_cloaked_toggle': our_stance == STANCE_ALLIED,
             'reveal_cloaked_fleets_checked': bool(
                 stance_row and getattr(stance_row, 'reveal_cloaked_fleets', False)
+            ),
+            'show_auto_downgrade_toggle': True,
+            'auto_downgrade_on_hostile_actions_checked': (
+                True if stance_row is None else bool(
+                    getattr(stance_row, 'auto_downgrade_on_hostile_actions', True)
+                )
             ),
         }
     else:

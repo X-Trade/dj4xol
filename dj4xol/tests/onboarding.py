@@ -684,6 +684,18 @@ class IdentityNameRulesTest(TestCase):
             'Scunthorpe',
         )
 
+    def test_safe_public_text_normalizes_smart_apostrophe_hyphen_and_brackets(self):
+        self.assertEqual(
+            validate_safe_public_text('O\u2019Neill\u2011Prime \uff08A\uff09', 'Name'),
+            "O'Neill-Prime (A)",
+        )
+
+    def test_safe_public_text_normalizes_fullwidth_ampersand_exclamation_and_question_marks(self):
+        self.assertEqual(
+            validate_safe_public_text('Alpha \uff06 Omega\uff01\uff1f', 'Name'),
+            'Alpha & Omega!?',
+        )
+
     def test_safe_public_text_blacklist_can_add_server_specific_term(self):
         with self.assertRaises(ValidationError):
             validate_safe_public_text(

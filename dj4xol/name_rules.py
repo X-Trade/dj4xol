@@ -36,12 +36,34 @@ BLOCKED_PROFANITY = {
 
 SAFE_TEXT_RE = re.compile(r"^[A-Za-z0-9 _.,!?\-()'+=&:/*\n\r]*\Z")
 SAFE_SINGLE_LINE_RE = re.compile(r"^[A-Za-z0-9 _.,!?\-()'+=&:/*]*\Z")
+SAFE_TEXT_TRANSLATION = str.maketrans({
+    '\u2018': "'",
+    '\u2019': "'",
+    '\u201b': "'",
+    '\u2032': "'",
+    '\uff07': "'",
+    '\u2010': '-',
+    '\u2011': '-',
+    '\u2012': '-',
+    '\u2013': '-',
+    '\u2014': '-',
+    '\u2212': '-',
+    '\ufe58': '-',
+    '\ufe63': '-',
+    '\uff0d': '-',
+    '\uff08': '(',
+    '\uff09': ')',
+    '\uff06': '&',
+    '\ufe60': '&',
+    '\uff01': '!',
+    '\uff1f': '?',
+})
 
 
 def normalise_public_text(value):
     if value is None:
         return ''
-    return str(value).strip()
+    return str(value).translate(SAFE_TEXT_TRANSLATION).strip()
 
 
 def normalise_profanity_key(value):

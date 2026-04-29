@@ -28,6 +28,7 @@ from ..models import (
     Salvage,
     Anomaly,
     PlayerStarMarker,
+    Star,
     ServerRace,
     ServerRaceType,
     ServerSettings,
@@ -2400,6 +2401,119 @@ class TestGameCreationView(TestCase):
         self.assertIsNotNone(ai_player)
         self.assertNotEqual(ai_player.default_diplomatic_stance, 'ALLIED')
 
+    def test_create_game_random_ai_uses_explicit_tech_level_override(self):
+        race = get_default_race()
+        race.public = True
+        race.starting_tech_level = 1
+        race.save(update_fields=['public', 'starting_tech_level'])
+        self._set_server_setting('ai_max_per_game', 2, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 2, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
+
+        with patch('dj4xol.views.build_random_ai_race_template', return_value=race):
+            response = self.client.post(
+                reverse('dj4xol:create_game'),
+                {
+                    'name': 'AI Random Tech Override Test',
+                    'description': '',
+                    'race': race.id,
+                    'starting_year': 2400,
+                    'map_size_x': 128,
+                    'map_size_y': 128,
+                    'num_stars': 60,
+                    'clusters': '',
+                    'spiral_arms': '',
+                    'systems': '',
+                    'improved_star_names': '',
+                    'public': '',
+                    'joinable': 'on',
+                    'join_open_years': '',
+                    'max_players': '',
+                    'turn_scheme': 'QUORUM',
+                    'years_per_turn': 1,
+                    'research_cost_multiplier': 1.0,
+                    'warp_speed_multiplier': 1.0,
+                    'random_events': '',
+                    'anomalies_enabled': 'on',
+                    'anomaly_spawn_rate': 'NORMAL',
+                    'no_scanners': '',
+                    'max_starting_tech_level': 5,
+                    'invitations': '',
+                    'ai_player_count': 1,
+                    'ai_player_config_json': json.dumps([
+                        {
+                            'module': 'idle',
+                            'race_id': AI_SLOT_RANDOM_RACE,
+                            'starting_tech_level': 4,
+                            'default_diplomatic_stance': 'NEUTRAL',
+                        },
+                    ]),
+                },
+                follow=False,
+            )
+
+        self.assertEqual(response.status_code, 302)
+        game = Game.objects.get(name='AI Random Tech Override Test')
+        ai_player = game.players.filter(is_ai=True).first()
+        self.assertIsNotNone(ai_player)
+        self.assertEqual(ai_player.starting_tech_level, 4)
+
+    def test_create_game_random_ai_without_tech_level_keeps_generated_race_level(self):
+        race = get_default_race()
+        race.public = True
+        race.starting_tech_level = 2
+        race.save(update_fields=['public', 'starting_tech_level'])
+        self._set_server_setting('ai_max_per_game', 2, 'Maximum AI players per game')
+        self._set_server_setting('ai_max_per_server', 2, 'Maximum active AI players per server')
+        self._set_server_setting('ai_module_idle_enabled', 'True', 'Enable AI module: idle')
+
+        with patch('dj4xol.views.build_random_ai_race_template', return_value=race):
+            response = self.client.post(
+                reverse('dj4xol:create_game'),
+                {
+                    'name': 'AI Random Tech Generated Test',
+                    'description': '',
+                    'race': race.id,
+                    'starting_year': 2400,
+                    'map_size_x': 128,
+                    'map_size_y': 128,
+                    'num_stars': 60,
+                    'clusters': '',
+                    'spiral_arms': '',
+                    'systems': '',
+                    'improved_star_names': '',
+                    'public': '',
+                    'joinable': 'on',
+                    'join_open_years': '',
+                    'max_players': '',
+                    'turn_scheme': 'QUORUM',
+                    'years_per_turn': 1,
+                    'research_cost_multiplier': 1.0,
+                    'warp_speed_multiplier': 1.0,
+                    'random_events': '',
+                    'anomalies_enabled': 'on',
+                    'anomaly_spawn_rate': 'NORMAL',
+                    'no_scanners': '',
+                    'max_starting_tech_level': 5,
+                    'invitations': '',
+                    'ai_player_count': 1,
+                    'ai_player_config_json': json.dumps([
+                        {
+                            'module': 'idle',
+                            'race_id': AI_SLOT_RANDOM_RACE,
+                            'default_diplomatic_stance': 'NEUTRAL',
+                        },
+                    ]),
+                },
+                follow=False,
+            )
+
+        self.assertEqual(response.status_code, 302)
+        game = Game.objects.get(name='AI Random Tech Generated Test')
+        ai_player = game.players.filter(is_ai=True).first()
+        self.assertIsNotNone(ai_player)
+        self.assertEqual(ai_player.starting_tech_level, 2)
+
     def test_create_game_randomized_ai_homeworld_environmentals_match_race_centers_on_first_turn(self):
         race = get_default_race()
         race.public = True
@@ -2503,6 +2617,54 @@ class TestRenameObjectView(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['error'], 'Name contains blocked profanity.')
+
+    def test_star_rename_allows_apostrophe_hyphen_and_round_brackets(self):
+        star = self.player.homeworld
+
+        response = self.client.post(
+            reverse('dj4xol:rename_object', args=[self.game.short_id, star.short_id]),
+            {'name': "O'Neill-Prime (A)"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        star.refresh_from_db()
+        self.assertEqual(star.name, "O'Neill-Prime (A)")
+
+    def test_star_rename_normalizes_smart_apostrophe_hyphen_and_round_brackets(self):
+        star = self.player.homeworld
+
+        response = self.client.post(
+            reverse('dj4xol:rename_object', args=[self.game.short_id, star.short_id]),
+            {'name': 'O\u2019Neill\u2011Prime \uff08A\uff09'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        star.refresh_from_db()
+        self.assertEqual(star.name, "O'Neill-Prime (A)")
+
+    def test_star_rename_allows_ampersand_exclamation_and_question_marks(self):
+        star = self.player.homeworld
+
+        response = self.client.post(
+            reverse('dj4xol:rename_object', args=[self.game.short_id, star.short_id]),
+            {'name': 'Alpha & Omega!?'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        star.refresh_from_db()
+        self.assertEqual(star.name, 'Alpha & Omega!?')
+
+    def test_star_rename_normalizes_fullwidth_ampersand_exclamation_and_question_marks(self):
+        star = self.player.homeworld
+
+        response = self.client.post(
+            reverse('dj4xol:rename_object', args=[self.game.short_id, star.short_id]),
+            {'name': 'Alpha \uff06 Omega\uff01\uff1f'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        star.refresh_from_db()
+        self.assertEqual(star.name, 'Alpha & Omega!?')
 
     def test_rename_allowed_after_turn_in(self):
         self.player.turned_in = True
@@ -4196,6 +4358,120 @@ class TestFleetOrderViews(TestCase):
         self.assertEqual(data.get('ironium_inventory'), 40)
         self.assertEqual(data.get('fuel'), 44.0)
 
+    def test_staff_debug_create_anomaly_can_target_foreign_fleet_location(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        homeworld = player.homeworld
+        race_type = get_default_race_type()
+        enemy_user = User.objects.create_user(
+            'debug_anomaly_enemy_user',
+            'debug_anomaly_enemy@test.com',
+            'pass',
+        )
+        enemy_account = Account.objects.create(
+            django_user=enemy_user,
+            alias='DAN',
+        )
+        enemy_player = Player.objects.create(
+            game=game,
+            account=enemy_account,
+            name='Debug Anomaly Enemy',
+            plural_name='Debug Anomaly Enemies',
+            race_type=race_type,
+        )
+        target_x = int(homeworld.x) + 7
+        target_y = int(homeworld.y) + 11
+        while Star.objects.filter(game=game, x=target_x, y=target_y).exists():
+            target_x += 1
+            target_y += 1
+        enemy_fleet = Fleet.objects.create(
+            game=game,
+            player=enemy_player,
+            name='Anomaly Target Fleet',
+            x=target_x,
+            y=target_y,
+            ship_count=3,
+        )
+
+        user, _ = get_default_user()
+        user.is_superuser = True
+        user.is_staff = True
+        user.save(update_fields=['is_superuser', 'is_staff'])
+        ServerSettings.objects.update_or_create(
+            key='enable_debug_actions',
+            defaults={'value': 'True'},
+        )
+        client = Client()
+        client.force_login(user)
+        before_count = game.anomalys.count()
+
+        with patch('dj4xol.views.random.choice', return_value=Anomaly.TYPE_RIFT):
+            response = client.post(
+                reverse('dj4xol:debug_create_anomaly', args=[game.short_id]),
+                {
+                    'x': enemy_fleet.x,
+                    'y': enemy_fleet.y,
+                    'sel': enemy_fleet.short_id,
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(game.anomalys.count(), before_count + 1)
+        self.assertTrue(
+            game.anomalys.filter(x=enemy_fleet.x, y=enemy_fleet.y).exists()
+        )
+
+    def test_debug_create_anomaly_requires_staff(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        target_x = int(fleet.x) + 13
+        target_y = int(fleet.y) + 17
+        while Star.objects.filter(game=game, x=target_x, y=target_y).exists():
+            target_x += 1
+            target_y += 1
+        ServerSettings.objects.update_or_create(
+            key='enable_debug_actions',
+            defaults={'value': 'True'},
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+        before_count = game.anomalys.count()
+
+        response = client.post(
+            reverse('dj4xol:debug_create_anomaly', args=[game.short_id]),
+            {'x': target_x, 'y': target_y},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(game.anomalys.count(), before_count)
+
+    def test_debug_create_anomaly_rejects_star_location(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        homeworld = player.homeworld
+        user, _ = get_default_user()
+        user.is_superuser = True
+        user.is_staff = True
+        user.save(update_fields=['is_superuser', 'is_staff'])
+        ServerSettings.objects.update_or_create(
+            key='enable_debug_actions',
+            defaults={'value': 'True'},
+        )
+        client = Client()
+        client.force_login(user)
+        before_count = game.anomalys.count()
+
+        response = client.post(
+            reverse('dj4xol:debug_create_anomaly', args=[game.short_id]),
+            {'x': homeworld.x, 'y': homeworld.y, 'sel': homeworld.short_id},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, 'Cannot create an anomaly on a star.', status_code=400)
+        self.assertEqual(game.anomalys.count(), before_count)
+
     def test_orders_panel_shows_popout_button(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
@@ -4891,6 +5167,14 @@ class TestHullDesignViews(TestCase):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
         fleet = player.fleets.first()
+        target_x = int(fleet.x) + 19
+        target_y = int(fleet.y) + 23
+        while Star.objects.filter(game=game, x=target_x, y=target_y).exists():
+            target_x += 1
+            target_y += 1
+        fleet.x = target_x
+        fleet.y = target_y
+        fleet.save(update_fields=['x', 'y'])
         user, _ = get_default_user()
         user.is_superuser = True
         user.is_staff = True
@@ -4984,6 +5268,96 @@ class TestDiplomacyView(TestCase):
         self.assertContains(response, 'id="next-turn-countdown"', html=False)
         self.assertContains(response, 'window.currentYear = %s;' % game.year)
         self.assertContains(response, 'window.gameStatusUrl =')
+
+    def test_diplomacy_detail_header_shows_race_type_and_homeworld(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = ServerRaceType.objects.create(
+            code='DIPHDR',
+            name='Header Test Type',
+            description='Header display test.',
+        )
+        other_account_user = User.objects.create_user('diplo_header', 'diplo_header@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_account_user, alias='DHDR')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Header Race',
+            plural_name='Header Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        contact_star.name = 'Header Home'
+        contact_star.save(update_fields=['name'])
+        other_player.homeworld = contact_star
+        other_player.save(update_fields=['homeworld'])
+        self._create_contact_star_report(game, player, other_player, contact_star)
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Race Type')
+        self.assertContains(response, 'Header Test Type')
+        self.assertContains(response, 'Homeworld')
+        self.assertContains(response, 'Header Home')
+
+    def test_diplomacy_detail_can_toggle_hostile_action_auto_downgrade(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        race_type = get_default_race_type()
+        other_account_user = User.objects.create_user('diplo_auto_down', 'diplo_auto_down@test.com', 'pass')
+        other_account = Account.objects.create(django_user=other_account_user, alias='DAD')
+        other_player = Player.objects.create(
+            game=game,
+            account=other_account,
+            name='Auto Down Race',
+            plural_name='Auto Down Races',
+            race_type=race_type,
+        )
+        contact_star = game.stars.exclude(id=player.homeworld_id).first()
+        self._create_contact_star_report(game, player, other_player, contact_star)
+
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {'target': other_player.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Hostile action downgrade')
+        self.assertContains(response, 'id="auto-downgrade-hostile-actions-toggle"', html=False)
+        self.assertContains(response, 'checked', html=False)
+
+        client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'toggle_auto_downgrade',
+            },
+        )
+        stance = PlayerDiplomaticStance.objects.get(player=player, target_player=other_player)
+        self.assertFalse(stance.auto_downgrade_on_hostile_actions)
+
+        client.post(
+            reverse('dj4xol:diplomacy', args=[game.short_id]),
+            {
+                'target': other_player.short_id,
+                'action': 'toggle_auto_downgrade',
+                'auto_downgrade_on_hostile_actions': '1',
+            },
+        )
+        stance.refresh_from_db()
+        self.assertTrue(stance.auto_downgrade_on_hostile_actions)
 
     def test_diplomacy_page_includes_panel_toggle_and_lcars_variant_scripts(self):
         game = default_game(stars=5, fleets=0)

@@ -204,7 +204,6 @@ class GameAdmin(admin.ModelAdmin):
                             getattr(game, 'max_starting_tech_level', 0) or 0
                         ),
                     )
-                    starting_tech_override = None
                 ai_player = GameFactory(game).join_player(
                     None,
                     race,

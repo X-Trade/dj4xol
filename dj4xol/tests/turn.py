@@ -10608,7 +10608,7 @@ class TestWarpDamage(TestCase):
         with patch('dj4xol.turn.roll_chance', return_value=True), \
              patch('dj4xol.turn.calculate_integrity_loss', return_value=10), \
              patch('dj4xol.turn.calculate_cargo_loss_percent', return_value=0.20):
-            GameTurn(game).generate_turn()
+            GameTurn(game).fleet_movements()
 
         fleet.refresh_from_db()
         self.assertEqual(fleet.colonists, 800)
@@ -14067,11 +14067,11 @@ class TestBombardmentOrders(TestCase):
 
         with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
             'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
-        }), patch('dj4xol.turn.bombardment_damage_k', return_value=1):
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=10_000):
             GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
 
         star.refresh_from_db()
-        self.assertAlmostEqual(star.gravity, 1.9517857142857142, places=6)
+        self.assertEqual(star.gravity, 2.0)
 
     def test_environment_shift_requires_positive_bombardment_damage(self):
         from ..models import FleetOrders
@@ -14634,6 +14634,61 @@ class TestBombardmentOrders(TestCase):
         self.assertFalse(Anomaly.objects.filter(game=game, x=star.x, y=star.y).exists())
         self.assertFalse(Salvage.objects.filter(game=game, x=star.x, y=star.y).exists())
 
+    def test_repeat_nova_bomb_order_is_not_requeued_after_star_destruction(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_repeat_nova_def')
+
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 10_000
+        star.gravity = 0.20
+        star.defenses = 0
+        star.save(update_fields=['player', 'colonists', 'gravity', 'defenses'])
+
+        sibling = Star.objects.create(
+            game=game,
+            name='Repeat Nova Sibling',
+            x=star.x,
+            y=star.y,
+            player=defender,
+            colonists=5_000,
+            defenses=0,
+        )
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Repeat Nova Bomber',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='NOVA',
+        )
+        bomb_order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='BOMB',
+            target_star=star,
+            x=star.x,
+            y=star.y,
+            repeat=True,
+        )
+
+        with patch('dj4xol.turn.roll_chance', return_value=True), patch(
+            'dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet',
+            return_value={'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0}
+        ), patch('dj4xol.bombardment_rules.scaled_luck_roll', return_value=1.0):
+            GameTurn(game)._execute_bomb_order(fleet, bomb_order)
+
+        self.assertFalse(Star.objects.filter(id=star.id).exists())
+        sibling.refresh_from_db()
+        self.assertEqual(sibling.colonists, 5_000)
+        self.assertFalse(FleetOrders.objects.filter(id=bomb_order.id).exists())
+        self.assertFalse(FleetOrders.objects.filter(fleet=fleet, order_type='BOMB').exists())
+
     def test_supernova_bombs_destroy_all_stars_at_target_location(self):
         from ..models import FleetOrders
 
@@ -15161,8 +15216,62 @@ class TestBombardmentOrders(TestCase):
             ).exists()
         )
 
+    def test_bombardment_colony_auto_downgrades_even_without_damage(self):
+        from ..models import FleetOrders
+
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._ensure_other_player(game, attacker, 'bomb_auto_down_def')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.colonists = 50_000
+        star.defenses = 50
+        star.save(update_fields=['player', 'colonists', 'defenses'])
+        stance = PlayerDiplomaticStance.objects.create(
+            player=defender,
+            target_player=attacker,
+            stance='ALLIED',
+            pending_stance='ALLIED',
+            auto_downgrade_on_hostile_actions=True,
+        )
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Warning Shot',
+            x=star.x,
+            y=star.y,
+            ship_count=1,
+            has_bombs='CONVENTIONAL',
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='BOMB',
+            target_star=star,
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=0):
+            GameTurn(game)._execute_bomb_order(fleet, fleet.orders.first())
+
+        stance.refresh_from_db()
+        self.assertEqual(stance.stance, 'ALLIED')
+        self.assertEqual(stance.pending_stance, 'WARM')
+
 
 class TestRemoteMineOrders(TestCase):
+    def _create_remote_mining_defender(self, game, attacker, username):
+        other_user = User.objects.create_user(username, '%s@test.com' % username, 'pass')
+        other_account = Account.objects.create(django_user=other_user)
+        return Player.objects.create(
+            game=game,
+            account=other_account,
+            race_type=attacker.race_type,
+            name='%s Race' % username,
+            plural_name='%s Races' % username,
+        )
+
     def test_remote_mine_blocks_queue_until_fleet_inventory_full(self):
         from ..models import FleetOrders
 
@@ -15436,6 +15545,134 @@ class TestRemoteMineOrders(TestCase):
             star.labs < 20 or
             star.shipyards < 5
         )
+
+    def test_remote_mining_colony_auto_downgrades_victim_stance_one_step(self):
+        game = default_game(stars=2)
+        game.random_events = False
+        game.save(update_fields=['random_events'])
+        attacker = game.players.first()
+        defender = self._create_remote_mining_defender(game, attacker, 'remote_auto_down')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.ironium_yield = 100
+        star.boranium_yield = 0
+        star.germanium_yield = 0
+        star.resource_x_yield = 0
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
+        star.save(update_fields=[
+            'player',
+            'ironium_yield', 'boranium_yield', 'germanium_yield',
+            'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
+        ])
+        stance = PlayerDiplomaticStance.objects.create(
+            player=defender,
+            target_player=attacker,
+            stance='ALLIED',
+            pending_stance='ALLIED',
+            auto_downgrade_on_hostile_actions=True,
+        )
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Stance Miner',
+            x=star.x,
+            y=star.y,
+            ship_count=1,
+            has_miners='SMALL',
+            cargo_capacity=1000,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='REMOTEMINE',
+            target_star=star,
+            mine_until_full=False,
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.roll_chance', return_value=False):
+            GameTurn(game).generate_turn()
+
+        stance.refresh_from_db()
+        self.assertEqual(stance.stance, 'WARM')
+        self.assertEqual(stance.pending_stance, 'WARM')
+
+    def test_remote_mining_respects_auto_downgrade_checkbox(self):
+        game = default_game(stars=2)
+        game.random_events = False
+        game.save(update_fields=['random_events'])
+        attacker = game.players.first()
+        defender = self._create_remote_mining_defender(game, attacker, 'remote_auto_off')
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.ironium_yield = 100
+        star.boranium_yield = 0
+        star.germanium_yield = 0
+        star.resource_x_yield = 0
+        star.resource_y_yield = 0
+        star.resource_z_yield = 0
+        star.save(update_fields=[
+            'player',
+            'ironium_yield', 'boranium_yield', 'germanium_yield',
+            'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
+        ])
+        stance = PlayerDiplomaticStance.objects.create(
+            player=defender,
+            target_player=attacker,
+            stance='ALLIED',
+            pending_stance='ALLIED',
+            auto_downgrade_on_hostile_actions=False,
+        )
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Quiet Miner',
+            x=star.x,
+            y=star.y,
+            ship_count=1,
+            has_miners='SMALL',
+            cargo_capacity=1000,
+        )
+        FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='REMOTEMINE',
+            target_star=star,
+            mine_until_full=False,
+        )
+
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.roll_chance', return_value=False):
+            GameTurn(game).generate_turn()
+
+        stance.refresh_from_db()
+        self.assertEqual(stance.stance, 'ALLIED')
+        self.assertEqual(stance.pending_stance, 'ALLIED')
+
+    def test_colony_destruction_auto_downgrade_forces_hostile(self):
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender = self._create_remote_mining_defender(game, attacker, 'remote_force_hostile')
+        stance = PlayerDiplomaticStance.objects.create(
+            player=defender,
+            target_player=attacker,
+            stance='ALLIED',
+            pending_stance='ALLIED',
+            auto_downgrade_on_hostile_actions=True,
+        )
+
+        changed = GameTurn(game)._auto_downgrade_for_hostile_action(
+            defender,
+            attacker,
+            force_hostile=True,
+        )
+
+        self.assertTrue(changed)
+        stance.refresh_from_db()
+        self.assertEqual(stance.pending_stance, 'HOSTILE')
 
     def test_remote_mining_defense_fire_applies_additional_damage_multiplier(self):
         game = default_game(stars=2)

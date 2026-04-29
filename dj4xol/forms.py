@@ -969,19 +969,25 @@ class NewGameForm(forms.Form):
                 )
                 continue
 
-            raw_tech = slot_data.get(
-                'starting_tech_level',
-                getattr(race_obj, 'starting_tech_level', 3) if race_obj is not None else 3,
-            )
+            raw_tech = slot_data.get('starting_tech_level')
+            tech_specified = raw_tech not in (None, '')
+            if not tech_specified:
+                raw_tech = (
+                    None if race_random
+                    else getattr(race_obj, 'starting_tech_level', 3)
+                )
             try:
-                starting_tech_level = int(raw_tech)
+                starting_tech_level = None if raw_tech is None else int(raw_tech)
             except (TypeError, ValueError):
                 self.add_error(
                     'ai_player_config_json',
                     'AI slot %s has an invalid starting tech level.' % (idx + 1),
                 )
                 starting_tech_level = int(getattr(race_obj, 'starting_tech_level', 0) or 0)
-            if starting_tech_level < 0 or starting_tech_level > max_tech_level:
+                tech_specified = bool(race_obj is not None)
+            if starting_tech_level is not None and (
+                starting_tech_level < 0 or starting_tech_level > max_tech_level
+            ):
                 self.add_error(
                     'ai_player_config_json',
                     'AI slot %s starting tech level must be between 0 and %s.'
@@ -1008,7 +1014,10 @@ class NewGameForm(forms.Form):
                 'module_code': module_code,
                 'race': race_obj,
                 'race_random': bool(race_random),
-                'starting_tech_level': int(starting_tech_level),
+                'starting_tech_level': (
+                    None if starting_tech_level is None else int(starting_tech_level)
+                ),
+                'starting_tech_level_specified': bool(tech_specified),
                 'default_diplomatic_stance': stance,
             })
 
