@@ -975,6 +975,50 @@ def _mechanical_growth_candidate_orders(player, star, tier):
     return 'none', []
 
 
+def _profile_defense_pressure(colony_ai_profile):
+    if not isinstance(colony_ai_profile, dict):
+        return 0.0
+    context = colony_ai_profile.get('report_context')
+    if not isinstance(context, dict):
+        return 0.0
+    return max(
+        _clamp(context.get('defense_pressure', 0.0)),
+        _clamp(context.get('bombardment_defense_pressure', 0.0)),
+    )
+
+
+def _profile_bombardment_rebuild_target(colony_ai_profile):
+    if not isinstance(colony_ai_profile, dict):
+        return 0
+    context = colony_ai_profile.get('report_context')
+    if not isinstance(context, dict):
+        return 0
+    try:
+        return max(0, int(context.get('bombardment_rebuild_defense_target', 0) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _threat_defense_target(star, tier, defense_pressure, rebuild_target=0):
+    pressure = _clamp(defense_pressure)
+    try:
+        level = int(tier or 0)
+    except (TypeError, ValueError):
+        level = 0
+    if pressure <= 0.0:
+        target = 0
+    elif level <= 3:
+        target = 12 + (pressure * 88.0)
+    elif level == 4:
+        target = 20 + (pressure * 150.0)
+    else:
+        target = 30 + (pressure * 220.0)
+    if bool(getattr(star, 'has_dyson_sphere', False)):
+        target += 40
+    target = max(target, int(rebuild_target or 0))
+    return int(ceil(min(MATURE_SUPPORT_MAX, target)))
+
+
 def _scored_micromanager_candidate_orders(
     player,
     star,
@@ -1038,6 +1082,7 @@ def _scored_micromanager_candidate_orders(
     secret_resource_role = (
         role_score(colony_ai_profile, ROLE_SECRET_RESOURCE) * role_tier_factor
     )
+    report_defense_pressure = _profile_defense_pressure(colony_ai_profile)
     candidates = {}
     first_seen = {}
     city_candidate_ready = False
@@ -1345,6 +1390,38 @@ def _scored_micromanager_candidate_orders(
             (34.0 + (extraction_ready * 16.0)) * factory_balance_penalty,
         )
 
+    threat_defense_target = _threat_defense_target(
+        star,
+        tier,
+        report_defense_pressure,
+        rebuild_target=_profile_bombardment_rebuild_target(colony_ai_profile),
+    )
+    threat_defense_gap = max(
+        0,
+        threat_defense_target - int(getattr(star, 'defenses', 0) or 0),
+    )
+    if (
+        int(tier or 0) >= TIER_TERRAFORM and
+        threat_defense_gap > 0 and
+        _can_queue_support_expansion(
+            player,
+            star,
+            tier,
+            'BUILD_DEFENSE',
+            research_maxed=research_maxed,
+        )
+    ):
+        threat_defense_score = (
+            180.0 +
+            (report_defense_pressure * 460.0) +
+            min(280.0, float(threat_defense_gap) * 5.0)
+        )
+        if int(tier or 0) >= TIER_MECHANICAL_GROWTH:
+            threat_defense_score *= 1.20
+        if int(tier or 0) >= 5:
+            threat_defense_score *= 1.35
+        append_candidate('BUILD_DEFENSE', threat_defense_score)
+
     if int(tier or 0) >= TIER_SUPPORT:
         for idx, order_type in enumerate(
             _ordered_support_balance_candidates(
@@ -1446,6 +1523,20 @@ def _scored_micromanager_candidate_orders(
             if expansionist_mode and current_shipyards > 0:
                 shipyard_score *= 0.70
             append_candidate('BUILD_SHIPYARD', shipyard_score)
+
+        if (
+            int(tier or 0) >= TIER_MECHANICAL_GROWTH and
+            report_defense_pressure >= 0.45 and
+            current_shipyards <= 0 and
+            _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD') and
+            _can_add_order_without_exceeding_max_jobs(
+                player, star, 'BUILD_SHIPYARD'
+            )
+        ):
+            append_candidate(
+                'BUILD_SHIPYARD',
+                260.0 + (report_defense_pressure * 240.0),
+            )
 
         if (
             not support_gap_scores and

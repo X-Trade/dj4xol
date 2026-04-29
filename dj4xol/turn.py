@@ -5205,8 +5205,22 @@ class GameTurn():
                 'updated_year': int(getattr(self.game, 'year', 0) or 0),
             },
         )
+        data = state.get_data()
+        previous_known_defenses = max(
+            0,
+            int(data.get('last_known_defenses', 0) or 0),
+        )
+        current_defenses = max(0, int(getattr(star, 'defenses', 0) or 0))
+        last_bombed_year = int(data.get('last_bombed_year', 0) or 0)
+        if last_bombed_year > 0:
+            data['last_known_defenses'] = max(
+                previous_known_defenses,
+                current_defenses,
+            )
+        else:
+            data['last_known_defenses'] = current_defenses
         state.set_tags(profile.get('roles') or [])
-        state.set_data({
+        data.update({
             'scores': profile.get('scores') or {},
             'habitability': profile.get('habitability'),
             'capacity': profile.get('capacity'),
@@ -5215,8 +5229,106 @@ class GameTurn():
             'has_secret_resource_yield': profile.get('has_secret_resource_yield'),
             'threat_score': profile.get('threat_score'),
         })
+        state.set_data(data)
         state.save(update_fields=['tags_json', 'data_json'])
         return state
+
+    def _record_micromanager_bombardment_damage(self, star, pre, damage_result):
+        owner = getattr(star, 'player', None)
+        if owner is None or star is None:
+            return None
+        try:
+            defenses_lost = int((damage_result or {}).get('defenses_lost', 0) or 0)
+        except (TypeError, ValueError):
+            defenses_lost = 0
+        if defenses_lost <= 0:
+            return None
+        from .models import MicromanagerObjectState
+
+        state, _created = MicromanagerObjectState.objects.update_or_create(
+            player=owner,
+            target_type=MicromanagerObjectState.TARGET_STAR,
+            target_star=star,
+            defaults={
+                'game': self.game,
+                'target_fleet': None,
+                'mission': 'colony_role',
+                'updated_year': int(getattr(self.game, 'year', 0) or 0),
+            },
+        )
+        data = state.get_data()
+        try:
+            defenses_before = int((pre or {}).get('defenses', 0) or 0)
+        except (TypeError, ValueError):
+            defenses_before = 0
+        defenses_after = max(0, int(getattr(star, 'defenses', 0) or 0))
+        prior_known = max(0, int(data.get('last_known_defenses', 0) or 0))
+        prior_desired = max(0, int(data.get('desired_defenses_before_bombing', 0) or 0))
+        remembered_target = max(prior_known, prior_desired, defenses_before)
+        data.update({
+            'last_bombed_year': int(getattr(self.game, 'year', 0) or 0),
+            'last_bombed_defenses_lost': defenses_lost,
+            'last_bombed_defenses_before': defenses_before,
+            'last_bombed_defenses_after': defenses_after,
+            'last_known_defenses': max(prior_known, defenses_before, defenses_after),
+            'desired_defenses_before_bombing': remembered_target,
+        })
+        state.set_data(data)
+        state.save(update_fields=['data_json', 'updated_year'])
+        return state
+
+    def _bombardment_memory_context_for_star(self, player, star):
+        if player is None or star is None:
+            return {}
+        from .models import MicromanagerObjectState
+
+        state = MicromanagerObjectState.objects.filter(
+            player=player,
+            target_type=MicromanagerObjectState.TARGET_STAR,
+            target_star=star,
+        ).first()
+        if state is None:
+            return {}
+        data = state.get_data()
+        try:
+            last_year = int(data.get('last_bombed_year', 0) or 0)
+        except (TypeError, ValueError):
+            last_year = 0
+        if last_year <= 0:
+            return {}
+        age = max(0, int(getattr(self.game, 'year', 0) or 0) - last_year)
+        memory_years = 80
+        if age > memory_years:
+            return {}
+        decay = 1.0 - (float(age) / float(memory_years))
+        defenses_lost = max(0, int(data.get('last_bombed_defenses_lost', 0) or 0))
+        defenses_before = max(0, int(data.get('last_bombed_defenses_before', 0) or 0))
+        desired_before = max(
+            0,
+            int(data.get('desired_defenses_before_bombing', 0) or 0),
+        )
+        last_known = max(0, int(data.get('last_known_defenses', 0) or 0))
+        if defenses_lost <= 0 and desired_before <= 0 and last_known <= 0:
+            return {}
+        loss_ratio = (
+            float(defenses_lost) / float(max(10, defenses_before))
+            if defenses_lost > 0 else
+            0.0
+        )
+        pressure = min(1.0, (0.18 + (loss_ratio * 0.72)) * decay)
+        rebuild_target = max(defenses_before, desired_before, last_known)
+        deterrence_extra = int(ceil(max(2.0, float(defenses_lost) * 0.50) * decay))
+        rebuild_target = max(
+            max(0, int(getattr(star, 'defenses', 0) or 0)),
+            rebuild_target + deterrence_extra,
+        )
+        return {
+            'last_bombed_year': last_year,
+            'last_bombed_age': age,
+            'bombardment_defense_pressure': pressure,
+            'bombardment_rebuild_defense_target': rebuild_target,
+            'bombardment_defenses_lost': defenses_lost,
+        }
 
     def _update_micromanager_fleet_state(
         self,
@@ -7136,7 +7248,7 @@ class GameTurn():
                 terminal=(homeworld_destroyed or homeworld_depopulated),
             )
 
-        return {
+        damage_summary = {
             'defenses_lost': defenses_lost,
             'colonists_lost': colonists_lost,
             'mines_lost': mines_lost,
@@ -7151,6 +7263,13 @@ class GameTurn():
             'destroyed_star_name': destroyed_star_name,
             'blast_summary': blast_summary,
         }
+        if not star_destroyed:
+            self._record_micromanager_bombardment_damage(
+                star,
+                pre,
+                damage_summary,
+            )
+        return damage_summary
 
     def _collect_combined_bombardment_participants(self, fleet, order, star, bomb_type):
         from .models import FleetOrders
@@ -8292,6 +8411,9 @@ class GameTurn():
                 )
                 harass_damage = max(0, int(conventional_damage * REMOTE_MINE_HARASS_DAMAGE_FACTOR))
                 if harass_damage > 0:
+                    pre_harass = {
+                        'defenses': int(star.defenses or 0),
+                    }
                     defenses_lost = min(int(star.defenses or 0), harass_damage)
                     colonists_lost = min(int(star.colonists or 0), harass_damage * 1000)
                     infra_losses = allocate_weighted_hits(
@@ -8313,6 +8435,11 @@ class GameTurn():
                     star.factories = max(0, int(star.factories or 0) - factories_lost)
                     star.labs = max(0, int(star.labs or 0) - labs_lost)
                     star.shipyards = max(0, int(star.shipyards or 0) - shipyards_lost)
+                    self._record_micromanager_bombardment_damage(
+                        star,
+                        pre_harass,
+                        {'defenses_lost': defenses_lost},
+                    )
 
         virtual_mines = max(0, int(fleet.ship_count or 0)) * miner_units_per_ship
         total_extraction = float(virtual_mines) * KT_PER_MINE
@@ -10801,7 +10928,13 @@ class GameTurn():
         if level >= 5:
             radius = 125.0
 
-        report_items = []
+        bombardment_context = self._bombardment_memory_context_for_star(
+            player,
+            star,
+        )
+        close_radius = 25.0
+        colony_report_items = []
+        fleet_report_items = []
         owner_names = set()
         for report in Report.objects.filter(
             game=self.game,
@@ -10835,9 +10968,44 @@ class GameTurn():
                 continue
             if owner_name:
                 owner_names.add(owner_name)
-            report_items.append((distance, owner_name, colonists))
+            colony_report_items.append((distance, owner_name, colonists))
 
-        if not report_items:
+        for report in Report.objects.filter(
+            game=self.game,
+            player=player,
+            target_type='fleet',
+        ).only('target_id', 'cached_report'):
+            data = report.get_report_data()
+            if not isinstance(data, dict):
+                continue
+            try:
+                report_x = int(data.get('x'))
+                report_y = int(data.get('y'))
+            except (TypeError, ValueError):
+                continue
+            distance = self._distance_between_points(
+                star.x,
+                star.y,
+                report_x,
+                report_y,
+            )
+            if distance > close_radius:
+                continue
+            owner_name = str(data.get('player_name') or '').strip()
+            if not owner_name or owner_name == getattr(player, 'name', ''):
+                continue
+            owner_names.add(owner_name)
+            try:
+                ship_count = int(data.get('ship_count', 0) or 0)
+            except (TypeError, ValueError):
+                ship_count = 0
+            fleet_report_items.append((distance, owner_name, ship_count))
+
+        if (
+            not colony_report_items and
+            not fleet_report_items and
+            not bombardment_context
+        ):
             return {}
 
         owners_by_name = {
@@ -10850,10 +11018,17 @@ class GameTurn():
         nearby_foreign = 0
         nearby_cold = 0
         nearby_hostile = 0
+        nearby_neutral = 0
+        nearby_foreign_fleets = 0
+        nearby_cold_fleets = 0
+        nearby_hostile_fleets = 0
+        nearby_neutral_fleets = 0
         nearest_foreign = None
         threat_score = 0.0
+        defense_pressure = 0.0
         stance_map = self._stance_map_for_player(player)
-        for distance, owner_name, colonists in report_items:
+
+        def normalized_stance_for_owner(owner_name, has_unknown_presence=False):
             owner = owners_by_name.get(owner_name)
             stance = 'UNKNOWN'
             if owner is not None:
@@ -10864,32 +11039,94 @@ class GameTurn():
                 )
             elif owner_name:
                 stance = 'UNKNOWN'
-            elif colonists > 0:
+            elif has_unknown_presence:
                 stance = 'UNKNOWN'
+            return owner, normalise_stance(stance)
+
+        for distance, owner_name, colonists in colony_report_items:
+            owner, normalized_stance = normalized_stance_for_owner(
+                owner_name,
+                has_unknown_presence=(colonists > 0),
+            )
             if owner is not None and owner.id == player.id:
                 continue
             nearby_foreign += 1
             nearest_foreign = (
                 distance if nearest_foreign is None else min(nearest_foreign, distance)
             )
-            normalized_stance = normalise_stance(stance)
             if normalized_stance == STANCE_HOSTILE:
                 nearby_hostile += 1
             elif normalized_stance == STANCE_COLD:
                 nearby_cold += 1
+            elif normalized_stance == STANCE_NEUTRAL:
+                nearby_neutral += 1
             distance_factor = 1.0 - min(1.0, float(distance) / radius)
             threat_score += stance_threat_weight(normalized_stance) * max(
                 0.15,
                 distance_factor,
             )
+            if distance <= close_radius:
+                close_distance_factor = max(
+                    0.20,
+                    1.0 - min(1.0, float(distance) / close_radius),
+                )
+                defense_pressure += (
+                    stance_threat_weight(normalized_stance) *
+                    close_distance_factor *
+                    0.70
+                )
 
-        return {
+        for distance, owner_name, ship_count in fleet_report_items:
+            owner, normalized_stance = normalized_stance_for_owner(owner_name)
+            if owner is not None and owner.id == player.id:
+                continue
+            nearby_foreign_fleets += 1
+            if normalized_stance == STANCE_HOSTILE:
+                nearby_hostile_fleets += 1
+            elif normalized_stance == STANCE_COLD:
+                nearby_cold_fleets += 1
+            elif normalized_stance == STANCE_NEUTRAL:
+                nearby_neutral_fleets += 1
+            close_distance_factor = max(
+                0.25,
+                1.0 - min(1.0, float(distance) / close_radius),
+            )
+            ship_factor = min(
+                2.0,
+                max(1.0, float(max(1, int(ship_count or 0))) / 5.0),
+            )
+            defense_pressure += (
+                stance_threat_weight(normalized_stance) *
+                close_distance_factor *
+                ship_factor *
+                0.36
+            )
+
+        if bombardment_context:
+            try:
+                bombardment_pressure = float(
+                    bombardment_context.get('bombardment_defense_pressure', 0.0) or 0.0
+                )
+            except (TypeError, ValueError):
+                bombardment_pressure = 0.0
+            defense_pressure = max(defense_pressure, bombardment_pressure)
+
+        context = {
             'nearby_foreign_colonies': nearby_foreign,
+            'nearby_neutral_colonies': nearby_neutral,
             'nearby_cold_colonies': nearby_cold,
             'nearby_hostile_colonies': nearby_hostile,
+            'nearby_foreign_fleets': nearby_foreign_fleets,
+            'nearby_neutral_fleets': nearby_neutral_fleets,
+            'nearby_cold_fleets': nearby_cold_fleets,
+            'nearby_hostile_fleets': nearby_hostile_fleets,
             'nearest_foreign_distance': nearest_foreign,
             'threat_score': min(1.0, threat_score),
+            'defense_pressure': min(1.0, defense_pressure),
+            'defense_pressure_radius': close_radius,
         }
+        context.update(bombardment_context)
+        return context
 
     def _colony_ai_profile_for_star(self, star, tier=None):
         """Return a fresh role profile for current AI decisions."""
@@ -10946,6 +11183,13 @@ class GameTurn():
             role_score(profile, ROLE_FRONTIER),
             role_score(profile, ROLE_SECRET_RESOURCE),
         )
+        context = profile.get('report_context')
+        if isinstance(context, dict):
+            try:
+                defense_pressure = float(context.get('defense_pressure', 0.0) or 0.0)
+            except (TypeError, ValueError):
+                defense_pressure = 0.0
+            role_value = max(role_value, min(1.0, max(0.0, defense_pressure)))
         defenses = max(0, int(getattr(star, 'defenses', 0) or 0))
         defense_gap = max(0.0, 1.0 - (float(defenses) / 100.0))
         return role_value * (0.60 + (defense_gap * 0.70))

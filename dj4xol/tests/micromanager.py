@@ -211,6 +211,40 @@ class AdministrationAutomationTest(TestCase):
         report.save(update_fields=['cached_report'])
         return report
 
+    def _create_fleet_report(
+        self,
+        fleet,
+        report_tier='basic',
+        player_name=None,
+        ship_count=None,
+        x=None,
+        y=None,
+    ):
+        report, _created = Report.objects.update_or_create(
+            game=self.game,
+            player=self.player,
+            target_type='fleet',
+            target_id=fleet.id,
+            defaults={
+                'year': self.game.year,
+                'cached_report': '{}',
+            },
+        )
+        data = {
+            'name': fleet.name,
+            'x': int(fleet.x if x is None else x),
+            'y': int(fleet.y if y is None else y),
+            'report_tier': report_tier,
+            'ship_count': int(
+                getattr(fleet, 'ship_count', 0) if ship_count is None else ship_count
+            ),
+        }
+        if player_name is not None:
+            data['player_name'] = player_name
+        report.set_report_data(data)
+        report.save(update_fields=['cached_report'])
+        return report
+
     def _configure_mature_balance_star(self):
         self.star.has_administration = True
         self.star.colonists = 250_000
@@ -482,6 +516,394 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertGreater(known_context['threat_score'], 0.0)
         self.assertIn(ROLE_FRONTIER, known_profile['roles'])
+
+    def test_level_three_known_close_hostile_colony_boosts_defense_priority(self):
+        self._create_administration_tech(3, 3)
+        self.star.has_administration = True
+        self.star.colonists = 250_000
+        self.star.mines = 8
+        self.star.factories = 10
+        self.star.labs = 8
+        self.star.defenses = 8
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 100_000
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        rival = Player.objects.create(
+            game=self.game,
+            name='Close Rival',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=rival,
+            stance='HOSTILE',
+        )
+        rival_colony = self.game.stars.exclude(id=self.star.id).first()
+        rival_colony.player = rival
+        rival_colony.colonists = 40_000
+        rival_colony.x = int(self.star.x) + 12
+        rival_colony.y = int(self.star.y)
+        rival_colony.save(update_fields=['player', 'colonists', 'x', 'y'])
+
+        turn = GameTurn(self.game)
+        hidden_profile = classify_colony_role(
+            self.player,
+            self.star,
+            report_context=turn._colony_ai_report_context_for_star(self.star, 3),
+        )
+        hidden_planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            3,
+            cost_map=get_player_production_costs(self.player),
+            limit=4,
+            colony_ai_profile=hidden_profile,
+        )
+
+        self._create_star_report(
+            rival_colony,
+            is_survivable=True,
+            player_name=rival.name,
+            colonists=40_000,
+        )
+        known_context = turn._colony_ai_report_context_for_star(self.star, 3)
+        known_profile = classify_colony_role(
+            self.player,
+            self.star,
+            report_context=known_context,
+        )
+        known_planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            3,
+            cost_map=get_player_production_costs(self.player),
+            limit=4,
+            colony_ai_profile=known_profile,
+        )
+
+        self.assertNotEqual(hidden_planned[0], 'BUILD_DEFENSE')
+        self.assertGreater(known_context['defense_pressure'], 0.0)
+        self.assertEqual(known_planned[0], 'BUILD_DEFENSE')
+
+    def test_level_three_known_hostile_fleet_reports_boost_defense_priority(self):
+        self._create_administration_tech(3, 3)
+        self.star.has_administration = True
+        self.star.colonists = 250_000
+        self.star.mines = 8
+        self.star.factories = 10
+        self.star.labs = 8
+        self.star.defenses = 8
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 100_000
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        rival = Player.objects.create(
+            game=self.game,
+            name='Fleet Rival',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=rival,
+            stance='HOSTILE',
+        )
+        hidden_fleet = Fleet.objects.create(
+            game=self.game,
+            player=rival,
+            name='Unreported Raider',
+            x=int(self.star.x) + 4,
+            y=int(self.star.y),
+            ship_count=20,
+        )
+
+        turn = GameTurn(self.game)
+        hidden_context = turn._colony_ai_report_context_for_star(self.star, 3)
+        self.assertEqual(hidden_context, {})
+
+        self._create_fleet_report(
+            hidden_fleet,
+            player_name=rival.name,
+            ship_count=20,
+        )
+        known_context = turn._colony_ai_report_context_for_star(self.star, 3)
+        profile = classify_colony_role(
+            self.player,
+            self.star,
+            report_context=known_context,
+        )
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            3,
+            cost_map=get_player_production_costs(self.player),
+            limit=4,
+            colony_ai_profile=profile,
+        )
+
+        self.assertEqual(known_context['nearby_hostile_fleets'], 1)
+        self.assertGreater(known_context['defense_pressure'], 0.0)
+        self.assertEqual(planned[0], 'BUILD_DEFENSE')
+
+    def test_level_four_reported_threat_can_seed_shipyard_for_orbital_defense(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 1_500_000
+        self.star.mines = 40
+        self.star.factories = 120
+        self.star.labs = 120
+        self.star.defenses = 40
+        self.star.shipyards = 0
+        self.star.ironium_inventory = 100_000
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.ironium_yield = 30
+        self.star.boranium_yield = 30
+        self.star.germanium_yield = 30
+        self.star.save()
+        profile = classify_colony_role(
+            self.player,
+            self.star,
+            report_context={
+                'defense_pressure': 0.75,
+                'threat_score': 0.75,
+                'nearby_hostile_fleets': 1,
+            },
+        )
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            4,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+            limit=5,
+            colony_ai_profile=profile,
+        )
+
+        self.assertIn('BUILD_SHIPYARD', planned[:4])
+
+    def test_level_five_reported_threat_keeps_idle_orbital_defenders(self):
+        self._create_administration_tech(4, 4)
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = True
+        self.star.colonists = 250_000
+        self.star.mines = 20
+        self.star.factories = 40
+        self.star.labs = 20
+        self.star.defenses = 10
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        donor = self.game.stars.exclude(id=self.star.id).first()
+        donor.player = self.player
+        donor.colonists = 100_000
+        donor.mines = 0
+        donor.factories = 0
+        donor.labs = 0
+        donor.defenses = 0
+        donor.shipyards = 0
+        donor.ironium_inventory = 500
+        donor.boranium_inventory = 0
+        donor.germanium_inventory = 0
+        donor.ironium_yield = 0
+        donor.boranium_yield = 0
+        donor.germanium_yield = 0
+        donor.save()
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            quantity=1,
+            position=1,
+        )
+        self.player.fleets.all().delete()
+        for idx, ship_count in enumerate((6, 3, 1), start=1):
+            Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Reported Threat Guard %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=ship_count,
+                offense_level=ship_count,
+                defense_level=ship_count,
+            )
+        rival = Player.objects.create(
+            game=self.game,
+            name='Reported Fleet Rival',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=rival,
+            stance='HOSTILE',
+        )
+        hostile_fleet = Fleet.objects.create(
+            game=self.game,
+            player=rival,
+            name='Known Raider',
+            x=int(self.star.x) + 5,
+            y=int(self.star.y),
+            ship_count=20,
+        )
+        self._create_fleet_report(
+            hostile_fleet,
+            player_name=rival.name,
+            ship_count=20,
+        )
+
+        GameTurn(self.game)._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertFalse(
+            FleetOrders.objects.filter(
+                fleet__player=self.player,
+                added_by_micromanager=True,
+            ).exclude(order_type='PATROL').exists()
+        )
+
+    def test_recent_bombardment_memory_rebuilds_lost_defenses(self):
+        self._create_administration_tech(3, 3)
+        self.star.has_administration = True
+        self.star.colonists = 250_000
+        self.star.mines = 20
+        self.star.factories = 60
+        self.star.labs = 30
+        self.star.defenses = 20
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 100_000
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.ironium_yield = 30
+        self.star.boranium_yield = 30
+        self.star.germanium_yield = 30
+        self.star.save()
+
+        turn = GameTurn(self.game)
+        state = turn._record_micromanager_bombardment_damage(
+            self.star,
+            {'defenses': 80},
+            {'defenses_lost': 60},
+        )
+        self.assertIsNotNone(state)
+
+        context = turn._colony_ai_report_context_for_star(self.star, 3)
+        profile = classify_colony_role(
+            self.player,
+            self.star,
+            report_context=context,
+        )
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            3,
+            cost_map=get_player_production_costs(self.player),
+            limit=4,
+            colony_ai_profile=profile,
+        )
+
+        self.assertGreater(context['bombardment_defense_pressure'], 0.0)
+        self.assertGreater(context['bombardment_rebuild_defense_target'], 80)
+        self.assertEqual(planned[0], 'BUILD_DEFENSE')
+
+    def test_bombardment_defense_memory_decays_away(self):
+        self._create_administration_tech(3, 3)
+        self.star.has_administration = True
+        self.star.defenses = 20
+        self.star.save(update_fields=['has_administration', 'defenses'])
+
+        turn = GameTurn(self.game)
+        turn._record_micromanager_bombardment_damage(
+            self.star,
+            {'defenses': 80},
+            {'defenses_lost': 60},
+        )
+        recent_context = turn._colony_ai_report_context_for_star(self.star, 3)
+        self.game.year += 81
+        self.game.save(update_fields=['year'])
+        expired_context = turn._colony_ai_report_context_for_star(self.star, 3)
+
+        self.assertGreater(
+            recent_context.get('bombardment_defense_pressure', 0.0),
+            0.0,
+        )
+        self.assertEqual(expired_context, {})
+
+    def test_neutral_close_colony_creates_smaller_defense_pressure_than_hostile(self):
+        neutral = Player.objects.create(
+            game=self.game,
+            name='Neutral Neighbor',
+            race_type=self.player.race_type,
+        )
+        hostile = Player.objects.create(
+            game=self.game,
+            name='Hostile Neighbor',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=hostile,
+            stance='HOSTILE',
+        )
+        neutral_colony = self.game.stars.exclude(id=self.star.id).first()
+        hostile_colony = self.game.stars.exclude(
+            id__in=[self.star.id, neutral_colony.id],
+        ).first()
+        for neighbor, owner, offset in (
+            (neutral_colony, neutral, 10),
+            (hostile_colony, hostile, 10),
+        ):
+            neighbor.player = owner
+            neighbor.colonists = 30_000
+            neighbor.x = int(self.star.x) + offset
+            neighbor.y = int(self.star.y)
+            neighbor.save(update_fields=['player', 'colonists', 'x', 'y'])
+
+        turn = GameTurn(self.game)
+        self._create_star_report(
+            neutral_colony,
+            player_name=neutral.name,
+            colonists=30_000,
+        )
+        neutral_pressure = turn._colony_ai_report_context_for_star(
+            self.star,
+            3,
+        )['defense_pressure']
+        Report.objects.filter(
+            game=self.game,
+            player=self.player,
+            target_type='star',
+            target_id=neutral_colony.id,
+        ).delete()
+        self._create_star_report(
+            hostile_colony,
+            player_name=hostile.name,
+            colonists=30_000,
+        )
+        hostile_pressure = turn._colony_ai_report_context_for_star(
+            self.star,
+            3,
+        )['defense_pressure']
+
+        self.assertGreater(neutral_pressure, 0.0)
+        self.assertGreater(hostile_pressure, neutral_pressure)
 
     def test_role_aware_frontier_profile_prioritises_defense_support(self):
         self._create_administration_tech(4, 4)
