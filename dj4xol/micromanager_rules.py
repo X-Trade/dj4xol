@@ -12,6 +12,7 @@ from .colony_rules import (
     MEGACITY_JOBS,
     calculate_available_buildpoints,
     calculate_growth_factor,
+    habitability_value_for_environment,
     calculate_productivity_multiplier,
     calculate_staffing_ratio,
     calculate_total_jobs,
@@ -39,8 +40,16 @@ TIER_SUPPORT = 2
 TIER_TERRAFORM = 3
 TIER_MECHANICAL_GROWTH = 4
 
-MECHANICAL_GROWTH_EMPLOYMENT_MIN = 45.0
+MECHANICAL_GROWTH_EMPLOYMENT_MIN = 40.0
+MECHANICAL_GROWTH_EMPLOYMENT_HIGH = 60.0
 MECHANICAL_GROWTH_EMPLOYMENT_TOP = 90.0
+
+TERRAFORM_IDEAL_HABITABILITY = 0.99
+TERRAFORM_LOW_HABITABILITY = 0.35
+TERRAFORM_EDGE_HABITABILITY = 0.10
+MATURE_SUPPORT_FACTORY_MIN = 20
+MATURE_SUPPORT_FLOOR = 100
+MATURE_SUPPORT_MAX = 1000
 
 ADMINISTRATION_ORDER_TYPE = 'BUILD_ADMINISTRATION'
 REMOVE_ADMINISTRATION_ORDER_TYPE = 'REMOVE_ADMINISTRATION'
@@ -85,6 +94,12 @@ SHIPYARD_COMPLETION_MAX_YEARS = 5
 DYSON_COMPLETION_MAX_YEARS = 9
 CITY_COMPLETION_MAX_YEARS = 5
 MEGACITY_COMPLETION_MAX_YEARS = 5
+
+TERRAFORM_ORDER_ENVIRONMENTS = {
+    'TERRAFORM_GRAVITY': 'gravity',
+    'TERRAFORM_TEMPERATURE': 'temperature',
+    'TERRAFORM_RADIATION': 'radiation',
+}
 
 
 def _normalize_micromanager_mode(micromanager_mode):
@@ -256,11 +271,43 @@ def _mature_support_balance_factor(star, tier):
     return 0.75
 
 
-def _balanced_lab_target(star, tier):
+def _mature_colony_support_target(star, tier):
+    if int(tier or 0) < TIER_TERRAFORM:
+        return 0
+    current_factories = int(getattr(star, 'factories', 0) or 0)
+    if current_factories < MATURE_SUPPORT_FACTORY_MIN:
+        return 0
+    target = max(MATURE_SUPPORT_FLOOR, current_factories)
+    return min(MATURE_SUPPORT_MAX, int(target))
+
+
+def _mature_colony_needs_seed_shipyard(star, tier):
+    colonists = int(getattr(star, 'colonists', 0) or 0)
+    if colonists > 0 and _safe_ratio(_job_capacity(star), colonists) < 0.15:
+        return False
+    return (
+        int(tier or 0) >= TIER_SUPPORT and
+        int(getattr(star, 'shipyards', 0) or 0) <= 0 and
+        int(getattr(star, 'factories', 0) or 0) >= MATURE_SUPPORT_FACTORY_MIN
+    )
+
+
+def _balanced_lab_target(star, tier, research_maxed=False):
     balance_factor = _mature_support_balance_factor(star, tier)
-    return int(ceil(
+    target = int(ceil(
         float(int(getattr(star, 'factories', 0) or 0)) * float(balance_factor)
     ))
+    target = max(target, _mature_colony_support_target(star, tier))
+    if bool(research_maxed):
+        return min(target, MATURE_SUPPORT_FLOOR)
+    return target
+
+
+def _balanced_defense_target(star, tier):
+    current_factories = int(getattr(star, 'factories', 0) or 0)
+    target = int(ceil(float(current_factories) * _mature_support_balance_factor(star, tier)))
+    target = max(target, _mature_colony_support_target(star, tier))
+    return target
 
 
 def _factory_balance_penalty(star, tier):
@@ -282,19 +329,20 @@ def _factory_balance_penalty(star, tier):
     return 0.35 + (0.65 * _clamp(support_ratio))
 
 
-def _support_gap_scores_for_tier(star, tier):
+def _support_gap_scores_for_tier(star, tier, research_maxed=False):
     current_factories = int(getattr(star, 'factories', 0) or 0)
     if current_factories <= 0:
         return {}
     return {
         'BUILD_LAB': max(
             0,
-            _balanced_lab_target(star, tier) -
+            _balanced_lab_target(star, tier, research_maxed=research_maxed) -
             int(getattr(star, 'labs', 0) or 0),
         ),
         'BUILD_DEFENSE': max(
             0,
-            current_factories - (int(getattr(star, 'defenses', 0) or 0) * 2),
+            _balanced_defense_target(star, tier) -
+            int(getattr(star, 'defenses', 0) or 0),
         ),
     }
 
@@ -354,6 +402,19 @@ def _can_queue_job_expansion(player, star, order_type):
         _job_fill_ratio(player, star) >= JOB_MAX_RATIO and
         _target_mine_fill_ratio(star) < 0.75
     ):
+        current_factories = int(getattr(star, 'factories', 0) or 0)
+        critical_support_floor = min(
+            MATURE_SUPPORT_FLOOR,
+            max(10, current_factories // 2),
+        )
+        if (
+            current_factories >= MATURE_SUPPORT_FACTORY_MIN and
+            (
+                int(getattr(star, 'labs', 0) or 0) < critical_support_floor or
+                int(getattr(star, 'defenses', 0) or 0) < critical_support_floor
+            )
+        ):
+            return False
         return True
     if (
         str(order_type or '').strip().upper() == 'BUILD_MINE' and
@@ -381,6 +442,52 @@ def _can_add_jobs_without_breaking_limit(player, star, order_type):
     if current_jobs < thresholds['min_jobs']:
         return True
     return next_jobs <= thresholds['max_jobs']
+
+
+def _critical_support_floor(star):
+    current_factories = int(getattr(star, 'factories', 0) or 0)
+    if current_factories < MATURE_SUPPORT_FACTORY_MIN:
+        return 0
+    return min(
+        MATURE_SUPPORT_FLOOR,
+        max(10, current_factories // 2),
+    )
+
+
+def _is_critical_support_order(star, tier, order_type, research_maxed=False):
+    if int(tier or 0) < TIER_TERRAFORM:
+        return False
+    normalized = str(order_type or '').strip().upper()
+    if normalized not in ('BUILD_LAB', 'BUILD_DEFENSE'):
+        return False
+    floor = _critical_support_floor(star)
+    if floor <= 0:
+        return False
+    if normalized == 'BUILD_LAB' and bool(research_maxed):
+        floor = min(floor, max(10, MATURE_SUPPORT_FLOOR // 2))
+    return int(getattr(star, 'labs' if normalized == 'BUILD_LAB' else 'defenses', 0) or 0) < floor
+
+
+def _can_queue_support_expansion(
+    player,
+    star,
+    tier,
+    order_type,
+    research_maxed=False,
+):
+    if _can_queue_job_expansion(player, star, order_type):
+        return True
+    if not _is_critical_support_order(
+        star,
+        tier,
+        order_type,
+        research_maxed=research_maxed,
+    ):
+        return False
+    # Critical support backlog is allowed to break the normal 75% job planning
+    # cap. Mechanical colonies in particular can otherwise get stuck growing
+    # population forever while support buildings never become legal candidates.
+    return _job_fill_ratio(player, star) <= 1.15
 
 
 def _order_has_infrastructure_room(star, order_type):
@@ -500,28 +607,83 @@ def _queue_throughput_pressure(star):
     return pressure
 
 
+def terraform_order_environment(order_type):
+    return TERRAFORM_ORDER_ENVIRONMENTS.get(str(order_type or '').strip().upper())
+
+
+def environment_habitability_score(player, star, env):
+    if not player or not star or not env:
+        return 1.0
+    try:
+        return float(
+            habitability_value_for_environment(
+                player,
+                env,
+                getattr(star, env),
+            )
+        )
+    except (AttributeError, TypeError, ValueError, ZeroDivisionError):
+        return 1.0
+
+
+def terraform_order_is_close_to_ideal(player, star, order_type):
+    env = terraform_order_environment(order_type)
+    if not env:
+        return False
+    return environment_habitability_score(
+        player,
+        star,
+        env,
+    ) >= TERRAFORM_IDEAL_HABITABILITY
+
+
+def _terraform_order_score(player, star, order_type):
+    env = terraform_order_environment(order_type)
+    if not env or terraform_order_is_close_to_ideal(player, star, order_type):
+        return 0.0
+    habitability = environment_habitability_score(player, star, env)
+    if habitability <= TERRAFORM_EDGE_HABITABILITY:
+        return 520.0 + ((TERRAFORM_EDGE_HABITABILITY - habitability) * 220.0)
+    if habitability <= TERRAFORM_LOW_HABITABILITY:
+        return 310.0 + ((TERRAFORM_LOW_HABITABILITY - habitability) * 300.0)
+    return 85.0 + ((1.0 - habitability) * 90.0)
+
+
 def preferred_terraform_order(player, star):
     if not player or not star:
         return None
     candidates = [
         (
+            environment_habitability_score(player, star, 'gravity'),
             abs(float(getattr(star, 'gravity', 0.0) or 0.0) -
                 float(getattr(player, 'gravity_center', 0.0) or 0.0)),
             'TERRAFORM_GRAVITY',
         ),
         (
+            environment_habitability_score(player, star, 'temperature'),
             abs(float(getattr(star, 'temperature', 0.0) or 0.0) -
                 float(getattr(player, 'temperature_center', 0.0) or 0.0)),
             'TERRAFORM_TEMPERATURE',
         ),
         (
+            environment_habitability_score(player, star, 'radiation'),
             abs(float(getattr(star, 'radiation', 0.0) or 0.0) -
                 float(getattr(player, 'radiation_center', 0.0) or 0.0)),
             'TERRAFORM_RADIATION',
         ),
     ]
-    candidates.sort(reverse=True)
-    distance, order_type = candidates[0]
+    candidates = [
+        (habitability, distance, order_type)
+        for habitability, distance, order_type in candidates
+        if (
+            distance > 0.0001 and
+            habitability < TERRAFORM_IDEAL_HABITABILITY
+        )
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], -item[1], item[2]))
+    _habitability, distance, order_type = candidates[0]
     if distance <= 0.0001:
         return None
     return order_type
@@ -758,9 +920,23 @@ def _has_resource_surplus_for_order(player, star, cost_map, order_type, reserve_
     return True
 
 
-def _ordered_support_balance_candidates(star, tier):
+def _ordered_support_balance_candidates(star, tier, research_maxed=False):
     """Return support orders that bring labs/defenses back toward factory parity."""
-    support_gaps = list(_support_gap_scores_for_tier(star, tier).items())
+    support_gaps = list(
+        _support_gap_scores_for_tier(
+            star,
+            tier,
+            research_maxed=research_maxed,
+        ).items()
+    )
+    if bool(research_maxed):
+        support_gaps = [
+            (
+                order_type,
+                gap * (0.25 if order_type == 'BUILD_LAB' else 1.0),
+            )
+            for order_type, gap in support_gaps
+        ]
     support_gaps.sort(key=lambda item: (-item[1], item[0]))
     return [
         order_type for order_type, gap in support_gaps
@@ -782,6 +958,8 @@ def _mechanical_growth_candidate_orders(player, star, tier):
         return 'none', []
     if employment_pct >= MECHANICAL_GROWTH_EMPLOYMENT_TOP:
         return 'top', ['BUILD_COLONISTS_1M', 'BUILD_COLONISTS_1K']
+    if employment_pct >= MECHANICAL_GROWTH_EMPLOYMENT_HIGH:
+        return 'high', ['BUILD_COLONISTS_1K', 'BUILD_COLONISTS_1M']
     if employment_pct >= MECHANICAL_GROWTH_EMPLOYMENT_MIN:
         return 'normal', ['BUILD_COLONISTS_1K', 'BUILD_COLONISTS_1M']
     return 'none', []
@@ -798,6 +976,7 @@ def _scored_micromanager_candidate_orders(
     city_available=False,
     megacity_available=False,
     cost_map=None,
+    research_maxed=False,
     micromanager_mode=MICROMANAGER_MODE_STANDARD,
 ):
     micromanager_mode = _normalize_micromanager_mode(micromanager_mode)
@@ -819,8 +998,13 @@ def _scored_micromanager_candidate_orders(
         current_mines < MINE_BUILD_CAP
     )
     queue_pressure = _queue_throughput_pressure(star)
-    support_gap_scores = _support_gap_scores_for_tier(star, tier)
+    support_gap_scores = _support_gap_scores_for_tier(
+        star,
+        tier,
+        research_maxed=research_maxed,
+    )
     job_ratio = _job_fill_ratio(player, star)
+    employment_pct = float(calculate_staffing_ratio(star) * 100.0)
     mine_ratio = _target_mine_fill_ratio(star, micromanager_mode=micromanager_mode)
     bootstrap_pressure = _mine_bootstrap_pressure(
         star,
@@ -860,8 +1044,56 @@ def _scored_micromanager_candidate_orders(
                 order_type,
                 score,
             )
+    elif growth_priority == 'high':
+        growth_score = (
+            520.0 +
+            ((employment_pct - MECHANICAL_GROWTH_EMPLOYMENT_HIGH) * 8.0)
+        )
+        if (
+            current_factories >= MATURE_SUPPORT_FACTORY_MIN and
+            (
+                int(getattr(star, 'labs', 0) or 0) < max(4, current_factories // 4) or
+                int(getattr(star, 'defenses', 0) or 0) < max(4, current_factories // 4)
+            )
+        ):
+            growth_score *= 0.45
+        if (
+            current_factories >= MATURE_SUPPORT_FACTORY_MIN and
+            bootstrap_pressure >= 1.0
+        ):
+            growth_score *= 0.25
+        elif (
+            current_factories >= MATURE_SUPPORT_FACTORY_MIN and
+            bootstrap_pressure > 0.0
+        ):
+            growth_score *= 0.50
+        if expansionist_mode:
+            growth_score = (growth_score * 1.25) + 80.0
+        for idx, order_type in enumerate(growth_candidates):
+            append_candidate(
+                order_type,
+                growth_score - (idx * 30.0),
+            )
     elif growth_priority == 'normal':
-        growth_score = 120.0 + ((1.0 - job_build_tailoff) * 280.0)
+        growth_score = 115.0 + ((1.0 - job_build_tailoff) * 190.0)
+        if (
+            current_factories >= MATURE_SUPPORT_FACTORY_MIN and
+            (
+                int(getattr(star, 'labs', 0) or 0) < max(4, current_factories // 4) or
+                int(getattr(star, 'defenses', 0) or 0) < max(4, current_factories // 4)
+            )
+        ):
+            growth_score *= 0.60
+        if (
+            current_factories >= MATURE_SUPPORT_FACTORY_MIN and
+            bootstrap_pressure >= 1.0
+        ):
+            growth_score *= 0.25
+        elif (
+            current_factories >= MATURE_SUPPORT_FACTORY_MIN and
+            bootstrap_pressure > 0.0
+        ):
+            growth_score *= 0.50
         if high_employment:
             growth_score = 1000.0
         if expansionist_mode:
@@ -883,7 +1115,7 @@ def _scored_micromanager_candidate_orders(
     ):
         dyson_score = 220.0 + (max(0.0, JOB_TARGET_RATIO - job_ratio) * 500.0)
         if current_jobs < thresholds['min_jobs']:
-            dyson_score += 220.0
+            dyson_score += 900.0
         if bootstrap_pressure >= 1.0:
             dyson_score *= 0.85
         append_candidate(DYSON_SPHERE_ORDER_TYPE, dyson_score)
@@ -906,6 +1138,16 @@ def _scored_micromanager_candidate_orders(
             _can_add_order_without_exceeding_max_jobs(player, star, CITY_ORDER_TYPE)
         ):
             city_score = 70.0 + (shortfall_ratio * 120.0)
+            if _mature_colony_needs_seed_shipyard(star, tier):
+                city_score *= 0.30
+            if (
+                int(tier or 0) >= TIER_TERRAFORM and
+                (
+                    int(getattr(star, 'labs', 0) or 0) < MATURE_SUPPORT_FLOOR or
+                    int(getattr(star, 'defenses', 0) or 0) < MATURE_SUPPORT_FLOOR
+                )
+            ):
+                city_score *= 0.55
             if current_jobs < thresholds['min_jobs']:
                 city_score += 30.0
             if bootstrap_pressure >= 1.0:
@@ -920,6 +1162,16 @@ def _scored_micromanager_candidate_orders(
             _can_add_order_without_exceeding_max_jobs(player, star, MEGACITY_ORDER_TYPE)
         ):
             megacity_score = 52.0 + (shortfall_ratio * 105.0)
+            if _mature_colony_needs_seed_shipyard(star, tier):
+                megacity_score *= 0.30
+            if (
+                int(tier or 0) >= TIER_TERRAFORM and
+                (
+                    int(getattr(star, 'labs', 0) or 0) < MATURE_SUPPORT_FLOOR or
+                    int(getattr(star, 'defenses', 0) or 0) < MATURE_SUPPORT_FLOOR
+                )
+            ):
+                megacity_score *= 0.55
             if jobs_shortfall >= MEGACITY_JOBS:
                 megacity_score += 35.0
             elif jobs_shortfall <= CITY_JOBS:
@@ -1052,11 +1304,23 @@ def _scored_micromanager_candidate_orders(
         )
 
     if int(tier or 0) >= TIER_SUPPORT:
-        for idx, order_type in enumerate(_ordered_support_balance_candidates(star, tier)):
+        for idx, order_type in enumerate(
+            _ordered_support_balance_candidates(
+                star,
+                tier,
+                research_maxed=research_maxed,
+            )
+        ):
             gap_score = float(support_gap_scores.get(order_type, 0) or 0)
             if gap_score <= 0:
                 continue
-            if not _can_queue_job_expansion(player, star, order_type):
+            if not _can_queue_support_expansion(
+                player,
+                star,
+                tier,
+                order_type,
+                research_maxed=research_maxed,
+            ):
                 continue
             support_pressure = _clamp(
                 _safe_ratio(gap_score, max(1, current_factories), default=0.0)
@@ -1068,6 +1332,8 @@ def _scored_micromanager_candidate_orders(
             )
             if current_factories >= 100 and support_pressure >= 0.50:
                 base_score += 90.0
+            if order_type == 'BUILD_LAB' and bool(research_maxed):
+                base_score *= 0.25
             if job_ratio < JOB_MIN_RATIO:
                 base_score *= 0.75
             elif job_ratio < JOB_TARGET_RATIO:
@@ -1092,6 +1358,8 @@ def _scored_micromanager_candidate_orders(
         ):
             shipyard_score = 15.0 + (shipyard_deficit * 16.0)
             if current_shipyards <= 0:
+                if _mature_colony_needs_seed_shipyard(star, tier):
+                    shipyard_score += 520.0
                 if current_factories >= max(LEVEL_TWO_DEFENSE_FLOOR, 12):
                     shipyard_score += 225.0
                 elif support_gap_scores:
@@ -1136,7 +1404,10 @@ def _scored_micromanager_candidate_orders(
     ):
         terraform_order = preferred_terraform_order(player, star)
         if terraform_order:
-            append_candidate(terraform_order, 85.0)
+            append_candidate(
+                terraform_order,
+                _terraform_order_score(player, star, terraform_order),
+            )
 
     ranked = sorted(
         candidates.items(),
@@ -1156,6 +1427,7 @@ def get_micromanager_candidate_orders(
     city_available=False,
     megacity_available=False,
     cost_map=None,
+    research_maxed=False,
     administration_active=None,
     micromanager_mode=MICROMANAGER_MODE_STANDARD,
 ):
@@ -1179,6 +1451,7 @@ def get_micromanager_candidate_orders(
             city_available=city_available,
             megacity_available=megacity_available,
             cost_map=cost_map,
+            research_maxed=research_maxed,
             micromanager_mode=micromanager_mode,
         )
     thresholds = _projected_job_thresholds(player, star)
@@ -1213,7 +1486,11 @@ def get_micromanager_candidate_orders(
     support_balance_candidates = []
     if int(tier or 0) >= TIER_SUPPORT:
         queue_pressure = _queue_throughput_pressure(star)
-        support_balance_candidates = _ordered_support_balance_candidates(star, tier)
+        support_balance_candidates = _ordered_support_balance_candidates(
+            star,
+            tier,
+            research_maxed=research_maxed,
+        )
     level_one_support_candidates = []
     growth_priority, growth_candidates = _mechanical_growth_candidate_orders(
         player,
@@ -1265,7 +1542,7 @@ def get_micromanager_candidate_orders(
             append_candidate('BUILD_FACTORY')
         if queue_pressure.get('mines') and mine_room:
             append_candidate('BUILD_MINE')
-        if growth_priority == 'normal':
+        if growth_priority in ('high', 'normal'):
             for order_type in growth_candidates:
                 append_candidate(order_type)
 
@@ -1274,8 +1551,12 @@ def get_micromanager_candidate_orders(
                 append_candidate('BUILD_FACTORY')
             if support_balance_candidates:
                 for order_type in support_balance_candidates:
-                    if _can_add_jobs_without_breaking_limit(
-                        player, star, order_type
+                    if _can_queue_support_expansion(
+                        player,
+                        star,
+                        tier,
+                        order_type,
+                        research_maxed=research_maxed,
                     ):
                         append_candidate(order_type)
             else:
@@ -1330,7 +1611,7 @@ def get_micromanager_candidate_orders(
             for order_type in level_one_support_candidates:
                 append_candidate(order_type)
     else:
-        if growth_priority == 'normal':
+        if growth_priority in ('high', 'normal'):
             for order_type in growth_candidates:
                 append_candidate(order_type)
         if queue_pressure.get('mines') and mine_room:
@@ -1340,8 +1621,12 @@ def get_micromanager_candidate_orders(
         if int(tier or 0) >= TIER_SUPPORT:
             if support_balance_candidates:
                 for order_type in support_balance_candidates:
-                    if _can_add_jobs_without_breaking_limit(
-                        player, star, order_type
+                    if _can_queue_support_expansion(
+                        player,
+                        star,
+                        tier,
+                        order_type,
+                        research_maxed=research_maxed,
                     ):
                         append_candidate(order_type)
             elif not queue_pressure.get('factories'):
@@ -1509,6 +1794,7 @@ def plan_micromanager_orders(
     queue_requirements=None,
     limit=12,
     administration_active=None,
+    research_maxed=False,
     micromanager_mode=MICROMANAGER_MODE_STANDARD,
 ):
     """Plan queued Micromanager orders for one colony."""
@@ -1628,6 +1914,7 @@ def plan_micromanager_orders(
             city_available=city_available,
             megacity_available=megacity_available,
             cost_map=cost_map,
+            research_maxed=research_maxed,
             administration_active=administration_active,
             micromanager_mode=micromanager_mode,
         )

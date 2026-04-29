@@ -924,6 +924,40 @@ class TestGameDetailRendering(TestCase):
         self.assertContains(response, 'data-panel="detail"')
         self.assertContains(response, 'id="detail"')
 
+    def test_overmined_star_yield_renders_warning_colour(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        target = player.homeworld
+        target.mines = 11
+        target.factories = 0
+        target.labs = 0
+        target.defenses = 0
+        target.shipyards = 0
+        target.colonists = 11_000
+        target.ironium_yield = 100
+        target.boranium_yield = 0
+        target.germanium_yield = 0
+        target.resource_x_yield = 0
+        target.resource_y_yield = 0
+        target.resource_z_yield = 0
+        target.save(update_fields=[
+            'mines', 'factories', 'labs', 'defenses', 'shipyards',
+            'colonists', 'ironium_yield', 'boranium_yield', 'germanium_yield',
+            'resource_x_yield', 'resource_y_yield', 'resource_z_yield',
+        ])
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': target.x, 'y': target.y, 'sel': target.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="resource-yield-overmined"')
+        self.assertContains(response, '<span class="resource-yield-overmined">100%</span>', html=True)
+
     def test_no_scanners_hides_scanner_controls_and_overlay(self):
         game = default_game(stars=5, fleets=0)
         game.no_scanners = True

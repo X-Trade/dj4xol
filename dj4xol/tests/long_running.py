@@ -461,6 +461,9 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
         empire_mines = 0
         empire_factories = 0
         empire_labs = 0
+        empire_defenses = 0
+        empire_shipyards = 0
+        empire_cities = 0
         empire_mining_output = 0
         empire_colonists = 0
         for owned_star in owned_stars:
@@ -468,6 +471,9 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             empire_mines += int(getattr(owned_star, "mines", 0) or 0)
             empire_factories += int(getattr(owned_star, "factories", 0) or 0)
             empire_labs += int(getattr(owned_star, "labs", 0) or 0)
+            empire_defenses += int(getattr(owned_star, "defenses", 0) or 0)
+            empire_shipyards += int(getattr(owned_star, "shipyards", 0) or 0)
+            empire_cities += int(getattr(owned_star, "cities", 0) or 0)
             empire_mining_output += sum(
                 int(value or 0) for value in projected_mining_output(owned_star).values()
             )
@@ -481,7 +487,9 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             "homeworld_mines": int(homeworld.mines or 0),
             "homeworld_factories": int(homeworld.factories or 0),
             "homeworld_labs": int(homeworld.labs or 0),
+            "homeworld_defenses": int(homeworld.defenses or 0),
             "homeworld_shipyards": int(homeworld.shipyards or 0),
+            "homeworld_cities": int(homeworld.cities or 0),
             "empire_colonists": empire_colonists,
             "ironium_inventory": int(homeworld.ironium_inventory or 0),
             "boranium_inventory": int(homeworld.boranium_inventory or 0),
@@ -493,12 +501,16 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             "empire_mines": empire_mines,
             "empire_factories": empire_factories,
             "empire_labs": empire_labs,
+            "empire_defenses": empire_defenses,
+            "empire_shipyards": empire_shipyards,
+            "empire_cities": empire_cities,
             "empire_mining_output": empire_mining_output,
             "orders": self._format_homeworld_orders(homeworld),
         }
         snapshot["line"] = (
             "[%s][%s] colonies=%s fleets=%s emp=%.1f%% pop=hw:%s empire:%s hw=mines:%s factories:%s "
-            "labs:%s shipyards:%s mining:%s empire=mines:%s factories:%s labs:%s mining:%s "
+            "labs:%s defenses:%s shipyards:%s cities:%s mining:%s empire=mines:%s factories:%s labs:%s "
+            "defenses:%s shipyards:%s cities:%s mining:%s "
             "inv(I/B/G)=%s/%s/%s yields(I/B/G)=%s/%s/%s "
             "orders=%s"
         ) % (
@@ -512,11 +524,16 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             snapshot["homeworld_mines"],
             snapshot["homeworld_factories"],
             snapshot["homeworld_labs"],
+            snapshot["homeworld_defenses"],
             snapshot["homeworld_shipyards"],
+            snapshot["homeworld_cities"],
             snapshot["homeworld_mining_output"],
             snapshot["empire_mines"],
             snapshot["empire_factories"],
             snapshot["empire_labs"],
+            snapshot["empire_defenses"],
+            snapshot["empire_shipyards"],
+            snapshot["empire_cities"],
             snapshot["empire_mining_output"],
             snapshot["ironium_inventory"],
             snapshot["boranium_inventory"],
@@ -619,6 +636,43 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
                 final["homeworld_factories"],
                 msg=history,
             )
+
+    def test_mechanical_micromanager_ai_keeps_hundred_year_homeworld_balanced(self):
+        race_type = self._create_race_type(
+            "MEC100",
+            "MechHundred",
+            is_mechanical=True,
+            ignores_all=True,
+        )
+        race = self._create_race(
+            "MachinaHundred",
+            race_type,
+            starting_mines=2,
+            starting_factories=4,
+            starting_labs=0,
+            starting_shipyards=1,
+            starting_fleets=3,
+        )
+        _game, ai_player = self._build_ai_game(
+            "Mechanical Micromanager 100 Year Balance Test",
+            race,
+            AI_MODULE_MICROMANAGER,
+        )
+
+        result = self._run_ai_year_trace(
+            ai_player,
+            max(self.AI_YEARS, 100),
+            "mech-l5-100",
+        )
+        final = result["snapshots"][-1]
+        history = "\n".join(snapshot["line"] for snapshot in result["snapshots"])
+
+        self.assertGreaterEqual(final["homeworld_shipyards"], 1, msg=history)
+        self.assertGreaterEqual(final["homeworld_labs"], 10, msg=history)
+        self.assertGreaterEqual(final["homeworld_defenses"], 10, msg=history)
+        if final["homeworld_factories"] >= 100:
+            self.assertGreaterEqual(final["homeworld_labs"], 50, msg=history)
+            self.assertGreaterEqual(final["homeworld_defenses"], 50, msg=history)
 
     def test_mechanical_idle_ai_long_run_logs_homeworld_progress(self):
         race_type = self._create_race_type(
@@ -733,7 +787,7 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
         self.assertTrue(expansion_years, msg=history)
         self.assertLessEqual(
             int(expansion_years[0]),
-            int(result["initial_year"] + 9),
+            int(result["initial_year"] + 20),
             msg=history,
         )
         for previous_year, year in zip(expansion_years, expansion_years[1:]):

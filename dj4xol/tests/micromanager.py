@@ -20,6 +20,7 @@ from ..micromanager_rules import (
     apply_projected_order,
     get_micromanager_candidate_orders,
     plan_micromanager_orders,
+    terraform_order_is_close_to_ideal,
 )
 from ._util import default_game
 from unittest.mock import patch
@@ -577,7 +578,7 @@ class AdministrationAutomationTest(TestCase):
         self.player.race_type.population_growth_multiplier = 0
         self.player.race_type.save(update_fields=['population_growth_multiplier'])
         self.star.has_administration = True
-        self.star.colonists = 20_000
+        self.star.colonists = 30_000
         self.star.mines = 1
         self.star.factories = 0
         self.star.labs = 0
@@ -836,7 +837,7 @@ class AdministrationAutomationTest(TestCase):
         self.assertNotIn('BUILD_CITY', candidates)
         self.assertNotIn('BUILD_MEGACITY', candidates)
 
-    def test_level_two_city_prioritised_over_shipyard_when_city_is_viable(self):
+    def test_level_two_mature_colony_seeds_shipyard_before_city(self):
         self._create_administration_tech(2, 2)
         self._create_city_tech(tech_level=2)
         self.player.race_type.population_growth_multiplier = 0
@@ -870,8 +871,8 @@ class AdministrationAutomationTest(TestCase):
         self.assertIn('BUILD_CITY', candidates)
         self.assertIn('BUILD_SHIPYARD', candidates)
         self.assertLess(
-            candidates.index('BUILD_CITY'),
             candidates.index('BUILD_SHIPYARD'),
+            candidates.index('BUILD_CITY'),
         )
 
     def test_level_two_shipyard_steps_in_when_city_is_excluded_by_job_cap(self):
@@ -1289,6 +1290,35 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertIn('BUILD_COLONISTS_1K', planned)
 
+    def test_tier_four_mechanical_mixes_growth_from_40_percent_employment(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 100_000
+        self.star.mines = 20
+        self.star.factories = 20
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.player.race_type.is_mechanical = True
+        self.player.race_type.save(update_fields=['is_mechanical'])
+        self.star.ironium_inventory = 500
+        self.star.boranium_inventory = 500
+        self.star.germanium_inventory = 500
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            4,
+            fleets_in_orbit=0,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertIn('BUILD_COLONISTS_1K', planned)
+
     def test_tier_four_mechanical_midband_still_prefers_mines_before_growth(self):
         self._create_administration_tech(4, 4)
         self.star.has_administration = True
@@ -1323,7 +1353,7 @@ class AdministrationAutomationTest(TestCase):
     def test_tier_four_mechanical_high_employment_prioritises_growth_over_mines(self):
         self._create_administration_tech(4, 4)
         self.star.has_administration = True
-        self.star.colonists = 20_000
+        self.star.colonists = 30_000
         self.star.mines = 5
         self.star.factories = 4
         self.star.labs = 0
@@ -1418,6 +1448,39 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertTrue(planned)
         self.assertEqual(planned[0], 'BUILD_COLONISTS_1M')
+
+    def test_level_five_mechanical_support_backlog_breaks_job_cap_before_factories(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 850_000
+        self.star.mines = 20
+        self.star.factories = 280
+        self.star.labs = 0
+        self.star.defenses = 1
+        self.star.shipyards = 1
+        self.player.race_type.is_mechanical = True
+        self.player.race_type.save(update_fields=['is_mechanical'])
+        self.star.ironium_inventory = 500_000
+        self.star.boranium_inventory = 500_000
+        self.star.germanium_inventory = 500_000
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            5,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+            limit=12,
+        )
+
+        self.assertIn('BUILD_DEFENSE', planned)
+        self.assertIn('BUILD_LAB', planned)
+        if 'BUILD_FACTORY' in planned:
+            self.assertLess(planned.index('BUILD_DEFENSE'), planned.index('BUILD_FACTORY'))
 
     def test_micromanager_can_spend_surplus_after_growth_reserve(self):
         self._create_administration_tech(2, 2)
@@ -2002,6 +2065,70 @@ class AdministrationAutomationTest(TestCase):
         self.assertEqual(planned[0], 'BUILD_LAB')
         self.assertNotIn('BUILD_SHIPYARD', planned)
 
+    def test_level_five_deprioritises_labs_when_research_is_maxed(self):
+        self._create_administration_tech(4, 4)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self._configure_mature_balance_star()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            5,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+            research_maxed=True,
+        )
+
+        self.assertTrue(planned)
+        self.assertEqual(planned[0], 'BUILD_DEFENSE')
+        self.assertIn('BUILD_LAB', planned)
+
+    def test_level_five_keeps_defense_and_lab_mix_before_more_cities(self):
+        self._create_administration_tech(4, 4)
+        self._create_city_tech(tech_level=2)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.player.is_ai = True
+        self.player.ai_module = 'micromanager'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = True
+        self.star.colonists = 8_000_000
+        self.star.mines = 100
+        self.star.factories = 500
+        self.star.labs = 90
+        self.star.defenses = 80
+        self.star.shipyards = 1
+        self.star.cities = 4
+        self.star.ironium_inventory = 500_000
+        self.star.boranium_inventory = 500_000
+        self.star.germanium_inventory = 500_000
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            5,
+            fleets_in_orbit=1,
+            city_available=True,
+            cost_map=get_player_production_costs(self.player),
+            limit=8,
+        )
+
+        self.assertIn('BUILD_DEFENSE', planned)
+        self.assertIn('BUILD_LAB', planned)
+        if 'BUILD_CITY' in planned:
+            self.assertLess(
+                min(planned.index('BUILD_DEFENSE'), planned.index('BUILD_LAB')),
+                planned.index('BUILD_CITY'),
+            )
+
     def test_level_three_skips_dyson_when_over_nine_year_horizon(self):
         self._create_administration_tech(3, 3)
         self._create_dyson_sphere_tech()
@@ -2393,6 +2520,77 @@ class AdministrationAutomationTest(TestCase):
         self.star.refresh_from_db()
 
         self.assertAlmostEqual(self.star.gravity, 0.1, places=4)
+
+    def test_administration_removes_player_terraform_order_when_factor_is_near_ideal(self):
+        self._create_administration_tech(3, 3)
+        self._create_terraforming_tech(3, 0.1)
+        self.star.has_administration = True
+        self.star.gravity = self.player.gravity_center + 0.001
+        self.star.temperature = 0.0
+        self.star.radiation = self.player.radiation_center
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.save()
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='TERRAFORM_GRAVITY',
+            position=1,
+            quantity=4,
+            spent_ironium=20,
+        )
+
+        self.assertTrue(
+            terraform_order_is_close_to_ideal(
+                self.player,
+                self.star,
+                'TERRAFORM_GRAVITY',
+            )
+        )
+        GameTurn(self.game)._refresh_administration_production_queue(self.star)
+        self.star.refresh_from_db()
+
+        self.assertFalse(
+            self.star.production_orders.filter(
+                order_type='TERRAFORM_GRAVITY',
+            ).exists()
+        )
+        self.assertEqual(self.star.ironium_inventory, 20)
+
+    def test_administration_prioritises_low_habitability_terraforming_before_support(self):
+        self._create_administration_tech(3, 3)
+        self._create_terraforming_tech(3, 0.1)
+        self.player.race_type.population_growth_multiplier = 0
+        self.player.race_type.save(update_fields=['population_growth_multiplier'])
+        self.star.has_administration = True
+        self.star.colonists = 200_000
+        self.star.mines = 30
+        self.star.factories = 40
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 1
+        self.star.gravity = -0.25
+        self.star.temperature = self.player.temperature_center
+        self.star.radiation = self.player.radiation_center
+        self.star.ironium_inventory = 100_000
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            3,
+            fleets_in_orbit=1,
+            terraform_available=True,
+            terraform_rate=0.1,
+            cost_map=get_player_production_costs(self.player),
+            limit=4,
+        )
+
+        self.assertTrue(planned)
+        self.assertEqual(planned[0], 'TERRAFORM_GRAVITY')
 
     def test_administration_level_four_dispatches_weak_idle_fleet_for_resupply(self):
         self._create_administration_tech(4, 4)
@@ -4107,8 +4305,12 @@ class AdministrationAutomationTest(TestCase):
         self.star.has_administration = True
         self.star.colonists = 50_000
         self.star.defenses = 0
+        self.star.shipyards = 0
+        self.star.cities = 0
+        self.star.megacities = 0
         self.star.save(update_fields=[
             'has_administration', 'colonists', 'defenses',
+            'shipyards', 'cities', 'megacities',
         ])
 
         fleet = Fleet.objects.create(

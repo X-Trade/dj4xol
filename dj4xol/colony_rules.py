@@ -40,6 +40,20 @@ DEFAULT_POPULATION_CAP_MULTIPLIER = 1
 RESOURCE_LIMIT_GROWTH_STAGE_ONE_MAX = 2000
 
 
+def extraction_overmines_yield(total_extraction, resource_yield, total_yield):
+    """Return True when annual extraction exceeds a resource's sustainable yield."""
+    try:
+        extraction = float(total_extraction or 0)
+        yield_val = float(resource_yield or 0)
+        yield_total = float(total_yield or 0)
+    except (TypeError, ValueError):
+        return False
+    if extraction <= 0.0 or yield_val <= 0.0 or yield_total <= 0.0:
+        return False
+    resource_extraction = extraction * yield_val / yield_total
+    return resource_extraction > yield_val
+
+
 def has_active_dyson_sphere(star, player=None):
     """Return True when the star's Dyson Sphere should apply for this context."""
     if not star or not bool(getattr(star, 'has_dyson_sphere', False)):

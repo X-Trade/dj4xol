@@ -58,6 +58,7 @@ from dj4xol.colony_rules import (
     calculate_staffing_ratio,
     calculate_total_jobs,
     calculate_productivity_multiplier,
+    extraction_overmines_yield,
 )
 from dj4xol.player_labels import player_name_with_bracket
 
@@ -1907,6 +1908,7 @@ class DetailBuilder():
         resources = None
         if self.selected_obj and isinstance(self.selected_obj, Star):
             mining_rates = self._build_resource_mining_rates()
+            overmined_resources = self._build_resource_overmining_flags()
             resources = {}
             for key in ALL_RESOURCE_KEYS:
                 yield_val = int(getattr(self.selected_obj, f'{key}_yield', 0) or 0)
@@ -1918,8 +1920,43 @@ class DetailBuilder():
                     'yield': yield_val,
                     'surface': surface_val,
                     'mining_rate': mining_rates.get(key, 0),
+                    'overmined': overmined_resources.get(key, False),
                 }
         return resources
+
+    def _build_resource_overmining_flags(self):
+        """Build per-resource flags for yields that meet over-mining criteria."""
+        flags = {key: False for key in ALL_RESOURCE_KEYS}
+        if not self.selected_obj or not isinstance(self.selected_obj, Star):
+            return flags
+        if not (
+            self.admin_view or
+            self.spectator_mode or
+            (self.player is not None and self.selected_obj.player == self.player)
+        ):
+            return flags
+
+        star = self.selected_obj
+        total_yield = sum(
+            int(getattr(star, f'{key}_yield', 0) or 0) for key in ALL_RESOURCE_KEYS
+        )
+        if total_yield <= 0 or star.mines <= 0:
+            return flags
+
+        staffing_ratio = calculate_staffing_ratio(star)
+        if staffing_ratio <= 0:
+            return flags
+
+        productivity = calculate_productivity_multiplier(staffing_ratio)
+        total_extraction = star.mines * KT_PER_MINE * productivity
+        for key in ALL_RESOURCE_KEYS:
+            yield_val = int(getattr(star, f'{key}_yield', 0) or 0)
+            flags[key] = extraction_overmines_yield(
+                total_extraction,
+                yield_val,
+                total_yield,
+            )
+        return flags
 
     def _build_resource_mining_rates(self):
         """Build per-resource expected mining output for one year."""

@@ -158,7 +158,7 @@
             <div class="detail-row">
                 <span class="env-label">{{ data.label|default:key }}</span>
                 <span class="detail-value">
-                    {{ data.yield }}% / {{ data.surface }}kt
+                    <span{% if data.overmined %} class="resource-yield-overmined"{% endif %}>{{ data.yield }}%</span> / {{ data.surface }}kt
                     {% if detail.is_owned and data.mining_rate > 0 %}
                     <span class="pop-change positive">(+{{ data.mining_rate }}kt)</span>
                     {% endif %}

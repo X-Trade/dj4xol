@@ -1105,6 +1105,26 @@ def _max_level_by_category(category_ids):
     return result
 
 
+def player_research_is_maxed_out(player):
+    """Return True when every enabled research category is at its max level."""
+    if player is None:
+        return False
+    rows = ensure_player_research_rows(player)
+    if not rows:
+        return False
+    max_level_by_category = _max_level_by_category(
+        [row.category_id for row in rows]
+    )
+    for row in rows:
+        max_level = max_level_by_category.get(
+            row.category_id,
+            int(getattr(row, 'current_level', 0) or 0),
+        )
+        if int(getattr(row, 'current_level', 0) or 0) < int(max_level or 0):
+            return False
+    return True
+
+
 def get_global_research_max_level():
     """Return the highest configured research level."""
     default_max = (

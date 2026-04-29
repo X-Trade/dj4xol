@@ -154,6 +154,7 @@ from .colony_rules import (
     special_infrastructure_productivity_multiplier,
     limit_population_growth_by_surface_resources,
     population_growth_uses_surface_resources,
+    extraction_overmines_yield,
     OVERMINING_DEPLETION_MULTIPLIER,
 )
 from .research import (
@@ -171,6 +172,7 @@ from .research import (
     get_player_dyson_sphere_profile,
     get_player_production_costs,
     get_player_terraforming_profile,
+    player_research_is_maxed_out,
 )
 from .micromanager_rules import (
     ADMINISTRATION_ORDER_TYPE,
@@ -184,6 +186,7 @@ from .micromanager_rules import (
     projected_mining_output,
     remaining_queue_requirements,
     plan_micromanager_orders,
+    terraform_order_is_close_to_ideal,
 )
 from .ai_players import (
     AI_MODULE_IDLE,
@@ -628,6 +631,7 @@ class GameTurn():
         self._player_dyson_profile_by_id = {}
         self._player_production_costs_by_id = {}
         self._player_tech_effects_by_id = {}
+        self._player_research_maxed_by_id = {}
         self._first_contact_sent = set()
         self._first_contact_any_sent = set()
         self._stance_map_by_player_id = {}
@@ -681,6 +685,7 @@ class GameTurn():
         self._player_dyson_profile_by_id = {}
         self._player_production_costs_by_id = {}
         self._player_tech_effects_by_id = {}
+        self._player_research_maxed_by_id = {}
         self._stance_map_by_player_id = {}
         self._player_colony_count_cache = {}
         self._shipyard_service_blocked_fleet_ids_by_star_id = {}
@@ -3069,6 +3074,19 @@ class GameTurn():
         effects = get_player_tech_effects(player)
         self._player_tech_effects_by_id[player_id] = effects
         return effects
+
+    def _player_research_is_maxed_out_cached(self, player):
+        if not player:
+            return False
+        player_id = getattr(player, 'id', None)
+        if player_id is None:
+            return player_research_is_maxed_out(player)
+        cached = self._player_research_maxed_by_id.get(player_id)
+        if cached is not None:
+            return cached
+        value = bool(player_research_is_maxed_out(player))
+        self._player_research_maxed_by_id[player_id] = value
+        return value
 
     def _effective_administration_tier(
         self,
@@ -7988,10 +8006,16 @@ class GameTurn():
                 continue
 
             sustainable_extraction = max(1.0, float(yield_val))
-            overmining_ratio = max(
-                0.0,
-                (float(depletion_extraction) - sustainable_extraction) / sustainable_extraction
-            )
+            overmining_ratio = 0.0
+            if extraction_overmines_yield(
+                total_extraction_for_depletion,
+                yield_val,
+                total_yield,
+            ):
+                overmining_ratio = max(
+                    0.0,
+                    (float(depletion_extraction) - sustainable_extraction) / sustainable_extraction
+                )
             depletion_rate = (
                 YIELD_DEPLETION_RATE * (
                     1.0 + (overmining_ratio * OVERMINING_DEPLETION_MULTIPLIER)
@@ -9950,6 +9974,7 @@ class GameTurn():
             cost_map = self._get_player_production_costs_cached(star.player)
             terraform_profile = self._get_player_terraforming_profile_cached(star.player)
             terraform_rate = float(terraform_profile.get('rate', 0.0) or 0.0)
+            self._delete_satisfied_terraform_orders(star)
 
             # Track production counts for aggregate messages
             production_counts = {
@@ -10487,6 +10512,31 @@ class GameTurn():
                 return True
         return False
 
+    def _delete_satisfied_terraform_orders(self, star):
+        """Remove terraforming orders for environment values already near ideal."""
+        changed_inventory = False
+        deleted = False
+        for order in list(star.production_orders.order_by('position', 'id')):
+            if not str(getattr(order, 'order_type', '') or '').startswith('TERRAFORM_'):
+                continue
+            if not terraform_order_is_close_to_ideal(
+                getattr(star, 'player', None),
+                star,
+                getattr(order, 'order_type', None),
+            ):
+                continue
+            if self._refund_order_progress_resources(star, order):
+                changed_inventory = True
+            order.delete()
+            deleted = True
+        if changed_inventory:
+            star.save(update_fields=[
+                '%s_inventory' % key for key in ALL_RESOURCE_KEYS
+            ])
+        if deleted:
+            self._resequence_production_orders(star)
+        return deleted
+
     def _trim_preserved_shipyard_orders_to_target(
         self,
         star,
@@ -10608,6 +10658,7 @@ class GameTurn():
             megacity_profile=megacity_profile,
             dyson_profile=dyson_profile,
         )
+        self._delete_satisfied_terraform_orders(star)
         fleets_in_orbit = star.player.fleets.filter(
             x=star.x,
             y=star.y,
@@ -10694,6 +10745,7 @@ class GameTurn():
                 queue_orders, cost_map
             ),
             administration_active=admin_active,
+            research_maxed=self._player_research_is_maxed_out_cached(star.player),
             micromanager_mode=micromanager_mode_for_player(star.player),
         )
         planned = [

@@ -1314,6 +1314,10 @@ body.turned-in.lcars .order-params::after {
     color: #cc0000;
 }
 
+.resource-yield-overmined {
+    color: var(--status-negative, #cc0000);
+}
+
 /* Debug actions */
 .debug-actions {
     margin-top: 15px;
