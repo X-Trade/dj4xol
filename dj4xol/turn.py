@@ -418,6 +418,10 @@ MICROMANAGER_ADVANCED_FLEET_TIER = 5
 MICROMANAGER_FLEET_DISPATCHES_PER_COLONY = 1
 MICROMANAGER_DEFENSE_FLEET_RATIO = 0.50
 MICROMANAGER_DEFENSE_SHIP_RATIO = 0.50
+MICROMANAGER_THREAT_LOGISTICS_MIN_ORBIT_FLEETS = 4
+MICROMANAGER_THREAT_LOGISTICS_MIN_IDLE_FLEETS = 2
+MICROMANAGER_THREAT_LOGISTICS_RELEASE_FLEET_RATIO = 0.66
+MICROMANAGER_THREAT_LOGISTICS_RELEASE_SHIP_RATIO = 0.65
 MICROMANAGER_ASTEROID_SEARCH_RADIUS = 18.0
 MICROMANAGER_MAX_ORBIT_FLEETS = 20
 MICROMANAGER_OVER_CAP_CONSOLIDATE_TARGET = 10
@@ -5264,11 +5268,20 @@ class GameTurn():
         defenses_after = max(0, int(getattr(star, 'defenses', 0) or 0))
         prior_known = max(0, int(data.get('last_known_defenses', 0) or 0))
         prior_desired = max(0, int(data.get('desired_defenses_before_bombing', 0) or 0))
-        remembered_target = max(prior_known, prior_desired, defenses_before)
+        prior_bombed_before = max(
+            0,
+            int(data.get('last_bombed_defenses_before', 0) or 0),
+        )
+        remembered_defenses_before = max(prior_bombed_before, defenses_before)
+        remembered_target = max(
+            prior_known,
+            prior_desired,
+            remembered_defenses_before,
+        )
         data.update({
             'last_bombed_year': int(getattr(self.game, 'year', 0) or 0),
             'last_bombed_defenses_lost': defenses_lost,
-            'last_bombed_defenses_before': defenses_before,
+            'last_bombed_defenses_before': remembered_defenses_before,
             'last_bombed_defenses_after': defenses_after,
             'last_known_defenses': max(prior_known, defenses_before, defenses_after),
             'desired_defenses_before_bombing': remembered_target,
@@ -11689,6 +11702,49 @@ class GameTurn():
                 break
             reserved_ids.add(fleet.id)
             reserved_ships += int(getattr(fleet, 'ship_count', 0) or 0)
+
+        if (
+            defense_pressure > 0.0 and
+            len(orbit) >= MICROMANAGER_THREAT_LOGISTICS_MIN_ORBIT_FLEETS and
+            len(idle) >= MICROMANAGER_THREAT_LOGISTICS_MIN_IDLE_FLEETS
+        ):
+            current_dispatchable = [
+                fleet for fleet in idle
+                if fleet.id not in reserved_ids
+            ]
+            if not current_dispatchable:
+                minimum_reserved_fleets = max(
+                    1,
+                    int(ceil(
+                        float(len(ranked)) *
+                        MICROMANAGER_THREAT_LOGISTICS_RELEASE_FLEET_RATIO
+                    )),
+                )
+                minimum_reserved_ships = max(
+                    1,
+                    int(ceil(
+                        float(total_ships) *
+                        MICROMANAGER_THREAT_LOGISTICS_RELEASE_SHIP_RATIO
+                    )),
+                )
+                for fleet in sorted(
+                    idle,
+                    key=lambda candidate: (
+                        self._fleet_defense_score(candidate)[0],
+                        self._fleet_defense_score(candidate)[1],
+                        int(candidate.id or 0),
+                    ),
+                ):
+                    if fleet.id not in reserved_ids:
+                        continue
+                    fleet_ships = int(getattr(fleet, 'ship_count', 0) or 0)
+                    if (
+                        len(reserved_ids) - 1 >= minimum_reserved_fleets and
+                        reserved_ships - fleet_ships >= minimum_reserved_ships
+                    ):
+                        reserved_ids.remove(fleet.id)
+                        reserved_ships -= fleet_ships
+                        break
 
         dispatchable = [
             fleet for fleet in idle

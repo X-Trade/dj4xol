@@ -779,6 +779,98 @@ class AdministrationAutomationTest(TestCase):
             ).exclude(order_type='PATROL').exists()
         )
 
+    def test_reported_threat_still_allows_spare_logistics_fleet(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 250_000
+        self.star.mines = 20
+        self.star.factories = 40
+        self.star.labs = 20
+        self.star.defenses = 10
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        donor = self.game.stars.exclude(id=self.star.id).first()
+        donor.player = self.player
+        donor.colonists = 100_000
+        donor.mines = 0
+        donor.factories = 0
+        donor.labs = 0
+        donor.defenses = 0
+        donor.shipyards = 0
+        donor.ironium_inventory = 500
+        donor.boranium_inventory = 0
+        donor.germanium_inventory = 0
+        donor.ironium_yield = 0
+        donor.boranium_yield = 0
+        donor.germanium_yield = 0
+        donor.save()
+
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_FACTORY',
+            quantity=1,
+            position=1,
+        )
+        self.player.fleets.all().delete()
+        for idx, ship_count in enumerate((6, 3, 1, 1), start=1):
+            Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Threat Logistics Guard %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=ship_count,
+                offense_level=ship_count,
+                defense_level=ship_count,
+            )
+        rival = Player.objects.create(
+            game=self.game,
+            name='Reported Logistics Rival',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=rival,
+            stance='HOSTILE',
+        )
+        hostile_fleet = Fleet.objects.create(
+            game=self.game,
+            player=rival,
+            name='Known Logistic Raider',
+            x=int(self.star.x) + 5,
+            y=int(self.star.y),
+            ship_count=20,
+        )
+        self._create_fleet_report(
+            hostile_fleet,
+            player_name=rival.name,
+            ship_count=20,
+        )
+
+        GameTurn(self.game)._refresh_administration_fleet_dispatch_queue(self.star)
+
+        logistics_orders = FleetOrders.objects.filter(
+            fleet__player=self.player,
+            added_by_micromanager=True,
+            order_type='TRANSFER',
+        )
+        self.assertEqual(logistics_orders.values('fleet_id').distinct().count(), 1)
+        self.assertEqual(
+            FleetOrders.objects.filter(
+                fleet__player=self.player,
+                added_by_micromanager=True,
+            ).values('fleet_id').distinct().count(),
+            1,
+        )
+
     def test_recent_bombardment_memory_rebuilds_lost_defenses(self):
         self._create_administration_tech(3, 3)
         self.star.has_administration = True
@@ -845,6 +937,35 @@ class AdministrationAutomationTest(TestCase):
             0.0,
         )
         self.assertEqual(expired_context, {})
+
+    def test_repeat_bombardment_preserves_higher_defense_ambition(self):
+        self._create_administration_tech(3, 3)
+        self.star.has_administration = True
+        self.star.defenses = 80
+        self.star.save(update_fields=['has_administration', 'defenses'])
+
+        turn = GameTurn(self.game)
+        state = turn._record_micromanager_bombardment_damage(
+            self.star,
+            {'defenses': 120},
+            {'defenses_lost': 40},
+        )
+        self.star.defenses = 30
+        self.star.save(update_fields=['defenses'])
+        state = turn._record_micromanager_bombardment_damage(
+            self.star,
+            {'defenses': 35},
+            {'defenses_lost': 5},
+        )
+
+        data = state.get_data()
+        self.assertEqual(data['last_bombed_defenses_before'], 120)
+        self.assertEqual(data['desired_defenses_before_bombing'], 120)
+        context = turn._colony_ai_report_context_for_star(self.star, 3)
+        self.assertGreaterEqual(
+            context['bombardment_rebuild_defense_target'],
+            120,
+        )
 
     def test_neutral_close_colony_creates_smaller_defense_pressure_than_hostile(self):
         neutral = Player.objects.create(
