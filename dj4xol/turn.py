@@ -11252,6 +11252,25 @@ class GameTurn():
             projected.extend([order.order_type] * remaining)
         return projected
 
+    def _projected_player_terraform_order_types(self, orders):
+        """Return remaining player terraform orders so AI does not duplicate them."""
+        projected = []
+        for order in list(orders or []):
+            if bool(getattr(order, 'added_by_micromanager', False)):
+                continue
+            order_type = getattr(order, 'order_type', None)
+            if not str(order_type or '').startswith('TERRAFORM_'):
+                continue
+            remaining = max(
+                0,
+                int(getattr(order, 'quantity', 0) or 0) -
+                int(getattr(order, 'completed', 0) or 0),
+            )
+            if remaining <= 0:
+                continue
+            projected.extend([order_type] * remaining)
+        return projected
+
     def _convert_repeat_player_infrastructure_orders_to_micromanager(
         self,
         star,
@@ -11368,6 +11387,9 @@ class GameTurn():
         player_projected_types = self._projected_player_economy_order_types(
             queue_orders
         )
+        player_terraform_types = self._projected_player_terraform_order_types(
+            queue_orders
+        )
         cost_map = self._get_player_production_costs_cached(star.player)
         colony_ai_profile = classify_colony_role(
             star.player,
@@ -11389,7 +11411,11 @@ class GameTurn():
             dyson_available=bool(dyson_profile.get('unlocked')),
             city_available=bool(city_profile.get('unlocked')),
             megacity_available=bool(megacity_profile.get('unlocked')),
-            preplanned_orders=existing_types + player_projected_types,
+            preplanned_orders=(
+                existing_types +
+                player_projected_types +
+                player_terraform_types
+            ),
             cost_map=cost_map,
             queue_requirements=remaining_queue_requirements(
                 queue_orders, cost_map

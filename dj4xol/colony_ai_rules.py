@@ -422,22 +422,48 @@ def score_terraform_roi(profile, tier=3):
     habitability = _safe_float(profile.get('habitability', 0.0))
     if habitability >= TERRAFORM_TARGET_HABITABILITY:
         return 0.0
-    value = max(
-        role_score(profile, ROLE_MINING),
-        role_score(profile, ROLE_EDEN) * 0.85,
-        role_score(profile, ROLE_PRODUCTION),
-        role_score(profile, ROLE_SECRET_RESOURCE),
-        role_score(profile, ROLE_FRONTIER) * 0.70,
-        _safe_float(profile.get('potential_eden_score', 0.0)),
-    )
-    if value <= 0.0:
-        return 0.0
-    gap = _clamp(TERRAFORM_TARGET_HABITABILITY - habitability)
     try:
         level = int(tier or 0)
     except (TypeError, ValueError):
         level = 0
+    mining_value = role_score(profile, ROLE_MINING)
+    eden_value = role_score(profile, ROLE_EDEN)
+    production_value = role_score(profile, ROLE_PRODUCTION)
+    secret_value = role_score(profile, ROLE_SECRET_RESOURCE)
+    frontier_value = role_score(profile, ROLE_FRONTIER)
+    potential_eden = _safe_float(profile.get('potential_eden_score', 0.0))
+    value = max(
+        mining_value,
+        eden_value * 0.85,
+        production_value,
+        secret_value,
+        frontier_value * 0.70,
+        potential_eden,
+    )
+    if level <= 3:
+        value = max(
+            mining_value,
+            production_value * 0.85,
+            secret_value,
+            frontier_value * 0.55,
+            potential_eden * 0.60,
+        )
+    elif level >= 4:
+        value = max(
+            value,
+            potential_eden * 1.12,
+            production_value * 1.05,
+            secret_value * 1.08,
+        )
+        if bool(profile.get('is_homeworld')):
+            value = max(value, 0.65)
+    if value <= 0.0:
+        return 0.0
+    gap = _clamp(TERRAFORM_TARGET_HABITABILITY - habitability)
     tier_factor = 0.55 if level <= 3 else 1.0
     if level >= 5:
-        tier_factor = 1.2
-    return 260.0 * value * (0.35 + gap) * tier_factor
+        tier_factor = 1.25
+    gap_factor = 0.35 + gap
+    if level >= 4 and potential_eden > 0.0:
+        gap_factor += min(0.08, potential_eden * 0.08)
+    return 260.0 * value * gap_factor * tier_factor

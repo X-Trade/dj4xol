@@ -26,6 +26,7 @@ from .colony_ai_rules import (
     ROLE_PRODUCTION,
     ROLE_RESEARCH,
     ROLE_SECRET_RESOURCE,
+    classify_colony_role,
     role_score,
     score_terraform_roi,
 )
@@ -57,6 +58,10 @@ MECHANICAL_GROWTH_EMPLOYMENT_TOP = 90.0
 TERRAFORM_IDEAL_HABITABILITY = 0.99
 TERRAFORM_LOW_HABITABILITY = 0.35
 TERRAFORM_EDGE_HABITABILITY = 0.10
+TERRAFORM_AUTO_L3_MIN_ROI = 70.0
+TERRAFORM_AUTO_L4_MIN_ROI = 55.0
+TERRAFORM_AUTO_L5_MIN_ROI = 40.0
+TERRAFORM_AUTO_URGENT_FACTOR_SCORE = 310.0
 MATURE_SUPPORT_FACTORY_MIN = 20
 MATURE_SUPPORT_FLOOR = 100
 MATURE_SUPPORT_MAX = 1000
@@ -212,6 +217,13 @@ def _safe_ratio(numerator, denominator, default=0.0):
     if denominator <= 0.0:
         return float(default)
     return float(numerator or 0.0) / denominator
+
+
+def _safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
 
 
 def _clamp(value, minimum=0.0, maximum=1.0):
@@ -659,6 +671,69 @@ def _terraform_order_score(player, star, order_type):
     return 85.0 + ((1.0 - habitability) * 90.0)
 
 
+def _terraform_auto_min_roi(tier):
+    try:
+        level = int(tier or 0)
+    except (TypeError, ValueError):
+        level = 0
+    if level >= 5:
+        return TERRAFORM_AUTO_L5_MIN_ROI
+    if level >= TIER_MECHANICAL_GROWTH:
+        return TERRAFORM_AUTO_L4_MIN_ROI
+    return TERRAFORM_AUTO_L3_MIN_ROI
+
+
+def _effective_colony_ai_profile(player, star, colony_ai_profile=None):
+    if isinstance(colony_ai_profile, dict):
+        return colony_ai_profile
+    return classify_colony_role(player, star)
+
+
+def _terraform_auto_order_score(
+    player,
+    star,
+    order_type,
+    colony_ai_profile=None,
+    tier=3,
+):
+    """Return score for Micromanager-initiated terraforming only."""
+    factor_score = _terraform_order_score(player, star, order_type)
+    if factor_score <= 0.0:
+        return 0.0
+    profile = _effective_colony_ai_profile(player, star, colony_ai_profile)
+    roi_score = score_terraform_roi(profile, tier=tier)
+    if roi_score <= 0.0:
+        return 0.0
+    if (
+        roi_score < _terraform_auto_min_roi(tier) and
+        factor_score < TERRAFORM_AUTO_URGENT_FACTOR_SCORE
+    ):
+        return 0.0
+
+    score = factor_score + roi_score
+    try:
+        level = int(tier or 0)
+    except (TypeError, ValueError):
+        level = 0
+    if level >= TIER_MECHANICAL_GROWTH:
+        potential_eden = _clamp(
+            _safe_float(profile.get('potential_eden_score', 0.0))
+        )
+        score += potential_eden * 90.0
+        if bool(profile.get('is_homeworld')):
+            score *= 1.08
+        if level >= 5:
+            strategic_role = max(
+                potential_eden,
+                role_score(profile, ROLE_EDEN),
+                role_score(profile, ROLE_PRODUCTION),
+                role_score(profile, ROLE_SECRET_RESOURCE),
+                role_score(profile, ROLE_FRONTIER) * 0.75,
+            )
+            score *= 1.0 + (strategic_role * 0.10)
+    return score
+
+
 def preferred_terraform_order(player, star):
     if not player or not star:
         return None
@@ -1069,6 +1144,11 @@ def _scored_micromanager_candidate_orders(
     job_build_tailoff = _employment_job_build_tailoff(job_ratio)
     high_employment = job_ratio >= JOB_MAX_RATIO
     factory_balance_penalty = _factory_balance_penalty(star, tier)
+    colony_ai_profile = _effective_colony_ai_profile(
+        player,
+        star,
+        colony_ai_profile,
+    )
     role_tier_factor = 0.0
     if int(tier or 0) >= TIER_TERRAFORM:
         role_tier_factor = 0.60
@@ -1553,12 +1633,16 @@ def _scored_micromanager_candidate_orders(
     ):
         terraform_order = preferred_terraform_order(player, star)
         if terraform_order:
+            terraform_score = _terraform_auto_order_score(
+                player,
+                star,
+                terraform_order,
+                colony_ai_profile=colony_ai_profile,
+                tier=tier,
+            )
             append_candidate(
                 terraform_order,
-                (
-                    _terraform_order_score(player, star, terraform_order) +
-                    score_terraform_roi(colony_ai_profile, tier=tier)
-                ),
+                terraform_score,
             )
 
     ranked = sorted(
@@ -1608,6 +1692,11 @@ def get_micromanager_candidate_orders(
             micromanager_mode=micromanager_mode,
             colony_ai_profile=colony_ai_profile,
         )
+    colony_ai_profile = _effective_colony_ai_profile(
+        player,
+        star,
+        colony_ai_profile,
+    )
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
     candidates = []
@@ -1803,7 +1892,16 @@ def get_micromanager_candidate_orders(
         current_jobs >= thresholds['min_jobs']
     ):
         terraform_order = preferred_terraform_order(player, star)
-        if terraform_order:
+        if (
+            terraform_order and
+            _terraform_auto_order_score(
+                player,
+                star,
+                terraform_order,
+                colony_ai_profile=colony_ai_profile,
+                tier=tier,
+            ) > 0.0
+        ):
             append_candidate(terraform_order)
 
     deduped = []

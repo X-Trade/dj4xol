@@ -264,6 +264,32 @@ class AdministrationAutomationTest(TestCase):
         self.star.germanium_yield = 0
         self.star.save()
 
+    def _configure_potential_eden_terraform_star(self):
+        self.star.has_administration = True
+        self.star.colonists = 200_000
+        self.star.mines = 0
+        self.star.factories = 40
+        self.star.labs = 100
+        self.star.defenses = 100
+        self.star.shipyards = 1
+        self.star.gravity = self.player.gravity_center + (
+            self.player.gravity_width * 0.025
+        )
+        self.star.temperature = self.player.temperature_center + (
+            self.player.temperature_width * 0.325
+        )
+        self.star.radiation = self.player.radiation_center + (
+            self.player.radiation_width * 0.325
+        )
+        self.star.ironium_yield = 30
+        self.star.boranium_yield = 28
+        self.star.germanium_yield = 26
+        self.star.base_capacity = 2500
+        self.star.ironium_inventory = 100_000
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.save()
+
     def test_colony_ai_classifies_survivable_rich_poor_habitability_as_mining(self):
         self.star.gravity = self.player.gravity_center + (self.player.gravity_width * 0.45)
         self.star.temperature = self.player.temperature_center + (
@@ -316,28 +342,7 @@ class AdministrationAutomationTest(TestCase):
         self.assertNotIn(ROLE_MINING, profile['roles'])
 
     def test_colony_ai_scores_potential_eden_for_terraform_roi(self):
-        self.star.gravity = self.player.gravity_center + (
-            self.player.gravity_width * 0.025
-        )
-        self.star.temperature = self.player.temperature_center + (
-            self.player.temperature_width * 0.325
-        )
-        self.star.radiation = self.player.radiation_center + (
-            self.player.radiation_width * 0.325
-        )
-        self.star.ironium_yield = 30
-        self.star.boranium_yield = 28
-        self.star.germanium_yield = 26
-        self.star.base_capacity = 2500
-        self.star.save(update_fields=[
-            'gravity',
-            'temperature',
-            'radiation',
-            'ironium_yield',
-            'boranium_yield',
-            'germanium_yield',
-            'base_capacity',
-        ])
+        self._configure_potential_eden_terraform_star()
 
         profile = classify_colony_role(self.player, self.star)
 
@@ -346,6 +351,20 @@ class AdministrationAutomationTest(TestCase):
         self.assertIn(ROLE_TERRAFORM_CANDIDATE, profile['roles'])
         self.assertGreater(profile['potential_eden_score'], 0.0)
         self.assertGreater(score_terraform_roi(profile, tier=4), 0.0)
+
+    def test_advanced_terraform_roi_scores_higher_than_mechanical(self):
+        self._configure_potential_eden_terraform_star()
+
+        profile = classify_colony_role(self.player, self.star)
+
+        self.assertGreater(
+            score_terraform_roi(profile, tier=4),
+            score_terraform_roi(profile, tier=3),
+        )
+        self.assertGreater(
+            score_terraform_roi(profile, tier=5),
+            score_terraform_roi(profile, tier=4),
+        )
 
     def test_potential_eden_requires_one_near_ideal_environment_factor(self):
         self.star.gravity = self.player.gravity_center + (
@@ -3689,6 +3708,66 @@ class AdministrationAutomationTest(TestCase):
         )
         self.assertEqual(self.star.ironium_inventory, 20)
 
+    def test_administration_preserves_player_terraform_order_when_roi_is_low(self):
+        self._create_administration_tech(4, 4)
+        self._create_terraforming_tech(4, 0.1)
+        self.star.has_administration = True
+        self.star.colonists = 200_000
+        self.star.factories = 40
+        self.star.labs = 100
+        self.star.defenses = 100
+        self.star.shipyards = 1
+        self.star.base_capacity = 100
+        self.star.gravity = self.player.gravity_center + (
+            self.player.gravity_width * 0.20
+        )
+        self.star.temperature = self.player.temperature_center
+        self.star.radiation = self.player.radiation_center
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        player_order = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='TERRAFORM_GRAVITY',
+            position=1,
+            quantity=2,
+        )
+
+        GameTurn(self.game)._refresh_administration_production_queue(self.star)
+
+        player_order.refresh_from_db()
+        self.assertFalse(player_order.added_by_micromanager)
+        self.assertEqual(
+            self.star.production_orders.filter(
+                order_type__startswith='TERRAFORM_',
+            ).count(),
+            1,
+        )
+
+    def test_player_terraform_order_prevents_duplicate_auto_terraform(self):
+        self._create_administration_tech(4, 4)
+        self._create_terraforming_tech(4, 0.1)
+        self._configure_potential_eden_terraform_star()
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='TERRAFORM_RADIATION',
+            position=1,
+            quantity=1,
+        )
+
+        GameTurn(self.game)._refresh_administration_production_queue(self.star)
+
+        terraform_orders = list(
+            self.star.production_orders.filter(
+                order_type__startswith='TERRAFORM_',
+            ).order_by('position', 'id')
+        )
+        self.assertEqual(len(terraform_orders), 1)
+        self.assertFalse(terraform_orders[0].added_by_micromanager)
+
     def test_administration_prioritises_low_habitability_terraforming_before_support(self):
         self._create_administration_tech(3, 3)
         self._create_terraforming_tech(3, 0.1)
@@ -3722,6 +3801,71 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertTrue(planned)
         self.assertEqual(planned[0], 'TERRAFORM_GRAVITY')
+
+    def test_level_four_initiates_potential_eden_where_level_three_waits(self):
+        self._create_terraforming_tech(4, 0.1)
+        self._configure_potential_eden_terraform_star()
+
+        planned_l3 = plan_micromanager_orders(
+            self.player,
+            self.star,
+            3,
+            fleets_in_orbit=1,
+            terraform_available=True,
+            terraform_rate=0.1,
+            cost_map=get_player_production_costs(self.player),
+            limit=4,
+        )
+        planned_l4 = plan_micromanager_orders(
+            self.player,
+            self.star,
+            4,
+            fleets_in_orbit=1,
+            terraform_available=True,
+            terraform_rate=0.1,
+            cost_map=get_player_production_costs(self.player),
+            limit=4,
+        )
+
+        self.assertFalse(
+            any(order.startswith('TERRAFORM_') for order in planned_l3)
+        )
+        self.assertTrue(planned_l4)
+        self.assertTrue(planned_l4[0].startswith('TERRAFORM_'))
+
+    def test_micromanager_does_not_auto_terraform_without_roi(self):
+        self._create_terraforming_tech(5, 0.1)
+        self.star.has_administration = True
+        self.star.colonists = 200_000
+        self.star.factories = 40
+        self.star.labs = 100
+        self.star.defenses = 100
+        self.star.shipyards = 1
+        self.star.base_capacity = 100
+        self.star.gravity = self.player.gravity_center + (
+            self.player.gravity_width * 0.20
+        )
+        self.star.temperature = self.player.temperature_center
+        self.star.radiation = self.player.radiation_center
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            5,
+            fleets_in_orbit=1,
+            terraform_available=True,
+            terraform_rate=0.1,
+            cost_map=get_player_production_costs(self.player),
+            limit=4,
+        )
+
+        self.assertFalse(
+            any(order.startswith('TERRAFORM_') for order in planned)
+        )
 
     def test_administration_level_four_dispatches_weak_idle_fleet_for_resupply(self):
         self._create_administration_tech(4, 4)
