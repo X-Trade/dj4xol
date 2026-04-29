@@ -23,6 +23,7 @@ from ..models import (
     FleetOrders,
     Game,
     GameMessage,
+    MicromanagerObjectState,
     Report,
     Salvage,
     ServerRace,
@@ -458,6 +459,16 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
         owned_stars = list(Star.objects.filter(game=player.game, player=player).order_by("id"))
         colony_count = len(owned_stars)
         fleet_count = Fleet.objects.filter(game=player.game, player=player).count()
+        micromanager_star_state_count = MicromanagerObjectState.objects.filter(
+            game=player.game,
+            player=player,
+            target_type=MicromanagerObjectState.TARGET_STAR,
+        ).count()
+        micromanager_fleet_state_count = MicromanagerObjectState.objects.filter(
+            game=player.game,
+            player=player,
+            target_type=MicromanagerObjectState.TARGET_FLEET,
+        ).count()
         homeworld_colonists = int(homeworld.colonists or 0)
         empire_mines = 0
         empire_factories = 0
@@ -483,6 +494,8 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             "year": int(player.game.year or 0),
             "colony_count": colony_count,
             "fleet_count": fleet_count,
+            "micromanager_star_state_count": micromanager_star_state_count,
+            "micromanager_fleet_state_count": micromanager_fleet_state_count,
             "employment_percent": float(calculate_employment_percent(homeworld)),
             "homeworld_colonists": homeworld_colonists,
             "homeworld_mines": int(homeworld.mines or 0),
@@ -863,6 +876,22 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
         history = "\n".join(snapshot["line"] for snapshot in result["snapshots"])
 
         self.assertGreaterEqual(final_reports, initial_reports + 5, msg=history)
+        self.assertTrue(
+            MicromanagerObjectState.objects.filter(
+                game=ai_player.game,
+                player=ai_player,
+                target_type=MicromanagerObjectState.TARGET_STAR,
+                mission="colony_role",
+            ).exists(),
+            msg=history,
+        )
+        self.assertTrue(
+            max(
+                snapshot["micromanager_fleet_state_count"]
+                for snapshot in result["snapshots"]
+            ) > 0,
+            msg=history,
+        )
         self.assertFalse(
             result["duplicate_colonise_target_years"],
             msg=history,

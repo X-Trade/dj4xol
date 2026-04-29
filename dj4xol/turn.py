@@ -2,6 +2,7 @@ from datetime import timedelta
 from math import atan2, atanh, ceil, cos, degrees, pi, sin, sqrt, tanh
 import hashlib
 import time
+import uuid
 from numpy import array as nparray, linalg
 from django.db import models
 from django.utils import timezone
@@ -447,6 +448,7 @@ MICROMANAGER_EXPLORATION_ROUTE_LEGS = 3
 EXPANSIONIST_EXPLORATION_ROUTE_LEGS = 5
 MICROMANAGER_EXPLORATION_MAX_LEG_DISTANCE = 90.0
 EXPANSIONIST_EXPLORATION_MAX_LEG_DISTANCE = 140.0
+MICROMANAGER_STATE_MISSION_STALE_YEARS = 8
 
 
 # Chance calculation functions (separated for testability)
@@ -5239,6 +5241,99 @@ class GameTurn():
         state.set_data(data or {})
         state.save(update_fields=['tags_json', 'data_json'])
         return state
+
+    def _clear_micromanager_fleet_state(self, fleet, missions=None):
+        if fleet is None or getattr(fleet, 'id', None) is None:
+            return 0
+        from .models import MicromanagerObjectState
+
+        qs = MicromanagerObjectState.objects.filter(
+            game=self.game,
+            target_type=MicromanagerObjectState.TARGET_FLEET,
+            target_fleet=fleet,
+        )
+        if missions:
+            qs = qs.filter(mission__in=list(missions))
+        deleted, _details = qs.delete()
+        return deleted
+
+    @staticmethod
+    def _state_data_uuid_set(state, key):
+        data = state.get_data() if state is not None else {}
+        raw = data.get(key)
+        values = raw if isinstance(raw, list) else [raw]
+        result = set()
+        for value in values:
+            if value in (None, ''):
+                continue
+            try:
+                result.add(uuid.UUID(str(value)))
+            except (TypeError, ValueError):
+                result.add(str(value))
+        return result
+
+    def _cleanup_stale_micromanager_fleet_states(self, player):
+        if player is None:
+            return
+        from .models import FleetOrders, MicromanagerObjectState, Star
+
+        stale_before_year = (
+            int(getattr(self.game, 'year', 0) or 0) -
+            int(MICROMANAGER_STATE_MISSION_STALE_YEARS)
+        )
+        states = list(MicromanagerObjectState.objects.filter(
+            game=self.game,
+            player=player,
+            target_type=MicromanagerObjectState.TARGET_FLEET,
+        ).select_related('target_fleet'))
+        for state in states:
+            fleet = state.target_fleet
+            mission = str(getattr(state, 'mission', '') or '')
+            if (
+                fleet is None or
+                int(getattr(fleet, 'player_id', 0) or 0) != int(getattr(player, 'id', 0) or 0)
+            ):
+                state.delete()
+                continue
+            if int(getattr(state, 'updated_year', 0) or 0) < stale_before_year:
+                state.delete()
+                continue
+            if mission == 'scout':
+                if not self._fleet_has_only_micromanager_move_orders(fleet):
+                    state.delete()
+                continue
+            if mission == 'colonise':
+                if not FleetOrders.objects.filter(
+                    game=self.game,
+                    fleet=fleet,
+                    added_by_micromanager=True,
+                ).exists():
+                    state.delete()
+                    continue
+                target_ids = self._state_data_uuid_set(state, 'target_star_id')
+                if target_ids:
+                    target = Star.objects.filter(
+                        game=self.game,
+                        id__in=list(target_ids),
+                    ).first()
+                    if (
+                        target is None or
+                        int(getattr(target, 'player_id', 0) or 0) > 0 or
+                        int(getattr(target, 'colonists', 0) or 0) > 0
+                    ):
+                        state.delete()
+                continue
+            if mission.startswith('logistics'):
+                if not FleetOrders.objects.filter(
+                    game=self.game,
+                    fleet=fleet,
+                    added_by_micromanager=True,
+                ).exists():
+                    state.delete()
+                continue
+            if mission == 'patrol':
+                if not self._fleet_has_only_repeat_micromanager_patrol_orders(fleet):
+                    state.delete()
 
     def _destroy_derelict_fleet(self, fleet):
         """Destroy an unowned fleet and create salvage if possible."""
@@ -11145,6 +11240,10 @@ class GameTurn():
                     repeat=True,
                     added_by_micromanager=True,
                 ).delete()
+                self._clear_micromanager_fleet_state(
+                    fleet,
+                    missions=['patrol'],
+                )
             if fleet.orders.exists():
                 continue
             next_position = (
@@ -11358,6 +11457,89 @@ class GameTurn():
             return True
         return False
 
+    def _active_micromanager_fleet_mission_count(self, player, mission):
+        if player is None:
+            return 0
+        self._cleanup_stale_micromanager_fleet_states(player)
+        from .models import MicromanagerObjectState
+        return int(MicromanagerObjectState.objects.filter(
+            game=self.game,
+            player=player,
+            target_type=MicromanagerObjectState.TARGET_FLEET,
+            mission=mission,
+        ).count())
+
+    def _known_colonise_targets_available(self, star, excluded_target_ids=None):
+        player = getattr(star, 'player', None)
+        if player is None:
+            return False
+        return self._best_colonise_target_for_colony(
+            star,
+            excluded_target_ids=excluded_target_ids,
+        ) is not None
+
+    def _expansionist_fleet_mission_pool_needs_build(
+        self,
+        star,
+        orbit_fleets,
+        dispatchable_idle,
+        dispatchable_patrol,
+        micromanager_mode='standard',
+    ):
+        player = getattr(star, 'player', None)
+        if (
+            player is None or
+            not bool(getattr(player, 'is_ai', False)) or
+            not self._is_expansionist_micromanager_mode(micromanager_mode)
+        ):
+            return False
+        module_code = normalize_ai_module_code(getattr(player, 'ai_module', ''))
+        if not ai_module_uses_micromanager_behavior(module_code):
+            return False
+        available_fleet_ids = {
+            getattr(fleet, 'id', None)
+            for fleet in list(dispatchable_idle or []) + list(dispatchable_patrol or [])
+            if getattr(fleet, 'id', None) is not None
+        }
+        available_count = len(available_fleet_ids)
+        desired_scouts = self._desired_auto_exploration_fleet_count(
+            player,
+            micromanager_mode=micromanager_mode,
+        )
+        active_scouts = len(self._active_auto_exploration_fleet_ids(player))
+        if desired_scouts > 0 and active_scouts + available_count < desired_scouts:
+            return True
+
+        if (
+            self._spare_colonists_for_auto_colonise(
+                star,
+                micromanager_mode=micromanager_mode,
+            ) < MICROMANAGER_COLONISE_MIN_PAYLOAD
+        ):
+            return False
+        reserved_target_ids = self._friendly_colonisation_target_ids_in_flight(player)
+        if not self._known_colonise_targets_available(
+            star,
+            excluded_target_ids=reserved_target_ids,
+        ):
+            return False
+        active_colonisers = self._active_micromanager_fleet_mission_count(
+            player,
+            'colonise',
+        )
+        colonise_capable_count = sum(
+            1 for fleet in available_fleet_ids
+            if any(
+                getattr(candidate, 'id', None) == fleet and
+                int(getattr(candidate, 'cargo_capacity', 0) or 0) >= MICROMANAGER_COLONISE_MIN_PAYLOAD
+                for candidate in list(dispatchable_idle or []) + list(dispatchable_patrol or [])
+            )
+        )
+        return (
+            active_colonisers + colonise_capable_count <
+            EXPANSIONIST_COLONISE_DISPATCHES_PER_COLONY
+        )
+
     def _queue_auto_build_fleet_order_for_colony(
         self,
         star,
@@ -11371,6 +11553,8 @@ class GameTurn():
         expansionist_mode = self._is_expansionist_micromanager_mode(
             micromanager_mode
         )
+        if not hasattr(self, '_micromanager_auto_fleet_ids_for_year'):
+            self._micromanager_auto_fleet_ids_for_year = set()
         orbit_count = len(list(orbit_fleets or []))
         existing_auto_build_orders = star.production_orders.filter(
             order_type='BUILD_FLEET',
@@ -11402,19 +11586,28 @@ class GameTurn():
             idle_fleets,
             micromanager_mode=micromanager_mode,
         )
-        if (
-            not allow_over_cap_build and
-            len(dispatchable_idle) > (1 if expansionist_mode else 0)
-        ):
-            return
         patrol_fleets = self._reassignable_patrol_fleets_for_colony(orbit_fleets)
         dispatchable_patrol = self._dispatchable_idle_fleets_for_colony(
             orbit_fleets,
             patrol_fleets,
             micromanager_mode=micromanager_mode,
         )
+        mission_pool_needs_build = self._expansionist_fleet_mission_pool_needs_build(
+            star,
+            orbit_fleets,
+            dispatchable_idle,
+            dispatchable_patrol,
+            micromanager_mode=micromanager_mode,
+        )
         if (
             not allow_over_cap_build and
+            not mission_pool_needs_build and
+            len(dispatchable_idle) > (1 if expansionist_mode else 0)
+        ):
+            return
+        if (
+            not allow_over_cap_build and
+            not mission_pool_needs_build and
             len(dispatchable_patrol) > (1 if expansionist_mode else 0)
         ):
             return
@@ -11984,11 +12177,12 @@ class GameTurn():
         return max(0, int((current_colonists - reserve_colonists) / 1000))
 
     def _friendly_colonisation_target_ids_in_flight(self, player):
-        from .models import FleetOrders
+        from .models import FleetOrders, MicromanagerObjectState
 
         if player is None:
             return set()
-        return set(
+        self._cleanup_stale_micromanager_fleet_states(player)
+        target_ids = set(
             FleetOrders.objects.filter(
                 game=self.game,
                 fleet__player=player,
@@ -11996,6 +12190,15 @@ class GameTurn():
                 target_star_id__isnull=False,
             ).values_list('target_star_id', flat=True)
         )
+        for state in MicromanagerObjectState.objects.filter(
+            game=self.game,
+            player=player,
+            target_type=MicromanagerObjectState.TARGET_FLEET,
+            mission='colonise',
+        ):
+            for target_id in self._state_data_uuid_set(state, 'target_star_id'):
+                target_ids.add(target_id)
+        return target_ids
 
     @staticmethod
     def _fleet_has_only_micromanager_move_orders(fleet):
@@ -12009,10 +12212,11 @@ class GameTurn():
         )
 
     def _active_auto_exploration_fleet_ids(self, player):
-        from .models import Fleet
+        from .models import Fleet, MicromanagerObjectState
 
         if player is None:
             return set()
+        self._cleanup_stale_micromanager_fleet_states(player)
         fleet_ids = set()
         fleets = Fleet.objects.filter(
             game=self.game,
@@ -12023,13 +12227,24 @@ class GameTurn():
         for fleet in fleets:
             if self._fleet_has_only_micromanager_move_orders(fleet):
                 fleet_ids.add(fleet.id)
+        state_fleets = Fleet.objects.filter(
+            game=self.game,
+            player=player,
+            micromanager_states__player=player,
+            micromanager_states__target_type=MicromanagerObjectState.TARGET_FLEET,
+            micromanager_states__mission='scout',
+        ).distinct()
+        for fleet in state_fleets:
+            if self._fleet_has_only_micromanager_move_orders(fleet):
+                fleet_ids.add(fleet.id)
         return fleet_ids
 
     def _active_auto_exploration_target_ids(self, player):
-        from .models import Fleet
+        from .models import Fleet, MicromanagerObjectState
 
         if player is None:
             return set()
+        self._cleanup_stale_micromanager_fleet_states(player)
         target_ids = set()
         fleets = Fleet.objects.filter(
             game=self.game,
@@ -12045,6 +12260,15 @@ class GameTurn():
                     order_type='MOVE',
                     target_star_id__isnull=False,
                 ).values_list('target_star_id', flat=True)
+            )
+        for state in MicromanagerObjectState.objects.filter(
+            game=self.game,
+            player=player,
+            target_type=MicromanagerObjectState.TARGET_FLEET,
+            mission='scout',
+        ):
+            target_ids.update(
+                self._state_data_uuid_set(state, 'route_star_ids')
             )
         return target_ids
 
@@ -12539,6 +12763,7 @@ class GameTurn():
         player = getattr(star, 'player', None)
         if not player:
             return
+        self._cleanup_stale_micromanager_fleet_states(player)
         profile = self._get_player_administration_profile_cached(player)
         tier, ai_tier = self._effective_administration_tier(
             player,

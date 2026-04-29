@@ -405,6 +405,39 @@ class AdministrationAutomationTest(TestCase):
         self.assertEqual(state.mission, 'colony_role')
         self.assertEqual(state.get_data()['max_resource_factor'], 90)
 
+    def test_stale_scout_mission_state_is_cleared_when_orders_finish(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Finished Scout',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+        )
+        state = MicromanagerObjectState.objects.create(
+            game=self.game,
+            player=self.player,
+            target_type=MicromanagerObjectState.TARGET_FLEET,
+            target_fleet=fleet,
+            mission='scout',
+            updated_year=self.game.year,
+        )
+        state.set_tags(['scout'])
+        state.set_data({'route_star_ids': []})
+        state.save(update_fields=['tags_json', 'data_json'])
+
+        active_ids = GameTurn(self.game)._active_auto_exploration_fleet_ids(
+            self.player
+        )
+
+        self.assertNotIn(fleet.id, active_ids)
+        self.assertFalse(
+            MicromanagerObjectState.objects.filter(id=state.id).exists()
+        )
+
     def test_colony_ai_report_context_only_uses_discovered_hostile_colonies(self):
         rival = Player.objects.create(
             game=self.game,
@@ -3839,6 +3872,100 @@ class AdministrationAutomationTest(TestCase):
         colonise_order = dispatch.orders.get(order_type='COLONISE')
         self.assertEqual(colonise_order.target_star_id, fallback.id)
 
+    def test_auto_colonise_uses_mission_state_to_skip_reserved_target(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.colonists = 220_000
+        self.star.mines = 10
+        self.star.factories = 12
+        self.star.shipyards = 1
+        self.star.save(update_fields=['colonists', 'mines', 'factories', 'shipyards'])
+        self.player.fleets.all().delete()
+
+        targets = list(self.game.stars.exclude(id=self.star.id).order_by('id')[:2])
+        reserved, fallback = targets
+        for offset, target in enumerate((reserved, fallback), start=1):
+            target.player = None
+            target.x = int(self.star.x) + offset
+            target.y = int(self.star.y)
+            target.gravity = self.player.gravity_center
+            target.temperature = self.player.temperature_center
+            target.radiation = self.player.radiation_center
+            target.colonists = 0
+            target.save(update_fields=[
+                'player',
+                'x',
+                'y',
+                'gravity',
+                'temperature',
+                'radiation',
+                'colonists',
+            ])
+            self._create_star_report(target, is_survivable=True)
+
+        existing_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='State Reserved Expedition',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            cargo_capacity=120,
+        )
+        FleetOrders.objects.create(
+            game=self.game,
+            fleet=existing_fleet,
+            order_type='MOVE',
+            target_star=reserved,
+            target_kind='OBJECT',
+            target_short_id=reserved.short_id,
+            x=reserved.x,
+            y=reserved.y,
+            added_by_micromanager=True,
+        )
+        state = MicromanagerObjectState.objects.create(
+            game=self.game,
+            player=self.player,
+            target_type=MicromanagerObjectState.TARGET_FLEET,
+            target_fleet=existing_fleet,
+            mission='colonise',
+            updated_year=self.game.year,
+        )
+        state.set_data({'target_star_id': str(reserved.id)})
+        state.save(update_fields=['data_json'])
+        dispatch = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Fresh Colony Ship',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+            cargo_capacity=120,
+        )
+        guard = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Home Guard',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            offense_level=6,
+            defense_level=6,
+            cargo_capacity=0,
+        )
+
+        GameTurn(self.game)._dispatch_auto_colonise_route(
+            self.star,
+            [guard, dispatch],
+            micromanager_mode='expansionist',
+        )
+
+        colonise_order = dispatch.orders.get(order_type='COLONISE')
+        self.assertEqual(colonise_order.target_star_id, fallback.id)
+
     def test_expansionist_ai_queues_multi_leg_exploration_route_to_unknown_stars(self):
         self.player.is_ai = True
         self.player.ai_module = 'expansionist'
@@ -3899,6 +4026,56 @@ class AdministrationAutomationTest(TestCase):
         self.assertEqual(
             state.get_data()['route_star_ids'],
             [str(order.target_star_id) for order in scout_orders],
+        )
+
+    def test_expansionist_builds_fleet_when_scout_mission_pool_is_thin(self):
+        self._create_administration_tech(4, 4)
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = True
+        self.star.colonists = 500_000
+        self.star.mines = 30
+        self.star.factories = 100
+        self.star.labs = 100
+        self.star.defenses = 100
+        self.star.shipyards = 2
+        self.star.ironium_inventory = 100_000
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.ironium_yield = 80
+        self.star.boranium_yield = 80
+        self.star.germanium_yield = 80
+        self.star.save()
+        self.star.production_orders.all().delete()
+        self.player.fleets.all().delete()
+
+        orbit_fleets = []
+        for idx in range(4):
+            orbit_fleets.append(Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Mission Pool Fleet %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=1,
+                offense_level=1,
+                defense_level=1,
+                cargo_capacity=120,
+            ))
+
+        GameTurn(self.game)._queue_auto_build_fleet_order_for_colony(
+            self.star,
+            orbit_fleets,
+            get_player_production_costs(self.player),
+            micromanager_mode='expansionist',
+        )
+
+        self.assertTrue(
+            self.star.production_orders.filter(
+                order_type='BUILD_FLEET',
+                added_by_micromanager=True,
+            ).exists()
         )
 
     def test_regular_ai_micromanager_queues_lower_cadence_exploration_route(self):
