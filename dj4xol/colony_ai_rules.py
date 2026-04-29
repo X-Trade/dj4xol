@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 
 from .colony_rules import (
     BILLION,
+    MILLION,
     effective_capacity,
     habitability_value_for_environment,
 )
@@ -24,6 +25,14 @@ RESEARCH_HABITABILITY = 0.62
 PRODUCTION_HABITABILITY = 0.40
 SURVIVABLE_HABITABILITY = 0.02
 TERRAFORM_TARGET_HABITABILITY = 0.72
+POTENTIAL_EDEN_HABITABILITY = 0.50
+POTENTIAL_EDEN_NEAR_IDEAL_ENVIRONMENT = 0.85
+POTENTIAL_EDEN_BASE_CAPACITY = 1500 * MILLION
+POTENTIAL_EDEN_STRONG_BASE_CAPACITY = 3000 * MILLION
+POTENTIAL_EDEN_MODERATE_RESOURCE_FACTOR = 25
+POTENTIAL_EDEN_MINING_HABITABILITY = 0.62
+POTENTIAL_EDEN_MINING_MATURE_MINES = 50
+POTENTIAL_EDEN_MINING_MATURE_FACTORIES = 60
 
 STANCE_THREAT_WEIGHTS = {
     'HOSTILE': 1.0,
@@ -53,14 +62,14 @@ def _safe_int(value, default=0):
         return int(default)
 
 
-def environment_habitability(player, star):
-    """Return environment-only habitability, without economy bonuses."""
+def environment_habitability_factors(player, star):
+    """Return per-factor environment habitability, without economy bonuses."""
     if not player or not star:
-        return 0.0
-    total = 0.0
+        return {}
+    factors = {}
     for env in ('gravity', 'temperature', 'radiation'):
         try:
-            total += float(
+            factors[env] = float(
                 habitability_value_for_environment(
                     player,
                     env,
@@ -68,8 +77,19 @@ def environment_habitability(player, star):
                 )
             )
         except (AttributeError, TypeError, ValueError, ZeroDivisionError):
-            total += 0.0
-    return total / 3.0
+            factors[env] = 0.0
+    return factors
+
+
+def environment_habitability(player, star):
+    """Return environment-only habitability, without economy bonuses."""
+    factors = environment_habitability_factors(player, star)
+    if not factors:
+        return 0.0
+    total = 0.0
+    for env in ('gravity', 'temperature', 'radiation'):
+        total += float(factors.get(env, 0.0) or 0.0)
+    return total / float(len(factors))
 
 
 def resource_quality(star):
@@ -107,6 +127,108 @@ def colony_capacity(player, star):
         return base * 1000000
 
 
+def colony_base_capacity(player, star):
+    """Return raw capacity before habitability scaling."""
+    base = max(0, _safe_int(getattr(star, 'base_capacity', 0)))
+    multiplier = 1.0
+    race_type = getattr(player, 'race_type', None)
+    if race_type is not None:
+        multiplier = max(
+            0.0,
+            _safe_float(getattr(race_type, 'population_cap_multiplier', 1.0), 1.0),
+        )
+    return int(float(base * 1000000) * multiplier)
+
+
+def potential_eden_terraform_score(
+    habitability,
+    resources,
+    base_capacity,
+    environment_factors,
+    mines=0,
+    factories=0,
+    shipyards=0,
+):
+    """Score worlds that could become eden after targeted terraforming."""
+    habitability = _safe_float(habitability)
+    if habitability < POTENTIAL_EDEN_HABITABILITY or habitability >= EDEN_HABITABILITY:
+        return 0.0
+
+    env_values = [
+        _safe_float(environment_factors.get(env, 0.0))
+        for env in ('gravity', 'temperature', 'radiation')
+        if isinstance(environment_factors, dict)
+    ]
+    if not env_values:
+        return 0.0
+    best_environment = max(env_values)
+    if best_environment < POTENTIAL_EDEN_NEAR_IDEAL_ENVIRONMENT:
+        return 0.0
+
+    base_capacity = max(0, _safe_int(base_capacity))
+    if base_capacity < POTENTIAL_EDEN_BASE_CAPACITY:
+        return 0.0
+
+    capacity_score = _clamp(
+        (
+            float(base_capacity - POTENTIAL_EDEN_BASE_CAPACITY) /
+            float(POTENTIAL_EDEN_STRONG_BASE_CAPACITY - POTENTIAL_EDEN_BASE_CAPACITY)
+        )
+    )
+    max_resource = max(0, _safe_int((resources or {}).get('max_resource_factor', 0)))
+    has_secret_resource = bool((resources or {}).get('has_secret_resource_yield'))
+    resource_rich = max_resource >= MINING_RESOURCE_FACTOR or has_secret_resource
+    if resource_rich:
+        mature_mining_mines = max(
+            POTENTIAL_EDEN_MINING_MATURE_MINES,
+            max_resource,
+        )
+        mature_mining = (
+            _safe_int(mines) >= mature_mining_mines or
+            (
+                _safe_int(mines) >= POTENTIAL_EDEN_MINING_MATURE_MINES and
+                (
+                    _safe_int(factories) >= POTENTIAL_EDEN_MINING_MATURE_FACTORIES or
+                    _safe_int(shipyards) > 0
+                )
+            )
+        )
+        if habitability < POTENTIAL_EDEN_MINING_HABITABILITY or not mature_mining:
+            return 0.0
+
+    average_resource = max(
+        0.0,
+        _safe_float((resources or {}).get('average_resource_factor', 0.0)),
+    )
+    resource_support = _clamp(
+        (
+            max(max_resource, average_resource) -
+            POTENTIAL_EDEN_MODERATE_RESOURCE_FACTOR
+        ) / 35.0
+    )
+    habitability_score = _clamp(
+        (habitability - POTENTIAL_EDEN_HABITABILITY) /
+        (EDEN_HABITABILITY - POTENTIAL_EDEN_HABITABILITY)
+    )
+    near_ideal_score = _clamp(
+        (
+            best_environment - POTENTIAL_EDEN_NEAR_IDEAL_ENVIRONMENT
+        ) / (
+            1.0 - POTENTIAL_EDEN_NEAR_IDEAL_ENVIRONMENT
+        )
+    )
+    score = _clamp(
+        0.30 +
+        (habitability_score * 0.28) +
+        (capacity_score * 0.28) +
+        (near_ideal_score * 0.08) +
+        (resource_support * 0.06)
+    )
+    if resource_rich:
+        score *= 0.85
+    return _clamp(score)
+
+
 def threat_score_from_report_context(report_context):
     """Return a threat score from already-known report-derived context."""
     if not isinstance(report_context, dict):
@@ -140,19 +262,37 @@ def classify_colony_role(player, star, report_context=None):
     The returned profile is deliberately data-only so production, logistics,
     and tests can share the same vocabulary without depending on the ORM.
     """
-    habitability = environment_habitability(player, star)
+    environment_factors = environment_habitability_factors(player, star)
+    if environment_factors:
+        habitability = sum(
+            float(environment_factors.get(env, 0.0) or 0.0)
+            for env in ('gravity', 'temperature', 'radiation')
+        ) / 3.0
+    else:
+        habitability = 0.0
     resources = resource_quality(star)
     max_resource = int(resources['max_resource_factor'])
     max_secret_resource = int(resources['max_secret_resource_factor'])
     has_secret_resource = bool(resources['has_secret_resource_yield'])
     resource_score = float(resources['resource_score'])
     capacity = colony_capacity(player, star)
+    base_capacity = colony_base_capacity(player, star)
     capacity_score = _clamp(float(capacity) / float(3 * BILLION))
     threat_score = threat_score_from_report_context(report_context)
+    mines = max(0, _safe_int(getattr(star, 'mines', 0)))
     factories = max(0, _safe_int(getattr(star, 'factories', 0)))
     labs = max(0, _safe_int(getattr(star, 'labs', 0)))
     shipyards = max(0, _safe_int(getattr(star, 'shipyards', 0)))
     defenses = max(0, _safe_int(getattr(star, 'defenses', 0)))
+    potential_eden_score = potential_eden_terraform_score(
+        habitability,
+        resources,
+        base_capacity,
+        environment_factors,
+        mines=mines,
+        factories=factories,
+        shipyards=shipyards,
+    )
     is_homeworld = bool(
         getattr(player, 'homeworld_id', None) and
         getattr(player, 'homeworld_id', None) == getattr(star, 'id', None)
@@ -227,6 +367,7 @@ def classify_colony_role(player, star, report_context=None):
         scores[ROLE_EDEN] * 0.85,
         scores[ROLE_PRODUCTION],
         scores[ROLE_SECRET_RESOURCE],
+        potential_eden_score,
         capacity_score * 0.60,
         scores[ROLE_FRONTIER] * 0.75,
     )
@@ -251,7 +392,10 @@ def classify_colony_role(player, star, report_context=None):
         'roles': roles,
         'scores': scores,
         'habitability': habitability,
+        'environment_factors': environment_factors,
         'capacity': capacity,
+        'base_capacity': base_capacity,
+        'potential_eden_score': potential_eden_score,
         'max_resource_factor': max_resource,
         'max_secret_resource_factor': max_secret_resource,
         'has_secret_resource_yield': has_secret_resource,
@@ -284,6 +428,7 @@ def score_terraform_roi(profile, tier=3):
         role_score(profile, ROLE_PRODUCTION),
         role_score(profile, ROLE_SECRET_RESOURCE),
         role_score(profile, ROLE_FRONTIER) * 0.70,
+        _safe_float(profile.get('potential_eden_score', 0.0)),
     )
     if value <= 0.0:
         return 0.0

@@ -17,7 +17,9 @@ from ..colony_ai_rules import (
     ROLE_FRONTIER,
     ROLE_MINING,
     ROLE_SECRET_RESOURCE,
+    ROLE_TERRAFORM_CANDIDATE,
     classify_colony_role,
+    score_terraform_roi,
 )
 from ..colony_rules import calculate_employment_percent
 from ..research import (
@@ -41,6 +43,7 @@ from ..micromanager_rules import (
     terraform_order_is_close_to_ideal,
 )
 from ._util import default_game
+from ..mineral_rules import ALL_RESOURCE_KEYS
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -311,6 +314,177 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertIn(ROLE_EDEN, profile['roles'])
         self.assertNotIn(ROLE_MINING, profile['roles'])
+
+    def test_colony_ai_scores_potential_eden_for_terraform_roi(self):
+        self.star.gravity = self.player.gravity_center + (
+            self.player.gravity_width * 0.025
+        )
+        self.star.temperature = self.player.temperature_center + (
+            self.player.temperature_width * 0.325
+        )
+        self.star.radiation = self.player.radiation_center + (
+            self.player.radiation_width * 0.325
+        )
+        self.star.ironium_yield = 30
+        self.star.boranium_yield = 28
+        self.star.germanium_yield = 26
+        self.star.base_capacity = 2500
+        self.star.save(update_fields=[
+            'gravity',
+            'temperature',
+            'radiation',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+            'base_capacity',
+        ])
+
+        profile = classify_colony_role(self.player, self.star)
+
+        self.assertGreaterEqual(profile['habitability'], 0.5)
+        self.assertNotIn(ROLE_EDEN, profile['roles'])
+        self.assertIn(ROLE_TERRAFORM_CANDIDATE, profile['roles'])
+        self.assertGreater(profile['potential_eden_score'], 0.0)
+        self.assertGreater(score_terraform_roi(profile, tier=4), 0.0)
+
+    def test_potential_eden_requires_one_near_ideal_environment_factor(self):
+        self.star.gravity = self.player.gravity_center + (
+            self.player.gravity_width * 0.20
+        )
+        self.star.temperature = self.player.temperature_center + (
+            self.player.temperature_width * 0.20
+        )
+        self.star.radiation = self.player.radiation_center + (
+            self.player.radiation_width * 0.20
+        )
+        self.star.ironium_yield = 30
+        self.star.boranium_yield = 28
+        self.star.germanium_yield = 26
+        self.star.base_capacity = 2500
+        self.star.save(update_fields=[
+            'gravity',
+            'temperature',
+            'radiation',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+            'base_capacity',
+        ])
+
+        profile = classify_colony_role(self.player, self.star)
+
+        self.assertGreaterEqual(profile['habitability'], 0.5)
+        self.assertEqual(profile['potential_eden_score'], 0.0)
+
+    def test_resource_rich_world_needs_maturity_for_potential_eden(self):
+        self.star.gravity = self.player.gravity_center + (
+            self.player.gravity_width * 0.025
+        )
+        self.star.temperature = self.player.temperature_center + (
+            self.player.temperature_width * 0.225
+        )
+        self.star.radiation = self.player.radiation_center + (
+            self.player.radiation_width * 0.225
+        )
+        self.star.ironium_yield = 90
+        self.star.boranium_yield = 30
+        self.star.germanium_yield = 28
+        self.star.base_capacity = 2500
+        self.star.mines = 20
+        self.star.factories = 20
+        self.star.shipyards = 0
+        self.star.save(update_fields=[
+            'gravity',
+            'temperature',
+            'radiation',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+            'base_capacity',
+            'mines',
+            'factories',
+            'shipyards',
+        ])
+
+        profile = classify_colony_role(self.player, self.star)
+
+        self.assertIn(ROLE_MINING, profile['roles'])
+        self.assertEqual(profile['primary_role'], ROLE_MINING)
+        self.assertGreaterEqual(profile['habitability'], 0.62)
+        self.assertEqual(profile['potential_eden_score'], 0.0)
+
+    def test_mature_resource_rich_world_can_be_secondary_potential_eden(self):
+        self.star.gravity = self.player.gravity_center + (
+            self.player.gravity_width * 0.025
+        )
+        self.star.temperature = self.player.temperature_center + (
+            self.player.temperature_width * 0.225
+        )
+        self.star.radiation = self.player.radiation_center + (
+            self.player.radiation_width * 0.225
+        )
+        self.star.ironium_yield = 90
+        self.star.boranium_yield = 30
+        self.star.germanium_yield = 28
+        self.star.base_capacity = 2500
+        self.star.mines = 95
+        self.star.factories = 20
+        self.star.shipyards = 0
+        self.star.save(update_fields=[
+            'gravity',
+            'temperature',
+            'radiation',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+            'base_capacity',
+            'mines',
+            'factories',
+            'shipyards',
+        ])
+
+        profile = classify_colony_role(self.player, self.star)
+
+        self.assertIn(ROLE_MINING, profile['roles'])
+        self.assertEqual(profile['primary_role'], ROLE_MINING)
+        self.assertGreater(profile['potential_eden_score'], 0.0)
+        self.assertGreater(score_terraform_roi(profile, tier=5), 0.0)
+
+    def test_edge_resource_rich_world_is_not_potential_eden(self):
+        self.star.gravity = self.player.gravity_center + (
+            self.player.gravity_width * 0.025
+        )
+        self.star.temperature = self.player.temperature_center + (
+            self.player.temperature_width * 0.325
+        )
+        self.star.radiation = self.player.radiation_center + (
+            self.player.radiation_width * 0.325
+        )
+        self.star.ironium_yield = 90
+        self.star.boranium_yield = 30
+        self.star.germanium_yield = 28
+        self.star.base_capacity = 2500
+        self.star.mines = 95
+        self.star.factories = 60
+        self.star.shipyards = 1
+        self.star.save(update_fields=[
+            'gravity',
+            'temperature',
+            'radiation',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+            'base_capacity',
+            'mines',
+            'factories',
+            'shipyards',
+        ])
+
+        profile = classify_colony_role(self.player, self.star)
+
+        self.assertIn(ROLE_MINING, profile['roles'])
+        self.assertLess(profile['habitability'], 0.62)
+        self.assertEqual(profile['potential_eden_score'], 0.0)
 
     def test_colony_ai_classifies_secret_resource_world_as_special_mining(self):
         self.star.gravity = self.player.gravity_center + (self.player.gravity_width * 0.30)
@@ -5720,12 +5894,9 @@ class AdministrationAutomationTest(TestCase):
             star.labs = 0
             star.defenses = 0
             star.shipyards = 0
-            star.ironium_inventory = 0
-            star.boranium_inventory = 0
-            star.germanium_inventory = 0
-            star.ironium_yield = 0
-            star.boranium_yield = 0
-            star.germanium_yield = 0
+            for key in ALL_RESOURCE_KEYS:
+                setattr(star, '%s_inventory' % key, 0)
+                setattr(star, '%s_yield' % key, 0)
             star.save()
             star.production_orders.all().delete()
 

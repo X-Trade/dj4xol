@@ -5227,7 +5227,10 @@ class GameTurn():
         data.update({
             'scores': profile.get('scores') or {},
             'habitability': profile.get('habitability'),
+            'environment_factors': profile.get('environment_factors') or {},
             'capacity': profile.get('capacity'),
+            'base_capacity': profile.get('base_capacity'),
+            'potential_eden_score': profile.get('potential_eden_score'),
             'max_resource_factor': profile.get('max_resource_factor'),
             'max_secret_resource_factor': profile.get('max_secret_resource_factor'),
             'has_secret_resource_yield': profile.get('has_secret_resource_yield'),
