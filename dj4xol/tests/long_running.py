@@ -20,6 +20,7 @@ from ..models import (
     Account,
     Anomaly,
     Fleet,
+    FleetOrders,
     Game,
     GameMessage,
     Report,
@@ -551,6 +552,7 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
         initial_colonies = Star.objects.filter(game=player.game, player=player).count()
         expansion_year = None
         expansion_years = []
+        duplicate_colonise_target_years = []
         previous_colony_count = initial_colonies
 
         opening = self._snapshot_homeworld(player, label)
@@ -570,6 +572,16 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             if snapshot["colony_count"] > previous_colony_count:
                 expansion_years.append(snapshot["year"])
                 previous_colony_count = snapshot["colony_count"]
+            colonise_targets = list(
+                FleetOrders.objects.filter(
+                    game=game,
+                    fleet__player=player,
+                    order_type="COLONISE",
+                    target_star_id__isnull=False,
+                ).values_list("target_star_id", flat=True)
+            )
+            if len(colonise_targets) != len(set(colonise_targets)):
+                duplicate_colonise_target_years.append(snapshot["year"])
 
         return {
             "snapshots": snapshots,
@@ -577,6 +589,7 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             "initial_colonies": initial_colonies,
             "expansion_year": expansion_year,
             "expansion_years": expansion_years,
+            "duplicate_colonise_target_years": duplicate_colonise_target_years,
         }
 
     def test_mechanical_micromanager_ai_expands_and_bootstraps_within_twenty_years(self):
@@ -779,6 +792,12 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
         expansion_years = list(result["expansion_years"])
 
         self.assertGreaterEqual(final["colony_count"], 20, msg=history)
+        self.assertGreaterEqual(final["empire_labs"], 1000, msg=history)
+        self.assertGreaterEqual(final["empire_defenses"], 1000, msg=history)
+        self.assertFalse(
+            result["duplicate_colonise_target_years"],
+            msg=history,
+        )
         self.assertGreater(
             final["empire_colonists"],
             result["snapshots"][0]["empire_colonists"],

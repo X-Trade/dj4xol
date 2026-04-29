@@ -157,6 +157,10 @@ from .colony_rules import (
     extraction_overmines_yield,
     OVERMINING_DEPLETION_MULTIPLIER,
 )
+from .colony_ai_rules import (
+    classify_colony_role,
+    stance_threat_weight,
+)
 from .research import (
     process_player_research_for_year,
     get_player_administration_profile,
@@ -10591,6 +10595,115 @@ class GameTurn():
         for order in changed:
             order.save(update_fields=['position'])
 
+    def _colony_ai_report_context_for_star(self, star, tier):
+        """Build report-known strategic context around a colony."""
+        from .models import Player, Report
+
+        player = getattr(star, 'player', None)
+        if player is None:
+            return {}
+        try:
+            level = int(tier or 0)
+        except (TypeError, ValueError):
+            level = 0
+        if level < 3:
+            return {}
+        radius = 70.0
+        if level >= 4:
+            radius = 95.0
+        if level >= 5:
+            radius = 125.0
+
+        report_items = []
+        owner_names = set()
+        for report in Report.objects.filter(
+            game=self.game,
+            player=player,
+            target_type='star',
+        ).only('target_id', 'cached_report'):
+            data = report.get_report_data()
+            if not isinstance(data, dict):
+                continue
+            try:
+                report_x = int(data.get('x'))
+                report_y = int(data.get('y'))
+            except (TypeError, ValueError):
+                continue
+            distance = self._distance_between_points(
+                star.x,
+                star.y,
+                report_x,
+                report_y,
+            )
+            if distance <= 0.0 or distance > radius:
+                continue
+            owner_name = str(data.get('player_name') or '').strip()
+            try:
+                colonists = int(data.get('colonists', 0) or 0)
+            except (TypeError, ValueError):
+                colonists = 0
+            if not owner_name and colonists <= 0:
+                continue
+            if owner_name and owner_name == getattr(player, 'name', ''):
+                continue
+            if owner_name:
+                owner_names.add(owner_name)
+            report_items.append((distance, owner_name, colonists))
+
+        if not report_items:
+            return {}
+
+        owners_by_name = {
+            other.name: other
+            for other in Player.objects.filter(
+                game=self.game,
+                name__in=list(owner_names),
+            )
+        }
+        nearby_foreign = 0
+        nearby_cold = 0
+        nearby_hostile = 0
+        nearest_foreign = None
+        threat_score = 0.0
+        stance_map = self._stance_map_for_player(player)
+        for distance, owner_name, colonists in report_items:
+            owner = owners_by_name.get(owner_name)
+            stance = 'UNKNOWN'
+            if owner is not None:
+                stance = stance_towards(
+                    player,
+                    owner,
+                    stance_map=stance_map,
+                )
+            elif owner_name:
+                stance = 'UNKNOWN'
+            elif colonists > 0:
+                stance = 'UNKNOWN'
+            if owner is not None and owner.id == player.id:
+                continue
+            nearby_foreign += 1
+            nearest_foreign = (
+                distance if nearest_foreign is None else min(nearest_foreign, distance)
+            )
+            normalized_stance = normalise_stance(stance)
+            if normalized_stance == STANCE_HOSTILE:
+                nearby_hostile += 1
+            elif normalized_stance == STANCE_COLD:
+                nearby_cold += 1
+            distance_factor = 1.0 - min(1.0, float(distance) / radius)
+            threat_score += stance_threat_weight(normalized_stance) * max(
+                0.15,
+                distance_factor,
+            )
+
+        return {
+            'nearby_foreign_colonies': nearby_foreign,
+            'nearby_cold_colonies': nearby_cold,
+            'nearby_hostile_colonies': nearby_hostile,
+            'nearest_foreign_distance': nearest_foreign,
+            'threat_score': min(1.0, threat_score),
+        }
+
     def _projected_player_economy_order_types(self, orders):
         """Return remaining player mine/factory orders as projected types."""
         projected = []
@@ -10729,6 +10842,11 @@ class GameTurn():
             queue_orders
         )
         cost_map = self._get_player_production_costs_cached(star.player)
+        colony_ai_profile = classify_colony_role(
+            star.player,
+            star,
+            report_context=self._colony_ai_report_context_for_star(star, tier),
+        )
         planned = plan_micromanager_orders(
             star.player,
             star,
@@ -10747,6 +10865,7 @@ class GameTurn():
             administration_active=admin_active,
             research_maxed=self._player_research_is_maxed_out_cached(star.player),
             micromanager_mode=micromanager_mode_for_player(star.player),
+            colony_ai_profile=colony_ai_profile,
         )
         planned = [
             order_type for order_type in planned
@@ -11744,12 +11863,27 @@ class GameTurn():
         )
         return max(0, int((current_colonists - reserve_colonists) / 1000))
 
-    def _best_colonise_target_for_colony(self, star):
+    def _friendly_colonisation_target_ids_in_flight(self, player):
+        from .models import FleetOrders
+
+        if player is None:
+            return set()
+        return set(
+            FleetOrders.objects.filter(
+                game=self.game,
+                fleet__player=player,
+                order_type='COLONISE',
+                target_star_id__isnull=False,
+            ).values_list('target_star_id', flat=True)
+        )
+
+    def _best_colonise_target_for_colony(self, star, excluded_target_ids=None):
         from .models import Report, Star
 
         player = getattr(star, 'player', None)
         if player is None:
             return None
+        excluded_target_ids = set(excluded_target_ids or [])
         search_radius = self._colonise_search_radius_for_player(player)
         reports = list(Report.objects.filter(
             game=self.game,
@@ -11778,6 +11912,8 @@ class GameTurn():
                 continue
             if report.target_id == star.id:
                 continue
+            if report.target_id in excluded_target_ids:
+                continue
             if data.get('player_name') not in (None, ''):
                 continue
             if int(data.get('colonists', 0) or 0) > 0:
@@ -11800,6 +11936,8 @@ class GameTurn():
         best_distance = None
         best_hab = None
         for target_id, report_info in report_data_by_target_id.items():
+            if target_id in excluded_target_ids:
+                continue
             target = candidate_stars.get(target_id)
             if target is None:
                 continue
@@ -11828,6 +11966,8 @@ class GameTurn():
         micromanager_mode='standard',
     ):
         """Tier-5: dispatch one idle fleet to colonise a nearby viable star."""
+        if not hasattr(self, '_micromanager_auto_fleet_ids_for_year'):
+            self._micromanager_auto_fleet_ids_for_year = set()
         idle_fleets = self._idle_orbit_fleets(orbit_fleets)
         dispatchable = self._dispatchable_idle_fleets_for_colony(
             orbit_fleets,
@@ -11848,9 +11988,6 @@ class GameTurn():
             }
         if not dispatchable:
             return
-        target_star = self._best_colonise_target_for_colony(star)
-        if target_star is None:
-            return
         spare_colonists = self._spare_colonists_for_auto_colonise(
             star,
             micromanager_mode=micromanager_mode,
@@ -11864,8 +12001,17 @@ class GameTurn():
             if self._is_expansionist_micromanager_mode(micromanager_mode) else
             MICROMANAGER_COLONISE_DISPATCHES_PER_COLONY
         )
+        reserved_target_ids = self._friendly_colonisation_target_ids_in_flight(
+            getattr(star, 'player', None)
+        )
         for fleet in dispatchable:
             if dispatches >= dispatch_limit:
+                break
+            target_star = self._best_colonise_target_for_colony(
+                star,
+                excluded_target_ids=reserved_target_ids,
+            )
+            if target_star is None:
                 break
             cargo_remaining = int(getattr(fleet, 'cargo_remaining', 0) or 0)
             if cargo_remaining <= 0:
@@ -11896,6 +12042,7 @@ class GameTurn():
                 continue
             self._micromanager_auto_fleet_ids_for_year.add(fleet.id)
             dispatches += 1
+            reserved_target_ids.add(target_star.id)
             spare_colonists = max(0, spare_colonists - transfer_colonists)
             if spare_colonists < MICROMANAGER_COLONISE_MIN_PAYLOAD:
                 break

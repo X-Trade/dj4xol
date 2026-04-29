@@ -1,6 +1,22 @@
 from django.test import TestCase
 
-from ..models import Fleet, FleetOrders, ProductionOrder, Report, ResearchCategory, Salvage, Technology
+from ..models import (
+    Fleet,
+    FleetOrders,
+    Player,
+    PlayerDiplomaticStance,
+    ProductionOrder,
+    Report,
+    ResearchCategory,
+    Salvage,
+    Technology,
+)
+from ..colony_ai_rules import (
+    ROLE_EDEN,
+    ROLE_FRONTIER,
+    ROLE_MINING,
+    classify_colony_role,
+)
 from ..colony_rules import calculate_employment_percent
 from ..research import (
     ensure_player_research_rows,
@@ -208,6 +224,137 @@ class AdministrationAutomationTest(TestCase):
         self.star.boranium_yield = 0
         self.star.germanium_yield = 0
         self.star.save()
+
+    def test_colony_ai_classifies_survivable_rich_poor_habitability_as_mining(self):
+        self.star.gravity = self.player.gravity_center + (self.player.gravity_width * 0.45)
+        self.star.temperature = self.player.temperature_center + (
+            self.player.temperature_width * 0.45
+        )
+        self.star.radiation = self.player.radiation_center + (
+            self.player.radiation_width * 0.45
+        )
+        self.star.ironium_yield = 80
+        self.star.boranium_yield = 18
+        self.star.germanium_yield = 12
+        self.star.base_capacity = 40
+        self.star.save(update_fields=[
+            'gravity',
+            'temperature',
+            'radiation',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+            'base_capacity',
+        ])
+
+        profile = classify_colony_role(self.player, self.star)
+
+        self.assertIn(ROLE_MINING, profile['roles'])
+        self.assertLess(profile['habitability'], 0.25)
+        self.assertGreaterEqual(profile['max_resource_factor'], 56)
+
+    def test_colony_ai_classifies_high_habitability_world_as_eden(self):
+        self.star.gravity = self.player.gravity_center
+        self.star.temperature = self.player.temperature_center
+        self.star.radiation = self.player.radiation_center
+        self.star.ironium_yield = 15
+        self.star.boranium_yield = 20
+        self.star.germanium_yield = 18
+        self.star.base_capacity = 120
+        self.star.save(update_fields=[
+            'gravity',
+            'temperature',
+            'radiation',
+            'ironium_yield',
+            'boranium_yield',
+            'germanium_yield',
+            'base_capacity',
+        ])
+
+        profile = classify_colony_role(self.player, self.star)
+
+        self.assertIn(ROLE_EDEN, profile['roles'])
+        self.assertNotIn(ROLE_MINING, profile['roles'])
+
+    def test_colony_ai_report_context_only_uses_discovered_hostile_colonies(self):
+        rival = Player.objects.create(
+            game=self.game,
+            name='Rival',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=rival,
+            stance='HOSTILE',
+        )
+        hidden = self.game.stars.exclude(id=self.star.id).first()
+        hidden.player = rival
+        hidden.colonists = 50_000
+        hidden.x = int(self.star.x) + 3
+        hidden.y = int(self.star.y)
+        hidden.save(update_fields=['player', 'colonists', 'x', 'y'])
+
+        turn = GameTurn(self.game)
+        hidden_context = turn._colony_ai_report_context_for_star(self.star, 3)
+        hidden_profile = classify_colony_role(
+            self.player,
+            self.star,
+            report_context=hidden_context,
+        )
+
+        self.assertEqual(hidden_context, {})
+        self.assertNotIn(ROLE_FRONTIER, hidden_profile['roles'])
+
+        self._create_star_report(
+            hidden,
+            is_survivable=True,
+            player_name=rival.name,
+            colonists=50_000,
+        )
+        known_context = turn._colony_ai_report_context_for_star(self.star, 3)
+        known_profile = classify_colony_role(
+            self.player,
+            self.star,
+            report_context=known_context,
+        )
+
+        self.assertGreater(known_context['threat_score'], 0.0)
+        self.assertIn(ROLE_FRONTIER, known_profile['roles'])
+
+    def test_role_aware_frontier_profile_prioritises_defense_support(self):
+        self._create_administration_tech(4, 4)
+        self.star.has_administration = True
+        self.star.colonists = 250_000
+        self.star.mines = 40
+        self.star.factories = 80
+        self.star.labs = 10
+        self.star.defenses = 0
+        self.star.shipyards = 1
+        self.star.ironium_inventory = 100_000
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.ironium_yield = 30
+        self.star.boranium_yield = 30
+        self.star.germanium_yield = 30
+        self.star.save()
+        profile = classify_colony_role(
+            self.player,
+            self.star,
+            report_context={'threat_score': 1.0, 'nearby_hostile_colonies': 1},
+        )
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            4,
+            fleets_in_orbit=1,
+            cost_map=get_player_production_costs(self.player),
+            limit=4,
+            colony_ai_profile=profile,
+        )
+
+        self.assertTrue(planned)
+        self.assertEqual(planned[0], 'BUILD_DEFENSE')
 
     def test_administration_order_available_only_when_unlocked_and_needed(self):
         options = get_player_available_production_orders(self.player, self.star)
@@ -3376,6 +3523,87 @@ class AdministrationAutomationTest(TestCase):
             turn._spare_colonists_for_auto_colonise(self.star),
             5,
         )
+
+    def test_auto_colonise_skips_reported_target_already_being_colonised(self):
+        self.star.colonists = 220_000
+        self.star.mines = 10
+        self.star.factories = 12
+        self.star.shipyards = 1
+        self.star.save(update_fields=['colonists', 'mines', 'factories', 'shipyards'])
+        self.player.fleets.all().delete()
+
+        targets = list(self.game.stars.exclude(id=self.star.id)[:2])
+        best, fallback = targets
+        for offset, target in enumerate((best, fallback), start=1):
+            target.player = None
+            target.x = int(self.star.x) + offset
+            target.y = int(self.star.y)
+            target.gravity = self.player.gravity_center
+            target.temperature = self.player.temperature_center
+            target.radiation = self.player.radiation_center
+            target.colonists = 0
+            target.save(update_fields=[
+                'player',
+                'x',
+                'y',
+                'gravity',
+                'temperature',
+                'radiation',
+                'colonists',
+            ])
+            self._create_star_report(target, is_survivable=True)
+
+        existing_fleet = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Existing Expedition',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            cargo_capacity=120,
+        )
+        FleetOrders.objects.create(
+            game=self.game,
+            fleet=existing_fleet,
+            order_type='COLONISE',
+            target_star=best,
+            target_kind='OBJECT',
+            target_short_id=best.short_id,
+            x=best.x,
+            y=best.y,
+            added_by_micromanager=True,
+        )
+        dispatch = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Fresh Colony Ship',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+            cargo_capacity=120,
+        )
+        guard = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Home Guard',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            offense_level=6,
+            defense_level=6,
+            cargo_capacity=0,
+        )
+
+        GameTurn(self.game)._dispatch_auto_colonise_route(
+            self.star,
+            [guard, dispatch],
+            micromanager_mode='standard',
+        )
+
+        colonise_order = dispatch.orders.get(order_type='COLONISE')
+        self.assertEqual(colonise_order.target_star_id, fallback.id)
 
     def test_ai_micromanager_level_five_prioritises_early_colonise_before_logistics(self):
         self.player.is_ai = True

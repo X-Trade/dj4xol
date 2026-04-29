@@ -1,15 +1,11 @@
 ============= MAIN TODO =============
 1. Population/Habitability algorithm rebalancing
 2. Mine fields
-6. fuel factory
-   Note: keep fuel factory under Electrical tech type temporarily.
-   Change this after Basic Ship Design is implemented.
 8. Ship Design (Basic)
 9. Instant merge/split fleets (dedicated interactive screen)
-10. Custom server help pages (wiki/cms)
-12. Trade Contracts/Negotiation
 13. Ship Design (Advanced)
 14. LLM/AI integration
+15. Role-aware Administration AI: implement colony role classification, tiered terraform/threat scoring, exploration routing, duplicate colony dispatch prevention, L5 Dyson logistics, and expansionist bombardment targeting. See `doc/administration_ai_role_plan.md`.
 
 =============== GUI =================
 1. Hull design

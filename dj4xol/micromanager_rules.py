@@ -19,6 +19,15 @@ from .colony_rules import (
     limit_population_growth_by_surface_resources,
     population_growth_uses_surface_resources,
 )
+from .colony_ai_rules import (
+    ROLE_EDEN,
+    ROLE_FRONTIER,
+    ROLE_MINING,
+    ROLE_PRODUCTION,
+    ROLE_RESEARCH,
+    role_score,
+    score_terraform_roi,
+)
 from .mineral_rules import ALL_RESOURCE_KEYS
 from .production_rules import (
     MINE_BUILD_CAP,
@@ -978,6 +987,7 @@ def _scored_micromanager_candidate_orders(
     cost_map=None,
     research_maxed=False,
     micromanager_mode=MICROMANAGER_MODE_STANDARD,
+    colony_ai_profile=None,
 ):
     micromanager_mode = _normalize_micromanager_mode(micromanager_mode)
     expansionist_mode = micromanager_mode == MICROMANAGER_MODE_EXPANSIONIST
@@ -1014,6 +1024,16 @@ def _scored_micromanager_candidate_orders(
     job_build_tailoff = _employment_job_build_tailoff(job_ratio)
     high_employment = job_ratio >= JOB_MAX_RATIO
     factory_balance_penalty = _factory_balance_penalty(star, tier)
+    role_tier_factor = 0.0
+    if int(tier or 0) >= TIER_TERRAFORM:
+        role_tier_factor = 0.60
+    if int(tier or 0) >= TIER_MECHANICAL_GROWTH:
+        role_tier_factor = 1.0
+    mining_role = role_score(colony_ai_profile, ROLE_MINING) * role_tier_factor
+    eden_role = role_score(colony_ai_profile, ROLE_EDEN) * role_tier_factor
+    production_role = role_score(colony_ai_profile, ROLE_PRODUCTION) * role_tier_factor
+    research_role = role_score(colony_ai_profile, ROLE_RESEARCH) * role_tier_factor
+    frontier_role = role_score(colony_ai_profile, ROLE_FRONTIER) * role_tier_factor
     candidates = {}
     first_seen = {}
     city_candidate_ready = False
@@ -1138,6 +1158,10 @@ def _scored_micromanager_candidate_orders(
             _can_add_order_without_exceeding_max_jobs(player, star, CITY_ORDER_TYPE)
         ):
             city_score = 70.0 + (shortfall_ratio * 120.0)
+            if eden_role > 0.0:
+                city_score *= 1.0 + (eden_role * 0.30)
+            if mining_role > 0.0 and eden_role <= 0.0:
+                city_score *= 1.0 - min(0.25, mining_role * 0.20)
             if _mature_colony_needs_seed_shipyard(star, tier):
                 city_score *= 0.30
             if (
@@ -1162,6 +1186,10 @@ def _scored_micromanager_candidate_orders(
             _can_add_order_without_exceeding_max_jobs(player, star, MEGACITY_ORDER_TYPE)
         ):
             megacity_score = 52.0 + (shortfall_ratio * 105.0)
+            if eden_role > 0.0:
+                megacity_score *= 1.0 + (eden_role * 0.35)
+            if mining_role > 0.0 and eden_role <= 0.0:
+                megacity_score *= 1.0 - min(0.25, mining_role * 0.20)
             if _mature_colony_needs_seed_shipyard(star, tier):
                 megacity_score *= 0.30
             if (
@@ -1233,6 +1261,8 @@ def _scored_micromanager_candidate_orders(
                     mine_score *= 1.45
                 else:
                     mine_score *= 1.20
+            if mining_role > 0.0:
+                mine_score *= 1.0 + (mining_role * 0.45)
             append_candidate('BUILD_MINE', mine_score * mine_tailoff)
 
     if (
@@ -1246,6 +1276,8 @@ def _scored_micromanager_candidate_orders(
                 (extraction_ready * 40.0)
             ) * job_build_tailoff * factory_balance_penalty * (
                 1.20 if expansionist_mode else 1.0
+            ) * (
+                1.0 + ((production_role + (mining_role * 0.4)) * 0.20)
             ),
         )
     elif (
@@ -1259,6 +1291,8 @@ def _scored_micromanager_candidate_orders(
                 (extraction_ready * 25.0)
             ) * job_build_tailoff * factory_balance_penalty * (
                 1.15 if expansionist_mode else 1.0
+            ) * (
+                1.0 + ((production_role + (mining_role * 0.4)) * 0.18)
             ),
         )
     elif (
@@ -1272,6 +1306,8 @@ def _scored_micromanager_candidate_orders(
                 (extraction_ready * 20.0)
             ) * job_build_tailoff * factory_balance_penalty * (
                 1.10 if expansionist_mode else 1.0
+            ) * (
+                1.0 + ((production_role + (mining_role * 0.4)) * 0.14)
             ),
         )
     elif (
@@ -1334,6 +1370,14 @@ def _scored_micromanager_candidate_orders(
                 base_score += 90.0
             if order_type == 'BUILD_LAB' and bool(research_maxed):
                 base_score *= 0.25
+            elif order_type == 'BUILD_LAB':
+                base_score *= 1.0 + ((research_role + (eden_role * 0.45)) * 0.45)
+                if mining_role > 0.0 and research_role <= 0.0:
+                    base_score *= 1.0 - min(0.20, mining_role * 0.15)
+            elif order_type == 'BUILD_DEFENSE':
+                base_score += 260.0 * frontier_role
+                if frontier_role > 0.0 and int(getattr(star, 'defenses', 0) or 0) < 100:
+                    base_score += 90.0 * frontier_role
             if job_ratio < JOB_MIN_RATIO:
                 base_score *= 0.75
             elif job_ratio < JOB_TARGET_RATIO:
@@ -1366,6 +1410,8 @@ def _scored_micromanager_candidate_orders(
                     shipyard_score += 20.0
                 else:
                     shipyard_score += 85.0
+            if production_role > 0.0 or eden_role > 0.0:
+                shipyard_score *= 1.0 + ((production_role + eden_role) * 0.18)
             if job_ratio < JOB_MIN_RATIO:
                 shipyard_score += 40.0
             elif job_ratio < 0.40:
@@ -1406,7 +1452,10 @@ def _scored_micromanager_candidate_orders(
         if terraform_order:
             append_candidate(
                 terraform_order,
-                _terraform_order_score(player, star, terraform_order),
+                (
+                    _terraform_order_score(player, star, terraform_order) +
+                    score_terraform_roi(colony_ai_profile, tier=tier)
+                ),
             )
 
     ranked = sorted(
@@ -1430,6 +1479,7 @@ def get_micromanager_candidate_orders(
     research_maxed=False,
     administration_active=None,
     micromanager_mode=MICROMANAGER_MODE_STANDARD,
+    colony_ai_profile=None,
 ):
     """Return candidate automatic production orders in priority order."""
     micromanager_mode = _normalize_micromanager_mode(micromanager_mode)
@@ -1453,6 +1503,7 @@ def get_micromanager_candidate_orders(
             cost_map=cost_map,
             research_maxed=research_maxed,
             micromanager_mode=micromanager_mode,
+            colony_ai_profile=colony_ai_profile,
         )
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
@@ -1796,6 +1847,7 @@ def plan_micromanager_orders(
     administration_active=None,
     research_maxed=False,
     micromanager_mode=MICROMANAGER_MODE_STANDARD,
+    colony_ai_profile=None,
 ):
     """Plan queued Micromanager orders for one colony."""
     micromanager_mode = _normalize_micromanager_mode(micromanager_mode)
@@ -1917,6 +1969,7 @@ def plan_micromanager_orders(
             research_maxed=research_maxed,
             administration_active=administration_active,
             micromanager_mode=micromanager_mode,
+            colony_ai_profile=colony_ai_profile,
         )
         if not candidates:
             break
