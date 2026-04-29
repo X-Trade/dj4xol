@@ -15875,17 +15875,18 @@ class TestHomeworldLossAndDerelicts(TestCase):
         defender.fixed_homeworld = True
         defender.save(update_fields=['fixed_homeworld'])
         homeworld = defender.homeworld
+        homeworld_x, homeworld_y = _pin_test_star(homeworld, game, x=64, y=64)
         homeworld.colonists = 10_000
         homeworld.defenses = 0
         homeworld.gravity = 0.60
         homeworld.save(update_fields=['colonists', 'defenses', 'gravity'])
 
-        evac_fleet = Fleet.objects.create(
+        survivor_fleet = Fleet.objects.create(
             game=game,
             player=defender,
             name='Evacuation Group',
-            x=homeworld.x + 3,
-            y=homeworld.y + 3,
+            x=homeworld_x + 3,
+            y=homeworld_y + 3,
             ship_count=2,
             integrity=100,
         )
@@ -15893,8 +15894,8 @@ class TestHomeworldLossAndDerelicts(TestCase):
             game=game,
             player=attacker,
             name='Capital Killer',
-            x=homeworld.x,
-            y=homeworld.y,
+            x=homeworld_x,
+            y=homeworld_y,
             ship_count=10,
             integrity=100,
             has_bombs='SUPERNOVA',
@@ -15917,10 +15918,10 @@ class TestHomeworldLossAndDerelicts(TestCase):
             GameTurn(game).generate_turn()
 
         defender.refresh_from_db()
-        evac_fleet.refresh_from_db()
+        survivor_fleet.refresh_from_db()
         self.assertTrue(defender.defeated)
         self.assertFalse(Fleet.objects.filter(id=bomber.id).exists())
-        self.assertEqual(evac_fleet.player_id, attacker.id)
+        self.assertEqual(survivor_fleet.player_id, attacker.id)
 
     def test_diplomatic_colony_transfer_evacuates_when_source_survives(self):
         from ..diplomatic_contracts import accept_contract
