@@ -5,6 +5,7 @@ from io import StringIO
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
+from django.db import models
 from django.test import TestCase
 from django.urls import reverse
 
@@ -16,6 +17,7 @@ from ..ai_players import (
 from ..colony_rules import calculate_employment_percent
 from ..factory import GameFactory
 from ..micromanager_rules import projected_mining_output
+from ..mineral_rules import ALL_RESOURCE_KEYS
 from ..models import (
     Account,
     Anomaly,
@@ -24,12 +26,19 @@ from ..models import (
     Game,
     GameMessage,
     MicromanagerObjectState,
+    ProductionOrder,
     Report,
+    ResearchCategory,
     Salvage,
     ServerRace,
     ServerRaceType,
     ServerSettings,
     Star,
+    Technology,
+)
+from ..research import (
+    ensure_player_research_rows,
+    sync_player_technology_unlocks_from_research,
 )
 from ..turn import GameTurn
 from ._util import get_default_race, get_default_race_type
@@ -281,6 +290,56 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             starting_tech_level=starting_tech_level,
         )
 
+    def _unlock_category_level(self, player, category, level):
+        rows = ensure_player_research_rows(player)
+        target = None
+        for row in rows:
+            if row.category_id == category.id:
+                target = row
+                break
+        if target is None:
+            raise AssertionError("Research row not created for category %s" % category.id)
+        target.current_level = float(level)
+        target.save(update_fields=["current_level"])
+        sync_player_technology_unlocks_from_research(
+            player,
+            category_ids=[category.id],
+            year=getattr(player.game, "year", 0),
+        )
+        return target
+
+    def _create_administration_tech(self, player, code, tech_level, administration_level):
+        category = ResearchCategory.objects.create(
+            code=code,
+            name="Long Administration %s" % administration_level,
+            enabled=True,
+        )
+        build_cost = {
+            1: {"bp": 120, "ironium": 350, "boranium": 0, "germanium": 250},
+            2: {"bp": 90, "ironium": 225, "boranium": 0, "germanium": 325},
+            3: {"bp": 70, "ironium": 175, "boranium": 0, "germanium": 250},
+            4: {"bp": 60, "ironium": 100, "boranium": 0, "germanium": 260},
+        }[administration_level]
+        Technology.objects.create(
+            category=category,
+            level=tech_level,
+            name="Administration %s" % administration_level,
+            tech_type="INFRASTRUCTURE",
+            params_json=(
+                '{"administration_level": %s, "production_cost_overrides": '
+                '{"BUILD_ADMINISTRATION": {"bp": %s, "ironium": %s, '
+                '"boranium": %s, "germanium": %s, "colonists": 0}}}'
+            ) % (
+                administration_level,
+                build_cost["bp"],
+                build_cost["ironium"],
+                build_cost["boranium"],
+                build_cost["germanium"],
+            ),
+        )
+        self._unlock_category_level(player, category, tech_level)
+        return category
+
     def _build_ai_game(
         self,
         label,
@@ -324,6 +383,39 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             report_all=bool(report_all),
         )
         return game, ai_player
+
+    def _build_player_game(
+        self,
+        label,
+        race,
+        survivable_all=True,
+        report_survivable=True,
+        star_count=18,
+        map_size=80,
+        report_all=False,
+    ):
+        factory = GameFactory()
+        factory.game.name = label
+        factory.game.joinable = False
+        factory.game.random_events = False
+        factory.game.anomalies_enabled = False
+        factory.game.years_per_turn = 1
+        factory.set_map_size(map_size, map_size)
+        factory.set_owner(self.account)
+        factory.create_stars(star_count)
+        game = factory.save()
+        game.random_events = False
+        game.anomalies_enabled = False
+        game.save(update_fields=["random_events", "anomalies_enabled"])
+        player = factory.join_player(self.account, race)
+        self.assertIsNotNone(player)
+        self._prepare_observation_map(
+            player,
+            survivable_all=bool(survivable_all),
+            report_survivable=bool(report_survivable),
+            report_all=bool(report_all),
+        )
+        return game, player
 
     def _grid_offsets(self, count, spacing=6):
         radius = 1
@@ -732,6 +824,279 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
 
         self.assertGreaterEqual(final["empire_mines"], 8, msg=history)
         self.assertGreaterEqual(final["empire_mining_output"], 80, msg=history)
+
+    def test_level_three_micromanager_maintains_and_grows_existing_colonies(self):
+        race_type = self._create_race_type(
+            "MEL3X",
+            "MechLevelThreeExisting",
+            is_mechanical=True,
+            ignores_all=True,
+        )
+        race = self._create_race(
+            "MachinaLevelThreeExisting",
+            race_type,
+            starting_mines=4,
+            starting_factories=6,
+            starting_labs=0,
+            starting_shipyards=1,
+            starting_fleets=4,
+            starting_colonists=60,
+        )
+        game, ai_player = self._build_ai_game(
+            "Mechanical L3 Existing Colony Maintenance Long Test",
+            race,
+            AI_MODULE_IDLE,
+            star_count=24,
+            map_size=100,
+            report_all=True,
+        )
+
+        seeded_colonies = list(
+            game.stars.exclude(id=ai_player.homeworld_id).order_by("id")[:2]
+        )
+        for idx, colony in enumerate(seeded_colonies, start=1):
+            colony.player = ai_player
+            colony.colonists = 30_000 + (idx * 10_000)
+            colony.mines = 2
+            colony.factories = 3
+            colony.labs = 0
+            colony.defenses = 0
+            colony.shipyards = 0
+            colony.ironium_inventory = 80
+            colony.boranium_inventory = 80
+            colony.germanium_inventory = 80
+            colony.ironium_yield = 110
+            colony.boranium_yield = 100
+            colony.germanium_yield = 95
+            colony.gravity = float(ai_player.gravity_center)
+            colony.temperature = float(ai_player.temperature_center)
+            colony.radiation = float(ai_player.radiation_center)
+            colony.save()
+            colony.production_orders.all().delete()
+            self._create_star_report(game, ai_player, colony, is_survivable=True)
+
+        initial = self._snapshot_homeworld(ai_player, "l3-existing-initial")
+        result = self._run_ai_year_trace(
+            ai_player,
+            max(self.AI_YEARS, 40),
+            "l3-existing",
+        )
+        final = result["snapshots"][-1]
+        history = "\n".join(snapshot["line"] for snapshot in result["snapshots"])
+
+        for colony in seeded_colonies:
+            colony.refresh_from_db()
+            self.assertEqual(colony.player_id, ai_player.id, msg=history)
+            self.assertGreater(int(colony.colonists or 0), 0, msg=history)
+
+        self.assertGreaterEqual(final["colony_count"], initial["colony_count"], msg=history)
+        self.assertGreaterEqual(
+            final["empire_mines"] + final["empire_factories"],
+            initial["empire_mines"] + initial["empire_factories"] + 6,
+            msg=history,
+        )
+        self.assertGreaterEqual(final["empire_mining_output"], initial["empire_mining_output"], msg=history)
+        self.assertTrue(
+            MicromanagerObjectState.objects.filter(
+                game=game,
+                player=ai_player,
+                target_type=MicromanagerObjectState.TARGET_STAR,
+            ).exists(),
+            msg=history,
+        )
+
+    def test_level_four_administration_delivers_resources_to_zero_yield_colonies(self):
+        race_type = self._create_race_type(
+            "MEL4R",
+            "MechLevelFourResources",
+            is_mechanical=True,
+            ignores_all=True,
+        )
+        race = self._create_race(
+            "MachinaLevelFourResources",
+            race_type,
+            starting_mines=0,
+            starting_factories=8,
+            starting_labs=0,
+            starting_shipyards=1,
+            starting_fleets=0,
+            starting_colonists=100,
+        )
+        game, player = self._build_player_game(
+            "Administration L4 Zero Yield Logistics Long Test",
+            race,
+            star_count=18,
+            map_size=80,
+            report_all=True,
+        )
+        self._create_administration_tech(player, "L4RES", 4, 4)
+
+        source = Star.objects.get(pk=player.homeworld_id)
+        source.has_administration = True
+        source.colonists = 180_000
+        source.mines = 10
+        source.factories = 24
+        source.labs = 0
+        source.defenses = 4
+        source.shipyards = 1
+        source.ironium_inventory = 2_000
+        source.boranium_inventory = 2_000
+        source.germanium_inventory = 2_000
+        source.ironium_yield = 150
+        source.boranium_yield = 140
+        source.germanium_yield = 130
+        source.save()
+        source.production_orders.all().delete()
+
+        iron_star, lab_star = list(
+            game.stars.exclude(id=source.id).order_by("id")[:2]
+        )
+        needy_specs = [
+            (
+                iron_star,
+                {
+                    "order_type": "BUILD_FACTORY",
+                    "quantity": 8,
+                    "ironium_yield": 0,
+                    "boranium_yield": 95,
+                    "germanium_yield": 95,
+                    "ironium_inventory": 0,
+                    "boranium_inventory": 240,
+                    "germanium_inventory": 240,
+                },
+            ),
+            (
+                lab_star,
+                {
+                    "order_type": "BUILD_LAB",
+                    "quantity": 6,
+                    "ironium_yield": 95,
+                    "boranium_yield": 0,
+                    "germanium_yield": 0,
+                    "ironium_inventory": 360,
+                    "boranium_inventory": 0,
+                    "germanium_inventory": 0,
+                },
+            ),
+        ]
+        initial_counts = {}
+        for idx, (star, spec) in enumerate(needy_specs, start=1):
+            star.player = player
+            star.has_administration = True
+            star.x = int(source.x) + (idx * 3)
+            star.y = int(source.y)
+            star.gravity = float(player.gravity_center)
+            star.temperature = float(player.temperature_center)
+            star.radiation = float(player.radiation_center)
+            star.colonists = 100_000
+            star.mines = 0
+            star.factories = 12
+            star.labs = 0
+            star.defenses = 2
+            star.shipyards = 0
+            for resource_key in ALL_RESOURCE_KEYS:
+                setattr(star, "%s_yield" % resource_key, 0)
+                setattr(star, "%s_inventory" % resource_key, 0)
+            for key, value in spec.items():
+                if key not in ("order_type", "quantity"):
+                    setattr(star, key, value)
+            star.save()
+            star.production_orders.all().delete()
+            ProductionOrder.objects.create(
+                game=game,
+                star=star,
+                order_type=spec["order_type"],
+                quantity=spec["quantity"],
+                position=1,
+            )
+            initial_counts[star.id] = {
+                "factories": int(star.factories or 0),
+                "labs": int(star.labs or 0),
+            }
+            Fleet.objects.create(
+                game=game,
+                player=player,
+                name="Guard %s" % idx,
+                x=star.x,
+                y=star.y,
+                ship_count=4,
+                offense_level=4,
+                defense_level=4,
+                cargo_capacity=100,
+                max_safe_warp=5,
+                fuel=500,
+                max_fuel=500,
+            )
+            Fleet.objects.create(
+                game=game,
+                player=player,
+                name="Courier %s" % idx,
+                x=star.x,
+                y=star.y,
+                ship_count=1,
+                offense_level=0,
+                defense_level=0,
+                cargo_capacity=400,
+                max_safe_warp=5,
+                fuel=500,
+                max_fuel=500,
+            )
+
+        history_lines = []
+        saw_logistics_state = False
+        for _ in range(max(self.AI_YEARS, 24)):
+            GameTurn(Game.objects.get(pk=game.pk)).generate_turn()
+            game.refresh_from_db()
+            iron_star.refresh_from_db()
+            lab_star.refresh_from_db()
+            saw_logistics_state = saw_logistics_state or MicromanagerObjectState.objects.filter(
+                game=game,
+                player=player,
+                target_type=MicromanagerObjectState.TARGET_FLEET,
+                mission__startswith="logistics",
+            ).exists()
+            history_lines.append(
+                "[%s] iron inv=%s factories=%s lab inv(B/G)=%s/%s labs=%s orders=%s/%s"
+                % (
+                    game.year,
+                    iron_star.ironium_inventory,
+                    iron_star.factories,
+                    lab_star.boranium_inventory,
+                    lab_star.germanium_inventory,
+                    lab_star.labs,
+                    self._format_homeworld_orders(iron_star),
+                    self._format_homeworld_orders(lab_star),
+                )
+            )
+
+        history = "\n".join(history_lines)
+        iron_order_progress = ProductionOrder.objects.filter(star=iron_star).aggregate(
+            spent=models.Sum("spent_ironium")
+        )["spent"] or 0
+        lab_order_progress = ProductionOrder.objects.filter(star=lab_star).aggregate(
+            spent_bor=models.Sum("spent_boranium"),
+            spent_germ=models.Sum("spent_germanium"),
+        )
+        iron_received_or_spent = (
+            int(iron_star.ironium_inventory or 0) +
+            int(iron_order_progress or 0) +
+            max(0, int(iron_star.factories or 0) - initial_counts[iron_star.id]["factories"]) * 20
+        )
+        boranium_received_or_spent = (
+            int(lab_star.boranium_inventory or 0) +
+            int(lab_order_progress["spent_bor"] or 0) +
+            max(0, int(lab_star.labs or 0) - initial_counts[lab_star.id]["labs"]) * 20
+        )
+        germanium_received_or_spent = (
+            int(lab_star.germanium_inventory or 0) +
+            int(lab_order_progress["spent_germ"] or 0) +
+            max(0, int(lab_star.labs or 0) - initial_counts[lab_star.id]["labs"]) * 20
+        )
+
+        self.assertGreater(iron_received_or_spent, 0, msg=history)
+        self.assertGreater(boranium_received_or_spent, 0, msg=history)
+        self.assertGreater(germanium_received_or_spent, 0, msg=history)
+        self.assertTrue(saw_logistics_state, msg=history)
 
     def test_default_joat_micromanager_ai_expands_steadily_after_bootstrap(self):
         race_type = ServerRaceType.objects.get(code="JOAT")

@@ -422,6 +422,10 @@ MICROMANAGER_THREAT_LOGISTICS_MIN_ORBIT_FLEETS = 4
 MICROMANAGER_THREAT_LOGISTICS_MIN_IDLE_FLEETS = 2
 MICROMANAGER_THREAT_LOGISTICS_RELEASE_FLEET_RATIO = 0.66
 MICROMANAGER_THREAT_LOGISTICS_RELEASE_SHIP_RATIO = 0.65
+EXPANSIONIST_BOMBARD_DEFENSE_RELEASE_MIN_ORBIT_FLEETS = 3
+EXPANSIONIST_BOMBARD_DEFENSE_RELEASE_MIN_IDLE_FLEETS = 2
+EXPANSIONIST_BOMBARD_DEFENSE_RELEASE_FLEET_RATIO = 0.66
+EXPANSIONIST_BOMBARD_DEFENSE_RELEASE_SHIP_RATIO = 0.65
 MICROMANAGER_ASTEROID_SEARCH_RADIUS = 18.0
 MICROMANAGER_MAX_ORBIT_FLEETS = 20
 MICROMANAGER_OVER_CAP_CONSOLIDATE_TARGET = 10
@@ -438,6 +442,7 @@ EXPANSIONIST_COLONISE_MAX_EMPLOYMENT_RATIO = 0.92
 EXPANSIONIST_COLONISE_SOFT_RESERVE_RATIO = 0.30
 MICROMANAGER_EARLY_EXPANSION_COLONY_THRESHOLD = 3
 EXPANSIONIST_EARLY_EXPANSION_COLONY_THRESHOLD = 10
+EXPANSIONIST_BOMBARD_DISPATCHES_PER_COLONY = 1
 MICROMANAGER_PATROL_IDLE_RATIO = 0.30
 MICROMANAGER_PATROL_MIN_RATIO = 0.25
 MICROMANAGER_PATROL_MAX_RATIO = 0.34
@@ -5458,6 +5463,14 @@ class GameTurn():
                         state.delete()
                 continue
             if mission.startswith('logistics'):
+                if not FleetOrders.objects.filter(
+                    game=self.game,
+                    fleet=fleet,
+                    added_by_micromanager=True,
+                ).exists():
+                    state.delete()
+                continue
+            if mission == 'bombard':
                 if not FleetOrders.objects.filter(
                     game=self.game,
                     fleet=fleet,
@@ -11788,6 +11801,87 @@ class GameTurn():
         )
         return dispatchable
 
+    def _bombardment_candidate_fleets_for_colony(
+        self,
+        orbit_fleets,
+        idle_fleets,
+        dispatchable_fleets,
+        star=None,
+        tier=None,
+    ):
+        """Return bomber candidates, allowing one strong defensive release."""
+        orbit = list(orbit_fleets or [])
+        idle = list(idle_fleets or [])
+        normal_dispatchable_ids = {
+            int(getattr(fleet, 'id', 0) or 0)
+            for fleet in list(dispatchable_fleets or [])
+        }
+        bomber_idle = [
+            fleet for fleet in idle
+            if self._fleet_can_bombard(fleet)
+        ]
+        if not bomber_idle:
+            return []
+        defense_pressure = 0.0
+        if star is not None:
+            profile = self._colony_ai_profile_for_star(star, tier=tier)
+            defense_pressure = self._role_defense_support_score(profile, star)
+
+        ranked_orbit = sorted(
+            orbit,
+            key=lambda fleet: (
+                self._fleet_defense_score(fleet)[0],
+                self._fleet_defense_score(fleet)[1],
+                int(fleet.id or 0),
+            ),
+            reverse=True,
+        )
+        total_ships = sum(
+            int(getattr(fleet, 'ship_count', 0) or 0)
+            for fleet in ranked_orbit
+        )
+        minimum_reserved_fleets = max(
+            1,
+            int(ceil(
+                float(len(ranked_orbit)) *
+                EXPANSIONIST_BOMBARD_DEFENSE_RELEASE_FLEET_RATIO
+            )),
+        )
+        minimum_reserved_ships = max(
+            1,
+            int(ceil(
+                float(total_ships) *
+                EXPANSIONIST_BOMBARD_DEFENSE_RELEASE_SHIP_RATIO
+            )),
+        )
+        candidates = []
+        for fleet in sorted(
+            bomber_idle,
+            key=lambda candidate: (
+                self._fleet_defense_score(candidate)[0],
+                self._fleet_defense_score(candidate)[1],
+                int(candidate.id or 0),
+            ),
+            reverse=True,
+        ):
+            fleet_id = int(getattr(fleet, 'id', 0) or 0)
+            if fleet_id in normal_dispatchable_ids:
+                candidates.append(fleet)
+                continue
+            if (
+                defense_pressure <= 0.0 or
+                len(orbit) < EXPANSIONIST_BOMBARD_DEFENSE_RELEASE_MIN_ORBIT_FLEETS or
+                len(idle) < EXPANSIONIST_BOMBARD_DEFENSE_RELEASE_MIN_IDLE_FLEETS
+            ):
+                continue
+            fleet_ships = int(getattr(fleet, 'ship_count', 0) or 0)
+            if (
+                len(orbit) - 1 >= minimum_reserved_fleets and
+                total_ships - fleet_ships >= minimum_reserved_ships
+            ):
+                candidates.append(fleet)
+        return candidates
+
     def _transfer_amounts_for_need_and_supply(self, demand, supply, capacity):
         """Allocate transfer amounts by demand priority, bounded by capacity."""
         remaining = max(0, int(capacity or 0))
@@ -12704,6 +12798,30 @@ class GameTurn():
                 target_ids.add(target_id)
         return target_ids
 
+    def _active_auto_bombardment_target_ids(self, player):
+        from .models import FleetOrders, MicromanagerObjectState
+
+        if player is None:
+            return set()
+        self._cleanup_stale_micromanager_fleet_states(player)
+        target_ids = set(
+            FleetOrders.objects.filter(
+                game=self.game,
+                fleet__player=player,
+                order_type='BOMB',
+                target_star_id__isnull=False,
+            ).values_list('target_star_id', flat=True)
+        )
+        for state in MicromanagerObjectState.objects.filter(
+            game=self.game,
+            player=player,
+            target_type=MicromanagerObjectState.TARGET_FLEET,
+            mission='bombard',
+        ):
+            for target_id in self._state_data_uuid_set(state, 'target_star_id'):
+                target_ids.add(target_id)
+        return target_ids
+
     @staticmethod
     def _fleet_has_only_micromanager_move_orders(fleet):
         orders = list(fleet.orders.order_by('position', 'id'))
@@ -13085,6 +13203,262 @@ class GameTurn():
                 best_distance = distance
         return best
 
+    def _reported_habitability_score_for_player(self, player, report_data):
+        if not isinstance(report_data, dict):
+            return 0.0
+        env_values = []
+        for env in ('gravity', 'temperature', 'radiation'):
+            if env not in report_data:
+                continue
+            try:
+                value = float(report_data.get(env))
+                env_values.append(float(
+                    habitability_value_for_environment(player, env, value)
+                ))
+            except (TypeError, ValueError, ZeroDivisionError):
+                continue
+        if env_values:
+            return sum(env_values) / float(len(env_values))
+        return 0.05 if bool(report_data.get('is_survivable')) else 0.0
+
+    def _best_bombardment_target_for_colony(self, star, excluded_target_ids=None):
+        from .models import Player, Report, Star
+
+        player = getattr(star, 'player', None)
+        if player is None:
+            return None
+        excluded_target_ids = set(excluded_target_ids or [])
+        search_radius = self._colonise_search_radius_for_player(player)
+        reports = list(Report.objects.filter(
+            game=self.game,
+            player=player,
+            target_type='star',
+        ).only('target_id', 'cached_report'))
+        if not reports:
+            return None
+
+        owner_names = set()
+        report_info_by_target_id = {}
+        for report in reports:
+            if report.target_id == star.id or report.target_id in excluded_target_ids:
+                continue
+            data = report.get_report_data()
+            if not isinstance(data, dict):
+                continue
+            owner_name = str(data.get('player_name') or '').strip()
+            if not owner_name or owner_name == getattr(player, 'name', ''):
+                continue
+            if not bool(data.get('is_survivable')):
+                continue
+            try:
+                report_x = int(data.get('x'))
+                report_y = int(data.get('y'))
+            except (TypeError, ValueError):
+                continue
+            distance = self._distance_between_points(
+                star.x,
+                star.y,
+                report_x,
+                report_y,
+            )
+            if distance > search_radius:
+                continue
+            owner_names.add(owner_name)
+            try:
+                colonists = int(data.get('colonists', 0) or 0)
+            except (TypeError, ValueError):
+                colonists = 0
+            report_info_by_target_id[report.target_id] = {
+                'data': data,
+                'owner_name': owner_name,
+                'distance': distance,
+                'colonists': max(0, colonists),
+                'habitability': self._reported_habitability_score_for_player(
+                    player,
+                    data,
+                ),
+            }
+        if not report_info_by_target_id:
+            return None
+
+        owners_by_name = {
+            other.name: other
+            for other in Player.objects.filter(
+                game=self.game,
+                name__in=list(owner_names),
+            )
+        }
+        stance_map = self._stance_map_for_player(player)
+        candidate_stars = {
+            target.id: target
+            for target in Star.objects.filter(
+                game=self.game,
+                id__in=list(report_info_by_target_id.keys()),
+            )
+        }
+
+        best = None
+        best_score = 0.0
+        best_distance = None
+        for target_id, report_info in report_info_by_target_id.items():
+            if target_id in excluded_target_ids:
+                continue
+            target = candidate_stars.get(target_id)
+            if target is None:
+                continue
+            # The AI always knows its own colonies; avoid stale-report self-harm
+            # without using live ownership to discover foreign colonies.
+            if int(getattr(target, 'player_id', 0) or 0) == int(player.id or 0):
+                continue
+            owner = owners_by_name.get(report_info['owner_name'])
+            if owner is None or int(owner.id or 0) == int(player.id or 0):
+                continue
+            stance = normalise_stance(
+                stance_towards(player, owner, stance_map=stance_map)
+            )
+            if stance not in (STANCE_HOSTILE, STANCE_COLD):
+                continue
+            habitability = float(report_info.get('habitability', 0.0) or 0.0)
+            if habitability < 0.0:
+                continue
+            distance = float(report_info.get('distance', 0.0) or 0.0)
+            stance_value = 1.0 if stance == STANCE_HOSTILE else 0.70
+            colonist_value = min(
+                0.40,
+                float(report_info.get('colonists', 0) or 0) / 500000.0,
+            )
+            habitability_value = max(0.10, min(1.0, habitability))
+            distance_factor = 1.0 + (distance / max(1.0, search_radius))
+            score = (stance_value + colonist_value + habitability_value) / distance_factor
+            if (
+                best is None or
+                score > best_score or
+                (score == best_score and (best_distance is None or distance < best_distance))
+            ):
+                best = target
+                best_score = score
+                best_distance = distance
+        return best
+
+    @staticmethod
+    def _fleet_can_bombard(fleet):
+        return (
+            normalize_bomb_type(getattr(fleet, 'has_bombs', None)) is not None and
+            int(getattr(fleet, 'ship_count', 0) or 0) > 0 and
+            int(getattr(fleet, 'integrity', 0) or 0) > 0
+        )
+
+    def _queue_auto_bombardment_route(self, fleet, target_star):
+        from .models import FleetOrders
+
+        if fleet is None or target_star is None:
+            return False
+        if not self._fleet_can_bombard(fleet):
+            return False
+        start_position = (
+            fleet.orders.aggregate(max_pos=models.Max('position'))['max_pos'] or 0
+        )
+        position = int(start_position) + 1
+        if int(fleet.x) != int(target_star.x) or int(fleet.y) != int(target_star.y):
+            self._create_auto_move_order(
+                fleet,
+                position,
+                target_star=target_star,
+            )
+            position += 1
+        FleetOrders.objects.create(
+            game=self.game,
+            fleet=fleet,
+            position=position,
+            order_type='BOMB',
+            repeat=False,
+            target_star=target_star,
+            target_kind='OBJECT',
+            target_short_id=target_star.short_id,
+            x=int(target_star.x),
+            y=int(target_star.y),
+            bomb_until='COLONISTS_ZERO',
+            added_by_micromanager=True,
+        )
+        return True
+
+    def _dispatch_auto_bombardment_route(
+        self,
+        star,
+        orbit_fleets,
+        micromanager_mode='standard',
+        tier=None,
+    ):
+        player = getattr(star, 'player', None)
+        if (
+            player is None or
+            int(tier or 0) < MICROMANAGER_ADVANCED_FLEET_TIER or
+            not bool(getattr(player, 'is_ai', False)) or
+            not self._is_expansionist_micromanager_mode(micromanager_mode)
+        ):
+            return
+        module_code = normalize_ai_module_code(getattr(player, 'ai_module', ''))
+        if not ai_module_uses_micromanager_behavior(module_code):
+            return
+        if not hasattr(self, '_micromanager_auto_fleet_ids_for_year'):
+            self._micromanager_auto_fleet_ids_for_year = set()
+
+        idle_fleets = self._idle_orbit_fleets(orbit_fleets)
+        dispatchable = self._dispatchable_idle_fleets_for_colony(
+            orbit_fleets,
+            idle_fleets,
+            micromanager_mode=micromanager_mode,
+            star=star,
+            tier=tier,
+        )
+        dispatchable = self._bombardment_candidate_fleets_for_colony(
+            orbit_fleets,
+            idle_fleets,
+            dispatchable,
+            star=star,
+            tier=tier,
+        )
+        if not dispatchable:
+            return
+        dispatchable.sort(
+            key=lambda fleet: (
+                self._fleet_defense_score(fleet)[0],
+                self._fleet_defense_score(fleet)[1],
+                int(fleet.id or 0),
+            ),
+            reverse=True,
+        )
+        reserved_target_ids = self._active_auto_bombardment_target_ids(player)
+        reserved_target_ids.update(
+            self._friendly_colonisation_target_ids_in_flight(player)
+        )
+        dispatches = 0
+        for fleet in dispatchable:
+            if dispatches >= EXPANSIONIST_BOMBARD_DISPATCHES_PER_COLONY:
+                break
+            target_star = self._best_bombardment_target_for_colony(
+                star,
+                excluded_target_ids=reserved_target_ids,
+            )
+            if target_star is None:
+                break
+            if not self._queue_auto_bombardment_route(fleet, target_star):
+                continue
+            self._micromanager_auto_fleet_ids_for_year.add(fleet.id)
+            self._update_micromanager_fleet_state(
+                player,
+                fleet,
+                'bombard',
+                tags=['bombard', 'attack'],
+                data={
+                    'source_star_id': str(star.id),
+                    'target_star_id': str(target_star.id),
+                    'target_short_id': target_star.short_id,
+                },
+            )
+            reserved_target_ids.add(target_star.id)
+            dispatches += 1
+
     def _dispatch_auto_colonise_route(
         self,
         star,
@@ -13344,6 +13718,12 @@ class GameTurn():
                 tier=tier,
             )
             if expansionist_mode:
+                self._dispatch_auto_bombardment_route(
+                    star,
+                    orbit_fleets,
+                    micromanager_mode=micromanager_mode,
+                    tier=tier,
+                )
                 self._dispatch_auto_exploration_route(
                     star,
                     orbit_fleets,

@@ -4891,6 +4891,565 @@ class AdministrationAutomationTest(TestCase):
         colonise_order = dispatch.orders.get(order_type='COLONISE')
         self.assertEqual(colonise_order.target_star_id, fallback.id)
 
+    def test_expansionist_ai_dispatches_bomber_to_reported_hostile_world(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.player.fleets.all().delete()
+        rival = Player.objects.create(
+            game=self.game,
+            name='Reported Bomb Rival',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=rival,
+            stance='HOSTILE',
+        )
+        target = self.game.stars.exclude(id=self.star.id).order_by('id').first()
+        target.player = rival
+        target.colonists = 100_000
+        target.x = int(self.star.x) + 26
+        target.y = int(self.star.y)
+        target.gravity = self.player.gravity_center
+        target.temperature = self.player.temperature_center
+        target.radiation = self.player.radiation_center
+        target.save(update_fields=[
+            'player',
+            'colonists',
+            'x',
+            'y',
+            'gravity',
+            'temperature',
+            'radiation',
+        ])
+        self._create_star_report(
+            target,
+            player_name=rival.name,
+            colonists=target.colonists,
+            is_survivable=True,
+        )
+        bomber = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Auto Bomber',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=5,
+            offense_level=5,
+            defense_level=5,
+            cargo_capacity=0,
+            has_bombs='CONVENTIONAL',
+        )
+        weaker_bomber = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Weaker Auto Bomber',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=2,
+            offense_level=2,
+            defense_level=2,
+            cargo_capacity=0,
+            has_bombs='CONVENTIONAL',
+        )
+        guard = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Bombardment Guard',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=8,
+            offense_level=8,
+            defense_level=8,
+            cargo_capacity=0,
+        )
+        guard_two = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Bombardment Guard 2',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            offense_level=6,
+            defense_level=6,
+            cargo_capacity=0,
+        )
+        guard_three = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Bombardment Guard 3',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=4,
+            offense_level=4,
+            defense_level=4,
+            cargo_capacity=0,
+        )
+
+        GameTurn(self.game)._dispatch_auto_bombardment_route(
+            self.star,
+            [guard, guard_two, guard_three, bomber, weaker_bomber],
+            micromanager_mode='expansionist',
+            tier=5,
+        )
+
+        orders = list(bomber.orders.order_by('position', 'id'))
+        self.assertEqual([order.order_type for order in orders], ['MOVE', 'BOMB'])
+        self.assertEqual(orders[-1].target_star_id, target.id)
+        self.assertEqual(orders[-1].bomb_until, 'COLONISTS_ZERO')
+        state = MicromanagerObjectState.objects.get(
+            target_type=MicromanagerObjectState.TARGET_FLEET,
+            target_fleet=bomber,
+        )
+        self.assertEqual(state.mission, 'bombard')
+        self.assertEqual(state.get_data()['target_star_id'], str(target.id))
+        self.assertFalse(weaker_bomber.orders.exists())
+
+    def test_expansionist_bombardment_requires_bomb_equipped_fleet(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.player.fleets.all().delete()
+        rival = Player.objects.create(
+            game=self.game,
+            name='Bombless Rival',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=rival,
+            stance='HOSTILE',
+        )
+        target = self.game.stars.exclude(id=self.star.id).order_by('id').first()
+        target.player = rival
+        target.colonists = 100_000
+        target.x = int(self.star.x) + 26
+        target.y = int(self.star.y)
+        target.gravity = self.player.gravity_center
+        target.temperature = self.player.temperature_center
+        target.radiation = self.player.radiation_center
+        target.save(update_fields=[
+            'player',
+            'colonists',
+            'x',
+            'y',
+            'gravity',
+            'temperature',
+            'radiation',
+        ])
+        self._create_star_report(
+            target,
+            player_name=rival.name,
+            colonists=target.colonists,
+            is_survivable=True,
+        )
+        bombless = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Bombless Expedition',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+            cargo_capacity=0,
+            has_bombs=None,
+        )
+        for idx, ship_count in enumerate((8, 6, 4), start=1):
+            Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Bombless Guard %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=ship_count,
+                offense_level=ship_count,
+                defense_level=ship_count,
+                cargo_capacity=0,
+            )
+
+        GameTurn(self.game)._dispatch_auto_bombardment_route(
+            self.star,
+            list(self.player.fleets.order_by('id')),
+            micromanager_mode='expansionist',
+            tier=5,
+        )
+
+        self.assertFalse(bombless.orders.exists())
+
+    def test_expansionist_bombardment_can_release_one_strong_defensive_bomber(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.player.fleets.all().delete()
+        rival = Player.objects.create(
+            game=self.game,
+            name='Pressure Bomb Rival',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=rival,
+            stance='HOSTILE',
+        )
+        target = self.game.stars.exclude(id=self.star.id).order_by('id').first()
+        target.player = rival
+        target.colonists = 100_000
+        target.x = int(self.star.x) + 5
+        target.y = int(self.star.y)
+        target.gravity = self.player.gravity_center
+        target.temperature = self.player.temperature_center
+        target.radiation = self.player.radiation_center
+        target.save(update_fields=[
+            'player',
+            'colonists',
+            'x',
+            'y',
+            'gravity',
+            'temperature',
+            'radiation',
+        ])
+        self._create_star_report(
+            target,
+            player_name=rival.name,
+            colonists=target.colonists,
+            is_survivable=True,
+        )
+        bomber = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Pressure Bomber',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=5,
+            offense_level=5,
+            defense_level=5,
+            cargo_capacity=0,
+            has_bombs='CONVENTIONAL',
+        )
+        weaker_bomber = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Weak Pressure Bomber',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+            cargo_capacity=0,
+            has_bombs='CONVENTIONAL',
+        )
+        guard_one = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Pressure Guard 1',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=8,
+            offense_level=8,
+            defense_level=8,
+            cargo_capacity=0,
+        )
+        guard_two = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Pressure Guard 2',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            offense_level=6,
+            defense_level=6,
+            cargo_capacity=0,
+        )
+
+        GameTurn(self.game)._dispatch_auto_bombardment_route(
+            self.star,
+            [guard_one, guard_two, bomber, weaker_bomber],
+            micromanager_mode='expansionist',
+            tier=5,
+        )
+
+        self.assertTrue(
+            bomber.orders.filter(
+                order_type='BOMB',
+                target_star=target,
+                added_by_micromanager=True,
+            ).exists()
+        )
+        self.assertFalse(weaker_bomber.orders.exists())
+        self.assertFalse(guard_one.orders.exists())
+        self.assertFalse(guard_two.orders.exists())
+
+    def test_expansionist_bombardment_ignores_unreported_hostile_world(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.player.fleets.all().delete()
+        rival = Player.objects.create(
+            game=self.game,
+            name='Hidden Bomb Rival',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=rival,
+            stance='HOSTILE',
+        )
+        target = self.game.stars.exclude(id=self.star.id).order_by('id').first()
+        target.player = rival
+        target.colonists = 100_000
+        target.x = int(self.star.x) + 26
+        target.y = int(self.star.y)
+        target.gravity = self.player.gravity_center
+        target.temperature = self.player.temperature_center
+        target.radiation = self.player.radiation_center
+        target.save(update_fields=[
+            'player',
+            'colonists',
+            'x',
+            'y',
+            'gravity',
+            'temperature',
+            'radiation',
+        ])
+        bomber = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Blind Bomber',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+            cargo_capacity=0,
+            has_bombs='CONVENTIONAL',
+        )
+        guard = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Blind Guard',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=8,
+            offense_level=8,
+            defense_level=8,
+            cargo_capacity=0,
+        )
+
+        GameTurn(self.game)._dispatch_auto_bombardment_route(
+            self.star,
+            [guard, bomber],
+            micromanager_mode='expansionist',
+            tier=5,
+        )
+
+        self.assertFalse(bomber.orders.exists())
+
+    def test_expansionist_bombardment_skips_reserved_target_and_accepts_cold(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.player.fleets.all().delete()
+        hostile = Player.objects.create(
+            game=self.game,
+            name='Reserved Bomb Rival',
+            race_type=self.player.race_type,
+        )
+        cold = Player.objects.create(
+            game=self.game,
+            name='Cold Bomb Rival',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=hostile,
+            stance='HOSTILE',
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=cold,
+            stance='COLD',
+        )
+        reserved, fallback = list(
+            self.game.stars.exclude(id=self.star.id).order_by('id')[:2]
+        )
+        for idx, (target, owner) in enumerate(
+            ((reserved, hostile), (fallback, cold)),
+            start=1,
+        ):
+            target.player = owner
+            target.colonists = 100_000
+            target.x = int(self.star.x) + 25 + idx
+            target.y = int(self.star.y)
+            target.gravity = self.player.gravity_center
+            target.temperature = self.player.temperature_center
+            target.radiation = self.player.radiation_center
+            target.save(update_fields=[
+                'player',
+                'colonists',
+                'x',
+                'y',
+                'gravity',
+                'temperature',
+                'radiation',
+            ])
+            self._create_star_report(
+                target,
+                player_name=owner.name,
+                colonists=target.colonists,
+                is_survivable=True,
+            )
+        existing = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Existing Bomber',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            cargo_capacity=0,
+            has_bombs='CONVENTIONAL',
+        )
+        FleetOrders.objects.create(
+            game=self.game,
+            fleet=existing,
+            order_type='BOMB',
+            target_star=reserved,
+            target_kind='OBJECT',
+            target_short_id=reserved.short_id,
+            x=reserved.x,
+            y=reserved.y,
+            added_by_micromanager=True,
+        )
+        bomber = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Fresh Bomber',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+            cargo_capacity=0,
+            has_bombs='CONVENTIONAL',
+        )
+        guard = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Fresh Guard',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=8,
+            offense_level=8,
+            defense_level=8,
+            cargo_capacity=0,
+        )
+        guard_two = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Fresh Guard 2',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=6,
+            offense_level=6,
+            defense_level=6,
+            cargo_capacity=0,
+        )
+        guard_three = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Fresh Guard 3',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=4,
+            offense_level=4,
+            defense_level=4,
+            cargo_capacity=0,
+        )
+
+        GameTurn(self.game)._dispatch_auto_bombardment_route(
+            self.star,
+            [guard, guard_two, guard_three, existing, bomber],
+            micromanager_mode='expansionist',
+            tier=5,
+        )
+
+        bomb_order = bomber.orders.get(order_type='BOMB')
+        self.assertEqual(bomb_order.target_star_id, fallback.id)
+
+    def test_expansionist_refresh_dispatches_spare_bomber_from_normal_processing(self):
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.player.fleets.all().delete()
+        rival = Player.objects.create(
+            game=self.game,
+            name='Normal Bomb Rival',
+            race_type=self.player.race_type,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=self.player,
+            target_player=rival,
+            stance='HOSTILE',
+        )
+        target = self.game.stars.exclude(id=self.star.id).order_by('id').first()
+        target.player = rival
+        target.colonists = 100_000
+        target.x = int(self.star.x) + 26
+        target.y = int(self.star.y)
+        target.gravity = self.player.gravity_center
+        target.temperature = self.player.temperature_center
+        target.radiation = self.player.radiation_center
+        target.save(update_fields=[
+            'player',
+            'colonists',
+            'x',
+            'y',
+            'gravity',
+            'temperature',
+            'radiation',
+        ])
+        self._create_star_report(
+            target,
+            player_name=rival.name,
+            colonists=target.colonists,
+            is_survivable=True,
+        )
+        bomber = Fleet.objects.create(
+            game=self.game,
+            player=self.player,
+            name='Normal Bomber',
+            x=self.star.x,
+            y=self.star.y,
+            ship_count=1,
+            offense_level=1,
+            defense_level=1,
+            cargo_capacity=0,
+            has_bombs='CONVENTIONAL',
+        )
+        for idx, ship_count in enumerate((8, 6, 4), start=1):
+            Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Normal Guard %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=ship_count,
+                offense_level=ship_count,
+                defense_level=ship_count,
+                cargo_capacity=0,
+            )
+
+        GameTurn(self.game)._refresh_administration_fleet_dispatch_queue(self.star)
+
+        self.assertTrue(
+            bomber.orders.filter(
+                order_type='BOMB',
+                target_star=target,
+                added_by_micromanager=True,
+            ).exists()
+        )
+
     def test_expansionist_ai_queues_multi_leg_exploration_route_to_unknown_stars(self):
         self.player.is_ai = True
         self.player.ai_module = 'expansionist'
