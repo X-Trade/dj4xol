@@ -171,6 +171,30 @@ class PlayCommandTest(TestCase):
         self.assertIn('cargo_known: true', output)
         self.assertIn('capabilities_known: true', output)
 
+    def test_cli_contact_summary_skips_own_colocated_objects_without_detail_builds(self):
+        from dj4xol.management.commands.play import Command
+
+        home = self.player1.homeworld
+        selected = self.player1.fleets.first()
+        selected.x = home.x
+        selected.y = home.y
+        selected.save(update_fields=['x', 'y'])
+        Fleet.objects.create(
+            game=self.game,
+            player=self.player1,
+            name='Extra Home Fleet',
+            x=home.x,
+            y=home.y,
+        )
+
+        command = Command()
+        detail = {'x': home.x, 'y': home.y}
+        with patch('dj4xol.management.commands.play.DetailBuilder') as detail_builder:
+            result = command._cli_contact_summary(detail, player=self.player1, obj=selected)
+
+        self.assertIsNone(result)
+        detail_builder.assert_not_called()
+
     def test_fleets_command_outputs_secret_resources_when_present(self):
         fleet = self.player1.fleets.first()
         fleet.resource_y_inventory = 9

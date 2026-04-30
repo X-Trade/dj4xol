@@ -14796,12 +14796,13 @@ class TestBombardmentOrders(TestCase):
         star.gravity = 0.60
         star.defenses = 0
         star.save(update_fields=['player', 'colonists', 'gravity', 'defenses'])
+        target_x, target_y = _pin_test_star(star, game)
 
         sibling = Star.objects.create(
             game=game,
             name='Blast Sibling',
-            x=star.x,
-            y=star.y,
+            x=target_x,
+            y=target_y,
             player=defender,
             colonists=5_000,
             gravity=0.60,
@@ -14812,8 +14813,8 @@ class TestBombardmentOrders(TestCase):
             game=game,
             player=attacker,
             name='Supernova Suicide Fleet',
-            x=star.x,
-            y=star.y,
+            x=target_x,
+            y=target_y,
             ship_count=8,
             integrity=100,
             has_bombs='SUPERNOVA',
@@ -14822,8 +14823,8 @@ class TestBombardmentOrders(TestCase):
             game=game,
             player=defender,
             name='Defender Orbit Guard',
-            x=star.x,
-            y=star.y,
+            x=target_x,
+            y=target_y,
             ship_count=5,
             integrity=100,
         )
@@ -14831,8 +14832,8 @@ class TestBombardmentOrders(TestCase):
             game=game,
             player=observer,
             name='Observer Task Group',
-            x=star.x,
-            y=star.y,
+            x=target_x,
+            y=target_y,
             ship_count=4,
             integrity=100,
         )
@@ -14840,8 +14841,8 @@ class TestBombardmentOrders(TestCase):
             game=game,
             player=observer,
             name='Distant Fleet',
-            x=star.x + 2,
-            y=star.y + 2,
+            x=max(1, target_x - 20),
+            y=max(1, target_y - 20),
             ship_count=4,
             integrity=100,
         )

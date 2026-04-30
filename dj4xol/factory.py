@@ -1175,6 +1175,18 @@ class GameFactory():
         return text[:cls._AI_NAME_MAX_LEN]
 
     @classmethod
+    def _clip_ai_plural_name(cls, singular, plural):
+        text = str(plural or '')
+        if len(text) <= cls._AI_NAME_MAX_LEN and text.endswith('s'):
+            return text
+        singular_text = str(singular or '').strip()
+        if not singular_text:
+            return 'AIs'
+        if len(singular_text) >= cls._AI_NAME_MAX_LEN:
+            singular_text = singular_text[:cls._AI_NAME_MAX_LEN - 1]
+        return singular_text + 's'
+
+    @classmethod
     def _build_unique_ai_identity(cls, homeworld_name, existing_names):
         fragment = cls._pick_ai_name_fragment(homeworld_name)
         if not fragment:
@@ -1183,17 +1195,17 @@ class GameFactory():
         for style in style_order:
             singular, plural = cls._build_ai_demonym(fragment, style)
             singular = cls._clip_ai_name(singular)
-            plural = cls._clip_ai_name(plural)
+            plural = cls._clip_ai_plural_name(singular, plural)
             if singular and singular.lower() not in existing_names:
                 return singular, plural
 
         base_singular, base_plural = cls._build_ai_demonym(fragment, style_order[0])
         base_singular = cls._clip_ai_name(base_singular) or 'AI'
-        base_plural = cls._clip_ai_name(base_plural) or 'AIs'
+        base_plural = cls._clip_ai_plural_name(base_singular, base_plural) or 'AIs'
         for idx in range(2, 100):
             suffix = str(idx)
             singular = cls._clip_ai_name(base_singular[:cls._AI_NAME_MAX_LEN - len(suffix)] + suffix)
-            plural = cls._clip_ai_name((singular + 's'))
+            plural = cls._clip_ai_plural_name(singular, singular + 's')
             if singular.lower() not in existing_names:
                 return singular, plural
         return base_singular, base_plural

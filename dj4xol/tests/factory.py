@@ -558,6 +558,15 @@ class testGameFactory(TestCase):
         self.assertEqual(singular, 'Xan')
         self.assertEqual(plural, 'Xans')
 
+    def test_ai_name_generation_keeps_clipped_plural_suffix(self):
+        singular, plural = GameFactory._build_unique_ai_identity(
+            'Longhomeworldia',
+            existing_names=set(),
+        )
+        self.assertLessEqual(len(singular), 16)
+        self.assertLessEqual(len(plural), 16)
+        self.assertTrue(plural.endswith('s'))
+
     def test_systems_adds_companion_stars(self):
         """Systems option should add companion stars at same coordinates."""
         gf = GameFactory()

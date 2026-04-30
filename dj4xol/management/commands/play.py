@@ -1381,6 +1381,8 @@ class Command(BaseCommand):
         for other in candidates:
             if obj is not None and other.__class__ == obj.__class__ and other.id == obj.id:
                 continue
+            if getattr(other, "player_id", None) == getattr(player, "id", None):
+                continue
             if isinstance(other, (Fleet, Salvage)) and not self._is_cli_object_discoverable(player, other):
                 continue
             yield other
