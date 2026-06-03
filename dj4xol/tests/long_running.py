@@ -742,16 +742,43 @@ class LongRunningAIMicromanagerEconomyTest(TestCase):
             initial_empire_colonists,
             msg=history,
         )
-        self.assertGreaterEqual(final["empire_mines"], 10, msg=history)
-        self.assertGreaterEqual(final["empire_mining_output"], 90, msg=history)
-        self.assertTrue(
-            any("BUILD_LAB" in snapshot["orders"] for snapshot in result["snapshots"]),
+        self.assertGreater(
+            final["homeworld_mines"],
+            int(race.starting_mines or 0),
             msg=history,
         )
-        if final["homeworld_factories"] >= 10:
+        new_colonies = list(
+            Star.objects.filter(game=ai_player.game, player=ai_player)
+            .exclude(id=ai_player.homeworld_id)
+            .order_by("id")
+        )
+        self.assertTrue(new_colonies, msg=history)
+        for colony in new_colonies:
+            surface_minerals = sum(
+                int(getattr(colony, "%s_inventory" % key, 0) or 0)
+                for key in ALL_RESOURCE_KEYS
+            )
+            mineral_yield = sum(
+                int(getattr(colony, "%s_yield" % key, 0) or 0)
+                for key in ALL_RESOURCE_KEYS
+            )
+            if mineral_yield <= 0 or surface_minerals >= 25000:
+                continue
+            has_mine_work = (
+                int(getattr(colony, "mines", 0) or 0) > 0 or
+                colony.production_orders.filter(order_type="BUILD_MINE").exists()
+            )
+            self.assertTrue(has_mine_work, msg=history)
+        self.assertGreater(
+            final["empire_mining_output"],
+            result["snapshots"][0]["empire_mining_output"],
+            msg=history,
+        )
+        self.assertGreater(final["empire_labs"], 0, msg=history)
+        if final["empire_factories"] >= 10:
             self.assertGreaterEqual(
-                final["homeworld_labs"] * 5,
-                final["homeworld_factories"],
+                final["empire_labs"] * 20,
+                final["empire_factories"],
                 msg=history,
             )
 

@@ -2427,6 +2427,64 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertIn('BUILD_COLONISTS_1K', planned)
 
+    def test_tier_five_mechanical_bootstraps_low_mine_homeworld_before_growth(self):
+        self.star.has_administration = True
+        self.star.colonists = 24_000
+        self.star.mines = 2
+        self.star.factories = 4
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 1
+        self.player.race_type.is_mechanical = True
+        self.player.race_type.save(update_fields=['is_mechanical'])
+        self.star.ironium_inventory = 120
+        self.star.boranium_inventory = 80
+        self.star.germanium_inventory = 80
+        self.star.ironium_yield = 180
+        self.star.boranium_yield = 150
+        self.star.germanium_yield = 140
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            5,
+            fleets_in_orbit=3,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertTrue(planned)
+        self.assertEqual(planned[0], 'BUILD_MINE')
+
+    def test_tier_five_mechanical_fresh_colony_builds_first_mine_before_growth(self):
+        self.star.has_administration = True
+        self.star.colonists = 5_000
+        self.star.mines = 0
+        self.star.factories = 0
+        self.star.labs = 0
+        self.star.defenses = 0
+        self.star.shipyards = 0
+        self.player.race_type.is_mechanical = True
+        self.player.race_type.save(update_fields=['is_mechanical'])
+        self.star.ironium_inventory = 40
+        self.star.boranium_inventory = 40
+        self.star.germanium_inventory = 40
+        self.star.ironium_yield = 120
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 95
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            5,
+            fleets_in_orbit=0,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertTrue(planned)
+        self.assertEqual(planned[0], 'BUILD_MINE')
+
     def test_tier_four_mechanical_midband_still_prefers_mines_before_growth(self):
         self._create_administration_tech(4, 4)
         self.star.has_administration = True

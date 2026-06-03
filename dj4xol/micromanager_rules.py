@@ -54,6 +54,8 @@ TIER_MECHANICAL_GROWTH = 4
 MECHANICAL_GROWTH_EMPLOYMENT_MIN = 40.0
 MECHANICAL_GROWTH_EMPLOYMENT_HIGH = 60.0
 MECHANICAL_GROWTH_EMPLOYMENT_TOP = 90.0
+EARLY_MINE_BOOTSTRAP_FLOOR = 3
+SURFACE_MINERALS_FOR_MINE_BOOTSTRAP_SKIP = 25000
 
 TERRAFORM_IDEAL_HABITABILITY = 0.99
 TERRAFORM_LOW_HABITABILITY = 0.35
@@ -379,6 +381,24 @@ def _mine_bootstrap_pressure(star, micromanager_mode=MICROMANAGER_MODE_STANDARD)
     if mine_ratio >= 1.0:
         return 0.0
     return _clamp((1.0 - mine_ratio) / 0.50)
+
+
+def _surface_mineral_inventory_total(star):
+    return sum(
+        max(0, int(getattr(star, '%s_inventory' % key, 0) or 0))
+        for key in ALL_RESOURCE_KEYS
+    )
+
+
+def _should_prioritise_early_mine_bootstrap(star, mine_room, growth_priority):
+    if not mine_room:
+        return False
+    if str(growth_priority or '') == 'top':
+        return False
+    if _surface_mineral_inventory_total(star) >= SURFACE_MINERALS_FOR_MINE_BOOTSTRAP_SKIP:
+        return False
+    current_mines = int(getattr(star, 'mines', 0) or 0)
+    return current_mines < EARLY_MINE_BOOTSTRAP_FLOOR
 
 
 def _employment_job_build_tailoff(job_ratio):
@@ -1341,6 +1361,23 @@ def _scored_micromanager_candidate_orders(
                 megacity_score *= 0.90
             append_candidate(MEGACITY_ORDER_TYPE, megacity_score)
             megacity_candidate_ready = True
+
+    if (
+        _should_prioritise_early_mine_bootstrap(
+            star,
+            mine_room,
+            growth_priority,
+        ) and
+        _can_queue_job_expansion(player, star, 'BUILD_MINE')
+    ):
+        early_mine_gap = max(
+            1,
+            EARLY_MINE_BOOTSTRAP_FLOOR - current_mines,
+        )
+        append_candidate(
+            'BUILD_MINE',
+            760.0 + (early_mine_gap * 90.0),
+        )
 
     if (
         current_mines <= 0 and
