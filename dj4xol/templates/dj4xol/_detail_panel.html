@@ -375,19 +375,17 @@
     {% endif %}
     {% endif %}{# end detail.unexplored else #}
     </section>
-    {% if player and selection.x and selection.y %}
-    <div class="quick-actions panel-footer">
+    {% if show_quick_actions or enable_debug_actions and not detail.unexplored and player.account.django_user.is_superuser or debug_can_create_anomaly_at_selection or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_star or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_fleet or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_salvage or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_anomaly %}
+    <div class="debug-actions panel-footer">
+        {% if show_quick_actions %}
         <button type="button" disabled title="Action to be confirmed">Quick Transfer</button>
         <form method="get" action="{% url 'dj4xol:quick_merge' game.short_id selection.x selection.y %}" style="display:inline">
             {% if detail.is_fleet and detail.fleet_short_id %}
             <input type="hidden" name="selected" value="{{ detail.fleet_short_id }}">
             {% endif %}
-            <button type="submit">Quick Merge</button>
+            <button type="submit"{% if not quick_merge_enabled %} disabled{% endif %}>Quick Merge</button>
         </form>
-    </div>
-    {% endif %}
-    {% if enable_debug_actions and not detail.unexplored and player.account.django_user.is_superuser or debug_can_create_anomaly_at_selection or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_star or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_fleet or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_salvage or enable_debug_actions and not detail.is_owned and player.account.django_user.is_staff and detail.selected_id and detail.is_anomaly %}
-    <div class="debug-actions panel-footer">
+        {% endif %}
         {% if not detail.unexplored and player.account.django_user.is_superuser %}
         {% if detail.is_star %}
         <form method="post" action="{% url 'dj4xol:debug_colonize' game.short_id detail.star_short_id %}" style="display:inline">

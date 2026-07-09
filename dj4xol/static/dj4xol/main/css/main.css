@@ -1344,8 +1344,15 @@ body.turned-in.lcars .order-params::after {
     font-size: 0.85em;
 }
 
-.debug-actions button:hover {
+.debug-actions button:hover:not(:disabled) {
     background: #776;
+}
+
+.debug-actions button:disabled {
+    background: #f2f2e8;
+    color: #000;
+    border-color: #999;
+    cursor: default;
 }
 
 /* Detail selector dropdown */

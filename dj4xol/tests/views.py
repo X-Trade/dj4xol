@@ -3997,12 +3997,36 @@ class TestFleetOrderViews(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Quick Transfer')
         self.assertContains(response, 'Quick Merge')
+        self.assertContains(response, 'class="debug-actions panel-footer"', html=False)
+        self.assertNotContains(response, 'class="quick-actions panel-footer"', html=False)
+        self.assertContains(response, '<button type="submit">Quick Merge</button>', html=False)
         self.assertContains(
             response,
             reverse(
                 'dj4xol:quick_merge',
                 args=[game.short_id, fleet.x, fleet.y],
             ),
+        )
+
+    def test_detail_panel_disables_quick_merge_without_owned_fleets_at_selection(self):
+        game = default_game(stars=5, fleets=1)
+        empty_star = game.stars.exclude(player=game.players.first()).first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': empty_star.x, 'y': empty_star.y, 'sel': empty_star.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Quick Transfer')
+        self.assertContains(response, 'class="debug-actions panel-footer"', html=False)
+        self.assertContains(
+            response,
+            '<button type="submit" disabled>Quick Merge</button>',
+            html=False,
         )
 
     def test_quick_merge_view_lists_location_fleets_and_prechecks_selected_fleet(self):
@@ -4026,6 +4050,23 @@ class TestFleetOrderViews(TestCase):
             x=fleet.x + 1,
             y=fleet.y,
         )
+        race_type = get_default_race_type()
+        enemy_user = User.objects.create_user('quick_merge_enemy', 'qme@test.com', 'pass')
+        enemy_account = Account.objects.create(django_user=enemy_user, alias='QME')
+        enemy_player = Player.objects.create(
+            game=game,
+            account=enemy_account,
+            name='Enemy',
+            plural_name='Enemies',
+            race_type=race_type,
+        )
+        Fleet.objects.create(
+            game=game,
+            player=enemy_player,
+            name='Enemy Fleet',
+            x=fleet.x,
+            y=fleet.y,
+        )
         user, _ = get_default_user()
         client = Client()
         client.force_login(user)
@@ -4043,6 +4084,7 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, '250kt')
         self.assertContains(response, '4')
         self.assertNotContains(response, 'Elsewhere Fleet')
+        self.assertNotContains(response, 'Enemy Fleet')
         self.assertContains(
             response,
             'value="%s" checked' % fleet.short_id,

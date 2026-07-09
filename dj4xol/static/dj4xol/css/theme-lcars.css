@@ -1277,7 +1277,15 @@ input[type="range"]::-webkit-slider-thumb {
 
 .debug-actions button {
     background: #9966cc;
+    color: #000;
     border-radius: 10px;
+}
+
+.debug-actions button:disabled {
+    background: #8a5572;
+    color: #fff;
+    border-color: #6c445f;
+    cursor: default;
 }
 
 /* ============================================

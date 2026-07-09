@@ -932,14 +932,14 @@ def starmap(request, game_short_id):
     url = request.path
     x = request.GET.get('x', None)
     y = request.GET.get('y', None)
+    try:
+        selection_x = int(x)
+        selection_y = int(y)
+    except (TypeError, ValueError):
+        selection_x = None
+        selection_y = None
     debug_can_create_anomaly_at_selection = False
     if _debug_actions_enabled() and bool(request.user.is_staff or request.user.is_superuser):
-        try:
-            selection_x = int(x)
-            selection_y = int(y)
-        except (TypeError, ValueError):
-            selection_x = None
-            selection_y = None
         if selection_x is not None and selection_y is not None:
             debug_can_create_anomaly_at_selection = not Star.objects.filter(
                 game=game,
@@ -1045,6 +1045,14 @@ def starmap(request, game_short_id):
     selected_fleet_short_id = None
     selected_object_type = ''
     selected_object_short_id = ''
+    player_owned_fleets_at_selection = 0
+    if player and selection_x is not None and selection_y is not None:
+        player_owned_fleets_at_selection = Fleet.objects.filter(
+            game=game,
+            player=player,
+            x=selection_x,
+            y=selection_y,
+        ).count()
     suppress_locate = bool(detail.get('suppress_locate')) if detail else False
     selected_patrol_circles = []
     if detail and detail.get('selected_id'):
@@ -1094,6 +1102,10 @@ def starmap(request, game_short_id):
         'selected_patrol_circles_json': json.dumps(selected_patrol_circles),
         'enable_debug_actions': _debug_actions_enabled(),
         'debug_can_create_anomaly_at_selection': debug_can_create_anomaly_at_selection,
+        'show_quick_actions': bool(
+            player and selection_x is not None and selection_y is not None
+        ),
+        'quick_merge_enabled': player_owned_fleets_at_selection > 0,
         'play_cli_web_enabled': _play_cli_web_enabled(),
     })
 
