@@ -84,6 +84,31 @@ def get_scanner_sources_for_player(game, player):
     return sources
 
 
+def strongest_scanner_circles_by_position(sources, range_key):
+    """Return one max-radius scanner circle per map position."""
+    strongest = {}
+    for src in sources:
+        try:
+            x = int(src.get('x'))
+            y = int(src.get('y'))
+            radius = int(src.get(range_key) or 0)
+        except (TypeError, ValueError):
+            continue
+        if radius <= 0:
+            continue
+        key = (x, y)
+        if radius > strongest.get(key, 0):
+            strongest[key] = radius
+    return [
+        {
+            'center_x': x,
+            'center_y': y,
+            'radius': radius,
+        }
+        for (x, y), radius in strongest.items()
+    ]
+
+
 def _in_range(x, y, sx, sy, radius):
     if radius <= 0:
         return False

@@ -117,7 +117,10 @@ from .forms import (
 from .name_rules import validate_safe_public_text
 from .player_labels import player_name_with_bracket
 from .production_rules import capped_order_quantity_for_star
-from .scanners import get_scanner_sources_for_player
+from .scanners import (
+    get_scanner_sources_for_player,
+    strongest_scanner_circles_by_position,
+)
 
 
 RACE_TYPE_PERCENT_FIELDS = [
@@ -380,24 +383,10 @@ def _build_scanner_circles(game, player):
     if getattr(game, 'no_scanners', False):
         return [], []
     sources = get_scanner_sources_for_player(game, player) if player else []
-    basic = []
-    advanced = []
-    for src in sources:
-        basic_range = int(src.get('basic') or 0)
-        adv_range = int(src.get('advanced') or 0)
-        if basic_range > 0:
-            basic.append({
-                'center_x': int(src.get('x')),
-                'center_y': int(src.get('y')),
-                'radius': basic_range,
-            })
-        if adv_range > 0:
-            advanced.append({
-                'center_x': int(src.get('x')),
-                'center_y': int(src.get('y')),
-                'radius': adv_range,
-            })
-    return basic, advanced
+    return (
+        strongest_scanner_circles_by_position(sources, 'basic'),
+        strongest_scanner_circles_by_position(sources, 'advanced'),
+    )
 
 
 def _player_explored_anomaly_ids(game, player):

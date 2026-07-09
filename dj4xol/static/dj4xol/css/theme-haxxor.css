@@ -118,7 +118,7 @@ body.haxxor {
 
 .haxxor .debug-actions button:disabled {
     background: #10243f;
-    border-color: var(--haxxor-border-bright);
+    border-color: var(--haxxor-border);
     color: #f0fff7;
     cursor: default;
 }

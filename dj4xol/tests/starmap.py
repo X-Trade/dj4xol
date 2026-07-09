@@ -15,6 +15,7 @@ from ..models import (
     PlayerStarMarker,
 )
 from ..starmap import StarMap
+from ..views import _build_scanner_circles
 from ._util import default_game, get_default_race
 
 
@@ -327,6 +328,83 @@ class TestStarMap(TestCase):
         self.assertIn('title="Unknown Fleet"', html)
         self.assertNotIn('title="Leaky Fleet Name"', html)
         self.assertIn(f'data-object-id="{enemy_fleet.short_id}"', html)
+
+    def test_scanner_overlay_keeps_only_largest_circle_per_position(self):
+        game = default_game(stars=8, fleets=0)
+        player1 = game.players.first()
+        game.joinable = True
+        game.save(update_fields=['joinable'])
+        user2 = User.objects.create_user(
+            'scanner_overlay_friend',
+            'sof@test.com',
+            'pass',
+        )
+        account2 = Account.objects.create(django_user=user2)
+        player2 = GameFactory(game=game).join_player(account2, get_default_race())
+        home = player1.homeworld
+
+        Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Small Orbital Scanner',
+            x=home.x,
+            y=home.y,
+            basic_scanner_range=6,
+            advanced_scanner_range=2,
+        )
+        Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Large Orbital Scanner',
+            x=home.x,
+            y=home.y,
+            basic_scanner_range=12,
+            advanced_scanner_range=4,
+        )
+        Fleet.objects.create(
+            game=game,
+            player=player2,
+            name='Shared Orbital Scanner',
+            x=home.x,
+            y=home.y,
+            basic_scanner_range=10,
+            advanced_scanner_range=7,
+        )
+        Fleet.objects.create(
+            game=game,
+            player=player1,
+            name='Remote Scanner',
+            x=home.x + 15,
+            y=home.y,
+            basic_scanner_range=5,
+            advanced_scanner_range=3,
+        )
+        PlayerDiplomaticStance.objects.create(
+            player=player2,
+            target_player=player1,
+            stance='ALLIED',
+        )
+
+        basic, advanced = _build_scanner_circles(game, player1)
+        home_basic = [
+            circle for circle in basic
+            if (circle['center_x'], circle['center_y']) == (home.x, home.y)
+        ]
+        home_advanced = [
+            circle for circle in advanced
+            if (circle['center_x'], circle['center_y']) == (home.x, home.y)
+        ]
+
+        self.assertEqual(home_basic, [{
+            'center_x': home.x,
+            'center_y': home.y,
+            'radius': 12,
+        }])
+        self.assertEqual(home_advanced, [{
+            'center_x': home.x,
+            'center_y': home.y,
+            'radius': 7,
+        }])
 
     def test_basic_ancient_debris_map_title_is_hidden(self):
         game = default_game(stars=5, fleets=0)
