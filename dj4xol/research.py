@@ -39,6 +39,7 @@ from .technology_thumbnails import (
     get_technology_thumbnail_paths,
 )
 from .production_rules import capped_order_quantity_for_star
+from .fleet_rules import player_can_build_more_fleets
 from .secret_resources import SECRET_RESOURCE_KEYS, get_secret_resource_label
 from .technology_gate_rules import (
     describe_race_type_requirement,
@@ -484,7 +485,10 @@ def get_player_available_production_orders(player, star):
                 'label': format_terraform_order_label(order_type, rate_percent),
                 'repeat_allowed': True,
             })
-    if int(getattr(star, 'shipyards', 0) or 0) > 0:
+    if (
+        int(getattr(star, 'shipyards', 0) or 0) > 0 and
+        player_can_build_more_fleets(player)
+    ):
         orders.append({
             'value': 'BUILD_FLEET',
             'label': 'Build Fleet',

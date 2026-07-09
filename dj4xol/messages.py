@@ -2214,6 +2214,30 @@ class FleetBuildBlockedNoShipyardMessageFactory(MessageFactory):
         return random.choice(self.templates).format(star=format_map_object(self.star))
 
 
+class FleetCapacityReachedMessageFactory(MessageFactory):
+    """Messages for fleet construction diverted at the player fleet cap."""
+    category = 'PRODUCTION'
+    priority = True
+    templates = [
+        (
+            "Fleet capacity reached ({cap} fleets). Merge or scuttle fleets to "
+            "free capacity; new fleet production at {star} will be merged into "
+            "local fleets or scuttled with minerals returned."
+        ),
+    ]
+
+    def __init__(self, game, player, star, cap, message=None):
+        super().__init__(game, player, message, intensity=-0.3)
+        self.star = star
+        self.cap = cap
+
+    def format_message(self):
+        return random.choice(self.templates).format(
+            star=format_map_object(self.star),
+            cap=self.cap,
+        )
+
+
 class FleetRepairedMessageFactory(MessageFactory):
     """Messages for fleet repair by shipyard."""
     category = 'PRODUCTION'

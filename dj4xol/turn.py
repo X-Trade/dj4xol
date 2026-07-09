@@ -57,6 +57,7 @@ from .messages import (
     FleetRefueledMessageFactory,
     FleetOrdersCompletedMessageFactory,
     FleetBuildBlockedNoShipyardMessageFactory,
+    FleetCapacityReachedMessageFactory,
     FleetRepairedMessageFactory,
     OrbitalDefenseHitMessageFactory,
     TransferRaidThwartedMessageFactory,
@@ -78,6 +79,7 @@ from .messages import (
     map_coordinate_link,
 )
 import random
+from . import fleet_rules
 from .diplomacy import (
     PERMISSION_ALLOW_TRANSFER_RAID_DEFENSE,
     PERMISSION_ALLOW_TRANSFER_RAID_ROLL,
@@ -3158,7 +3160,10 @@ class GameTurn():
         if bool(getattr(race_type, 'is_mechanical', False)):
             unlocked.update({'BUILD_COLONISTS_1K', 'BUILD_COLONISTS_1M'})
 
-        if int(getattr(star, 'shipyards', 0) or 0) > 0:
+        if (
+            int(getattr(star, 'shipyards', 0) or 0) > 0 and
+            fleet_rules.player_can_build_more_fleets(player)
+        ):
             unlocked.add('BUILD_FLEET')
 
         if terraform_profile is None:
@@ -9507,6 +9512,11 @@ class GameTurn():
         if source_fleet.x != target_fleet.x or source_fleet.y != target_fleet.y:
             return 'waiting'
 
+        return self._merge_fleet_into_target(source_fleet, target_fleet)
+
+    def _merge_fleet_into_target(self, source_fleet, target_fleet, create_message=True):
+        from .models import FleetOrders
+
         # Store source name before deletion for message
         source_name = source_fleet.name
         player = source_fleet.player
@@ -9670,13 +9680,13 @@ class GameTurn():
         # Delete source fleet (cascades its orders)
         source_fleet.delete()
 
-        # Create message
-        factory = FleetMergedMessageFactory(
-            self.game, player, source_name, target_fleet
-        )
-        msg = factory.new_message()
-        msg.year = self.game.year
-        msg.save()
+        if create_message:
+            factory = FleetMergedMessageFactory(
+                self.game, player, source_name, target_fleet
+            )
+            msg = factory.new_message()
+            msg.year = self.game.year
+            msg.save()
 
         return 'executed'
 
@@ -10296,6 +10306,7 @@ class GameTurn():
         """
         from .models import Star, ProductionOrder
         self._micromanager_auto_fleet_ids_for_year = set()
+        self._fleet_cap_messages_sent_player_ids = set()
         for star in Star.objects.filter(game=self.game, player__isnull=False):
             had_production_orders = star.production_orders.exists()
             star.buildpoints_consumed = 0
@@ -10505,6 +10516,7 @@ class GameTurn():
                         star,
                         order.order_type,
                         production_counts,
+                        cost=cost,
                         terraform_rate=terraform_rate,
                     )
                     if fleet_built:
@@ -10521,7 +10533,13 @@ class GameTurn():
 
                 # After while loop, check if order is fully complete
                 if order.completed >= order.quantity:
-                    if order.repeat:
+                    repeat_allowed = bool(order.repeat)
+                    if (
+                        order.order_type == 'BUILD_FLEET' and
+                        not fleet_rules.player_can_build_more_fleets(star.player)
+                    ):
+                        repeat_allowed = False
+                    if repeat_allowed:
                         requeue_quantity = int(order.quantity or 0)
                         room = production_infrastructure_room(star, order.order_type)
                         if room is not None:
@@ -10555,14 +10573,17 @@ class GameTurn():
             self._repair_fleets_at_star(star, available_shipyards)
 
     def _apply_production_effect(
-        self, star, order_type, production_counts, terraform_rate=None
+        self, star, order_type, production_counts, cost=None, terraform_rate=None
     ):
         """Apply the effect of a completed production order.
 
         Returns True if a fleet was built (for shipyard availability tracking).
         """
         if order_type == 'BUILD_FLEET':
-            self._build_fleet(star)
+            if fleet_rules.player_can_build_more_fleets(star.player):
+                self._build_fleet(star)
+            else:
+                self._handle_capped_fleet_production(star, cost or {})
             return True
         elif order_type == 'BUILD_MINE':
             self._build_mine(star)
@@ -10605,10 +10626,20 @@ class GameTurn():
 
     def _build_fleet(self, star):
         """Build a fleet at the given star and create notification."""
+        player = star.player
+        fleet = self._create_fleet_at_star(star)
+
+        # Create notification message
+        factory = FleetBuiltMessageFactory(self.game, player, star, fleet)
+        msg = factory.new_message()
+        msg.year = self.game.year
+        msg.save()
+
+    def _create_fleet_at_star(self, star):
+        """Create a fleet with current player tech, without sending messages."""
         from .models import Fleet
         player = star.player
 
-        # Auto-generate fleet name
         fleet_count = player.fleets.count() + 1
         fleet_name = f"{player.name} Fleet {fleet_count}"
 
@@ -10654,10 +10685,51 @@ class GameTurn():
             advanced_scanner_range=tech_effects.get('advanced_scanner_range', 0),
             thumbnail_path=thumbnail_path,
         )
+        return fleet
 
-        # Create notification message
-        factory = FleetBuiltMessageFactory(self.game, player, star, fleet)
-        msg = factory.new_message()
+    def _handle_capped_fleet_production(self, star, cost):
+        """Redirect completed fleet production when the player is at fleet cap."""
+        player = star.player
+        self._send_fleet_capacity_message_once(player, star)
+        orbit_fleets = list(player.fleets.filter(x=star.x, y=star.y).order_by('id'))
+        if not orbit_fleets:
+            self._refund_completed_fleet_resources(star, cost)
+            return
+        target_fleet = random.choice(orbit_fleets)
+        produced_fleet = self._create_fleet_at_star(star)
+        self._merge_fleet_into_target(
+            produced_fleet,
+            target_fleet,
+            create_message=False,
+        )
+
+    def _refund_completed_fleet_resources(self, star, cost):
+        for resource in ALL_RESOURCE_KEYS:
+            refund = int((cost or {}).get(resource, 0) or 0)
+            if refund <= 0:
+                continue
+            inventory_field = '%s_inventory' % resource
+            setattr(
+                star,
+                inventory_field,
+                int(getattr(star, inventory_field, 0) or 0) + refund,
+            )
+
+    def _send_fleet_capacity_message_once(self, player, star):
+        if not player:
+            return
+        if not hasattr(self, '_fleet_cap_messages_sent_player_ids'):
+            self._fleet_cap_messages_sent_player_ids = set()
+        player_id = getattr(player, 'id', None)
+        if player_id in self._fleet_cap_messages_sent_player_ids:
+            return
+        self._fleet_cap_messages_sent_player_ids.add(player_id)
+        msg = FleetCapacityReachedMessageFactory(
+            self.game,
+            player,
+            star,
+            fleet_rules.PLAYER_FLEET_CAP,
+        ).new_message()
         msg.year = self.game.year
         msg.save()
 

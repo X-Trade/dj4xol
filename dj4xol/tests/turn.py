@@ -89,6 +89,170 @@ class TestGameTurn(TestCase):
         game.refresh_from_db()
         self.assertAlmostEqual(game.last_turn_execution_seconds, 1.25)
 
+    def test_player_fleet_cap_is_16384(self):
+        from ..fleet_rules import PLAYER_FLEET_CAP
+
+        self.assertEqual(PLAYER_FLEET_CAP, 16384)
+
+    def test_build_fleet_order_is_unavailable_at_player_fleet_cap(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player.fleets.all().delete()
+        star = player.homeworld
+        star.shipyards = 1
+        star.save(update_fields=['shipyards'])
+        for idx in range(2):
+            Fleet.objects.create(
+                game=game,
+                player=player,
+                name=f'Capped Fleet {idx + 1}',
+                x=star.x + idx,
+                y=star.y,
+            )
+
+        with patch('dj4xol.fleet_rules.PLAYER_FLEET_CAP', 2):
+            order_values = {
+                entry['value']
+                for entry in get_player_available_production_orders(player, star)
+            }
+
+        self.assertNotIn('BUILD_FLEET', order_values)
+
+    def test_completed_fleet_order_at_cap_merges_into_existing_orbit_fleet(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player.fleets.all().delete()
+        star = player.homeworld
+        star.shipyards = 1
+        star.factories = 100
+        star.ironium_inventory = 1000
+        star.boranium_inventory = 1000
+        star.germanium_inventory = 1000
+        star.save(update_fields=[
+            'shipyards', 'factories', 'ironium_inventory',
+            'boranium_inventory', 'germanium_inventory',
+        ])
+        existing = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Capacity Target',
+            x=star.x,
+            y=star.y,
+            ship_count=3,
+        )
+        ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='BUILD_FLEET',
+            quantity=1,
+        )
+
+        with patch('dj4xol.fleet_rules.PLAYER_FLEET_CAP', 1):
+            GameTurn(game).production()
+
+        existing.refresh_from_db()
+        self.assertEqual(player.fleets.count(), 1)
+        self.assertEqual(existing.ship_count, 4)
+        self.assertFalse(star.production_orders.exists())
+        self.assertEqual(
+            GameMessage.objects.filter(
+                game=game,
+                player=player,
+                message__icontains='fleet capacity',
+            ).count(),
+            1,
+        )
+
+    def test_completed_fleet_orders_at_cap_without_orbit_fleet_refund_resources_once(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player.fleets.all().delete()
+        star = player.homeworld
+        star.shipyards = 1
+        star.factories = 100
+        star.ironium_inventory = 1000
+        star.boranium_inventory = 1000
+        star.germanium_inventory = 1000
+        star.save(update_fields=[
+            'shipyards', 'factories', 'ironium_inventory',
+            'boranium_inventory', 'germanium_inventory',
+        ])
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Remote Capacity Fleet',
+            x=star.x + 10,
+            y=star.y,
+        )
+        ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='BUILD_FLEET',
+            quantity=2,
+        )
+        start_resources = (
+            star.ironium_inventory,
+            star.boranium_inventory,
+            star.germanium_inventory,
+        )
+
+        with patch('dj4xol.fleet_rules.PLAYER_FLEET_CAP', 1):
+            GameTurn(game).production()
+
+        star.refresh_from_db()
+        self.assertEqual(player.fleets.count(), 1)
+        self.assertEqual(
+            (
+                star.ironium_inventory,
+                star.boranium_inventory,
+                star.germanium_inventory,
+            ),
+            start_resources,
+        )
+        self.assertFalse(star.production_orders.exists())
+        self.assertEqual(
+            GameMessage.objects.filter(
+                game=game,
+                player=player,
+                message__icontains='fleet capacity',
+            ).count(),
+            1,
+        )
+
+    def test_repeating_fleet_order_at_cap_does_not_requeue(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player.fleets.all().delete()
+        star = player.homeworld
+        star.shipyards = 1
+        star.factories = 100
+        star.ironium_inventory = 1000
+        star.boranium_inventory = 1000
+        star.germanium_inventory = 1000
+        star.save(update_fields=[
+            'shipyards', 'factories', 'ironium_inventory',
+            'boranium_inventory', 'germanium_inventory',
+        ])
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Remote Capacity Fleet',
+            x=star.x + 10,
+            y=star.y,
+        )
+        ProductionOrder.objects.create(
+            game=game,
+            star=star,
+            order_type='BUILD_FLEET',
+            quantity=1,
+            repeat=True,
+        )
+
+        with patch('dj4xol.fleet_rules.PLAYER_FLEET_CAP', 1):
+            GameTurn(game).production()
+
+        self.assertFalse(star.production_orders.filter(order_type='BUILD_FLEET').exists())
+
     def test_multiple_turns(self):
         game = default_game()
         game.year = 1000
