@@ -3981,6 +3981,149 @@ class TestDetailPanelReportTiers(TestCase):
 
 
 class TestFleetOrderViews(TestCase):
+    def test_detail_panel_shows_quick_action_buttons_for_owned_selection(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:game', args=[game.short_id]),
+            {'x': fleet.x, 'y': fleet.y, 'sel': fleet.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Quick Transfer')
+        self.assertContains(response, 'Quick Merge')
+        self.assertContains(
+            response,
+            reverse(
+                'dj4xol:quick_merge',
+                args=[game.short_id, fleet.x, fleet.y],
+            ),
+        )
+
+    def test_quick_merge_view_lists_location_fleets_and_prechecks_selected_fleet(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        second = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Second Fleet',
+            x=fleet.x,
+            y=fleet.y,
+            offense_level=3.5,
+            cargo_capacity=250,
+            ship_count=4,
+        )
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Elsewhere Fleet',
+            x=fleet.x + 1,
+            y=fleet.y,
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(
+            reverse('dj4xol:quick_merge', args=[game.short_id, fleet.x, fleet.y]),
+            {'selected': fleet.short_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Merge?')
+        self.assertContains(response, fleet.name)
+        self.assertContains(response, second.name)
+        self.assertContains(response, '3.5')
+        self.assertContains(response, '250kt')
+        self.assertContains(response, '4')
+        self.assertNotContains(response, 'Elsewhere Fleet')
+        self.assertContains(
+            response,
+            'value="%s" checked' % fleet.short_id,
+            html=False,
+        )
+
+    def test_quick_merge_post_merges_selected_fleets_into_most_capable_fleet(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        original = player.fleets.first()
+        original.name = 'Original'
+        original.offense_level = 2.0
+        original.cargo_capacity = 200
+        original.ship_count = 2
+        original.ironium_inventory = 10
+        original.save()
+        carrier = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Carrier',
+            x=original.x,
+            y=original.y,
+            offense_level=2.0,
+            cargo_capacity=500,
+            ship_count=1,
+            boranium_inventory=20,
+        )
+        gunship = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Gunship',
+            x=original.x,
+            y=original.y,
+            offense_level=6.0,
+            cargo_capacity=100,
+            ship_count=1,
+            germanium_inventory=30,
+        )
+        watcher = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Watcher',
+            x=original.x + 5,
+            y=original.y,
+        )
+        watch_order = FleetOrders.objects.create(
+            game=game,
+            fleet=watcher,
+            order_type='INTERCEPT',
+            target_fleet=original,
+            target_kind='OBJECT',
+            target_short_id=original.short_id,
+        )
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:quick_merge', args=[game.short_id, original.x, original.y]),
+            {
+                'merge_fleets': [
+                    original.short_id,
+                    carrier.short_id,
+                    gunship.short_id,
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Fleet.objects.filter(id=original.id).exists())
+        self.assertFalse(Fleet.objects.filter(id=carrier.id).exists())
+        gunship.refresh_from_db()
+        self.assertEqual(gunship.ship_count, 4)
+        self.assertEqual(gunship.cargo_capacity, 800)
+        self.assertEqual(gunship.ironium_inventory, 10)
+        self.assertEqual(gunship.boranium_inventory, 20)
+        self.assertEqual(gunship.germanium_inventory, 30)
+        watch_order.refresh_from_db()
+        self.assertEqual(watch_order.target_fleet_id, gunship.id)
+        self.assertEqual(watch_order.target_short_id, gunship.short_id)
+
     def test_game_view_uses_stable_layout_wrappers(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()

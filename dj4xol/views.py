@@ -1412,6 +1412,111 @@ def _redirect_preserving_selection(request, game, suppress_autolocate=False):
     return redirect(url)
 
 
+def _quick_merge_capability_key(fleet):
+    return (
+        float(getattr(fleet, 'offense_level', 0.0) or 0.0),
+        int(getattr(fleet, 'cargo_capacity', 0) or 0),
+        int(getattr(fleet, 'ship_count', 0) or 0),
+        -int(getattr(fleet, 'id', 0) or 0),
+    )
+
+
+def _quick_merge_location_fleets(game, player, x, y):
+    return list(
+        Fleet.objects.filter(
+            game=game,
+            player=player,
+            x=int(x),
+            y=int(y),
+        ).order_by('name', 'id')
+    )
+
+
+def _quick_merge_return_url(game, x, y, selected_short_id=None):
+    url = reverse('dj4xol:game', kwargs={'game_short_id': game.short_id})
+    params = {
+        'x': int(x),
+        'y': int(y),
+        'no_locate': '1',
+    }
+    if selected_short_id:
+        params['sel'] = selected_short_id
+    return '%s?%s' % (url, urlencode(params))
+
+
+def _execute_quick_merge(game, fleets):
+    selected = list(fleets or [])
+    if len(selected) < 2:
+        return None
+    target = max(selected, key=_quick_merge_capability_key)
+    turn = GameTurn(game)
+    for source in selected:
+        if source.id == target.id:
+            continue
+        merge_order = FleetOrders(
+            game=game,
+            fleet=source,
+            order_type='MERGE',
+            target_fleet=target,
+        )
+        result = turn._execute_merge_order(source, merge_order)
+        if result != 'executed':
+            continue
+        target.refresh_from_db()
+    return target
+
+
+@player_only_view()
+def quick_merge(request, game_short_id, x, y):
+    game = Game.objects.get(short_id=game_short_id)
+    if game.is_generating:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Turn generation is in progress. Please check back later.'
+        })
+
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    selected_theme = account.theme if account else 'classic'
+    location_fleets = _quick_merge_location_fleets(game, player, x, y)
+
+    if request.method == 'POST':
+        selected_ids = set(request.POST.getlist('merge_fleets'))
+        selected_fleets = [
+            fleet for fleet in location_fleets
+            if fleet.short_id in selected_ids
+        ]
+        if len(selected_fleets) >= 2:
+            with transaction.atomic():
+                surviving_fleet = _execute_quick_merge(game, selected_fleets)
+            if surviving_fleet is not None:
+                return redirect(
+                    _quick_merge_return_url(
+                        game,
+                        x,
+                        y,
+                        selected_short_id=surviving_fleet.short_id,
+                    )
+                )
+        messages.warning(request, 'Select at least two fleets at this location to merge.')
+
+    selected_fleet_short_id = request.GET.get('selected', '')
+    return render(request, 'dj4xol/quick_merge.html', {
+        'game': game,
+        'player': player,
+        'fleets': location_fleets,
+        'x': int(x),
+        'y': int(y),
+        'selected_fleet_short_id': selected_fleet_short_id,
+        'user_theme': selected_theme,
+        'return_url': _quick_merge_return_url(
+            game,
+            x,
+            y,
+            selected_short_id=selected_fleet_short_id,
+        ),
+    })
+
+
 @player_only_view()
 def add_production_order(request, game_short_id):
     """Add a production order to a star."""
