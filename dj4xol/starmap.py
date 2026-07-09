@@ -45,11 +45,19 @@ class StarMap():
                 position: absolute;
              }"""
 
-    def __init__(self, game, player, dest_mode=False, spectator=False):
+    def __init__(
+        self,
+        game,
+        player,
+        dest_mode=False,
+        spectator=False,
+        selected_short_id=None,
+    ):
         self.game = game
         self.player = player
         self.spectator = bool(spectator)
         self.dest_mode = dest_mode
+        self.selected_short_id = selected_short_id or ''
         self.stars = game.stars.all()
         self._scanner_sources = (
             get_scanner_sources_for_player(game, player)
@@ -177,7 +185,7 @@ class StarMap():
         for pos, star_group in stars_by_pos.items():
             html += self.render_star_group(star_group)
 
-        for fleet in fleets:
+        for fleet in self._renderable_fleets(fleets, set(stars_by_pos.keys())):
             html += self.render_fleet(fleet)
             self._max_x = max(self._max_x, fleet.x)
             self._max_y = max(self._max_y, fleet.y)
@@ -193,6 +201,65 @@ class StarMap():
             self._max_y = max(self._max_y, anomaly.y)
 
         return html
+
+    def _renderable_fleets(self, fleets, star_positions):
+        fleets_by_pos = {}
+        for fleet in fleets:
+            fleets_by_pos.setdefault((fleet.x, fleet.y), []).append(fleet)
+
+        render_ids = set()
+        render_fleets = []
+        for pos in sorted(fleets_by_pos.keys()):
+            group = sorted(
+                fleets_by_pos[pos],
+                key=lambda fleet: (
+                    self._fleet_owner_sort_key(fleet),
+                    int(getattr(fleet, 'id', 0) or 0),
+                ),
+            )
+            if pos in star_positions:
+                by_owner = {}
+                for fleet in group:
+                    owner_key = self._fleet_owner_key(fleet)
+                    if owner_key not in by_owner:
+                        by_owner[owner_key] = fleet
+                candidates = sorted(
+                    by_owner.values(),
+                    key=lambda fleet: (
+                        self._fleet_owner_sort_key(fleet),
+                        int(getattr(fleet, 'id', 0) or 0),
+                    ),
+                )
+            else:
+                candidates = group[:4]
+
+            selected = [
+                fleet for fleet in group
+                if getattr(fleet, 'short_id', None) == self.selected_short_id
+            ]
+            for fleet in candidates + selected:
+                fleet_id = getattr(fleet, 'id', None)
+                if fleet_id in render_ids:
+                    continue
+                render_ids.add(fleet_id)
+                render_fleets.append(fleet)
+        return render_fleets
+
+    def _fleet_owner_key(self, fleet):
+        owner_id = getattr(fleet, 'player_id', None)
+        if owner_id is None:
+            return ('unowned', None)
+        return ('player', int(owner_id))
+
+    def _fleet_owner_sort_key(self, fleet):
+        owner_type, owner_id = self._fleet_owner_key(fleet)
+        if self.player and owner_id == getattr(self.player, 'id', None):
+            owner_rank = 0
+        elif owner_type == 'unowned':
+            owner_rank = 2
+        else:
+            owner_rank = 1
+        return (owner_rank, owner_type, owner_id or 0)
 
     def render_star_group(self, stars):
         """Render stars at the same position with offsets for multiples."""

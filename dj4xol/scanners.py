@@ -85,7 +85,7 @@ def get_scanner_sources_for_player(game, player):
 
 
 def strongest_scanner_circles_by_position(sources, range_key):
-    """Return one max-radius scanner circle per map position."""
+    """Return max-radius scanner circles, dropping fully contained circles."""
     strongest = {}
     for src in sources:
         try:
@@ -99,7 +99,7 @@ def strongest_scanner_circles_by_position(sources, range_key):
         key = (x, y)
         if radius > strongest.get(key, 0):
             strongest[key] = radius
-    return [
+    circles = [
         {
             'center_x': x,
             'center_y': y,
@@ -107,6 +107,32 @@ def strongest_scanner_circles_by_position(sources, range_key):
         }
         for (x, y), radius in strongest.items()
     ]
+    return _prune_contained_scanner_circles(circles)
+
+
+def _circle_contains(outer, inner):
+    outer_radius = int(outer.get('radius') or 0)
+    inner_radius = int(inner.get('radius') or 0)
+    if outer_radius < inner_radius:
+        return False
+    dx = int(inner.get('center_x') or 0) - int(outer.get('center_x') or 0)
+    dy = int(inner.get('center_y') or 0) - int(outer.get('center_y') or 0)
+    radius_diff = outer_radius - inner_radius
+    return (dx * dx) + (dy * dy) <= radius_diff * radius_diff
+
+
+def _prune_contained_scanner_circles(circles):
+    indexed = list(enumerate(circles))
+    by_desc_radius = sorted(
+        indexed,
+        key=lambda item: (-int(item[1].get('radius') or 0), item[0]),
+    )
+    kept = []
+    for index, circle in by_desc_radius:
+        if any(_circle_contains(kept_circle, circle) for _kept_index, kept_circle in kept):
+            continue
+        kept.append((index, circle))
+    return [circle for _index, circle in sorted(kept, key=lambda item: item[0])]
 
 
 def _in_range(x, y, sx, sy, radius):

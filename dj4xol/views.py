@@ -8,9 +8,11 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import views as auth_views
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from datetime import timedelta
+import hashlib
 import os
 import json
 import random
@@ -383,10 +385,33 @@ def _build_scanner_circles(game, player):
     if getattr(game, 'no_scanners', False):
         return [], []
     sources = get_scanner_sources_for_player(game, player) if player else []
-    return (
+    signature = repr(tuple(sorted(
+        (
+            int(src.get('x') or 0),
+            int(src.get('y') or 0),
+            int(src.get('basic') or 0),
+            int(src.get('advanced') or 0),
+        )
+        for src in sources
+    ))).encode('utf-8')
+    source_hash = hashlib.sha1(signature).hexdigest()
+    cache_key = (
+        'scanner-circles:v2:%s:%s:%s:%s' % (
+            getattr(game, 'id', ''),
+            getattr(player, 'id', ''),
+            getattr(game, 'year', ''),
+            source_hash,
+        )
+    )
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    circles = (
         strongest_scanner_circles_by_position(sources, 'basic'),
         strongest_scanner_circles_by_position(sources, 'advanced'),
     )
+    cache.set(cache_key, circles, 60 * 60 * 24)
+    return circles
 
 
 def _player_explored_anomaly_ids(game, player):
@@ -867,7 +892,13 @@ def spectate_starmap(request, game_short_id):
     )
     detail = detail_builder.build_detail()
 
-    starmap_obj = StarMap(game, None, dest_mode=False, spectator=True)
+    starmap_obj = StarMap(
+        game,
+        None,
+        dest_mode=False,
+        spectator=True,
+        selected_short_id=selected,
+    )
 
     selected_object_type = ''
     selected_object_short_id = ''
@@ -1014,7 +1045,12 @@ def starmap(request, game_short_id):
         )
 
     # Pass dest_mode to StarMap for modified link rendering
-    starmap_obj = StarMap(game, player, dest_mode=dest_mode)
+    starmap_obj = StarMap(
+        game,
+        player,
+        dest_mode=dest_mode,
+        selected_short_id=selected,
+    )
 
     # Get messages for this player, priority first then most recent
     # Filter to messages since messages_seen_year (or all if never seen)

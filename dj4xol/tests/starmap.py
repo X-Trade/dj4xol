@@ -406,6 +406,130 @@ class TestStarMap(TestCase):
             'radius': 7,
         }])
 
+    def test_scanner_overlay_prunes_only_fully_contained_circles(self):
+        game = default_game(stars=8, fleets=0)
+        player = game.players.first()
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Large Scanner',
+            x=50,
+            y=50,
+            basic_scanner_range=20,
+        )
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Engulfed Scanner',
+            x=55,
+            y=50,
+            basic_scanner_range=5,
+        )
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Partial Scanner',
+            x=65,
+            y=50,
+            basic_scanner_range=10,
+        )
+
+        basic, _advanced = _build_scanner_circles(game, player)
+        circles = {
+            (circle['center_x'], circle['center_y'], circle['radius'])
+            for circle in basic
+        }
+
+        self.assertIn((50, 50, 20), circles)
+        self.assertNotIn((55, 50, 5), circles)
+        self.assertIn((65, 50, 10), circles)
+
+    def test_starmap_renders_one_fleet_icon_per_player_at_star(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player.fleets.all().delete()
+        home = player.homeworld
+        for idx in range(3):
+            Fleet.objects.create(
+                game=game,
+                player=player,
+                name='Orbital Fleet %s' % idx,
+                x=home.x,
+                y=home.y,
+            )
+
+        starmap = StarMap(game, player)
+        html = starmap.render_map()
+
+        self.assertEqual(html.count('class="mapfleet'), 1)
+
+    def test_starmap_keeps_selected_fleet_when_aggregating_star_fleets(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player.fleets.all().delete()
+        home = player.homeworld
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Rendered Orbital Fleet',
+            x=home.x,
+            y=home.y,
+        )
+        selected = Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Selected Orbital Fleet',
+            x=home.x,
+            y=home.y,
+        )
+
+        starmap = StarMap(game, player, selected_short_id=selected.short_id)
+        html = starmap.render_map()
+
+        self.assertEqual(html.count('class="mapfleet'), 2)
+        self.assertIn('title="Selected Orbital Fleet"', html)
+
+    def test_starmap_renders_at_most_four_unselected_fleets_away_from_stars(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player.fleets.all().delete()
+        for idx in range(6):
+            Fleet.objects.create(
+                game=game,
+                player=player,
+                name='Deep Space Fleet %s' % idx,
+                x=12,
+                y=13,
+            )
+
+        starmap = StarMap(game, player)
+        html = starmap.render_map()
+
+        self.assertEqual(html.count('class="mapfleet'), 4)
+        self.assertNotIn('Deep Space Fleet 5', html)
+
+    def test_starmap_keeps_selected_fleet_when_aggregating_deep_space_fleets(self):
+        game = default_game(stars=5, fleets=0)
+        player = game.players.first()
+        player.fleets.all().delete()
+        selected = None
+        for idx in range(6):
+            fleet = Fleet.objects.create(
+                game=game,
+                player=player,
+                name='Deep Space Fleet %s' % idx,
+                x=12,
+                y=13,
+            )
+            if idx == 5:
+                selected = fleet
+
+        starmap = StarMap(game, player, selected_short_id=selected.short_id)
+        html = starmap.render_map()
+
+        self.assertEqual(html.count('class="mapfleet'), 5)
+        self.assertIn(f'data-object-id="{selected.short_id}"', html)
+
     def test_basic_ancient_debris_map_title_is_hidden(self):
         game = default_game(stars=5, fleets=0)
         player = game.players.first()
