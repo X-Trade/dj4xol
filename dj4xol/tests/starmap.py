@@ -1,8 +1,10 @@
 import json
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 
+from .. import scanners
 from ..factory import GameFactory
 from ..fleet_thumbnails import choose_fleet_thumbnail
 from ..models import (
@@ -443,6 +445,55 @@ class TestStarMap(TestCase):
         self.assertIn((50, 50, 20), circles)
         self.assertNotIn((55, 50, 5), circles)
         self.assertIn((65, 50, 10), circles)
+
+    def test_scanner_range_check_reduces_and_orders_sources_before_matching(self):
+        sources = [
+            {'x': 100, 'y': 100, 'basic': 3, 'owner_id': 1},
+            {'x': 10, 'y': 0, 'basic': 1, 'owner_id': 2},
+            {'x': 10, 'y': 0, 'basic': 8, 'owner_id': 3},
+        ]
+        calls = []
+        real_in_range = scanners._in_range
+
+        def wrapped_in_range(x, y, sx, sy, radius):
+            calls.append((sx, sy, radius))
+            return real_in_range(x, y, sx, sy, radius)
+
+        with patch('dj4xol.scanners._in_range', side_effect=wrapped_in_range):
+            self.assertTrue(
+                scanners.position_in_scanner_range(12, 0, sources, range_key='basic')
+            )
+
+        self.assertEqual(calls, [(10, 0, 8)])
+
+    def test_scanner_range_check_prunes_contained_sources(self):
+        sources = [
+            {'x': 50, 'y': 50, 'basic': 20},
+            {'x': 55, 'y': 50, 'basic': 5},
+        ]
+        calls = []
+        real_in_range = scanners._in_range
+
+        def wrapped_in_range(x, y, sx, sy, radius):
+            calls.append((sx, sy, radius))
+            return real_in_range(x, y, sx, sy, radius)
+
+        with patch('dj4xol.scanners._in_range', side_effect=wrapped_in_range):
+            self.assertTrue(
+                scanners.position_in_scanner_range(55, 50, sources, range_key='basic')
+            )
+
+        self.assertEqual(calls, [(50, 50, 20)])
+
+    def test_scanner_range_check_keeps_partially_overlapping_sources(self):
+        sources = [
+            {'x': 50, 'y': 50, 'basic': 20},
+            {'x': 65, 'y': 50, 'basic': 10},
+        ]
+
+        self.assertTrue(
+            scanners.position_in_scanner_range(73, 50, sources, range_key='basic')
+        )
 
     def test_starmap_renders_one_fleet_icon_per_player_at_star(self):
         game = default_game(stars=5, fleets=0)

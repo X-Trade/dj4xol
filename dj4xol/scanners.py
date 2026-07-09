@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Dict, Iterable, List, Tuple
 
 
@@ -86,28 +87,63 @@ def get_scanner_sources_for_player(game, player):
 
 def strongest_scanner_circles_by_position(sources, range_key):
     """Return max-radius scanner circles, dropping fully contained circles."""
-    strongest = {}
-    for src in sources:
-        try:
-            x = int(src.get('x'))
-            y = int(src.get('y'))
-            radius = int(src.get(range_key) or 0)
-        except (TypeError, ValueError):
-            continue
-        if radius <= 0:
-            continue
-        key = (x, y)
-        if radius > strongest.get(key, 0):
-            strongest[key] = radius
-    circles = [
+    return reduced_scanner_range_circles(sources, range_key)
+
+
+def reduced_scanner_range_circles(sources, range_key='basic'):
+    """Return scanner circles suitable for owner-agnostic range checks."""
+    signature = _scanner_range_signature(sources, range_key)
+    return [
         {
             'center_x': x,
             'center_y': y,
             'radius': radius,
         }
-        for (x, y), radius in strongest.items()
+        for x, y, radius in _reduced_scanner_range_circle_tuples(signature)
     ]
-    return _prune_contained_scanner_circles(circles)
+
+
+def _scanner_range_signature(sources, range_key):
+    circles = []
+    for src in sources:
+        circle = _scanner_circle_tuple_from_source(src, range_key)
+        if circle is not None:
+            circles.append(circle)
+    return tuple(sorted(circles))
+
+
+def _scanner_circle_tuple_from_source(src, range_key):
+    try:
+        x = int(src.get('x'))
+        y = int(src.get('y'))
+        radius = int(src.get(range_key) or 0)
+    except (TypeError, ValueError):
+        return None
+    if radius <= 0:
+        return None
+    return x, y, radius
+
+
+@lru_cache(maxsize=256)
+def _reduced_scanner_range_circle_tuples(signature):
+    strongest = {}
+    for x, y, radius in signature:
+        key = (x, y)
+        current = strongest.get(key)
+        if current is None or radius > current['radius']:
+            strongest[key] = {
+                'center_x': x,
+                'center_y': y,
+                'radius': radius,
+            }
+    circles = [
+        strongest[key]
+        for key in sorted(strongest)
+    ]
+    return tuple(
+        (circle['center_x'], circle['center_y'], circle['radius'])
+        for circle in _prune_contained_scanner_circles(circles)
+    )
 
 
 def _circle_contains(outer, inner):
@@ -143,12 +179,28 @@ def _in_range(x, y, sx, sy, radius):
     return (dx * dx) + (dy * dy) <= float(radius) * float(radius)
 
 
+def _scanner_circle_target_sort_key(circle, x, y):
+    dx = float(x) - float(circle['center_x'])
+    dy = float(y) - float(circle['center_y'])
+    distance_sq = (dx * dx) + (dy * dy)
+    radius = int(circle.get('radius') or 0)
+    return (
+        distance_sq,
+        -radius,
+    )
+
+
+def _order_scanner_circles_for_target(circles, x, y):
+    return sorted(
+        circles,
+        key=lambda circle: _scanner_circle_target_sort_key(circle, x, y),
+    )
+
+
 def position_in_scanner_range(x, y, sources, range_key='basic'):
-    for src in sources:
-        radius = int(src.get(range_key) or 0)
-        if radius <= 0:
-            continue
-        if _in_range(x, y, src.get('x'), src.get('y'), radius):
+    circles = reduced_scanner_range_circles(sources, range_key)
+    for circle in _order_scanner_circles_for_target(circles, x, y):
+        if _in_range(x, y, circle['center_x'], circle['center_y'], circle['radius']):
             return True
     return False
 
