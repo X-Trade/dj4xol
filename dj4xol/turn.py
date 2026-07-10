@@ -196,6 +196,8 @@ from .micromanager_rules import (
     REMOVE_ADMINISTRATION_ORDER_TYPE,
     collapse_micromanager_order_totals,
     get_micromanager_managed_order_types,
+    critical_economic_bootstrap_remaining,
+    has_healthy_production_and_extraction,
     projected_mining_output,
     remaining_queue_requirements,
     plan_micromanager_orders,
@@ -434,6 +436,8 @@ MICROMANAGER_OVER_CAP_CONSOLIDATE_TARGET = 10
 MICROMANAGER_OVER_CAP_BUILD_CHANCE = 0.08
 MICROMANAGER_FLEET_BUILD_MAX_YEARS = 3
 EXPANSIONIST_FLEET_BUILD_MAX_YEARS = 4
+MICROMANAGER_QUEUE_MAX_YEARS = 10
+MICROMANAGER_STRATEGIC_QUEUE_MAX_YEARS = 30
 MICROMANAGER_COLONISE_DISPATCHES_PER_COLONY = 1
 EXPANSIONIST_COLONISE_DISPATCHES_PER_COLONY = 2
 MICROMANAGER_COLONISE_SEARCH_RADIUS = 20.0
@@ -10938,6 +10942,200 @@ class GameTurn():
                 return True
         return False
 
+    @staticmethod
+    def _order_has_current_item_progress(order):
+        if int(getattr(order, 'spent_bp', 0) or 0) > 0:
+            return True
+        return any(
+            int(getattr(order, 'spent_%s' % key, 0) or 0) > 0
+            for key in ALL_RESOURCE_KEYS
+        )
+
+    @staticmethod
+    def _colony_infrastructure_crisis(star):
+        """Return whether the colony must abandon strategy and rebuild basics."""
+        if int(getattr(star, 'factories', 0) or 0) <= 0:
+            return True
+        if int(getattr(star, 'defenses', 0) or 0) <= 0:
+            return True
+        has_mineral_yield = any(
+            int(getattr(star, '%s_yield' % key, 0) or 0) > 0
+            for key in ALL_RESOURCE_KEYS
+        )
+        return has_mineral_yield and int(getattr(star, 'mines', 0) or 0) <= 0
+
+    def _cancel_micromanager_crisis_projects(self, star):
+        """Abandon expensive automated work when basic infrastructure fails."""
+        if not self._colony_infrastructure_crisis(star):
+            return
+        expensive_order_types = {
+            CITY_ORDER_TYPE,
+            MEGACITY_ORDER_TYPE,
+            DYSON_SPHERE_ORDER_TYPE,
+            'BUILD_SHIPYARD',
+            'BUILD_FLEET',
+            'TERRAFORM_GRAVITY',
+            'TERRAFORM_TEMPERATURE',
+            'TERRAFORM_RADIATION',
+        }
+        refunded_resources = False
+        for order in star.production_orders.filter(
+            added_by_micromanager=True,
+            order_type__in=expensive_order_types,
+        ):
+            refunded_resources = (
+                self._refund_order_progress_resources(star, order) or
+                refunded_resources
+            )
+            order.delete()
+        if refunded_resources:
+            star.save(update_fields=[
+                '%s_inventory' % key for key in ALL_RESOURCE_KEYS
+            ])
+
+    def _trim_micromanager_queue_to_horizon(self, star, cost_map):
+        """Keep ordinary automated production within a ten-year horizon.
+
+        Dyson spheres are deliberate strategic projects, so their one-off
+        construction is excluded. Player-authored orders are also untouched.
+        """
+        self._cancel_micromanager_crisis_projects(star)
+        years = MICROMANAGER_QUEUE_MAX_YEARS
+        income = self._one_year_income(star)
+        budget = {
+            'bp': max(0, int(income.get('bp', 0) or 0)) * years,
+        }
+        for key in ALL_RESOURCE_KEYS:
+            budget[key] = (
+                max(0, int(getattr(star, '%s_inventory' % key, 0) or 0)) +
+                (max(0, int(income.get(key, 0) or 0)) * years)
+            )
+
+        inventory_changed = False
+        healthy_economy = has_healthy_production_and_extraction(star)
+        strategic_order_types = {DYSON_SPHERE_ORDER_TYPE}
+        if healthy_economy:
+            strategic_order_types.update({
+                'BUILD_SHIPYARD',
+                MEGACITY_ORDER_TYPE,
+            })
+        for order in star.production_orders.filter(
+            added_by_micromanager=True,
+            order_type__in=(
+                'BUILD_SHIPYARD',
+                MEGACITY_ORDER_TYPE,
+                DYSON_SPHERE_ORDER_TYPE,
+            ),
+        ):
+            if self._order_has_progress(order):
+                strategic_order_types.add(order.order_type)
+        strategic_budget = {
+            'bp': (
+                max(0, int(income.get('bp', 0) or 0)) *
+                MICROMANAGER_STRATEGIC_QUEUE_MAX_YEARS
+            ),
+        }
+        for key in ALL_RESOURCE_KEYS:
+            strategic_budget[key] = (
+                max(0, int(getattr(star, '%s_inventory' % key, 0) or 0)) +
+                (max(0, int(income.get(key, 0) or 0)) *
+                 MICROMANAGER_STRATEGIC_QUEUE_MAX_YEARS)
+            )
+        bootstrap_remaining = {
+            'BUILD_MINE': critical_economic_bootstrap_remaining(
+                star, 'BUILD_MINE'
+            ),
+            'BUILD_FACTORY': critical_economic_bootstrap_remaining(
+                star, 'BUILD_FACTORY'
+            ),
+        }
+        for order in list(star.production_orders.filter(
+            added_by_micromanager=True,
+        ).order_by('position', 'id')):
+            remaining = max(
+                0,
+                int(getattr(order, 'quantity', 0) or 0) -
+                int(getattr(order, 'completed', 0) or 0),
+            )
+            if remaining <= 0:
+                continue
+            if (
+                order.order_type in strategic_order_types and
+                self._order_has_progress(order)
+            ):
+                # A started strategic project keeps both its completed work
+                # and resources already committed to the current stage.
+                continue
+            cost = cost_map.get(order.order_type, {})
+            order_budget = (
+                strategic_budget
+                if order.order_type in strategic_order_types else
+                budget
+            )
+            bootstrap_allowed = min(
+                remaining,
+                int(bootstrap_remaining.get(order.order_type, 0) or 0),
+            )
+            bootstrap_remaining[order.order_type] = max(
+                0,
+                int(bootstrap_remaining.get(order.order_type, 0) or 0) -
+                bootstrap_allowed,
+            )
+            horizon_allowed = remaining - bootstrap_allowed
+            for key in ('bp',) + tuple(ALL_RESOURCE_KEYS):
+                unit_cost = max(0, int(cost.get(key, 0) or 0))
+                if unit_cost <= 0:
+                    continue
+                spent = max(0, int(getattr(order, 'spent_%s' % key, 0) or 0))
+                spent_for_horizon = spent if bootstrap_allowed <= 0 else 0
+                horizon_allowed = min(
+                    horizon_allowed,
+                    max(
+                        0,
+                        (int(order_budget.get(key, 0) or 0) + spent_for_horizon) //
+                        unit_cost,
+                    ),
+                )
+            allowed = bootstrap_allowed + horizon_allowed
+
+            if allowed < remaining:
+                if self._order_has_current_item_progress(order):
+                    # Keep the current partially funded item, but discard the
+                    # distant tail of a batch that no longer fits the plan.
+                    allowed = max(1, allowed)
+                    horizon_allowed = max(0, allowed - bootstrap_allowed)
+                    order.quantity = int(order.completed or 0) + allowed
+                    order.save(update_fields=['quantity'])
+                else:
+                    inventory_changed = (
+                        self._refund_order_progress_resources(star, order) or
+                        inventory_changed
+                    )
+                    if allowed <= 0:
+                        order.delete()
+                        continue
+                    order.quantity = int(order.completed or 0) + allowed
+                    order.spent_bp = 0
+                    order.save(update_fields=(
+                        ['quantity', 'spent_bp'] +
+                        ['spent_%s' % key for key in ALL_RESOURCE_KEYS]
+                    ))
+
+            for key in ('bp',) + tuple(ALL_RESOURCE_KEYS):
+                unit_cost = max(0, int(cost.get(key, 0) or 0))
+                spent = max(0, int(getattr(order, 'spent_%s' % key, 0) or 0))
+                spent_for_horizon = spent if bootstrap_allowed <= 0 else 0
+                order_budget[key] = max(
+                    0,
+                    (int(order_budget.get(key, 0) or 0) -
+                     (unit_cost * horizon_allowed) + spent_for_horizon),
+                )
+
+        if inventory_changed:
+            star.save(update_fields=[
+                '%s_inventory' % key for key in ALL_RESOURCE_KEYS
+            ])
+
     def _delete_satisfied_terraform_orders(self, star):
         """Remove terraforming orders for environment values already near ideal."""
         changed_inventory = False
@@ -11016,6 +11214,34 @@ class GameTurn():
             changed.append(order)
         for order in changed:
             order.save(update_fields=['position'])
+
+    def _prioritize_urgent_micromanager_defense(self, star, colony_ai_profile):
+        """Place urgent AI defenses ahead of retained long-term projects."""
+        context = (
+            colony_ai_profile.get('report_context')
+            if isinstance(colony_ai_profile, dict) else
+            None
+        )
+        if not isinstance(context, dict):
+            return
+        try:
+            pressure = max(
+                float(context.get('defense_pressure', 0.0) or 0.0),
+                float(context.get('bombardment_defense_pressure', 0.0) or 0.0),
+            )
+        except (TypeError, ValueError):
+            return
+        if pressure < 0.45:
+            return
+        defense_order = star.production_orders.filter(
+            added_by_micromanager=True,
+            order_type='BUILD_DEFENSE',
+        ).order_by('position', 'id').first()
+        if defense_order is None:
+            return
+        defense_order.position = 0
+        defense_order.save(update_fields=['position'])
+        self._resequence_production_orders(star)
 
     def _colony_ai_report_context_for_star(self, star, tier):
         """Build report-known strategic context around a colony."""
@@ -11434,6 +11660,8 @@ class GameTurn():
             star,
             tier,
         )
+        cost_map = self._get_player_production_costs_cached(star.player)
+        self._trim_micromanager_queue_to_horizon(star, cost_map)
         micromanager_orders = list(star.production_orders.filter(
             added_by_micromanager=True
         ).order_by('position', 'id'))
@@ -11482,7 +11710,6 @@ class GameTurn():
         player_terraform_types = self._projected_player_terraform_order_types(
             queue_orders
         )
-        cost_map = self._get_player_production_costs_cached(star.player)
         colony_ai_profile = classify_colony_role(
             star.player,
             star,
@@ -11576,6 +11803,10 @@ class GameTurn():
 
         for order in editable[len(planned_runs):]:
             order.delete()
+        self._prioritize_urgent_micromanager_defense(
+            star,
+            colony_ai_profile,
+        )
 
     @staticmethod
     def _resource_inventory_map(obj):
@@ -11992,9 +12223,10 @@ class GameTurn():
             return 0
         return sum(max(0, int(transfers.get(key, 0) or 0)) for key in ALL_RESOURCE_KEYS)
 
-    def _one_year_planning_budget(self, star, cost_map):
+    def _one_year_planning_budget(self, star, cost_map, queue_orders=None):
         """Return one-year budget after queued demand for horizon planning."""
-        queue_orders = list(star.production_orders.all())
+        if queue_orders is None:
+            queue_orders = list(star.production_orders.all())
         queue_requirements = remaining_queue_requirements(queue_orders, cost_map)
         mining_output = projected_mining_output(star)
         budget = {
@@ -12223,30 +12455,59 @@ class GameTurn():
             return
         budget = self._one_year_planning_budget(star, cost_map)
         income = self._one_year_income(star)
-        if not self._order_can_complete_within_years(
+        fleet_build_years = (
+            EXPANSIONIST_FLEET_BUILD_MAX_YEARS
+            if expansionist_mode else
+            MICROMANAGER_FLEET_BUILD_MAX_YEARS
+        )
+        fleet_is_affordable = self._order_can_complete_within_years(
             cost_map,
             'BUILD_FLEET',
             budget,
             income,
-            (
-                EXPANSIONIST_FLEET_BUILD_MAX_YEARS
-                if expansionist_mode else
-                MICROMANAGER_FLEET_BUILD_MAX_YEARS
-            ),
-        ):
+            fleet_build_years,
+        )
+        if not fleet_is_affordable and expansionist_mode and mission_pool_needs_build:
+            deferred_orders = list(star.production_orders.filter(
+                added_by_micromanager=True,
+                order_type__in=(
+                    CITY_ORDER_TYPE,
+                    MEGACITY_ORDER_TYPE,
+                    DYSON_SPHERE_ORDER_TYPE,
+                ),
+            ))
+            if deferred_orders:
+                non_deferred_orders = list(star.production_orders.exclude(
+                    id__in=[order.id for order in deferred_orders]
+                ))
+                budget_without_deferred_work = self._one_year_planning_budget(
+                    star,
+                    cost_map,
+                    queue_orders=non_deferred_orders,
+                )
+                # Existing partial work keeps its already-spent minerals. The
+                # fleet can defer future long-term work, not reclaim progress.
+                fleet_is_affordable = self._order_can_complete_within_years(
+                    cost_map,
+                    'BUILD_FLEET',
+                    budget_without_deferred_work,
+                    income,
+                    fleet_build_years,
+                )
+        if not fleet_is_affordable:
             return
-        tail_base = star.production_orders.aggregate(
-            max_pos=models.Max('position')
-        )['max_pos'] or 0
         ProductionOrder.objects.create(
             game=self.game,
             star=star,
             order_type='BUILD_FLEET',
-            position=int(tail_base) + 1,
+            # An expansion fleet must be ahead of retained AI work; otherwise
+            # an old infrastructure batch can indefinitely block exploration.
+            position=0,
             quantity=1,
             repeat=False,
             added_by_micromanager=True,
         )
+        self._resequence_production_orders(star)
 
     def _best_colony_source_for_deficits(
         self,

@@ -55,6 +55,7 @@ MECHANICAL_GROWTH_EMPLOYMENT_MIN = 40.0
 MECHANICAL_GROWTH_EMPLOYMENT_HIGH = 60.0
 MECHANICAL_GROWTH_EMPLOYMENT_TOP = 90.0
 EARLY_MINE_BOOTSTRAP_FLOOR = 3
+ECONOMIC_BOOTSTRAP_INFRASTRUCTURE_MIN = 3
 SURFACE_MINERALS_FOR_MINE_BOOTSTRAP_SKIP = 25000
 
 TERRAFORM_IDEAL_HABITABILITY = 0.99
@@ -107,10 +108,12 @@ LEVEL_TWO_FILLER_ORDER_TYPES = (
 )
 LEVEL_TWO_DEFENSE_FLOOR = 12
 LEVEL_TWO_LAB_FLOOR = 8
-SHIPYARD_COMPLETION_MAX_YEARS = 5
-DYSON_COMPLETION_MAX_YEARS = 9
+SHIPYARD_COMPLETION_MAX_YEARS = 30
+DYSON_COMPLETION_MAX_YEARS = 30
 CITY_COMPLETION_MAX_YEARS = 5
-MEGACITY_COMPLETION_MAX_YEARS = 5
+MEGACITY_COMPLETION_MAX_YEARS = 30
+CRITICAL_JOB_QUEUE_MAX = 120
+EXPANSIONIST_CRITICAL_JOB_QUEUE_MAX = 24
 
 TERRAFORM_ORDER_ENVIRONMENTS = {
     'TERRAFORM_GRAVITY': 'gravity',
@@ -398,7 +401,37 @@ def _should_prioritise_early_mine_bootstrap(star, mine_room, growth_priority):
     if _surface_mineral_inventory_total(star) >= SURFACE_MINERALS_FOR_MINE_BOOTSTRAP_SKIP:
         return False
     current_mines = int(getattr(star, 'mines', 0) or 0)
-    return current_mines < EARLY_MINE_BOOTSTRAP_FLOOR
+    return current_mines < ECONOMIC_BOOTSTRAP_INFRASTRUCTURE_MIN
+
+
+def critical_economic_bootstrap_remaining(star, order_type):
+    """Return the essential mine/factory count still needed by a colony."""
+    field_by_order_type = {
+        'BUILD_MINE': 'mines',
+        'BUILD_FACTORY': 'factories',
+    }
+    field = field_by_order_type.get(order_type)
+    if field is None:
+        return 0
+    if field == 'mines' and _total_mineral_yield(star) <= 0:
+        return 0
+    return max(
+        0,
+        ECONOMIC_BOOTSTRAP_INFRASTRUCTURE_MIN -
+        int(getattr(star, field, 0) or 0),
+    )
+
+
+def has_healthy_production_and_extraction(star):
+    """Return whether a colony can support longer strategic projects."""
+    if int(getattr(star, 'factories', 0) or 0) < ECONOMIC_BOOTSTRAP_INFRASTRUCTURE_MIN:
+        return False
+    if (
+        _total_mineral_yield(star) > 0 and
+        int(getattr(star, 'mines', 0) or 0) < ECONOMIC_BOOTSTRAP_INFRASTRUCTURE_MIN
+    ):
+        return False
+    return True
 
 
 def _employment_job_build_tailoff(job_ratio):
@@ -830,13 +863,18 @@ def _planning_limit_for_star(
     thresholds = _projected_job_thresholds(player, star)
     current_jobs = _job_capacity(star)
     target_mines = int(_target_mine_count(star, micromanager_mode=micromanager_mode) or 0)
+    critical_job_queue_max = (
+        EXPANSIONIST_CRITICAL_JOB_QUEUE_MAX
+        if expansionist_mode else
+        CRITICAL_JOB_QUEUE_MAX
+    )
     if int(tier or 0) <= TIER_BASIC:
         if current_jobs < thresholds['min_jobs']:
             missing_jobs = thresholds['min_jobs'] - current_jobs
             catchup_limit = (
                 missing_jobs + COLONISTS_PER_JOB - 1
             ) // COLONISTS_PER_JOB
-            return max(plan_limit, min(1000, int(catchup_limit)))
+            return max(plan_limit, min(critical_job_queue_max, int(catchup_limit)))
         if current_jobs < thresholds['target_jobs']:
             missing_jobs = thresholds['target_jobs'] - current_jobs
             catchup_limit = (
@@ -851,7 +889,7 @@ def _planning_limit_for_star(
         catchup_limit = (
             missing_jobs + COLONISTS_PER_JOB - 1
         ) // COLONISTS_PER_JOB
-        return max(plan_limit, min(1000, int(catchup_limit)))
+        return max(plan_limit, min(critical_job_queue_max, int(catchup_limit)))
     if job_ratio < 0.40:
         missing_jobs = thresholds['target_jobs'] - current_jobs
         catchup_limit = (
@@ -1142,6 +1180,7 @@ def _scored_micromanager_candidate_orders(
     )
     max_mines = int(_target_mine_count(star, micromanager_mode=micromanager_mode) or 0)
     has_yield = _total_mineral_yield(star) > 0
+    healthy_economy = has_healthy_production_and_extraction(star)
     mine_room = (
         has_yield and
         current_mines < max_mines and
@@ -1277,6 +1316,7 @@ def _scored_micromanager_candidate_orders(
         job_ratio < JOB_TARGET_RATIO and
         int(tier or 0) >= TIER_TERRAFORM and
         dyson_available and
+        healthy_economy and
         _can_add_order_without_exceeding_max_jobs(
             player, star, DYSON_SPHERE_ORDER_TYPE
         ) and
@@ -1331,6 +1371,7 @@ def _scored_micromanager_candidate_orders(
             city_candidate_ready = True
         if (
             megacity_available and
+            healthy_economy and
             _can_add_jobs_without_breaking_limit(player, star, MEGACITY_ORDER_TYPE) and
             _can_add_order_without_exceeding_max_jobs(player, star, MEGACITY_ORDER_TYPE)
         ):
@@ -1601,6 +1642,7 @@ def _scored_micromanager_candidate_orders(
         shipyard_deficit = max(0, shipyard_target - current_shipyards)
         if (
             shipyard_deficit > 0 and
+            healthy_economy and
             _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD') and
             _can_add_order_without_exceeding_max_jobs(
                 player, star, 'BUILD_SHIPYARD'
@@ -1645,6 +1687,7 @@ def _scored_micromanager_candidate_orders(
             int(tier or 0) >= TIER_MECHANICAL_GROWTH and
             report_defense_pressure >= 0.45 and
             current_shipyards <= 0 and
+            healthy_economy and
             _can_add_jobs_without_breaking_limit(player, star, 'BUILD_SHIPYARD') and
             _can_add_order_without_exceeding_max_jobs(
                 player, star, 'BUILD_SHIPYARD'
@@ -1681,6 +1724,16 @@ def _scored_micromanager_candidate_orders(
                 terraform_order,
                 terraform_score,
             )
+
+    if expansionist_mode and report_defense_pressure > 0.0:
+        # Expansionist colonies keep a ready local defense before spending on
+        # labour-capacity upgrades. Fleet construction is scheduled separately
+        # by the expansion mission controller.
+        if 'BUILD_DEFENSE' in candidates:
+            candidates['BUILD_DEFENSE'] += 900.0
+        for order_type in (CITY_ORDER_TYPE, MEGACITY_ORDER_TYPE):
+            if order_type in candidates:
+                candidates[order_type] *= 0.35
 
     ranked = sorted(
         candidates.items(),

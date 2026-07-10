@@ -2936,7 +2936,7 @@ class AdministrationAutomationTest(TestCase):
         self.star.mines = 20
         self.star.factories = 20
         self.star.labs = 0
-        self.star.defenses = 0
+        self.star.defenses = 1
         self.star.shipyards = 0
         self.star.ironium_inventory = 5_000
         self.star.boranium_inventory = 5_000
@@ -3446,6 +3446,31 @@ class AdministrationAutomationTest(TestCase):
 
         self.assertGreaterEqual(planned.count('BUILD_CITY'), 1)
         self.assertLessEqual(planned.count('BUILD_CITY'), 2)
+
+    def test_expansionist_critical_jobs_shortfall_has_a_bounded_queue(self):
+        self._create_administration_tech(2, 2)
+        self._create_city_tech(tech_level=2)
+        self.star.has_administration = True
+        self.star.colonists = 1_000_000_000_000
+        self.star.mines = 10_000
+        self.star.factories = 10_000
+        self.star.ironium_inventory = 1_000_000
+        self.star.boranium_inventory = 1_000_000
+        self.star.germanium_inventory = 1_000_000
+        self.star.save()
+
+        planned = plan_micromanager_orders(
+            self.player,
+            self.star,
+            2,
+            city_available=True,
+            cost_map=get_player_production_costs(self.player),
+            limit=12,
+            micromanager_mode='expansionist',
+        )
+
+        self.assertIn('BUILD_CITY', planned)
+        self.assertLessEqual(len(planned), 24)
 
     def test_level_three_skips_dyson_when_it_would_exceed_max_jobs(self):
         self._create_administration_tech(3, 3)
@@ -5619,6 +5644,366 @@ class AdministrationAutomationTest(TestCase):
                 added_by_micromanager=True,
             ).exists()
         )
+
+    def test_expansionist_fleet_build_defers_its_blocking_city_queue(self):
+        self._create_administration_tech(4, 4)
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = True
+        self.star.colonists = 500_000
+        self.star.mines = 30
+        self.star.factories = 100
+        self.star.labs = 100
+        self.star.defenses = 100
+        self.star.shipyards = 2
+        self.star.ironium_inventory = 100
+        self.star.boranium_inventory = 200
+        self.star.germanium_inventory = 200
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        self.player.fleets.all().delete()
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_CITY',
+            position=1,
+            quantity=1000,
+            spent_ironium=50,
+            added_by_micromanager=True,
+        )
+        orbit_fleets = [
+            Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Mission Pool Fleet %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=1,
+                offense_level=1,
+                defense_level=1,
+                cargo_capacity=120,
+            )
+            for idx in range(4)
+        ]
+
+        GameTurn(self.game)._queue_auto_build_fleet_order_for_colony(
+            self.star,
+            orbit_fleets,
+            get_player_production_costs(self.player),
+            micromanager_mode='expansionist',
+        )
+
+        self.star.refresh_from_db()
+        fleet_order = self.star.production_orders.get(
+            order_type='BUILD_FLEET',
+            added_by_micromanager=True,
+        )
+        self.assertEqual(fleet_order.position, 1)
+        city_order = self.star.production_orders.get(
+            order_type='BUILD_CITY',
+            added_by_micromanager=True,
+        )
+        self.assertGreater(city_order.position, fleet_order.position)
+        self.assertEqual(city_order.spent_ironium, 50)
+        self.assertEqual(self.star.ironium_inventory, 100)
+
+    def test_expansionist_fleet_build_defers_in_progress_dyson(self):
+        self._create_administration_tech(4, 4)
+        self.player.is_ai = True
+        self.player.ai_module = 'expansionist'
+        self.player.save(update_fields=['is_ai', 'ai_module'])
+        self.star.has_administration = True
+        self.star.colonists = 500_000
+        self.star.mines = 30
+        self.star.factories = 100
+        self.star.labs = 100
+        self.star.defenses = 100
+        self.star.shipyards = 2
+        self.star.ironium_inventory = 100
+        self.star.boranium_inventory = 200
+        self.star.germanium_inventory = 200
+        self.star.ironium_yield = 0
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        self.player.fleets.all().delete()
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_DYSON_SPHERE',
+            position=1,
+            quantity=1,
+            spent_ironium=100,
+            added_by_micromanager=True,
+        )
+        orbit_fleets = [
+            Fleet.objects.create(
+                game=self.game,
+                player=self.player,
+                name='Mission Pool Fleet %s' % idx,
+                x=self.star.x,
+                y=self.star.y,
+                ship_count=1,
+                offense_level=1,
+                defense_level=1,
+                cargo_capacity=120,
+            )
+            for idx in range(4)
+        ]
+
+        GameTurn(self.game)._queue_auto_build_fleet_order_for_colony(
+            self.star,
+            orbit_fleets,
+            get_player_production_costs(self.player),
+            micromanager_mode='expansionist',
+        )
+
+        fleet_order = self.star.production_orders.get(
+            order_type='BUILD_FLEET',
+            added_by_micromanager=True,
+        )
+        dyson_order = self.star.production_orders.get(
+            order_type='BUILD_DYSON_SPHERE',
+            added_by_micromanager=True,
+        )
+        self.assertGreater(dyson_order.position, fleet_order.position)
+        self.assertEqual(dyson_order.spent_ironium, 100)
+
+    def test_threatened_colony_moves_defense_ahead_of_partial_city(self):
+        self.star.mines = 10
+        self.star.factories = 10
+        self.star.defenses = 5
+        self.star.save()
+        city_order = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_CITY',
+            position=1,
+            quantity=100,
+            spent_ironium=50,
+            added_by_micromanager=True,
+        )
+        defense_order = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_DEFENSE',
+            position=2,
+            quantity=1,
+            added_by_micromanager=True,
+        )
+
+        GameTurn(self.game)._prioritize_urgent_micromanager_defense(
+            self.star,
+            {'report_context': {'defense_pressure': 0.75}},
+        )
+
+        city_order.refresh_from_db()
+        defense_order.refresh_from_db()
+        self.assertLess(defense_order.position, city_order.position)
+        self.assertEqual(city_order.spent_ironium, 50)
+
+    def test_auto_city_queue_is_trimmed_to_ten_year_resource_horizon(self):
+        self._create_administration_tech(2, 2)
+        self._create_city_tech(tech_level=2)
+        self.star.has_administration = True
+        self.star.colonists = 500_000
+        self.star.mines = 10
+        self.star.factories = 100
+        self.star.defenses = 10
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        order = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_CITY',
+            position=1,
+            quantity=1000,
+            added_by_micromanager=True,
+        )
+
+        GameTurn(self.game)._trim_micromanager_queue_to_horizon(
+            self.star,
+            get_player_production_costs(self.player),
+        )
+
+        order.refresh_from_db()
+        # Ten years of extraction provides 1,000 kt ironium; at 230 kt per
+        # city that funds four cities, not an indefinitely blocking batch.
+        self.assertEqual(order.quantity - order.completed, 4)
+
+    def test_city_queue_trim_keeps_current_partial_city(self):
+        self._create_administration_tech(2, 2)
+        self._create_city_tech(tech_level=2)
+        self.star.has_administration = True
+        self.star.colonists = 500_000
+        self.star.mines = 10
+        self.star.factories = 100
+        self.star.defenses = 10
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 100_000
+        self.star.germanium_inventory = 100_000
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        order = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_CITY',
+            position=1,
+            quantity=1000,
+            spent_ironium=50,
+            added_by_micromanager=True,
+        )
+
+        GameTurn(self.game)._trim_micromanager_queue_to_horizon(
+            self.star,
+            get_player_production_costs(self.player),
+        )
+
+        order.refresh_from_db()
+        self.assertEqual(order.quantity - order.completed, 4)
+        self.assertEqual(order.spent_ironium, 50)
+
+    def test_critical_mine_bootstrap_is_not_limited_by_queue_horizon(self):
+        self.star.mines = 0
+        self.star.factories = 100
+        self.star.colonists = 500_000
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 0
+        self.star.germanium_yield = 0
+        self.star.save()
+        order = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_MINE',
+            position=1,
+            quantity=100,
+            added_by_micromanager=True,
+        )
+
+        GameTurn(self.game)._trim_micromanager_queue_to_horizon(
+            self.star,
+            get_player_production_costs(self.player),
+        )
+
+        order.refresh_from_db()
+        self.assertEqual(order.quantity - order.completed, 3)
+
+    def test_in_progress_dyson_survives_queue_trim_with_healthy_economy(self):
+        self.star.mines = 3
+        self.star.factories = 3
+        self.star.defenses = 3
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.save()
+        order = ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_DYSON_SPHERE',
+            position=1,
+            quantity=1,
+            spent_ironium=100,
+            added_by_micromanager=True,
+        )
+
+        GameTurn(self.game)._trim_micromanager_queue_to_horizon(
+            self.star,
+            get_player_production_costs(self.player),
+        )
+
+        order.refresh_from_db()
+        self.assertEqual(order.spent_ironium, 100)
+
+    def test_crisis_cancels_expensive_micromanager_projects(self):
+        self.star.mines = 3
+        self.star.factories = 3
+        self.star.defenses = 0
+        self.star.ironium_inventory = 0
+        self.star.boranium_inventory = 0
+        self.star.germanium_inventory = 0
+        self.star.save()
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_DYSON_SPHERE',
+            position=1,
+            quantity=1,
+            spent_ironium=100,
+            added_by_micromanager=True,
+        )
+        ProductionOrder.objects.create(
+            game=self.game,
+            star=self.star,
+            order_type='BUILD_CITY',
+            position=2,
+            quantity=100,
+            added_by_micromanager=True,
+        )
+
+        GameTurn(self.game)._trim_micromanager_queue_to_horizon(
+            self.star,
+            get_player_production_costs(self.player),
+        )
+
+        self.star.refresh_from_db()
+        self.assertFalse(self.star.production_orders.filter(
+            added_by_micromanager=True,
+            order_type__in=('BUILD_DYSON_SPHERE', 'BUILD_CITY'),
+        ).exists())
+        self.assertEqual(self.star.ironium_inventory, 100)
+
+    def test_strategic_projects_wait_for_healthy_economy(self):
+        self._create_administration_tech(3, 3)
+        self._create_dyson_sphere_tech()
+        self._create_megacity_tech(tech_level=11)
+        self.star.has_administration = True
+        self.star.colonists = 2_000_000_000
+        self.star.mines = 2
+        self.star.factories = 2
+        self.star.ironium_yield = 100
+        self.star.boranium_yield = 100
+        self.star.germanium_yield = 100
+        self.star.save()
+
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            3,
+            dyson_available=True,
+            megacity_available=True,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertNotIn('BUILD_DYSON_SPHERE', candidates)
+        self.assertNotIn('BUILD_MEGACITY', candidates)
+
+        self.star.mines = 3
+        self.star.factories = 3
+        self.star.save(update_fields=['mines', 'factories'])
+        candidates = get_micromanager_candidate_orders(
+            self.player,
+            self.star,
+            3,
+            dyson_available=True,
+            megacity_available=True,
+            cost_map=get_player_production_costs(self.player),
+        )
+
+        self.assertIn('BUILD_DYSON_SPHERE', candidates)
+        self.assertIn('BUILD_MEGACITY', candidates)
 
     def test_regular_ai_micromanager_queues_lower_cadence_exploration_route(self):
         self.player.is_ai = True
