@@ -9,18 +9,53 @@
         <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/css/object_lists.css' %}">
         {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
-        <script defer src="{% static 'dj4xol/js/object_lists.js' %}"></script>
+        <script defer type="text/javascript" src="{% static 'dj4xol/js/turn_submit.js' %}?v=20260323b"></script>
+        <script defer src="{% static 'dj4xol/js/object_lists.js' %}?v=scrollbars"></script>
     </head>
-    <body class="{% if user_theme %}{{ user_theme }} {% endif %}object-list-page quick-merge-page">
-        <div class="panel no-transition open object-list-panel" data-panel="quick-merge" data-lcars-variant="2">
-            <h2><span>Fleet View</span><span class="panel-toggle"></span></h2>
-            <div class="panel-content panel-stack">
-                <div class="object-list-header">
-                    <h3>Location ({{ x }}, {{ y }})</h3>
-                    <div class="object-list-nav">
-                        <a href="{{ return_url }}">Back to Game</a>
-                    </div>
-                </div>
+    <body class="{% if user_theme %}{{ user_theme }} {% endif %}object-list-page quick-merge-page single-panel-page">
+        <div class="title-bar">
+            <span class="title">{{ game.name }}</span>
+            <span class="year"><span class="year-prefix">Year </span><span class="year-value">{{ game.year }}</span></span>
+            <span class="turn-status">
+                {% if game.turn_scheme == 'HOURLY' or game.turn_scheme == 'DAILY' or game.turn_scheme == 'WEEKLY' %}
+                    <span class="turn-prefix">Next turn: </span>
+                    {% if game.next_generation %}
+                    <span class="turn-value" id="next-turn-countdown" data-next-turn-iso="{{ game.next_generation|date:'c' }}">pending</span>
+                    {% else %}
+                    <span class="turn-value">pending</span>
+                    {% endif %}
+                {% elif game.turn_scheme == 'QUORUM' %}
+                    <span data-turn-submit-slot>
+                        {% if player.turned_in %}
+                            <span class="status-done">Turned in</span>
+                        {% else %}
+                            <form method="post" action="{% url 'dj4xol:turn_in' game.short_id %}" style="display:inline" data-turn-submit-form="1">
+                                {% csrf_token %}
+                                <input type="hidden" name="x" value="{{ x }}">
+                                <input type="hidden" name="y" value="{{ y }}">
+                                {% if selected_fleet_short_id %}<input type="hidden" name="sel" value="{{ selected_fleet_short_id }}">{% endif %}
+                                <button type="submit">Turn In</button>
+                            </form>
+                        {% endif %}
+                    </span>
+                    ({{ game.players.all|length }} players)
+                {% elif game.turn_scheme == 'OWNER' and is_owner %}
+                    <form method="post" action="{% url 'dj4xol:generate_turn' game.short_id %}" style="display:inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="x" value="{{ x }}">
+                        <input type="hidden" name="y" value="{{ y }}">
+                        {% if selected_fleet_short_id %}<input type="hidden" name="sel" value="{{ selected_fleet_short_id }}">{% endif %}
+                        <button type="submit">Generate Turn</button>
+                    </form>
+                {% endif %}
+            </span>
+            {% include 'dj4xol/_nav_menu.html' with current_page='quick_merge' game=game %}
+        </div>
+        <div class="columns single-column object-list-columns">
+            <div class="column">
+                <div class="panel no-transition open object-list-panel" data-panel="quick-merge" data-lcars-variant="2">
+                    <h2><span>Fleet View ({{ x }}, {{ y }})</span><span class="panel-toggle"></span></h2>
+                    <div class="panel-content panel-stack">
                 {% if messages %}
                 {% for message in messages %}
                 <p>{{ message }}</p>
@@ -63,9 +98,11 @@
                     </div>
                     <div class="object-list-footer panel-footer">
                         <a href="{{ return_url }}">Cancel</a>
-                        <button type="submit">Merge</button>
+                        <button class="nav-button object-list-action-button" type="submit">Merge</button>
                     </div>
                 </form>
+            </div>
+        </div>
             </div>
         </div>
     </body>

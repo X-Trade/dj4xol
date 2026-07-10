@@ -1441,6 +1441,11 @@ def _redirect_preserving_selection(request, game, suppress_autolocate=False):
             url = '%s?%s' % (url, urlencode({'target': target}))
         return redirect(url)
 
+    if return_to == 'fleet_list':
+        return redirect(reverse('dj4xol:fleet_list', kwargs={'game_short_id': game.short_id}))
+    if return_to == 'colony_list':
+        return redirect(reverse('dj4xol:colony_list', kwargs={'game_short_id': game.short_id}))
+
     url = reverse('dj4xol:game', kwargs={'game_short_id': game.short_id})
     params = {k: request.POST.get(k) or request.GET.get(k)
               for k in ['x', 'y', 'sel'] if request.POST.get(k) or request.GET.get(k)}
@@ -1547,6 +1552,8 @@ def quick_merge(request, game_short_id, x, y):
         'y': int(y),
         'selected_fleet_short_id': selected_fleet_short_id,
         'user_theme': selected_theme,
+        'current_page': 'quick_merge',
+        'is_owner': account == game.owner,
         'return_url': _quick_merge_return_url(
             game,
             x,
@@ -1574,6 +1581,7 @@ def _game_list_context(request, game, player, current_page):
         'player': player,
         'user_theme': account.theme if account else 'classic',
         'current_page': current_page,
+        'is_owner': account == game.owner,
     }
 
 

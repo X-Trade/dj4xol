@@ -199,7 +199,37 @@
         initDrag(table, tbody);
     }
 
+    function initNavigationMenu() {
+        var hamburger = document.getElementById('hamburger-btn');
+        var dropdown = document.getElementById('nav-dropdown');
+        if (!hamburger || !dropdown) return;
+        hamburger.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            dropdown.classList.toggle('open');
+            hamburger.classList.toggle('open');
+        });
+        document.addEventListener('click', function(ev) {
+            if (!dropdown.contains(ev.target) && !hamburger.contains(ev.target)) {
+                dropdown.classList.remove('open');
+                hamburger.classList.remove('open');
+            }
+        });
+    }
+
+    function initPanelToggles() {
+        Array.prototype.forEach.call(document.querySelectorAll('.panel'), function(panel) {
+            var header = panel.querySelector('h2');
+            if (!header) return;
+            header.addEventListener('click', function() {
+                panel.classList.remove('no-transition');
+                panel.classList.toggle('open');
+            });
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
+        initNavigationMenu();
+        initPanelToggles();
         Array.prototype.forEach.call(document.querySelectorAll('[data-object-table]'), initTable);
     });
 })();

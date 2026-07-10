@@ -2,6 +2,7 @@ import re
 import json
 import uuid
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from django.core import mail
@@ -3981,6 +3982,32 @@ class TestDetailPanelReportTiers(TestCase):
 
 
 class TestFleetOrderViews(TestCase):
+    def test_object_list_mobile_action_stacks_use_equal_button_widths(self):
+        css_path = Path(__file__).resolve().parents[1] / 'static' / 'dj4xol' / 'css' / 'object_lists.css'
+        css = css_path.read_text()
+
+        self.assertRegex(
+            css,
+            (
+                r'@media \(max-width: 700px\)[\s\S]*'
+                r'\.object-list-actions,\s*\.object-list-bulk-actions\s*\{[^}]*align-items:\s*stretch;'
+            ),
+        )
+        self.assertRegex(
+            css,
+            (
+                r'@media \(max-width: 700px\)[\s\S]*'
+                r'\.object-list-actions form,\s*\.object-list-bulk-actions form\s*\{[^}]*width:\s*100%;'
+            ),
+        )
+        self.assertRegex(
+            css,
+            (
+                r'@media \(max-width: 700px\)[\s\S]*'
+                r'\.object-list-action-button\s*\{[^}]*box-sizing:\s*border-box;[^}]*width:\s*100%;'
+            ),
+        )
+
     def test_detail_panel_shows_quick_action_buttons_for_owned_selection(self):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
@@ -4080,6 +4107,11 @@ class TestFleetOrderViews(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="title-bar"', html=False)
+        self.assertContains(response, 'id="hamburger-btn"', html=False)
+        self.assertNotContains(response, 'class="object-list-header"', html=False)
+        self.assertNotContains(response, 'class="object-list-nav"', html=False)
+        self.assertNotContains(response, 'object-list-scrollbar', html=False)
         self.assertContains(response, 'Merge?')
         self.assertContains(response, fleet.name)
         self.assertContains(response, second.name)
@@ -4142,6 +4174,11 @@ class TestFleetOrderViews(TestCase):
         response = client.get(reverse('dj4xol:fleet_list', args=[game.short_id]))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="title-bar"', html=False)
+        self.assertContains(response, 'id="hamburger-btn"', html=False)
+        self.assertNotContains(response, 'class="object-list-header"', html=False)
+        self.assertNotContains(response, 'class="object-list-nav"', html=False)
+        self.assertNotContains(response, 'object-list-scrollbar', html=False)
         self.assertContains(response, 'Fleets')
         self.assertContains(response, 'Roster Fleet')
         self.assertContains(response, 'href="%s?x=%s&amp;y=%s&amp;sel=%s&amp;locate=1"' % (
@@ -4162,14 +4199,21 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, 'Scuttle')
         self.assertContains(response, 'data-bulk-scope="selected"', html=False)
         self.assertContains(response, 'data-bulk-scope="all"', html=False)
+        content = response.content.decode()
+        self.assertLess(content.index('data-bulk-scope="all"'), content.index('data-bulk-scope="selected"'))
         self.assertContains(
             response,
-            '<button type="submit" data-object-list-bulk-button="selected" disabled>Recall</button>',
+            '<button class="nav-button object-list-action-button" type="submit" data-object-list-bulk-button="selected" disabled>Recall</button>',
             html=True,
         )
         self.assertContains(
             response,
-            '<button type="submit" data-object-list-bulk-button="all">Recall</button>',
+            '<button class="nav-button object-list-action-button" type="submit" data-object-list-bulk-button="all">Recall</button>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<button class="nav-button object-list-action-button" type="submit">Scuttle</button>',
             html=True,
         )
         self.assertNotContains(response, 'Enemy Fleet')
@@ -4188,12 +4232,12 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, 'No fleets.')
         self.assertContains(
             response,
-            '<button type="submit" data-object-list-bulk-button="selected" disabled>Recall</button>',
+            '<button class="nav-button object-list-action-button" type="submit" data-object-list-bulk-button="selected" disabled>Recall</button>',
             html=True,
         )
         self.assertContains(
             response,
-            '<button type="submit" data-object-list-bulk-button="all" disabled>Recall</button>',
+            '<button class="nav-button object-list-action-button" type="submit" data-object-list-bulk-button="all" disabled>Recall</button>',
             html=True,
         )
 
@@ -4277,6 +4321,11 @@ class TestFleetOrderViews(TestCase):
         response = client.get(reverse('dj4xol:colony_list', args=[game.short_id]))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="title-bar"', html=False)
+        self.assertContains(response, 'id="hamburger-btn"', html=False)
+        self.assertNotContains(response, 'class="object-list-header"', html=False)
+        self.assertNotContains(response, 'class="object-list-nav"', html=False)
+        self.assertNotContains(response, 'object-list-scrollbar', html=False)
         self.assertContains(response, 'Colonies')
         self.assertContains(response, 'Roster Prime')
         self.assertContains(response, 'Population')
@@ -4292,17 +4341,47 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, 'Clear Queue')
         self.assertContains(response, 'data-bulk-scope="selected"', html=False)
         self.assertContains(response, 'data-bulk-scope="all"', html=False)
+        content = response.content.decode()
+        self.assertLess(content.index('data-bulk-scope="all"'), content.index('data-bulk-scope="selected"'))
         self.assertContains(
             response,
-            '<button type="submit" data-object-list-bulk-button="selected" disabled>Clear Queue</button>',
+            '<button class="nav-button object-list-action-button" type="submit" data-object-list-bulk-button="selected" disabled>Clear Queue</button>',
             html=True,
         )
         self.assertContains(
             response,
-            '<button type="submit" data-object-list-bulk-button="all">Clear Queue</button>',
+            '<button class="nav-button object-list-action-button" type="submit" data-object-list-bulk-button="all">Clear Queue</button>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<button class="nav-button object-list-action-button" type="submit">Abandon</button>',
             html=True,
         )
         self.assertNotContains(response, 'Enemy Colony')
+
+    def test_colony_list_disables_all_row_actions_when_player_has_no_colonies(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        game.stars.filter(player=player).update(player=None)
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:colony_list', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'No colonies.')
+        self.assertContains(
+            response,
+            '<button class="nav-button object-list-action-button" type="submit" data-object-list-bulk-button="selected" disabled>Clear Queue</button>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<button class="nav-button object-list-action-button" type="submit" data-object-list-bulk-button="all" disabled>Clear Queue</button>',
+            html=True,
+        )
 
     def test_colony_list_clear_queue_removes_production_orders(self):
         game = default_game(stars=5)
