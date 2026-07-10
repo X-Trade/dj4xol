@@ -738,6 +738,68 @@ class TestPopulationGrowth(TestCase):
 
         self.assertEqual(homeworld.colonists, 50000)
 
+    def test_bombed_colony_does_not_regrow_during_same_turn(self):
+        game = default_game(stars=2)
+        attacker = game.players.first()
+        defender_user = User.objects.create_user(
+            'bomb_growth_def',
+            'bomb_growth_def@test.com',
+            'pass',
+        )
+        defender_account = Account.objects.create(django_user=defender_user)
+        defender = Player.objects.create(
+            game=game,
+            account=defender_account,
+            race_type=attacker.race_type,
+        )
+        star = game.stars.exclude(pk=attacker.homeworld.pk).first()
+        star.player = defender
+        star.gravity = defender.gravity_center
+        star.temperature = defender.temperature_center
+        star.radiation = defender.radiation_center
+        star.colonists = 50_000
+        star.defenses = 0
+        star.mines = 0
+        star.factories = 0
+        star.labs = 0
+        star.shipyards = 0
+        star.save(update_fields=[
+            'player', 'gravity', 'temperature', 'radiation', 'colonists',
+            'defenses', 'mines', 'factories', 'labs', 'shipyards',
+        ])
+
+        fleet = Fleet.objects.create(
+            game=game,
+            player=attacker,
+            name='Growth Suppressor',
+            x=star.x,
+            y=star.y,
+            ship_count=10,
+            has_bombs='SMART',
+        )
+        order = FleetOrders.objects.create(
+            game=game,
+            fleet=fleet,
+            order_type='BOMB',
+            target_star=star,
+            bomb_until='ONCE',
+        )
+
+        turn = GameTurn(game)
+        with patch('dj4xol.turn.GameTurn._resolve_planetary_defense_fire_against_fleet', return_value={
+            'destroyed': False, 'integrity_lost': 0, 'ships_lost': 0, 'defense_mult': 1.0
+        }), patch('dj4xol.turn.bombardment_damage_k', return_value=1):
+            turn._execute_bomb_order(fleet, order)
+
+        star.refresh_from_db()
+        bombed_population = star.colonists
+        self.assertLess(bombed_population, 50_000)
+
+        turn.population_growth()
+
+        star.refresh_from_db()
+        self.assertEqual(star.colonists, bombed_population)
+
     def test_mechanical_population_orders_are_available_only_to_mechanical_races(self):
         game = default_game(stars=5)
         player = game.players.first()

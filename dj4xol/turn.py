@@ -670,6 +670,7 @@ class GameTurn():
         self._player_colony_count_cache = {}
         self._shipyard_service_blocked_fleet_ids_by_star_id = {}
         self._combined_bomb_order_ids = set()
+        self._bombed_star_ids_for_year = set()
         self._homeworld_loss_context_by_player_id = {}
 
     def generate_turn(self):
@@ -721,6 +722,7 @@ class GameTurn():
         self._player_colony_count_cache = {}
         self._shipyard_service_blocked_fleet_ids_by_star_id = {}
         self._combined_bomb_order_ids = set()
+        self._bombed_star_ids_for_year = set()
         self._homeworld_loss_context_by_player_id = {}
         refresh_contract_integrity(self.game)
         self._apply_pending_diplomacy_snapshot()
@@ -7084,6 +7086,9 @@ class GameTurn():
     ):
         from .models import Star
 
+        if getattr(star, 'id', None):
+            self._bombed_star_ids_for_year.add(star.id)
+
         is_smart = smart_bombs_only_target_defenses_and_population(bomb_type)
         is_neutron = neutron_bombs_target_population_shipyards_and_cities(bomb_type)
         is_graviton = graviton_bombs_apply_gravity_shift(bomb_type)
@@ -10045,6 +10050,8 @@ class GameTurn():
                 raw_multiplier
             )
             if factor > 0 and bool(getattr(player.race_type, 'is_mechanical', False)):
+                factor = 0.0
+            if factor > 0 and star.id in self._bombed_star_ids_for_year:
                 factor = 0.0
             star.colonists = apply_population_change(star.colonists, factor)
             if (
