@@ -17,6 +17,12 @@
         {% if game and current_page != 'message_history' %}
         <a class="nav-link-game" href="{% url 'dj4xol:message_history' game.short_id %}">Messages</a>
         {% endif %}
+        {% if game and current_page != 'fleet_list' %}
+        <a class="nav-link-game" href="{% url 'dj4xol:fleet_list' game.short_id %}">Fleets</a>
+        {% endif %}
+        {% if game and current_page != 'colony_list' %}
+        <a class="nav-link-game" href="{% url 'dj4xol:colony_list' game.short_id %}">Colonies</a>
+        {% endif %}
         {% if game and current_page != 'research' %}
         <a class="nav-link-game" href="{% url 'dj4xol:research' game.short_id %}">Research</a>
         {% endif %}

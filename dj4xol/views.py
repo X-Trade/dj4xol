@@ -28,7 +28,7 @@ from .models import (
     FleetOrders, Star, Salvage, Anomaly, Report, ResearchCategory, Technology,
     ResearchLevelPrerequisite, HullDesign, HullDesignSlot, random_anomaly_stability_init,
     Spectator, PlayerDiplomaticStance, PlayerStarMarker, profanity_filter_settings, server_setting_enabled,
-    server_setting_int, DiplomaticContract, CustomHelpPage,
+    server_setting_int, DiplomaticContract, CustomHelpPage, ProductionOrder,
 )
 from .email_rollups import (
     send_message_rollup_for_account,
@@ -77,6 +77,7 @@ from .diplomacy import (
 )
 from .diplomatic_contracts import (
     _resolve_report_target,
+    _evacuate_colony_to_owner_fleets,
     accept_contract,
     build_player_message_feed,
     decline_contract,
@@ -91,6 +92,7 @@ from .diplomatic_contracts import (
     resource_label_for_player,
     revoke_contract,
 )
+from .colony_rules import calculate_total_jobs
 from .technology_thumbnails import (
     get_technology_thumbnail_initial_index,
     get_technology_thumbnail_path,
@@ -1552,6 +1554,273 @@ def quick_merge(request, game_short_id, x, y):
             selected_short_id=selected_fleet_short_id,
         ),
     })
+
+
+def _game_object_return_url(game, obj):
+    url = reverse('dj4xol:game', kwargs={'game_short_id': game.short_id})
+    params = {
+        'x': int(obj.x),
+        'y': int(obj.y),
+        'sel': obj.short_id,
+        'locate': '1',
+    }
+    return '%s?%s' % (url, urlencode(params))
+
+
+def _game_list_context(request, game, player, current_page):
+    account = request.user.dj4xol_account
+    return {
+        'game': game,
+        'player': player,
+        'user_theme': account.theme if account else 'classic',
+        'current_page': current_page,
+    }
+
+
+def _fleet_list_rows(game, player):
+    rows = []
+    fleets = Fleet.objects.filter(
+        game=game,
+        player=player,
+    ).order_by('name', 'id')
+    for fleet in fleets:
+        rows.append({
+            'object': fleet,
+            'short_id': fleet.short_id,
+            'name': fleet.name,
+            'href': _game_object_return_url(game, fleet),
+            'offense_level': float(getattr(fleet, 'offense_level', 0.0) or 0.0),
+            'defense_level': float(getattr(fleet, 'defense_level', 0.0) or 0.0),
+            'max_safe_warp': int(getattr(fleet, 'max_safe_warp', 0) or 0),
+            'cargo_capacity': int(getattr(fleet, 'cargo_capacity', 0) or 0),
+            'ship_count': int(getattr(fleet, 'ship_count', 0) or 0),
+        })
+    return rows
+
+
+def _colony_list_rows(game, player):
+    rows = []
+    colonies = Star.objects.filter(
+        game=game,
+        player=player,
+    ).order_by('name', 'id')
+    for star in colonies:
+        rows.append({
+            'object': star,
+            'short_id': star.short_id,
+            'name': star.name,
+            'href': _game_object_return_url(game, star),
+            'population': int(getattr(star, 'colonists', 0) or 0),
+            'jobs': calculate_total_jobs(star),
+            'shipyards': int(getattr(star, 'shipyards', 0) or 0),
+            'defenses': int(getattr(star, 'defenses', 0) or 0),
+            'mines': int(getattr(star, 'mines', 0) or 0),
+            'factories': int(getattr(star, 'factories', 0) or 0),
+            'labs': int(getattr(star, 'labs', 0) or 0),
+        })
+    return rows
+
+
+def _parse_bulk_short_ids(raw_value):
+    return [
+        item.strip()
+        for item in str(raw_value or '').replace(';', ',').split(',')
+        if item.strip()
+    ]
+
+
+def _recall_fleet_to_homeworld(fleet, player):
+    if not fleet or not player or not player.homeworld_id:
+        return False
+    homeworld = player.homeworld
+    fleet.orders.all().delete()
+    try:
+        warp = max(1, int(getattr(fleet, 'max_safe_warp', 1) or 1))
+    except (TypeError, ValueError):
+        warp = 1
+    FleetOrders.objects.create(
+        game=fleet.game,
+        fleet=fleet,
+        order_type='MOVE',
+        repeat=False,
+        position=1,
+        warpfactor=warp,
+        original_warpfactor=warp,
+        x=homeworld.x,
+        y=homeworld.y,
+        target_kind='OBJECT',
+        target_short_id=homeworld.short_id,
+        target_star=homeworld,
+    )
+    return True
+
+
+def _scuttle_fleet(fleet):
+    if not fleet:
+        return False
+    fleet.orders.all().delete()
+    FleetOrders.objects.create(
+        game=fleet.game,
+        fleet=fleet,
+        order_type='SCUTTLE',
+        repeat=False,
+        position=1,
+    )
+    return True
+
+
+def _abandon_colony(star, player):
+    if not star or not player:
+        return False
+    with transaction.atomic():
+        star = Star.objects.select_for_update().get(id=star.id, player=player)
+        _evacuate_colony_to_owner_fleets(star, player)
+        ProductionOrder.objects.filter(game=star.game, star=star).delete()
+        star.player = None
+        star.colonists = 0
+        star.save(update_fields=['player', 'colonists'])
+    return True
+
+
+def _clear_colony_queue(star):
+    if not star:
+        return 0
+    deleted, _details = ProductionOrder.objects.filter(
+        game=star.game,
+        star=star,
+    ).delete()
+    return deleted
+
+
+def _fleet_list_redirect(game):
+    return redirect(reverse('dj4xol:fleet_list', args=[game.short_id]))
+
+
+def _colony_list_redirect(game):
+    return redirect(reverse('dj4xol:colony_list', args=[game.short_id]))
+
+
+@player_only_view()
+def fleet_list(request, game_short_id):
+    game = Game.objects.get(short_id=game_short_id)
+    if game.is_generating:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Turn generation is in progress. Please check back later.'
+        })
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    context = _game_list_context(request, game, player, 'fleet_list')
+    context.update({
+        'rows': _fleet_list_rows(game, player),
+    })
+    return render(request, 'dj4xol/fleet_list.html', context)
+
+
+@player_only_view()
+def fleet_list_action(request, game_short_id, fleet_short_id, action):
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    if request.method != 'POST' or player is None or player.turned_in:
+        return _fleet_list_redirect(game)
+    fleet = get_object_or_404(Fleet, game=game, player=player, short_id=fleet_short_id)
+    if action == 'recall':
+        if _recall_fleet_to_homeworld(fleet, player):
+            messages.success(request, '%s recalled to homeworld.' % fleet.name)
+    elif action == 'scuttle':
+        if _scuttle_fleet(fleet):
+            messages.success(request, '%s queued for scuttling.' % fleet.name)
+    else:
+        messages.warning(request, 'Unknown fleet action.')
+    return _fleet_list_redirect(game)
+
+
+@player_only_view()
+def fleet_list_bulk_action(request, game_short_id, action):
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    if request.method != 'POST' or player is None or player.turned_in:
+        return _fleet_list_redirect(game)
+    fleets = Fleet.objects.filter(game=game, player=player)
+    if request.POST.get('scope') != 'all':
+        short_ids = _parse_bulk_short_ids(request.POST.get('object_ids', ''))
+        fleets = fleets.filter(short_id__in=short_ids)
+    count = 0
+    for fleet in fleets.order_by('name', 'id'):
+        if action == 'recall':
+            count += 1 if _recall_fleet_to_homeworld(fleet, player) else 0
+        elif action == 'scuttle':
+            count += 1 if _scuttle_fleet(fleet) else 0
+    if count:
+        messages.success(request, '%s fleet%s updated.' % (count, '' if count == 1 else 's'))
+    else:
+        messages.warning(request, 'No fleets selected.')
+    return _fleet_list_redirect(game)
+
+
+@player_only_view()
+def colony_list(request, game_short_id):
+    game = Game.objects.get(short_id=game_short_id)
+    if game.is_generating:
+        return render(request, 'dj4xol/forbidden.html', {
+            'message': 'Turn generation is in progress. Please check back later.'
+        })
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    context = _game_list_context(request, game, player, 'colony_list')
+    context.update({
+        'rows': _colony_list_rows(game, player),
+    })
+    return render(request, 'dj4xol/colony_list.html', context)
+
+
+@player_only_view()
+def colony_list_action(request, game_short_id, star_short_id, action):
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    if request.method != 'POST' or player is None or player.turned_in:
+        return _colony_list_redirect(game)
+    star = get_object_or_404(Star, game=game, player=player, short_id=star_short_id)
+    if action == 'abandon':
+        name = star.name
+        if _abandon_colony(star, player):
+            messages.success(request, '%s abandoned.' % name)
+    elif action == 'clear-queue':
+        deleted = _clear_colony_queue(star)
+        messages.success(request, '%s production order%s removed.' % (
+            deleted,
+            '' if deleted == 1 else 's',
+        ))
+    else:
+        messages.warning(request, 'Unknown colony action.')
+    return _colony_list_redirect(game)
+
+
+@player_only_view()
+def colony_list_bulk_action(request, game_short_id, action):
+    game = Game.objects.get(short_id=game_short_id)
+    account = request.user.dj4xol_account
+    player = Player.objects.filter(game=game, account=account).first()
+    if request.method != 'POST' or player is None or player.turned_in:
+        return _colony_list_redirect(game)
+    colonies = Star.objects.filter(game=game, player=player)
+    if request.POST.get('scope') != 'all':
+        short_ids = _parse_bulk_short_ids(request.POST.get('object_ids', ''))
+        colonies = colonies.filter(short_id__in=short_ids)
+    count = 0
+    for star in colonies.order_by('name', 'id'):
+        if action == 'abandon':
+            count += 1 if _abandon_colony(star, player) else 0
+        elif action == 'clear-queue':
+            _clear_colony_queue(star)
+            count += 1
+    if count:
+        messages.success(request, '%s colon%s updated.' % (count, 'y' if count == 1 else 'ies'))
+    else:
+        messages.warning(request, 'No colonies selected.')
+    return _colony_list_redirect(game)
 
 
 @player_only_view()

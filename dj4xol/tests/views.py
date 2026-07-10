@@ -4033,6 +4033,8 @@ class TestFleetOrderViews(TestCase):
         game = default_game(stars=5, fleets=1)
         player = game.players.first()
         fleet = player.fleets.first()
+        fleet.defense_level = 1.5
+        fleet.save(update_fields=['defense_level'])
         second = Fleet.objects.create(
             game=game,
             player=player,
@@ -4040,6 +4042,7 @@ class TestFleetOrderViews(TestCase):
             x=fleet.x,
             y=fleet.y,
             offense_level=3.5,
+            defense_level=2.5,
             cargo_capacity=250,
             ship_count=4,
         )
@@ -4081,15 +4084,286 @@ class TestFleetOrderViews(TestCase):
         self.assertContains(response, fleet.name)
         self.assertContains(response, second.name)
         self.assertContains(response, '3.5')
+        self.assertContains(response, '2.5')
         self.assertContains(response, '250kt')
         self.assertContains(response, '4')
         self.assertNotContains(response, 'Elsewhere Fleet')
         self.assertNotContains(response, 'Enemy Fleet')
         self.assertContains(
             response,
-            'value="%s" checked' % fleet.short_id,
+            'value="%s" data-object-select checked' % fleet.short_id,
             html=False,
         )
+
+    def test_fleet_list_view_lists_owned_fleets_with_actions_and_stats(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        fleet.name = 'Roster Fleet'
+        fleet.offense_level = 3.5
+        fleet.defense_level = 2.5
+        fleet.max_safe_warp = 7
+        fleet.cargo_capacity = 450
+        fleet.ship_count = 6
+        fleet.save(update_fields=[
+            'name',
+            'offense_level',
+            'defense_level',
+            'max_safe_warp',
+            'cargo_capacity',
+            'ship_count',
+        ])
+        Fleet.objects.create(
+            game=game,
+            player=player,
+            name='Second Fleet',
+            x=fleet.x + 1,
+            y=fleet.y,
+            offense_level=1.0,
+            defense_level=1.2,
+            max_safe_warp=4,
+            cargo_capacity=150,
+            ship_count=2,
+        )
+        enemy_user = User.objects.create_user('fleet_list_enemy', 'fle@test.com', 'pass')
+        enemy_account = Account.objects.create(django_user=enemy_user, alias='FLE')
+        enemy_player = Player.objects.create(
+            game=game,
+            account=enemy_account,
+            name='Enemy',
+            plural_name='Enemies',
+            race_type=get_default_race_type(),
+        )
+        Fleet.objects.create(game=game, player=enemy_player, name='Enemy Fleet', x=fleet.x, y=fleet.y)
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:fleet_list', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Fleets')
+        self.assertContains(response, 'Roster Fleet')
+        self.assertContains(response, 'href="%s?x=%s&amp;y=%s&amp;sel=%s&amp;locate=1"' % (
+            reverse('dj4xol:game', args=[game.short_id]),
+            fleet.x,
+            fleet.y,
+            fleet.short_id,
+        ), html=False)
+        self.assertContains(response, 'Offence')
+        self.assertContains(response, 'Defence')
+        self.assertContains(response, 'Max Warp')
+        self.assertContains(response, '3.5')
+        self.assertContains(response, '2.5')
+        self.assertContains(response, '7')
+        self.assertContains(response, '450kt')
+        self.assertContains(response, '6')
+        self.assertContains(response, 'Recall')
+        self.assertContains(response, 'Scuttle')
+        self.assertContains(response, 'data-bulk-scope="selected"', html=False)
+        self.assertContains(response, 'data-bulk-scope="all"', html=False)
+        self.assertContains(
+            response,
+            '<button type="submit" data-object-list-bulk-button="selected" disabled>Recall</button>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<button type="submit" data-object-list-bulk-button="all">Recall</button>',
+            html=True,
+        )
+        self.assertNotContains(response, 'Enemy Fleet')
+
+    def test_fleet_list_disables_all_row_actions_when_player_has_no_fleets(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        player.fleets.all().delete()
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:fleet_list', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'No fleets.')
+        self.assertContains(
+            response,
+            '<button type="submit" data-object-list-bulk-button="selected" disabled>Recall</button>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<button type="submit" data-object-list-bulk-button="all" disabled>Recall</button>',
+            html=True,
+        )
+
+    def test_fleet_list_recall_action_replaces_orders_with_homeworld_move(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        FleetOrders.objects.create(game=game, fleet=fleet, order_type='SCUTTLE', position=1)
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:fleet_list_action', args=[game.short_id, fleet.short_id, 'recall']),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        orders = list(fleet.orders.order_by('position'))
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders[0].order_type, 'MOVE')
+        self.assertEqual(orders[0].x, player.homeworld.x)
+        self.assertEqual(orders[0].y, player.homeworld.y)
+        self.assertEqual(orders[0].warpfactor, fleet.max_safe_warp)
+
+    def test_fleet_list_scuttle_action_replaces_orders_with_scuttle(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        fleet = player.fleets.first()
+        FleetOrders.objects.create(game=game, fleet=fleet, order_type='MOVE', position=1)
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:fleet_list_action', args=[game.short_id, fleet.short_id, 'scuttle']),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        orders = list(fleet.orders.order_by('position'))
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders[0].order_type, 'SCUTTLE')
+        self.assertFalse(orders[0].repeat)
+
+    def test_colony_list_view_lists_owned_colonies_with_actions_and_stats(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        colony = player.homeworld
+        colony.name = 'Roster Prime'
+        colony.colonists = 26000
+        colony.mines = 7
+        colony.factories = 6
+        colony.labs = 5
+        colony.defenses = 4
+        colony.shipyards = 3
+        colony.save(update_fields=[
+            'name',
+            'colonists',
+            'mines',
+            'factories',
+            'labs',
+            'defenses',
+            'shipyards',
+        ])
+        enemy_user = User.objects.create_user('colony_list_enemy', 'cle@test.com', 'pass')
+        enemy_account = Account.objects.create(django_user=enemy_user, alias='CLE')
+        enemy_player = Player.objects.create(
+            game=game,
+            account=enemy_account,
+            name='Enemy',
+            plural_name='Enemies',
+            race_type=get_default_race_type(),
+        )
+        enemy_star = game.stars.exclude(id=colony.id).first()
+        enemy_star.player = enemy_player
+        enemy_star.name = 'Enemy Colony'
+        enemy_star.save(update_fields=['player', 'name'])
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.get(reverse('dj4xol:colony_list', args=[game.short_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Colonies')
+        self.assertContains(response, 'Roster Prime')
+        self.assertContains(response, 'Population')
+        self.assertContains(response, 'Jobs')
+        self.assertContains(response, '26,000')
+        self.assertContains(response, '52,000')
+        self.assertContains(response, '3')
+        self.assertContains(response, '4')
+        self.assertContains(response, '7')
+        self.assertContains(response, '6')
+        self.assertContains(response, '5')
+        self.assertContains(response, 'Abandon')
+        self.assertContains(response, 'Clear Queue')
+        self.assertContains(response, 'data-bulk-scope="selected"', html=False)
+        self.assertContains(response, 'data-bulk-scope="all"', html=False)
+        self.assertContains(
+            response,
+            '<button type="submit" data-object-list-bulk-button="selected" disabled>Clear Queue</button>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<button type="submit" data-object-list-bulk-button="all">Clear Queue</button>',
+            html=True,
+        )
+        self.assertNotContains(response, 'Enemy Colony')
+
+    def test_colony_list_clear_queue_removes_production_orders(self):
+        game = default_game(stars=5)
+        player = game.players.first()
+        colony = player.homeworld
+        ProductionOrder.objects.create(game=game, star=colony, order_type='BUILD_MINE', position=1)
+        ProductionOrder.objects.create(game=game, star=colony, order_type='BUILD_FACTORY', position=2)
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:colony_list_action', args=[game.short_id, colony.short_id, 'clear-queue']),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(ProductionOrder.objects.filter(star=colony).exists())
+
+    def test_colony_list_abandon_evacuates_to_orbiting_fleets_and_preserves_infrastructure(self):
+        game = default_game(stars=5, fleets=1)
+        player = game.players.first()
+        colony = player.homeworld
+        colony.colonists = 50000
+        colony.mines = 7
+        colony.factories = 6
+        colony.labs = 5
+        colony.defenses = 4
+        colony.shipyards = 3
+        colony.save(update_fields=[
+            'colonists',
+            'mines',
+            'factories',
+            'labs',
+            'defenses',
+            'shipyards',
+        ])
+        fleet = player.fleets.first()
+        fleet.x = colony.x
+        fleet.y = colony.y
+        fleet.cargo_capacity = 30
+        fleet.colonists = 0
+        fleet.save(update_fields=['x', 'y', 'cargo_capacity', 'colonists'])
+        user, _ = get_default_user()
+        client = Client()
+        client.force_login(user)
+
+        response = client.post(
+            reverse('dj4xol:colony_list_action', args=[game.short_id, colony.short_id, 'abandon']),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        colony.refresh_from_db()
+        fleet.refresh_from_db()
+        self.assertIsNone(colony.player)
+        self.assertEqual(colony.colonists, 0)
+        self.assertEqual(colony.mines, 7)
+        self.assertEqual(colony.factories, 6)
+        self.assertEqual(colony.labs, 5)
+        self.assertEqual(colony.defenses, 4)
+        self.assertEqual(colony.shipyards, 3)
+        self.assertEqual(fleet.colonists, 30)
 
     def test_quick_merge_post_merges_selected_fleets_into_most_capable_fleet(self):
         game = default_game(stars=5, fleets=1)

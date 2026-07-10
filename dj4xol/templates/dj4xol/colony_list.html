@@ -1,0 +1,125 @@
+{% load static numbers %}
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <title>Colonies - {{ game.name }}</title>
+        {% include 'dj4xol/_web_app_meta.html' %}
+        <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/css/object_lists.css' %}">
+        {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
+        <script defer src="{% static 'dj4xol/js/object_lists.js' %}"></script>
+    </head>
+    <body class="{% if user_theme %}{{ user_theme }} {% endif %}object-list-page">
+        <div class="panel no-transition open object-list-panel" data-panel="colony-list" data-lcars-variant="2">
+            <h2><span>Colonies</span><span class="panel-toggle"></span></h2>
+            <div class="panel-content panel-stack">
+                <div class="object-list-header">
+                    <h3>{{ game.name }}</h3>
+                    <div class="object-list-nav">
+                        <a href="{% url 'dj4xol:game' game.short_id %}">Back to Game</a>
+                        <a href="{% url 'dj4xol:fleet_list' game.short_id %}">Fleets</a>
+                    </div>
+                </div>
+                {% if messages %}
+                {% for message in messages %}
+                <p>{{ message }}</p>
+                {% endfor %}
+                {% endif %}
+                <div class="object-list-scroll">
+                    <table class="object-list-table" data-object-table data-table-id="colonies">
+                        <thead>
+                            <tr>
+                                <th class="object-list-select-col"><input type="checkbox" data-object-select-all aria-label="Select all colonies"></th>
+                                <th data-sort-key="name">Name</th>
+                                <th class="numeric" data-sort-key="population">Population</th>
+                                <th class="numeric" data-sort-key="jobs">Jobs</th>
+                                <th class="numeric" data-sort-key="shipyards">Shipyards</th>
+                                <th class="numeric" data-sort-key="defenses">Defences</th>
+                                <th class="numeric" data-sort-key="mines">Mines</th>
+                                <th class="numeric" data-sort-key="factories">Factories</th>
+                                <th class="numeric" data-sort-key="labs">Labs</th>
+                                <th class="object-list-action-col">Actions</th>
+                            </tr>
+                            <tr class="object-list-bulk-row">
+                                <td class="object-list-select-col"></td>
+                                <td colspan="8"><span class="object-list-bulk-label">Selected</span></td>
+                                <td class="object-list-action-col">
+                                    <div class="object-list-bulk-actions">
+                                        <form method="post" action="{% url 'dj4xol:colony_list_bulk_action' game.short_id 'clear-queue' %}" data-object-list-bulk-form="colonies" data-bulk-scope="selected">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="scope" value="selected">
+                                            <input type="hidden" name="object_ids" value="">
+                                            <button type="submit" data-object-list-bulk-button="selected" disabled>Clear Queue</button>
+                                        </form>
+                                        <form method="post" action="{% url 'dj4xol:colony_list_bulk_action' game.short_id 'abandon' %}" data-object-list-bulk-form="colonies" data-bulk-scope="selected" onsubmit="return confirm('Abandon selected colonies?');">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="scope" value="selected">
+                                            <input type="hidden" name="object_ids" value="">
+                                            <button type="submit" data-object-list-bulk-button="selected" disabled>Abandon</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr class="object-list-bulk-row">
+                                <td class="object-list-select-col"></td>
+                                <td colspan="8"><span class="object-list-bulk-label">All</span></td>
+                                <td class="object-list-action-col">
+                                    <div class="object-list-bulk-actions">
+                                        <form method="post" action="{% url 'dj4xol:colony_list_bulk_action' game.short_id 'clear-queue' %}" data-object-list-bulk-form="colonies" data-bulk-scope="all">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="scope" value="all">
+                                            <input type="hidden" name="object_ids" value="">
+                                            <button type="submit" data-object-list-bulk-button="all"{% if not rows %} disabled{% endif %}>Clear Queue</button>
+                                        </form>
+                                        <form method="post" action="{% url 'dj4xol:colony_list_bulk_action' game.short_id 'abandon' %}" data-object-list-bulk-form="colonies" data-bulk-scope="all" onsubmit="return confirm('Abandon all colonies?');">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="scope" value="all">
+                                            <input type="hidden" name="object_ids" value="">
+                                            <button type="submit" data-object-list-bulk-button="all"{% if not rows %} disabled{% endif %}>Abandon</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        </thead>
+                        <tbody data-object-table-body>
+                            {% for row in rows %}
+                            <tr class="object-list-row" data-object-id="{{ row.short_id }}">
+                                <td class="object-list-select-col">
+                                    <span class="object-list-drag" data-object-drag-handle title="Drag to reorder">&#8597;</span>
+                                    <input type="checkbox" value="{{ row.short_id }}" data-object-select aria-label="Select {{ row.name }}">
+                                </td>
+                                <td data-sort-cell="name" data-sort-value="{{ row.name }}"><a class="object-list-link" href="{{ row.href }}">{{ row.name }}</a></td>
+                                <td class="numeric" data-sort-cell="population" data-sort-value="{{ row.population }}">{{ row.population|exact_pop }}</td>
+                                <td class="numeric" data-sort-cell="jobs" data-sort-value="{{ row.jobs }}">{{ row.jobs|exact_pop }}</td>
+                                <td class="numeric" data-sort-cell="shipyards" data-sort-value="{{ row.shipyards }}">{{ row.shipyards }}</td>
+                                <td class="numeric" data-sort-cell="defenses" data-sort-value="{{ row.defenses }}">{{ row.defenses }}</td>
+                                <td class="numeric" data-sort-cell="mines" data-sort-value="{{ row.mines }}">{{ row.mines }}</td>
+                                <td class="numeric" data-sort-cell="factories" data-sort-value="{{ row.factories }}">{{ row.factories }}</td>
+                                <td class="numeric" data-sort-cell="labs" data-sort-value="{{ row.labs }}">{{ row.labs }}</td>
+                                <td class="object-list-action-col">
+                                    <div class="object-list-actions">
+                                        <form method="post" action="{% url 'dj4xol:colony_list_action' game.short_id row.short_id 'clear-queue' %}">
+                                            {% csrf_token %}
+                                            <button type="submit">Clear Queue</button>
+                                        </form>
+                                        <form method="post" action="{% url 'dj4xol:colony_list_action' game.short_id row.short_id 'abandon' %}" onsubmit="return confirm('Abandon {{ row.name|escapejs }}?');">
+                                            {% csrf_token %}
+                                            <button type="submit">Abandon</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="10">No colonies.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

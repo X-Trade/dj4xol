@@ -7,53 +7,20 @@
         {% include 'dj4xol/_web_app_meta.html' %}
         <link rel="stylesheet" href="{% static 'dj4xol/css/theme.css' %}">
         <link rel="stylesheet" href="{% static 'dj4xol/main/css/main.css' %}">
+        <link rel="stylesheet" href="{% static 'dj4xol/css/object_lists.css' %}">
         {% include 'dj4xol/_theme_stylesheet.html' with active_theme=user_theme %}
-        <style>
-            .quick-merge-page {
-                padding: 1rem;
-            }
-            .quick-merge-panel {
-                max-width: 980px;
-                margin: 0 auto;
-            }
-            .quick-merge-scroll {
-                max-height: 70vh;
-                overflow: auto;
-            }
-            .quick-merge-table {
-                width: 100%;
-                border-collapse: collapse;
-                white-space: nowrap;
-            }
-            .quick-merge-table th,
-            .quick-merge-table td {
-                padding: 0.35rem 0.5rem;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-                text-align: left;
-            }
-            .quick-merge-table th:first-child,
-            .quick-merge-table td:first-child,
-            .quick-merge-table th:nth-child(3),
-            .quick-merge-table td:nth-child(3),
-            .quick-merge-table th:nth-child(4),
-            .quick-merge-table td:nth-child(4),
-            .quick-merge-table th:nth-child(5),
-            .quick-merge-table td:nth-child(5) {
-                text-align: right;
-            }
-            .quick-merge-actions {
-                display: flex;
-                gap: 0.5rem;
-                justify-content: flex-end;
-                padding-top: 0.75rem;
-            }
-        </style>
+        <script defer src="{% static 'dj4xol/js/object_lists.js' %}"></script>
     </head>
-    <body class="{% if user_theme %}{{ user_theme }} {% endif %}quick-merge-page">
-        <div class="panel no-transition open quick-merge-panel" data-panel="quick-merge" data-lcars-variant="2">
+    <body class="{% if user_theme %}{{ user_theme }} {% endif %}object-list-page quick-merge-page">
+        <div class="panel no-transition open object-list-panel" data-panel="quick-merge" data-lcars-variant="2">
             <h2><span>Fleet View</span><span class="panel-toggle"></span></h2>
             <div class="panel-content panel-stack">
-                <h3>Location ({{ x }}, {{ y }})</h3>
+                <div class="object-list-header">
+                    <h3>Location ({{ x }}, {{ y }})</h3>
+                    <div class="object-list-nav">
+                        <a href="{{ return_url }}">Back to Game</a>
+                    </div>
+                </div>
                 {% if messages %}
                 {% for message in messages %}
                 <p>{{ message }}</p>
@@ -61,37 +28,40 @@
                 {% endif %}
                 <form method="post">
                     {% csrf_token %}
-                    <div class="quick-merge-scroll">
-                        <table class="quick-merge-table">
+                    <div class="object-list-scroll">
+                        <table class="object-list-table" data-object-table data-table-id="quick-merge">
                             <thead>
                                 <tr>
-                                    <th>Merge?</th>
-                                    <th>Fleet name</th>
-                                    <th>Offence</th>
-                                    <th>Cargo capacity</th>
-                                    <th>Ships</th>
+                                    <th class="object-list-select-col"><input type="checkbox" data-object-select-all aria-label="Select all fleets to merge"> Merge?</th>
+                                    <th data-sort-key="name">Fleet name</th>
+                                    <th class="numeric" data-sort-key="offense">Offence</th>
+                                    <th class="numeric" data-sort-key="defense">Defence</th>
+                                    <th class="numeric" data-sort-key="capacity">Cargo capacity</th>
+                                    <th class="numeric" data-sort-key="ships">Ships</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody data-object-table-body>
                                 {% for fleet in fleets %}
-                                <tr>
-                                    <td>
-                                        <input type="checkbox" name="merge_fleets" value="{{ fleet.short_id }}"{% if fleet.short_id == selected_fleet_short_id %} checked{% endif %}>
+                                <tr class="object-list-row" data-object-id="{{ fleet.short_id }}">
+                                    <td class="object-list-select-col">
+                                        <span class="object-list-drag" data-object-drag-handle title="Drag to reorder">&#8597;</span>
+                                        <input type="checkbox" name="merge_fleets" value="{{ fleet.short_id }}" data-object-select{% if fleet.short_id == selected_fleet_short_id %} checked{% endif %}>
                                     </td>
-                                    <td>{{ fleet.name }}</td>
-                                    <td>{{ fleet.offense_level|floatformat }}</td>
-                                    <td>{{ fleet.cargo_capacity|floatformat:0 }}kt</td>
-                                    <td>{{ fleet.ship_count }}</td>
+                                    <td data-sort-cell="name" data-sort-value="{{ fleet.name }}">{{ fleet.name }}</td>
+                                    <td class="numeric" data-sort-cell="offense" data-sort-value="{{ fleet.offense_level }}">{{ fleet.offense_level|floatformat }}</td>
+                                    <td class="numeric" data-sort-cell="defense" data-sort-value="{{ fleet.defense_level }}">{{ fleet.defense_level|floatformat }}</td>
+                                    <td class="numeric" data-sort-cell="capacity" data-sort-value="{{ fleet.cargo_capacity }}">{{ fleet.cargo_capacity|floatformat:0 }}kt</td>
+                                    <td class="numeric" data-sort-cell="ships" data-sort-value="{{ fleet.ship_count }}">{{ fleet.ship_count }}</td>
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="5">No fleets at this location.</td>
+                                    <td colspan="6">No fleets at this location.</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
-                    <div class="quick-merge-actions panel-footer">
+                    <div class="object-list-footer panel-footer">
                         <a href="{{ return_url }}">Cancel</a>
                         <button type="submit">Merge</button>
                     </div>
