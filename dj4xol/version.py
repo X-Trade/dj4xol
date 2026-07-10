@@ -1,4 +1,4 @@
 """Canonical application version."""
 
-APP_VERSION = '0.25.1'
+APP_VERSION = '0.26.0'
 __version__ = APP_VERSION

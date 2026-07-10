@@ -16817,7 +16817,7 @@ class TestHomeworldLossAndDerelicts(TestCase):
         )
 
     def test_technology_gift_acceptance_chance_scales_with_delta_and_mutual_stance(self):
-        from ..ai_players import _gift_offer_acceptance_chance
+        from ..ai_players import _ai_roll_acceptance, _gift_offer_acceptance_chance
 
         game = default_game(stars=8)
         human = game.players.first()
@@ -16841,17 +16841,17 @@ class TestHomeworldLossAndDerelicts(TestCase):
             tech_type='SCANNER',
             params_json='{"basic_scanner_range": 40}',
         )
-        lateral_scanner = Technology.objects.create(
+        obsolete_scanner = Technology.objects.create(
             category=category,
-            level=4,
-            name='Lateral L4 Scanner Gift',
+            level=3,
+            name='Obsolete L3 Scanner Gift',
             tech_type='SCANNER',
             params_json='{"pen_scanner_range": 40}',
         )
         advanced_scanner = Technology.objects.create(
             category=category,
-            level=12,
-            name='Advanced L12 Scanner Gift Chance',
+            level=7,
+            name='Advanced L7 Scanner Gift Chance',
             tech_type='SCANNER',
             params_json='{"basic_scanner_range": 120}',
         )
@@ -16861,7 +16861,7 @@ class TestHomeworldLossAndDerelicts(TestCase):
             obtained_via_diplomacy=False,
             granted_year=game.year,
         )
-        for technology in (lateral_scanner, advanced_scanner):
+        for technology in (current_scanner, obsolete_scanner, advanced_scanner):
             PlayerTechnologyGrant.objects.create(
                 player=human,
                 technology=technology,
@@ -16869,7 +16869,7 @@ class TestHomeworldLossAndDerelicts(TestCase):
                 granted_year=game.year,
             )
 
-        lateral_contract = DiplomaticContract.objects.create(
+        already_known_contract = DiplomaticContract.objects.create(
             game=game,
             sender=human,
             recipient=ai_player,
@@ -16878,7 +16878,18 @@ class TestHomeworldLossAndDerelicts(TestCase):
             expires_year=game.year + 24,
             request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
             offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
-            offer_technology=lateral_scanner,
+            offer_technology=current_scanner,
+        )
+        obsolete_contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=obsolete_scanner,
         )
         advanced_contract = DiplomaticContract.objects.create(
             game=game,
@@ -16892,22 +16903,25 @@ class TestHomeworldLossAndDerelicts(TestCase):
             offer_technology=advanced_scanner,
         )
 
-        neutral_lateral_chance = _gift_offer_acceptance_chance(ai_player, lateral_contract)
+        neutral_known_chance = _gift_offer_acceptance_chance(ai_player, already_known_contract)
+        neutral_obsolete_chance = _gift_offer_acceptance_chance(ai_player, obsolete_contract)
         neutral_advanced_chance = _gift_offer_acceptance_chance(ai_player, advanced_contract)
-        self.assertGreater(neutral_advanced_chance, neutral_lateral_chance)
+        self.assertLessEqual(neutral_known_chance, 0.10)
+        self.assertLessEqual(neutral_obsolete_chance, 0.10)
+        self.assertEqual(neutral_advanced_chance, 1.0)
 
         PlayerDiplomaticStance.objects.update_or_create(
             player=ai_player,
             target_player=human,
-            defaults={'stance': 'ALLIED', 'pending_stance': 'ALLIED'},
+            defaults={'stance': 'WARM', 'pending_stance': 'WARM'},
         )
         PlayerDiplomaticStance.objects.update_or_create(
             player=human,
             target_player=ai_player,
-            defaults={'stance': 'ALLIED', 'pending_stance': 'ALLIED'},
+            defaults={'stance': 'WARM', 'pending_stance': 'WARM'},
         )
-        allied_advanced_chance = _gift_offer_acceptance_chance(ai_player, advanced_contract)
-        self.assertGreater(allied_advanced_chance, neutral_advanced_chance)
+        warm_advanced_chance = _gift_offer_acceptance_chance(ai_player, advanced_contract)
+        self.assertEqual(warm_advanced_chance, 1.0)
 
         PlayerDiplomaticStance.objects.update_or_create(
             player=ai_player,
@@ -16920,7 +16934,9 @@ class TestHomeworldLossAndDerelicts(TestCase):
             defaults={'stance': 'HOSTILE', 'pending_stance': 'HOSTILE'},
         )
         hostile_advanced_chance = _gift_offer_acceptance_chance(ai_player, advanced_contract)
-        self.assertLess(hostile_advanced_chance, neutral_advanced_chance)
+        self.assertEqual(hostile_advanced_chance, 0.50)
+        with patch('dj4xol.ai_players.random.random', return_value=0.999):
+            self.assertTrue(_ai_roll_acceptance(neutral_advanced_chance, repeat_count=0))
 
     def test_report_gift_acceptance_chance_scales_with_report_value_and_mutual_stance(self):
         from ..ai_players import _gift_offer_acceptance_chance

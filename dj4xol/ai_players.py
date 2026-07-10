@@ -955,7 +955,7 @@ def _repeat_chance_factor(repeat_count):
 
 
 def _ai_roll_acceptance(base_chance, repeat_count):
-    chance = max(0.0, min(0.95, float(base_chance) * _repeat_chance_factor(repeat_count)))
+    chance = max(0.0, min(1.0, float(base_chance) * _repeat_chance_factor(repeat_count)))
     return random.random() < chance
 
 
@@ -1110,21 +1110,28 @@ def _technology_trade_has_new_offer(contract):
 
 
 def _offered_technology_level_delta(contract, recipient):
+    state = _offered_technology_gift_state(contract, recipient)
+    if state is None or bool(state.get('already_has', False)):
+        return 0
+    return max(0, int(state.get('delta', 0) or 0))
+
+
+def _offered_technology_gift_state(contract, recipient):
     from .models import DiplomaticContract
     from .research import get_player_unlocked_technologies
 
     if contract is None or recipient is None:
-        return 0
+        return None
     if str(getattr(contract, 'offer_clause_type', '') or '') != DiplomaticContract.CLAUSE_TECHNOLOGY:
-        return 0
+        return None
     tech = getattr(contract, 'offer_technology', None)
     sender = getattr(contract, 'sender', None)
     if tech is None or sender is None:
-        return 0
+        return None
     if not _player_has_technology(sender, tech):
-        return 0
+        return None
     if _player_has_technology(recipient, tech):
-        return 0
+        return {'already_has': True, 'delta': 0}
     category_id = int(getattr(tech, 'category_id', 0) or 0)
     highest = 0
     for unlocked in get_player_unlocked_technologies(recipient):
@@ -1140,7 +1147,7 @@ def _offered_technology_level_delta(contract, recipient):
         offered_level = int(getattr(tech, 'level', 0) or 0)
     except (TypeError, ValueError):
         offered_level = 0
-    return max(0, offered_level - highest)
+    return {'already_has': False, 'delta': offered_level - highest}
 
 
 def _is_offered_colony_habitable_for_recipient(contract):
@@ -1176,17 +1183,22 @@ def _is_new_technology_gift(contract, recipient):
 
 
 def _mutual_stance_diplomacy_modifier(recipient, sender):
+    average_score, neutral_score = _mutual_stance_average_and_neutral_scores(recipient, sender)
+    return (average_score - neutral_score) * 0.06
+
+
+def _mutual_stance_average_and_neutral_scores(recipient, sender):
     from .diplomacy import STANCE_NEUTRAL, STANCE_SCORES, normalise_stance, stance_towards
 
+    neutral_score = float(STANCE_SCORES.get(STANCE_NEUTRAL, 2))
     if recipient is None or sender is None:
-        return 0.0
+        return neutral_score, neutral_score
     recipient_stance = normalise_stance(stance_towards(recipient, sender))
     sender_stance = normalise_stance(stance_towards(sender, recipient))
-    neutral_score = float(STANCE_SCORES.get(STANCE_NEUTRAL, 2))
     recipient_score = float(STANCE_SCORES.get(recipient_stance, neutral_score))
     sender_score = float(STANCE_SCORES.get(sender_stance, neutral_score))
     average_score = (recipient_score + sender_score) / 2.0
-    return (average_score - neutral_score) * 0.06
+    return average_score, neutral_score
 
 
 def _clamped_acceptance_chance(value):
@@ -1266,13 +1278,7 @@ def _gift_offer_acceptance_chance(player, contract):
     if clause == DiplomaticContract.CLAUSE_SPECIFIC_FLEET:
         return _clamped_acceptance_chance(0.82 + stance_modifier + min(0.10, trust * 0.04))
     if clause == DiplomaticContract.CLAUSE_TECHNOLOGY:
-        delta = _offered_technology_level_delta(contract, player)
-        # Technology gifts should be conservative at baseline, but ramp strongly
-        # when they materially leapfrog the recipient's current tech level.
-        base = 0.16 + min(0.56, float(delta) * 0.13)
-        if _is_new_technology_gift(contract, player) and delta <= 0:
-            base += 0.12
-        return _clamped_acceptance_chance(base + stance_modifier + min(0.08, trust * 0.03))
+        return _technology_gift_acceptance_chance(player, contract)
     if clause == DiplomaticContract.CLAUSE_SPECIFIC_COLONY:
         base = 0.22
         if _is_offered_colony_habitable_for_recipient(contract):
@@ -1298,6 +1304,31 @@ def _gift_offer_acceptance_chance(player, contract):
     ):
         return _clamped_acceptance_chance(0.72 + stance_modifier + min(0.10, trust * 0.04))
     return 0.0
+
+
+def _technology_gift_acceptance_chance(player, contract):
+    state = _offered_technology_gift_state(contract, player)
+    if state is None:
+        return 0.0
+
+    average_score, neutral_score = _mutual_stance_average_and_neutral_scores(
+        player,
+        getattr(contract, 'sender', None),
+    )
+    hostile_to_neutral = max(0.0, min(1.0, average_score / max(1.0, neutral_score)))
+    neutral_to_allied = max(
+        0.0,
+        min(1.0, (average_score - neutral_score) / max(1.0, neutral_score)),
+    )
+    if bool(state.get('already_has', False)) or int(state.get('delta', 0) or 0) <= 0:
+        return min(0.10, max(0.03, 0.03 + (0.035 * hostile_to_neutral) + (0.035 * neutral_to_allied)))
+
+    delta = int(state.get('delta', 0) or 0)
+    if delta == 1:
+        return min(1.0, 0.20 + (0.30 * hostile_to_neutral))
+    if delta == 2:
+        return min(1.0, 0.35 + (0.40 * hostile_to_neutral))
+    return min(1.0, 0.50 + (0.50 * hostile_to_neutral))
 
 
 _RESOURCE_DELIVERY_KEYS = (
