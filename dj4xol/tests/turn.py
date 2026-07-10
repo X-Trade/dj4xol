@@ -16878,6 +16878,89 @@ class TestHomeworldLossAndDerelicts(TestCase):
             ).exists()
         )
 
+    def test_technology_gift_repeat_penalty_is_light_and_ignores_pending_offers(self):
+        from ..ai_players import _ai_roll_acceptance, _decide_passive_ai_contract_response
+
+        game = default_game(stars=8)
+        human = game.players.first()
+        race = get_default_race()
+        ai_player = GameFactory(game).join_player(
+            None,
+            race,
+            invited=True,
+            is_ai=True,
+            ai_module='micromanager',
+        )
+        category = ResearchCategory.objects.create(
+            code='TECH_GIFT_REPEAT',
+            name='Technology Gift Repeat',
+            enabled=True,
+        )
+        technology = Technology.objects.create(
+            category=category,
+            level=12,
+            name='Advanced Technology Gift',
+            tech_type='SCANNER',
+            params_json='{"basic_scanner_range": 120}',
+        )
+        PlayerTechnologyGrant.objects.create(
+            player=human,
+            technology=technology,
+            obtained_via_diplomacy=False,
+            granted_year=game.year,
+        )
+        DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_DECLINED,
+            sent_year=game.year - 1,
+            handled_year=game.year - 1,
+            expires_year=game.year,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=technology,
+        )
+        # This outstanding gift must not weaken the offer currently evaluated.
+        DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=technology,
+        )
+        contract = DiplomaticContract.objects.create(
+            game=game,
+            sender=human,
+            recipient=ai_player,
+            status=DiplomaticContract.STATUS_SENT,
+            sent_year=game.year,
+            expires_year=game.year + 24,
+            request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+            offer_clause_type=DiplomaticContract.CLAUSE_TECHNOLOGY,
+            offer_technology=technology,
+        )
+
+        with patch('dj4xol.ai_players._ai_roll_acceptance', return_value=False) as roll_acceptance:
+            accepted, reason, _delivery_plan = _decide_passive_ai_contract_response(
+                ai_player,
+                contract,
+                'micromanager',
+            )
+
+        self.assertFalse(accepted)
+        self.assertEqual(reason, 'pure-gift-roll')
+        self.assertEqual(roll_acceptance.call_args.args[1], 1)
+        self.assertEqual(roll_acceptance.call_args.kwargs['per_repeat_factor'], 0.90)
+        with patch('dj4xol.ai_players.random.random', return_value=0.89):
+            self.assertTrue(_ai_roll_acceptance(1.0, 1, per_repeat_factor=0.90))
+        with patch('dj4xol.ai_players.random.random', return_value=0.90):
+            self.assertFalse(_ai_roll_acceptance(1.0, 1, per_repeat_factor=0.90))
+
     def test_technology_gift_acceptance_chance_scales_with_delta_and_mutual_stance(self):
         from ..ai_players import _ai_roll_acceptance, _gift_offer_acceptance_chance
 

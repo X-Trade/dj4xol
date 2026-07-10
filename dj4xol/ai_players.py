@@ -949,13 +949,24 @@ def _repeat_request_count(contract):
     ).exclude(id=contract.id).exclude(status=DiplomaticContract.STATUS_DRAFT).count())
 
 
-def _repeat_chance_factor(repeat_count):
+def _repeat_chance_factor(repeat_count, per_repeat_factor=0.72):
     count = max(0, int(repeat_count or 0))
-    return 0.72 ** min(8, count)
+    try:
+        factor = float(per_repeat_factor)
+    except (TypeError, ValueError):
+        factor = 0.72
+    factor = max(0.0, min(1.0, factor))
+    return factor ** min(8, count)
 
 
-def _ai_roll_acceptance(base_chance, repeat_count):
-    chance = max(0.0, min(1.0, float(base_chance) * _repeat_chance_factor(repeat_count)))
+def _ai_roll_acceptance(base_chance, repeat_count, per_repeat_factor=0.72):
+    chance = max(0.0, min(
+        1.0,
+        float(base_chance) * _repeat_chance_factor(
+            repeat_count,
+            per_repeat_factor=per_repeat_factor,
+        ),
+    ))
     return random.random() < chance
 
 
@@ -999,6 +1010,46 @@ def _is_pure_gift_request(contract):
     ):
         return False
     return True
+
+
+def _pure_gift_repeat_count(contract):
+    """Count resolved, comparable gifts without penalising pending offers."""
+    from .models import DiplomaticContract
+
+    if contract is None:
+        return 0
+    return int(DiplomaticContract.objects.filter(
+        game=contract.game,
+        sender=contract.sender,
+        recipient=contract.recipient,
+        request_clause_type=DiplomaticContract.CLAUSE_NOTHING,
+        offer_clause_type=contract.offer_clause_type,
+        offer_condition_type=DiplomaticContract.CONDITION_EXCHANGE,
+    ).exclude(
+        id=contract.id,
+    ).exclude(
+        status__in=(
+            DiplomaticContract.STATUS_DRAFT,
+            DiplomaticContract.STATUS_SENT,
+        ),
+    ).count())
+
+
+def _pure_gift_repeat_factor(contract):
+    """Keep diminishing returns deliberately light for no-strings-attached gifts."""
+    from .models import DiplomaticContract
+
+    clause = str(getattr(contract, 'offer_clause_type', '') or '')
+    if clause == DiplomaticContract.CLAUSE_TECHNOLOGY:
+        # A clearly advantageous technology gift remains compelling even after
+        # earlier offers: each resolved comparable gift is only a 10% penalty.
+        return 0.90
+    if clause in (
+        DiplomaticContract.CLAUSE_SPECIFIC_FLEET,
+        DiplomaticContract.CLAUSE_SPECIFIC_COLONY,
+    ):
+        return 0.85
+    return 0.88
 
 
 def _directed_interaction_scores(sender, recipient, game, now_year):
@@ -1796,7 +1847,11 @@ def _decide_passive_ai_contract_response(player, contract, module_code):
     ):
         gift_base = _gift_offer_acceptance_chance(player, contract)
         if gift_base > 0.0:
-            return _ai_roll_acceptance(gift_base, repeat_count), 'pure-gift-roll', None
+            return _ai_roll_acceptance(
+                gift_base,
+                _pure_gift_repeat_count(contract),
+                per_repeat_factor=_pure_gift_repeat_factor(contract),
+            ), 'pure-gift-roll', None
 
     if request_clause in (
         DiplomaticContract.CLAUSE_RESOURCE_TO_WORLD,
